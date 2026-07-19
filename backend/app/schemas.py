@@ -50,6 +50,7 @@ class SignRequest(BaseModel):
     signer_name: str = ""
     filename: str = ""
     customer_id: int | None = None  # gan luon khi ky (tuy chon)
+    doc_type: str = ""  # phan loai (bbbg khi ky BBBG vua sinh)
 
 
 class SignResponse(BaseModel):
@@ -125,6 +126,7 @@ class DocumentOut(BaseModel):
     created_at: str
     download_url: str
     nas_synced: bool = False
+    doc_type: str = ""
 
 
 class AssignRequest(BaseModel):
@@ -180,3 +182,41 @@ class BulkAssign(BaseModel):
 
 class BulkIds(BaseModel):
     ids: list[int]
+
+
+# --- BBBG (sinh tu hoa don) ---
+class BBBGDate(BaseModel):
+    day: int
+    month: int
+    year: int
+
+
+class BBBGItem(BaseModel):
+    ten: str = ""
+    dvt: str = ""
+    so_luong: str = ""
+
+
+class BBBGBenB(BaseModel):
+    name: str = ""
+    address: str = ""
+    mst: str = ""
+    dai_dien: str = ""
+    chuc_vu: str = ""
+    nguoi_nhan: str = ""
+    dien_thoai: str = ""
+
+
+class BBBGGenerate(BaseModel):
+    so_bb: str = ""
+    noi_lap: str = "Đắk Lắk"
+    ngay: BBBGDate
+    ben_b: BBBGBenB
+    items: list[BBBGItem] = Field(default_factory=list)
+    template_key: str = "bbbg_thiet_bi"
+    ben_a: dict | None = None
+    filename: str = "bien-ban-ban-giao.pdf"
+
+
+class DocTypeUpdate(BaseModel):
+    doc_type: str

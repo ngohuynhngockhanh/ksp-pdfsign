@@ -8,9 +8,11 @@ import { quickCreateCustomer } from "../util";
 export function Signer({
   defaultIp,
   defaultLocation,
+  preSign,
 }: {
   defaultIp: string;
   defaultLocation: string;
+  preSign?: { docId: string; filename: string; docType: string } | null;
 }) {
   const [docId, setDocId] = useState<string | null>(null);
   const [filename, setFilename] = useState("");
@@ -33,6 +35,16 @@ export function Signer({
   useEffect(() => {
     api.listCustomers().then(setCustomers).catch(() => {});
   }, []);
+
+  // Nạp BBBG vừa sinh (bỏ qua bước upload)
+  useEffect(() => {
+    if (preSign) {
+      setDocId(preSign.docId);
+      setFilename(preSign.filename);
+      setRect(null);
+      setDownloadUrl("");
+    }
+  }, [preSign]);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -65,6 +77,7 @@ export function Signer({
         signer_name: "",
         filename,
         customer_id: customerId === "" ? null : Number(customerId),
+        doc_type: preSign?.docType || "",
       });
       setDownloadUrl(r.download_url);
     } catch (ex) {

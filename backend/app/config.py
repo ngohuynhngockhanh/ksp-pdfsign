@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     public_base_url: str = "https://ksp-pdf-signer.p2p.inut.io.vn"
     share_default_days: int = 7
 
+    # BBBG - thong tin Ben A (ben ban/ban giao) mac dinh (INUT), cho sua
+    bbbg_company: str = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
+    bbbg_address: str = "161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam"
+    bbbg_mst: str = "4401053694"
+    bbbg_phone: str = "0972768491"
+    bbbg_rep: str = "NGÔ HUỲNH NGỌC KHÁNH"
+    bbbg_rep_title: str = "Giám đốc"
+
     # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
     nas_enabled: bool = True
     nas_host: str = "172.32.0.100"

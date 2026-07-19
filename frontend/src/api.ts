@@ -40,7 +40,17 @@ export interface DocRecord {
   created_at: string;
   download_url: string;
   nas_synced: boolean;
+  doc_type: string;
 }
+
+export const DOC_TYPES: Record<string, string> = {
+  "": "Chưa phân loại",
+  bbbg: "Biên bản bàn giao",
+  hop_dong: "Hợp đồng",
+  bao_gia: "Báo giá",
+  hoa_don: "Hóa đơn",
+  khac: "Khác",
+};
 
 export interface SignatureReport {
   field_name: string;
@@ -122,6 +132,7 @@ export const api = {
     signer_name: string;
     filename?: string;
     customer_id?: number | null;
+    doc_type?: string;
   }) {
     return req<{ doc_id: string; signed: boolean; download_url: string }>(
       "/api/sign",
@@ -307,6 +318,36 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ new_password: newPassword }),
+    });
+  },
+
+  // --- Hóa đơn -> BBBG ---
+  async parseInvoice(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<{
+      buyer: { name: string; mst: string; address: string };
+      items: { stt: number; ten: string; dvt: string; so_luong: string }[];
+      ngay: { day: number; month: number; year: number } | null;
+      ky_hieu: string;
+      raw_text: string;
+    }>("/api/invoice/parse", { method: "POST", body: fd });
+  },
+  async bbbgTemplates() {
+    return req<{ templates: { key: string; label: string }[] }>("/api/bbbg/templates");
+  },
+  async bbbgGenerate(body: unknown) {
+    return req<{ doc_id: string; filename: string }>("/api/bbbg/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async setDocType(docPk: number, docType: string) {
+    return req<DocRecord>(`/api/documents/${docPk}/type`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_type: docType }),
     });
   },
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Customer, type DocRecord } from "../api";
+import { api, DOC_TYPES, type Customer, type DocRecord } from "../api";
 import { copyText, quickCreateCustomer, shareDocument } from "../util";
 
 export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
@@ -229,6 +229,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               <input type="checkbox" checked={allChecked} onChange={toggleAll} />
             </th>
             <th>Tên file</th>
+            <th>Loại</th>
             <th>Người ký</th>
             <th>Thời gian</th>
             <th>Khách hàng (phân loại)</th>
@@ -244,6 +245,21 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               <td>
                 {d.filename}
                 {d.nas_synced && <span className="nas-ok" title="Đã lên NAS"> 🗄️✓</span>}
+              </td>
+              <td>
+                <select
+                  value={d.doc_type || ""}
+                  onChange={async (e) => {
+                    await api.setDocType(d.id, e.target.value);
+                    load();
+                  }}
+                >
+                  {Object.entries(DOC_TYPES).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td className="muted">{d.signer_name}</td>
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
@@ -282,7 +298,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
           ))}
           {docs.length === 0 && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 Không có hồ sơ.
               </td>
             </tr>

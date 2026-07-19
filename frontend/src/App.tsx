@@ -7,11 +7,13 @@ import { Customers } from "./pages/Customers";
 import { Documents } from "./pages/Documents";
 import { MyDocuments } from "./pages/MyDocuments";
 import { NasBrowser } from "./pages/NasBrowser";
+import { CreateBBBG } from "./pages/CreateBBBG";
 
-type Tab = "sign" | "documents" | "customers" | "nas" | "verify" | "mine";
+type Tab = "sign" | "bbbg" | "documents" | "customers" | "nas" | "verify" | "mine";
 
 const ROUTES: Record<Tab, string> = {
   sign: "/ky-so",
+  bbbg: "/tao-bbbg",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
@@ -49,6 +51,9 @@ export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTabState] = useState<Tab>("sign");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
+  const [preSign, setPreSign] = useState<
+    { docId: string; filename: string; docType: string } | null
+  >(null);
 
   function navigate(t: Tab, replace = false) {
     const path = ROUTES[t];
@@ -70,7 +75,7 @@ export function App() {
         setAuthed(true);
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
-          ? (["sign", "documents", "customers", "nas", "verify"] as Tab[])
+          ? (["sign", "bbbg", "documents", "customers", "nas", "verify"] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
@@ -95,6 +100,7 @@ export function App() {
   const isAdmin = me.role === "admin";
   const adminTabs: [Tab, string][] = [
     ["sign", "Ký số"],
+    ["bbbg", "Tạo BBBG"],
     ["documents", "Hồ sơ"],
     ["customers", "Khách hàng"],
     ["nas", "NAS"],
@@ -144,7 +150,19 @@ export function App() {
 
       <main>
         {tab === "sign" && isAdmin && (
-          <Signer defaultIp={me.agent_default_ip} defaultLocation={me.default_location} />
+          <Signer
+            defaultIp={me.agent_default_ip}
+            defaultLocation={me.default_location}
+            preSign={preSign}
+          />
+        )}
+        {tab === "bbbg" && isAdmin && (
+          <CreateBBBG
+            onGenerated={(docId, filename) => {
+              setPreSign({ docId, filename, docType: "bbbg" });
+              navigate("sign");
+            }}
+          />
         )}
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}

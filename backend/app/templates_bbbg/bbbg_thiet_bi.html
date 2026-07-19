@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 13px; color: #000; line-height: 1.5;
+    position: relative;
+  }
+  /* Logo chìm */
+  .watermark {
+    position: fixed; top: 45%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%; opacity: 0.08; z-index: -1;
+  }
+  .header { display: flex; justify-content: space-between; text-align: center; }
+  .header .left { width: 52%; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+  .header .right { width: 46%; }
+  .header .right .country { font-weight: bold; text-transform: uppercase; }
+  .header .right .motto { font-weight: bold; }
+  .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
+  .soline { margin-top: 2px; font-size: 12px; }
+  .place { text-align: right; font-style: italic; margin: 6px 0 14px; }
+  h1 { text-align: center; font-size: 17px; margin: 10px 0 4px; }
+  .intro { margin: 8px 0; text-align: justify; }
+  .party-title { font-weight: bold; margin-top: 8px; }
+  .party { margin: 0 0 4px 0; }
+  .party div { margin: 1px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  th, td { border: 1px solid #000; padding: 5px 7px; font-size: 12.5px; }
+  th { text-align: center; font-weight: bold; }
+  td.c { text-align: center; }
+  .note { margin: 12px 0; font-style: italic; }
+  .signs { display: flex; justify-content: space-between; margin-top: 18px; text-align: center; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; }
+  .signs .hint { font-style: italic; font-size: 12px; }
+  .signs .space { height: 80px; }
+</style>
+</head>
+<body>
+  {% if logo_data_uri %}<img class="watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <div class="header">
+    <div class="left">{{ ben_a.company }}</div>
+    <div class="right">
+      <div class="country">Cộng hòa xã hội chủ nghĩa Việt Nam</div>
+      <div class="motto"><u>Độc lập – Tự do – Hạnh phúc</u></div>
+    </div>
+  </div>
+  <div class="soline"><b>Số:</b> {{ so_bb }}</div>
+  <div class="place">{{ noi_lap }}, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }}</div>
+
+  <h1>BIÊN BẢN BÀN GIAO THIẾT BỊ</h1>
+
+  <div class="intro">
+    Hôm nay, ngày {{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}, tại
+    <b>{{ ben_a.company }}</b>, chúng tôi gồm:
+  </div>
+
+  <div class="party-title">Bên A (Bên bàn giao)</div>
+  <div class="party">
+    <div><b>{{ ben_a.company }}</b></div>
+    <div>Địa chỉ: {{ ben_a.address }}</div>
+    <div>Giấy chứng nhận ĐKDN số: {{ ben_a.mst }}</div>
+    <div>Điện thoại: {{ ben_a.phone }}</div>
+    <div>Đại diện: Ông {{ ben_a.rep }}{% if ben_a.title %} &nbsp;&nbsp; Chức vụ: {{ ben_a.title }}{% endif %}</div>
+    <div>Người bàn giao: Ông {{ ben_a.rep }}</div>
+  </div>
+
+  <div class="party-title">Bên B (Bên nhận bàn giao)</div>
+  <div class="party">
+    <div><b>{{ ben_b.name }}</b></div>
+    <div>Địa chỉ: {{ ben_b.address }}</div>
+    {% if ben_b.mst %}<div>Mã số thuế: {{ ben_b.mst }}</div>{% endif %}
+    <div>Đại diện: {{ ben_b.dai_dien or "…………………………………" }}{% if ben_b.chuc_vu %} &nbsp;&nbsp; Chức vụ: {{ ben_b.chuc_vu }}{% endif %}</div>
+    <div>Người nhận bàn giao: {{ ben_b.nguoi_nhan or "…………………………………" }}</div>
+    <div>Điện thoại: {{ ben_b.dien_thoai or "…………………………………" }}</div>
+  </div>
+
+  <div style="margin:8px 0">Bằng văn bản này Bên A bàn giao cho Bên B những tài sản được liệt kê chi tiết trong bảng dưới đây:</div>
+
+  <table>
+    <thead>
+      <tr><th style="width:8%">STT</th><th>Tên hàng hóa</th><th style="width:14%">Đơn vị</th><th style="width:14%">Số lượng</th></tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="note">Biên bản được lập thành 02 bản, mỗi bên giữ 01 bản có giá trị pháp lý như nhau./.</div>
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">Bên A</div>
+      <div>Người bàn giao</div>
+      <div class="hint">(ký, đóng dấu và ghi rõ họ tên)</div>
+      <div class="space"></div>
+    </div>
+    <div class="col">
+      <div class="role">Bên B</div>
+      <div>Người nhận bàn giao</div>
+      <div class="hint">(ký, đóng dấu và ghi rõ họ tên)</div>
+      <div class="space"></div>
+    </div>
+  </div>
+</body>
+</html>

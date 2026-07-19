@@ -28,7 +28,17 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import accounts, nas, signing, storage, token_backend, verify
+from . import (
+    accounts,
+    bbbg,
+    classify,
+    invoice,
+    nas,
+    signing,
+    storage,
+    token_backend,
+    verify,
+)
 from .auth import (
     COOKIE_NAME,
     CurrentUser,
@@ -45,9 +55,11 @@ from .schemas import (
     AccountInfo,
     AgentTarget,
     AssignRequest,
+    BBBGGenerate,
     BulkAssign,
     BulkIds,
     CustomerCreate,
+    DocTypeUpdate,
     CustomerOut,
     CustomerUpdate,
     DocumentOut,
@@ -214,6 +226,14 @@ def sign(
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Ky that bai: {e}")
 
+    # Phan loai: uu tien loai chi dinh (vd BBBG), nguoc lai tu nhan dien.
+    dtype = body.doc_type
+    if not dtype:
+        try:
+            dtype = classify.detect_doc_type(storage.read_doc(signed_id))
+        except Exception:
+            dtype = ""
+
     # Luu ho so
     doc = Document(
         doc_id=signed_id,
@@ -221,6 +241,7 @@ def sign(
         signer_name=signer_label,
         signed=True,
         customer_id=body.customer_id,
+        doc_type=dtype,
     )
     db.add(doc)
     db.commit()
@@ -371,6 +392,7 @@ def _doc_out(d: Document) -> DocumentOut:
         created_at=d.created_at.isoformat(),
         download_url=f"/api/documents/{d.id}/download",
         nas_synced=d.nas_synced_at is not None,
+        doc_type=d.doc_type or "",
     )
 
 
@@ -707,6 +729,53 @@ def admin_reset_password(
     u.password_hash = hash_password(body.new_password)
     db.commit()
     return {"ok": True, "username": u.username}
+
+
+# ---------------------------------------------------------------------------
+# Hoa don -> BBBG + phan loai
+# ---------------------------------------------------------------------------
+@app.post("/api/invoice/parse")
+async def invoice_parse(file: UploadFile = File(...), user: CurrentUser = Depends(require_admin)):
+    content = await file.read()
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF")
+    try:
+        return invoice.parse_invoice(content)
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
+
+
+@app.get("/api/bbbg/templates")
+def bbbg_templates(user: CurrentUser = Depends(require_admin)):
+    return {"templates": bbbg.list_templates()}
+
+
+@app.post("/api/bbbg/generate")
+def bbbg_generate(
+    body: BBBGGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        pdf = bbbg.render_bbbg(settings, body.model_dump())
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh BBBG that bai: {e}")
+    doc_id = storage.save_upload(pdf)
+    return {"doc_id": doc_id, "filename": body.filename}
+
+
+@app.post("/api/documents/{doc_pk}/type", response_model=DocumentOut)
+def set_doc_type(
+    doc_pk: int, body: DocTypeUpdate,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    d.doc_type = body.doc_type
+    db.commit()
+    db.refresh(d)
+    return _doc_out(d)
 
 
 # ---------------------------------------------------------------------------

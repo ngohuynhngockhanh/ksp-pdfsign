@@ -72,6 +72,8 @@ class Document(Base):
         ForeignKey("customers.id"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # Phan loai: hop_dong | bbbg | bao_gia | hoa_don | khac | ""
+    doc_type: Mapped[str] = mapped_column(String(20), default="", index=True)
     # Dong bo NAS
     nas_path: Mapped[str] = mapped_column(String(500), default="")
     nas_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -123,6 +125,7 @@ def _migrate_add_columns() -> None:
         "documents": {
             "nas_path": "VARCHAR(500) DEFAULT ''",
             "nas_synced_at": "DATETIME",
+            "doc_type": "VARCHAR(20) DEFAULT ''",
         },
     }
     with _engine.begin() as conn:

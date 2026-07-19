@@ -521,6 +521,19 @@ td.bad {
   margin: 4px 0 12px;
   font-size: 0.9rem;
 }
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+}
+.page-1col .panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+.page-1col .panel h3:first-child {
+  margin-top: 0;
+}
 .crumbs .link-btn {
   font-size: 0.9rem;
 }
