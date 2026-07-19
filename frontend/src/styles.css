@@ -637,6 +637,7 @@ label.link-btn.file-inline {
 }
 .tb-select {
   width: auto;
+  max-width: 230px;
   padding: 7px 9px;
 }
 .btn-sm {
