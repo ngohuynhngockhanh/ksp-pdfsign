@@ -620,7 +620,13 @@ padding:9px 18px;border-radius:8px;font-size:.9rem}}
 .card{{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:34px 40px;
 text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08);max-width:420px;margin:auto}}
 h1{{font-size:1.2rem;margin:0 0 6px}}.err{{color:#d13b3b}}
-</style></head><body>{inner}{preview}</body></html>"""
+.thanks{{text-align:center;padding:12px 18px;font-size:.85rem;color:#6b7683;
+background:#fff;border-top:1px solid #e6eaef}}
+.thanks a{{color:#1e6fd9;text-decoration:none}}
+</style></head><body>{inner}{preview}
+<footer class="thanks">💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của
+<a href="https://inut.vn" target="_blank">INUT</a></footer>
+</body></html>"""
 
 
 # ---------------------------------------------------------------------------

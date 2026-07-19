@@ -381,6 +381,25 @@ td.bad {
   color: var(--green);
   font-size: 0.9rem;
 }
+.thanks-bar {
+  text-align: center;
+  padding: 12px 18px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.thanks-bar a,
+.thanks-note a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.thanks-note {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
 
 /* Customers / Documents layout */
 .page-2col {

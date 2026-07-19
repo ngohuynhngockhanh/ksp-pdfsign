@@ -42,6 +42,12 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         <button type="submit" disabled={busy}>
           {busy ? "Đang đăng nhập…" : "Đăng nhập"}
         </button>
+        <p className="thanks-note">
+          💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của{" "}
+          <a href="https://inut.vn" target="_blank" rel="noreferrer">
+            INUT
+          </a>
+        </p>
       </form>
     </div>
   );

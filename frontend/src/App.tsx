@@ -150,6 +150,15 @@ export function App() {
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
         )}
       </main>
+
+      {!isAdmin && (
+        <footer className="thanks-bar">
+          💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của{" "}
+          <a href="https://inut.vn" target="_blank" rel="noreferrer">
+            INUT
+          </a>
+        </footer>
+      )}
     </div>
   );
 }
