@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, InvProduction, InvRecipe, InvWarehouse, StockRow } from "../api";
+import { api, InvProduction, InvProductionLine, InvRecipe, InvWarehouse, StockRow } from "../api";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -32,6 +32,9 @@ export function Production() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [outQ, setOutQ] = useState("");
   const [outResults, setOutResults] = useState<{ id: number; ma_hang: string; ten: string; dvt: string }[]>([]);
+  const [view, setView] = useState<InvProduction | null>(null);
+  const [viewAvail, setViewAvail] = useState<StockRow[]>([]);
+  const [viewBusy, setViewBusy] = useState(false);
 
   async function load() {
     try {
@@ -182,6 +185,73 @@ export function Production() {
     }
   }
 
+  function openView(prod: InvProduction) {
+    setErr("");
+    setView(prod);
+    if (prod.status === "draft") {
+      api.invAvailability(prod.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
+    }
+  }
+  function patchViewLine(lineId: number, patch: Partial<InvProductionLine>) {
+    setView((v) => (v ? { ...v, lines: v.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) } : v));
+  }
+  function khaDungFor(itemId: number, warehouseId: number): number {
+    return viewAvail.find((r) => r.item_id === itemId && r.warehouse_id === warehouseId)?.kha_dung ?? 0;
+  }
+  async function viewVoid() {
+    if (!view || !window.confirm(`Hủy ghi sổ LSX#${view.id} để sửa? Tồn kho sẽ tính lại.`)) return;
+    setViewBusy(true);
+    setErr("");
+    try {
+      const updated = await api.invProductionVoid(view.id);
+      setView(updated);
+      api.invAvailability(updated.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setViewBusy(false);
+    }
+  }
+  async function viewSave(): Promise<InvProduction | null> {
+    if (!view) return null;
+    return api.invProductionSave(view.id, {
+      ngay: view.ngay, note: view.note,
+      lines: view.lines.map((l) => ({
+        chieu: l.chieu, item_id: l.item_id, warehouse_id: l.warehouse_id, so_luong: l.so_luong,
+      })),
+    });
+  }
+  async function doViewSave() {
+    setViewBusy(true);
+    setErr("");
+    try {
+      const updated = await viewSave();
+      if (updated) setView(updated);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setViewBusy(false);
+    }
+  }
+  async function doViewPost() {
+    setViewBusy(true);
+    setErr("");
+    try {
+      const saved = await viewSave();
+      if (saved) {
+        const posted = await api.invProductionPost(saved.id);
+        setView(posted);
+        load();
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setViewBusy(false);
+    }
+  }
+
   const q = pickQ.trim().toLowerCase();
   const pickable = avail.filter(
     (r) =>
@@ -229,8 +299,15 @@ export function Production() {
               const ins = p.lines.filter((l) => l.chieu === "vao");
               const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
               return (
-                <tr key={p.id}>
-                  <td className="muted">LSX#{p.id}</td>
+                <tr key={p.id} style={{ cursor: "pointer" }} title="Xem/sửa lệnh sản xuất" onClick={() => openView(p)}>
+                  <td className="muted">
+                    LSX#{p.id}
+                    {p.sale_id != null && (
+                      <div className="chip gray sm" style={{ marginTop: 2 }}>
+                        🧾 HĐ bán #{p.sale_id}
+                      </div>
+                    )}
+                  </td>
                   <td className="nowrap">{p.ngay}</td>
                   <td>{outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ")}</td>
                   <td className="muted">{ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
@@ -240,26 +317,12 @@ export function Production() {
                       {p.status === "posted" ? "Đã ghi sổ" : "Nháp"}
                     </span>
                   </td>
-                  <td>
-                    {p.status === "posted" ? (
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {p.status !== "posted" && (
                       <button
                         className="btn-sm ghost"
                         onClick={async () => {
-                          if (!window.confirm(`Hủy ghi sổ LSX#${p.id}?`)) return;
-                          try {
-                            await api.invProductionVoid(p.id);
-                            load();
-                          } catch (e) {
-                            setErr((e as Error).message);
-                          }
-                        }}
-                      >
-                        ↩️
-                      </button>
-                    ) : (
-                      <button
-                        className="btn-sm ghost"
-                        onClick={async () => {
+                          if (!window.confirm(`Xóa lệnh nháp LSX#${p.id}?`)) return;
                           await api.invProductionDelete(p.id);
                           load();
                         }}
@@ -439,6 +502,142 @@ export function Production() {
               >
                 ✅ Ghi sổ sản xuất
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view && (
+        <div className="modal-backdrop" onClick={() => setView(null)}>
+          <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
+            <h3>
+              Lệnh sản xuất LSX#{view.id}{" "}
+              <span className={`chip sm ${view.status === "posted" ? "green" : "amber"}`}>
+                {view.status === "posted" ? "Đã ghi sổ" : "Nháp"}
+              </span>
+            </h3>
+            {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
+            {view.sale_id != null && (
+              <p className="muted" style={{ margin: "4px 0" }}>
+                🧾 Sinh từ HĐ bán #{view.sale_id}
+              </p>
+            )}
+            {view.note && <p className="muted" style={{ margin: "4px 0" }}>{view.note}</p>}
+            {view.status === "posted" && (
+              <div className="warn-banner" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span>🔒 <b>Đã ghi sổ</b> nên số lượng bị khóa. Bấm <b>Hủy ghi sổ</b> để sửa lại.</span>
+                <button className="btn-sm danger" disabled={viewBusy} onClick={viewVoid}>
+                  ↩️ Hủy ghi sổ để sửa
+                </button>
+              </div>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+              <label>
+                Ngày
+                <input
+                  type="date"
+                  value={view.ngay}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, ngay: e.target.value })}
+                />
+              </label>
+              <label style={{ flex: 1 }}>
+                Ghi chú
+                <input
+                  value={view.note}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, note: e.target.value })}
+                />
+              </label>
+            </div>
+
+            <h4>Thành phẩm (ra)</h4>
+            <div className="table-wrap">
+              <table className="dt">
+                <tbody>
+                  {view.lines.filter((l) => l.chieu === "ra").map((l) => (
+                    <tr key={l.id}>
+                      <td>{l.ma_hang || l.ten}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {view.status === "draft" ? (
+                          <input
+                            style={{ width: 70, textAlign: "right" }}
+                            type="number"
+                            value={l.so_luong}
+                            onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
+                          />
+                        ) : (
+                          l.so_luong
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="muted">
+                        {vnd(l.gia_tri)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h4>Tiêu hao (vào)</h4>
+            <div className="table-wrap">
+              <table className="dt">
+                <tbody>
+                  {view.lines.filter((l) => l.chieu === "vao").map((l) => {
+                    const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
+                    const over = kd !== null && l.so_luong > kd;
+                    return (
+                      <tr key={l.id} className={over ? "row-treo" : ""}>
+                        <td>{l.ma_hang} · {l.ten}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {view.status === "draft" ? (
+                            <>
+                              <input
+                                style={{ width: 70, textAlign: "right" }}
+                                type="number"
+                                value={l.so_luong}
+                                onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
+                              />
+                              <div className="muted" style={{ fontSize: 11 }}>
+                                khả dụng {kd}
+                                {over && <span className="chip red sm"> vượt!</span>}
+                              </div>
+                            </>
+                          ) : (
+                            l.so_luong
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }} className="muted">
+                          {vnd(l.gia_tri)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={() => setView(null)}>Đóng</button>
+              {view.status === "draft" && (
+                <>
+                  <button disabled={viewBusy} onClick={doViewSave}>
+                    💾 Lưu
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={
+                      viewBusy ||
+                      view.lines
+                        .filter((l) => l.chieu === "vao")
+                        .some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                    }
+                    onClick={doViewPost}
+                  >
+                    ✅ Ghi sổ lại
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

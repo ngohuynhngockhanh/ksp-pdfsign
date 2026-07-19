@@ -1446,7 +1446,7 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             so_luong=ln.so_luong, gia_tri=mv.gia_tri if mv else 0,
         ))
     return InvProductionOut(
-        id=prod.id, ngay=prod.ngay, note=prod.note, status=prod.status,
+        id=prod.id, ngay=prod.ngay, note=prod.note, status=prod.status, sale_id=prod.sale_id,
         created_at=prod.created_at.isoformat() if prod.created_at else "", lines=lines,
     )
 

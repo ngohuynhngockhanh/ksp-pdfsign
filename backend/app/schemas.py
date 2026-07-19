@@ -640,6 +640,7 @@ class InvProductionOut(BaseModel):
     ngay: str
     note: str
     status: str
+    sale_id: int | None = None  # truy vet: LSX sinh tu HD ban nao (neu co)
     created_at: str = ""
     lines: list[InvProductionLineOut] = Field(default_factory=list)
 

@@ -800,6 +800,13 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async invProductionSave(id: number, body: unknown) {
+    return req<InvProduction>(`/api/inv/productions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   async invProductionPost(id: number) {
     return req<InvProduction>(`/api/inv/productions/${id}/post`, { method: "POST" });
   },
@@ -1030,6 +1037,7 @@ export interface InvProduction {
   ngay: string;
   note: string;
   status: string;
+  sale_id: number | null;
   created_at: string;
   lines: InvProductionLine[];
 }
