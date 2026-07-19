@@ -1,0 +1,13 @@
+[Unit]
+Description=frpc tunnel for KSP PDF Signer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/ksp/ksp-frpc/frpc -c /home/ksp/ksp-frpc/frpc.ini
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

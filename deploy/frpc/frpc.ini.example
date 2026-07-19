@@ -1,0 +1,14 @@
+[common]
+server_addr = p2p.inut.io.vn
+server_port = 7008
+user = ksp_pdf_signer
+meta_token = <DIEN_META_TOKEN>
+
+# Expose app KSP PDF Signer (chay o 127.0.0.1:2032).
+# LUU Y: frps/nginx ben inut can route ksp-pdf-signer.a.inut.vn -> vhost frp.
+# Neu frps dung subdomain_host thi thay custom_domains bang: subdomain = ksp-pdf-signer
+[web]
+type = http
+local_ip = 127.0.0.1
+local_port = 2032
+custom_domains = ksp-pdf-signer.a.inut.vn
