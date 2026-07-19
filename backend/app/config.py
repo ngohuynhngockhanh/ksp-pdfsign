@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     default_location: str = "Đắk Lắk"
 
     # Chia se file: URL goc dung de tao link + so ngay het han mac dinh
-    public_base_url: str = "https://ksp-pdf-signer.a.inut.vn"
+    public_base_url: str = "https://ksp-pdf-signer.p2p.inut.io.vn"
     share_default_days: int = 7
 
     # Windows agent (may cam token)
