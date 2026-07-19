@@ -70,53 +70,70 @@ export function NasBrowser() {
       {err && <div className="error">{err}</div>}
       {busy && <div className="muted">Đang tải…</div>}
 
-      <table className="doc-table">
-        <thead>
-          <tr>
-            <th>Tên</th>
-            <th>Kích thước</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {path && (
+      <div className="table-wrap">
+        <table className="dt">
+          <thead>
             <tr>
-              <td colSpan={3}>
-                <button className="link-btn" onClick={() => goTo(parts.length - 2)}>
-                  ⬆️ .. (lên thư mục trên)
-                </button>
-              </td>
+              <th>Tên</th>
+              <th className="nowrap">Kích thước</th>
+              <th className="col-act"></th>
             </tr>
-          )}
-          {entries.map((e) => (
-            <tr key={e.name}>
-              <td>
-                <button className="link-btn" onClick={() => open(e)}>
-                  {e.is_dir ? "📁" : "📄"} {e.name}
-                </button>
-              </td>
-              <td className="muted">{fmtSize(e.size)}</td>
-              <td className="actions">
-                {!e.is_dir && (
-                  <>
-                    <a href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, true)} target="_blank" rel="noreferrer">
-                      Xem
-                    </a>
-                    <a href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, false)}>Tải</a>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-          {!busy && entries.length === 0 && (
-            <tr>
-              <td colSpan={3} className="muted">
-                Thư mục trống.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {path && (
+              <tr>
+                <td colSpan={3}>
+                  <button className="link-btn" onClick={() => goTo(parts.length - 2)}>
+                    ⬆️ .. (lên thư mục trên)
+                  </button>
+                </td>
+              </tr>
+            )}
+            {entries.map((e) => (
+              <tr key={e.name}>
+                <td>
+                  <button className="link-btn nas-name" onClick={() => open(e)}>
+                    {e.is_dir ? "📁" : "📄"} {e.name}
+                  </button>
+                </td>
+                <td className="muted nowrap">{fmtSize(e.size)}</td>
+                <td className="col-act">
+                  {!e.is_dir && (
+                    <div className="row-actions">
+                      <a
+                        className="iact"
+                        href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, true)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Xem"
+                      >
+                        👁
+                      </a>
+                      <a
+                        className="iact"
+                        href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, false)}
+                        title="Tải"
+                      >
+                        ⬇
+                      </a>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!busy && entries.length === 0 && (
+              <tr>
+                <td colSpan={3}>
+                  <div className="empty">
+                    <div className="empty-ic">📂</div>
+                    <div>Thư mục trống.</div>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
