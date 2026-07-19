@@ -51,6 +51,7 @@ export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTabState] = useState<Tab>("sign");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [preSign, setPreSign] = useState<
     { docId: string; filename: string; docType: string; customerId: number | null } | null
   >(null);
@@ -118,29 +119,47 @@ export function App() {
         <div className="brand">
           <span className="mark">🖊️</span> KSP PDF Signer
         </div>
-        <nav>
-          {tabs.map(([t, label]) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => navigate(t)}>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="who">
-          {me.username}
-          {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
-        </div>
-        <button className="link-btn" onClick={changePassword}>
-          Đổi mật khẩu
-        </button>
         <button
-          className="logout"
-          onClick={async () => {
-            await api.logout();
-            location.reload();
-          }}
+          className="hamburger"
+          aria-label="Menu"
+          onClick={() => setMenuOpen((o) => !o)}
         >
-          Đăng xuất
+          ☰
         </button>
+        <div className={"topbar-menu" + (menuOpen ? " open" : "")}>
+          <nav>
+            {tabs.map(([t, label]) => (
+              <button
+                key={t}
+                className={tab === t ? "active" : ""}
+                onClick={() => {
+                  navigate(t);
+                  setMenuOpen(false);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="topbar-user">
+            <span className="who">
+              {me.username}
+              {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
+            </span>
+            <button className="link-btn" onClick={changePassword}>
+              Đổi mật khẩu
+            </button>
+            <button
+              className="logout"
+              onClick={async () => {
+                await api.logout();
+                location.reload();
+              }}
+            >
+              Đăng xuất
+            </button>
+          </div>
+        </div>
       </header>
 
       {isAdmin && me.using_default_secrets && (
