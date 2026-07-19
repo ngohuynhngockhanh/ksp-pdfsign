@@ -47,7 +47,7 @@ def list_dir(settings: Settings, relpath: str = ""):
     """Liet ke 1 thu muc trong share. Tra ve (rel, [ {name,is_dir,size} ])."""
     _ensure_session(settings)
     rel = _safe_relpath(relpath)
-    full = _base(settings) + ("\\" + rel if rel else "")
+    full = _root(settings) + ("\\" + rel if rel else "")
     entries = []
     for e in smbclient.scandir(full):
         try:
@@ -64,7 +64,7 @@ def read_file(settings: Settings, relpath: str) -> bytes:
     rel = _safe_relpath(relpath)
     if not rel:
         raise NasError("Thieu duong dan file")
-    full = _base(settings) + "\\" + rel
+    full = _root(settings) + "\\" + rel
     with smbclient.open_file(full, mode="rb") as f:
         data = f.read(_MAX_READ + 1)
     if len(data) > _MAX_READ:
@@ -88,6 +88,11 @@ def _ensure_session(settings: Settings) -> None:
 
 def _base(settings: Settings) -> str:
     return rf"\\{settings.nas_host}\{settings.nas_share}"
+
+
+def _root(settings: Settings) -> str:
+    """Goc duyet NAS: chi trong thu muc ho-so (khong cho xem file khac cua NAS)."""
+    return rf"{_base(settings)}\{settings.nas_base_path}"
 
 
 def _sanitize(name: str) -> str:

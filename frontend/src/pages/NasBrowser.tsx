@@ -56,7 +56,7 @@ export function NasBrowser() {
       <h3>🗄️ Duyệt NAS</h3>
       <div className="crumbs">
         <button className="link-btn" onClick={() => load("")}>
-          inut
+          🗄️ ho-so
         </button>
         {parts.map((p, i) => (
           <span key={i}>
