@@ -718,7 +718,10 @@ export const api = {
         ten: string;
         so_luong: number;
         ly_do: string;
-        match: { item_id: number; ma_hang: string; ten: string; dvt: string; score: number } | null;
+        match: {
+          item_id: number; ma_hang: string; ten: string; dvt: string; score: number;
+          warehouse_id: number | null;
+        } | null;
         dvt: string;
         don_gia_bq: number;
         thue_suat_est: number;
@@ -743,9 +746,10 @@ export const api = {
     });
   },
   async invItemCost(itemId: number, ngay = "") {
-    return req<{ dvt: string; don_gia_bq: number; thue_suat_est: number; kha_dung_tai_ngay: number }>(
-      `/api/inv/items/${itemId}/cost?ngay=${encodeURIComponent(ngay)}`,
-    );
+    return req<{
+      dvt: string; don_gia_bq: number; thue_suat_est: number; kha_dung_tai_ngay: number;
+      warehouse_id: number | null;
+    }>(`/api/inv/items/${itemId}/cost?ngay=${encodeURIComponent(ngay)}`);
   },
   async invSaleAssemble(
     sid: number,

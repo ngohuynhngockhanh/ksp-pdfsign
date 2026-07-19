@@ -292,7 +292,12 @@ export function SalesInvoice() {
     setRow(i, { item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt, results: [], q: "" });
     try {
       const c = await api.invItemCost(it.id, bom?.ngay ?? "");
-      setRow(i, { don_gia_bq: c.don_gia_bq, thue_suat_est: c.thue_suat_est, kha_dung: c.kha_dung_tai_ngay });
+      setRow(i, {
+        don_gia_bq: c.don_gia_bq, thue_suat_est: c.thue_suat_est, kha_dung: c.kha_dung_tai_ngay,
+        // Kho co ton thuc te cua mat hang — tranh mac dinh sai kho HH cho hang
+        // von thuc chat nam o kho NVL/TP (dropdown van sua tay duoc sau do).
+        ...(c.warehouse_id != null ? { warehouse_id: c.warehouse_id } : {}),
+      });
     } catch {
       /* ignore — gia von/kha dung se hien 0, van sua tay duoc */
     }
@@ -304,7 +309,9 @@ export function SalesInvoice() {
       ma_hang: c.match?.ma_hang ?? "",
       ten: c.match?.ten ?? c.ten,
       dvt: c.dvt || c.match?.dvt || "",
-      warehouse_id: whByCode("HH"),
+      // Kho co ton thuc te cua mat hang da khop (AI khong biet kho, chi biet
+      // ten) — fallback HH neu chua khop ma hoac chua ro kho.
+      warehouse_id: c.match?.warehouse_id ?? whByCode("HH"),
       so_luong: c.so_luong || 1,
       don_gia_bq: c.don_gia_bq || 0,
       thue_suat_est: c.thue_suat_est || 8,

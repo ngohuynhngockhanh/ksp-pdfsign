@@ -159,21 +159,34 @@ def item_cost(
     if not it:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy mặt hàng")
     ton = gia_tri = 0.0
+    best_wh: tuple[int, float] | None = None  # (warehouse_id, ton) kho co ton nhieu nhat
     for r in inventory.stock_snapshot(db):
         if r.item_id == item_id:
             ton += r.ton
             gia_tri += r.gia_tri
+            if r.ton > inventory.EPS and (best_wh is None or r.ton > best_wh[1]):
+                best_wh = (r.warehouse_id, r.ton)
     don_gia_bq = gia_tri / ton if ton > inventory.EPS else 0.0
     kha_dung = 0.0
+    best_wh_avail: tuple[int, float] | None = None  # kho co kha dung nhieu nhat TAI NGAY do
     if ngay:
         for r in inventory.availability(db, ngay):
             if r.item_id == item_id:
                 kha_dung += r.kha_dung or 0.0
+                if (r.kha_dung or 0.0) > inventory.EPS and (
+                    best_wh_avail is None or (r.kha_dung or 0.0) > best_wh_avail[1]
+                ):
+                    best_wh_avail = (r.warehouse_id, r.kha_dung or 0.0)
+    # Uu tien kho co kha dung tai ngay HD; neu chua ro ngay hoac chua co ton tai
+    # ngay do thi fallback ve kho dang giu ton nhieu nhat (giup UI khong mac
+    # dinh sai kho "HH" cho hang von thuc chat nam o kho NVL/TP).
+    warehouse_id = (best_wh_avail or best_wh)[0] if (best_wh_avail or best_wh) else None
     return {
         "dvt": it.dvt,
         "don_gia_bq": round(don_gia_bq, 2),
         "thue_suat_est": _last_thue_suat(db, item_id),
         "kha_dung_tai_ngay": round(kha_dung, 4),
+        "warehouse_id": warehouse_id,
     }
 
 
@@ -1097,14 +1110,21 @@ def sale_suggest_bom(
     inv, ln = _sale_line(db, sid, line_id)
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
     agg: dict[int, list[float]] = {}
+    agg_wh: dict[int, tuple[int, float]] = {}  # item_id -> (warehouse_id, ton) kho giu nhieu nhat
     for r in inventory.stock_snapshot(db):
         a = agg.setdefault(r.item_id, [0.0, 0.0])
         a[0] += r.ton
         a[1] += r.gia_tri
+        if r.ton > inventory.EPS and (r.item_id not in agg_wh or r.ton > agg_wh[r.item_id][1]):
+            agg_wh[r.item_id] = (r.warehouse_id, r.ton)
     avail: dict[int, float] = {}
+    avail_wh: dict[int, tuple[int, float]] = {}  # item_id -> (warehouse_id, kha_dung) kho kha dung nhieu nhat
     if inv.ngay:
         for r in inventory.availability(db, inv.ngay):
             avail[r.item_id] = avail.get(r.item_id, 0.0) + (r.kha_dung or 0.0)
+            kd = r.kha_dung or 0.0
+            if kd > inventory.EPS and (r.item_id not in avail_wh or kd > avail_wh[r.item_id][1]):
+                avail_wh[r.item_id] = (r.warehouse_id, kd)
     # Chi dua vao AI cac ma THUC SU con ton (SL > 0) — neu co ngay HD thi uu tien
     # kha dung tai ngay do (tranh AI goi y dung ma da het/chua ve kip, dan den
     # canh bao thieu thoi gian nhap sau nay).
@@ -1139,6 +1159,7 @@ def sale_suggest_bom(
         score = 1.0 if kind == "exact" else (cands[0][1] if cands else 0.0)
         dvt = don_gia_bq = thue_suat_est = kha_dung = 0.0
         dvt = ""
+        warehouse_id = None
         if best:
             dvt = best.dvt
             a = agg.get(best.id, [0.0, 0.0])
@@ -1147,6 +1168,11 @@ def sale_suggest_bom(
                 thue_cache[best.id] = _last_thue_suat(db, best.id)
             thue_suat_est = thue_cache[best.id]
             kha_dung = avail.get(best.id, 0.0)
+            # Uu tien kho co kha dung tai ngay HD; fallback kho dang giu ton
+            # nhieu nhat — tranh gan mac dinh sai kho (vd luon "HH") cho hang
+            # thuc chat nam o kho NVL/TP.
+            best_wh = avail_wh.get(best.id) or agg_wh.get(best.id)
+            warehouse_id = best_wh[0] if best_wh else None
         else:
             unmatched += 1
         cost_pretax += (c["so_luong"] or 0.0) * don_gia_bq
@@ -1154,7 +1180,7 @@ def sale_suggest_bom(
             **c,
             "match": {
                 "item_id": best.id, "ma_hang": best.ma_hang, "ten": best.ten,
-                "dvt": best.dvt, "score": round(score, 2),
+                "dvt": best.dvt, "score": round(score, 2), "warehouse_id": warehouse_id,
             } if best else None,
             "dvt": dvt,
             "don_gia_bq": round(don_gia_bq, 2),
