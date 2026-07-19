@@ -39,6 +39,7 @@ export interface DocRecord {
   customer_name: string | null;
   created_at: string;
   download_url: string;
+  nas_synced: boolean;
 }
 
 export interface SignatureReport {
@@ -256,6 +257,36 @@ export const api = {
   },
   async resetLogo() {
     return req<{ ok: boolean }>("/api/logo", { method: "DELETE" });
+  },
+
+  // --- NAS ---
+  async nasStatus() {
+    return req<{
+      enabled: boolean;
+      host: string;
+      share: string;
+      total: number;
+      synced: number;
+      pending: number;
+      last_error: string;
+    }>("/api/nas/status");
+  },
+  async nasTest() {
+    return req<{ ok: boolean; message: string }>("/api/nas/test", { method: "POST" });
+  },
+  async nasSyncAll() {
+    return req<{ ok: boolean; synced: number; failed: number }>("/api/nas/sync-all", {
+      method: "POST",
+    });
+  },
+  async nasBrowse(path: string) {
+    return req<{
+      path: string;
+      entries: { name: string; is_dir: boolean; size: number }[];
+    }>(`/api/nas/browse?path=${encodeURIComponent(path)}`);
+  },
+  nasFileUrl(path: string, inline: boolean) {
+    return `/api/nas/file?path=${encodeURIComponent(path)}${inline ? "&inline=true" : ""}`;
   },
 
   // --- Mat khau / users ---

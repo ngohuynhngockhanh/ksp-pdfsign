@@ -72,6 +72,9 @@ class Document(Base):
         ForeignKey("customers.id"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # Dong bo NAS
+    nas_path: Mapped[str] = mapped_column(String(500), default="")
+    nas_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     customer: Mapped["Customer | None"] = relationship(back_populates="documents")
 
@@ -109,6 +112,27 @@ def _init_engine():
 def init_db() -> None:
     _init_engine()
     Base.metadata.create_all(_engine)
+    _migrate_add_columns()
+
+
+def _migrate_add_columns() -> None:
+    """Them cot moi vao bang da ton tai (SQLite create_all khong tu ALTER)."""
+    from sqlalchemy import text
+
+    wanted = {
+        "documents": {
+            "nas_path": "VARCHAR(500) DEFAULT ''",
+            "nas_synced_at": "DATETIME",
+        },
+    }
+    with _engine.begin() as conn:
+        for table, cols in wanted.items():
+            existing = {
+                r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))
+            }
+            for col, ddl in cols.items():
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
 
 
 def get_session():

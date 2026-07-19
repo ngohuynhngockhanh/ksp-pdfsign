@@ -6,7 +6,16 @@ import secrets
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from fastapi.responses import (
@@ -19,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import accounts, signing, storage, token_backend, verify
+from . import accounts, nas, signing, storage, token_backend, verify
 from .auth import (
     COOKIE_NAME,
     CurrentUser,
@@ -62,6 +71,23 @@ def _content_disposition(filename: str) -> str:
     """Content-Disposition an toan cho ten file tieng Viet (RFC 5987)."""
     ascii_name = filename.encode("ascii", "ignore").decode() or "document.pdf"
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _bg_nas_sync(doc_id: int) -> None:
+    """Dong bo 1 ho so len NAS (chay nen, mo session DB rieng)."""
+    settings = get_settings()
+    if not settings.nas_enabled:
+        return
+    gen = get_session()
+    db = next(gen)
+    try:
+        doc = db.get(Document, doc_id)
+        if doc:
+            nas.sync_document(settings, db, doc)
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        gen.close()
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,6 +200,7 @@ def list_certs(
 @app.post("/api/sign", response_model=SignResponse)
 def sign(
     body: SignRequest,
+    background: BackgroundTasks,
     user: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
@@ -197,6 +224,7 @@ def sign(
     )
     db.add(doc)
     db.commit()
+    background.add_task(_bg_nas_sync, doc.id)  # backup len NAS (nen)
     return SignResponse(doc_id=signed_id, signed=True, download_url=f"/api/download/{signed_id}")
 
 
@@ -342,6 +370,7 @@ def _doc_out(d: Document) -> DocumentOut:
         customer_name=d.customer.name if d.customer else None,
         created_at=d.created_at.isoformat(),
         download_url=f"/api/documents/{d.id}/download",
+        nas_synced=d.nas_synced_at is not None,
     )
 
 
@@ -382,7 +411,7 @@ def list_documents(
 
 @app.post("/api/documents/{doc_pk}/assign", response_model=DocumentOut)
 def assign_document(
-    doc_pk: int, body: AssignRequest,
+    doc_pk: int, body: AssignRequest, background: BackgroundTasks,
     user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
 ):
     d = db.get(Document, doc_pk)
@@ -393,6 +422,7 @@ def assign_document(
     d.customer_id = body.customer_id
     db.commit()
     db.refresh(d)
+    background.add_task(_bg_nas_sync, d.id)  # day sang thu muc khach moi
     return _doc_out(d)
 
 
@@ -462,16 +492,19 @@ def verify_document_record(
 # ---------------------------------------------------------------------------
 @app.post("/api/documents/bulk-assign")
 def bulk_assign(
-    body: BulkAssign, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+    body: BulkAssign, background: BackgroundTasks,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
 ):
     if body.customer_id is not None and not db.get(Customer, body.customer_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
-    n = 0
+    ids = []
     for d in db.scalars(select(Document).where(Document.id.in_(body.ids))):
         d.customer_id = body.customer_id
-        n += 1
+        ids.append(d.id)
     db.commit()
-    return {"ok": True, "count": n}
+    for did in ids:
+        background.add_task(_bg_nas_sync, did)
+    return {"ok": True, "count": len(ids)}
 
 
 @app.post("/api/documents/bulk-delete")
@@ -674,6 +707,90 @@ def admin_reset_password(
     u.password_hash = hash_password(body.new_password)
     db.commit()
     return {"ok": True, "username": u.username}
+
+
+# ---------------------------------------------------------------------------
+# Dong bo NAS (SMB)
+# ---------------------------------------------------------------------------
+@app.get("/api/nas/status")
+def nas_status(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings), db: Session = Depends(get_session)):
+    total = db.scalar(select(func.count(Document.id))) or 0
+    synced = db.scalar(
+        select(func.count(Document.id)).where(Document.nas_synced_at.is_not(None))
+    ) or 0
+    return {
+        "enabled": settings.nas_enabled,
+        "host": settings.nas_host,
+        "share": settings.nas_share,
+        "base_path": settings.nas_base_path,
+        "total": total,
+        "synced": synced,
+        "pending": total - synced,
+        "last_error": nas.last_error(),
+    }
+
+
+@app.post("/api/nas/test")
+def nas_test(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
+    ok, msg = nas.test_connection(settings)
+    return {"ok": ok, "message": msg}
+
+
+@app.get("/api/nas/browse")
+def nas_browse(
+    path: str = "",
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Duyet thu muc NAS (xem tu xa)."""
+    try:
+        rel, entries = nas.list_dir(settings, path)
+    except nas.NasDisabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Loi NAS: {e}")
+    return {"path": rel, "entries": entries}
+
+
+@app.get("/api/nas/file")
+def nas_file(
+    path: str,
+    inline: bool = False,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Xem/tai 1 file tren NAS."""
+    try:
+        data = nas.read_file(settings, path)
+    except nas.NasDisabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Loi NAS: {e}")
+    name = path.replace("/", "\\").rsplit("\\", 1)[-1]
+    is_pdf = name.lower().endswith(".pdf")
+    media = "application/pdf" if is_pdf else "application/octet-stream"
+    kind = "inline" if (inline and is_pdf) else "attachment"
+    disp = f"{kind}; filename*=UTF-8''{quote(name)}"
+    return StreamingResponse(
+        iter([data]), media_type=media, headers={"Content-Disposition": disp}
+    )
+
+
+@app.post("/api/nas/sync-all")
+def nas_sync_all(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings), db: Session = Depends(get_session)):
+    if not settings.nas_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
+    ok, msg = nas.test_connection(settings)
+    if not ok:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Khong ket noi NAS: {msg}")
+    synced = failed = 0
+    for d in db.scalars(select(Document).order_by(Document.id)):
+        good, _ = nas.sync_document(settings, db, d)
+        if good:
+            synced += 1
+        else:
+            failed += 1
+    return {"ok": True, "synced": synced, "failed": failed}
 
 
 # ---------------------------------------------------------------------------

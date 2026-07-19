@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     public_base_url: str = "https://ksp-pdf-signer.p2p.inut.io.vn"
     share_default_days: int = 7
 
+    # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
+    nas_enabled: bool = True
+    nas_host: str = "172.32.0.100"
+    nas_share: str = "inut"
+    nas_user: str = "ksp"
+    nas_password: str = "Nhaphang123"
+    nas_base_path: str = "ho-so"
+    nas_timeout: int = 10
+
     # Windows agent (may cam token)
     agent_default_ip: str = "192.168.1.4"
     agent_port: int = 8443

@@ -12,6 +12,36 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [perPage, setPerPage] = useState(20);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [nas, setNas] = useState<Awaited<ReturnType<typeof api.nasStatus>> | null>(null);
+  const [nasMsg, setNasMsg] = useState("");
+
+  async function loadNas() {
+    try {
+      setNas(await api.nasStatus());
+    } catch {
+      /* bo qua */
+    }
+  }
+  async function testNas() {
+    setNasMsg("Đang kiểm tra…");
+    try {
+      const r = await api.nasTest();
+      setNasMsg(r.ok ? "✅ " + r.message : "❌ " + r.message);
+    } catch (e) {
+      setNasMsg("❌ " + (e as Error).message);
+    }
+  }
+  async function syncAllNas() {
+    setNasMsg("Đang đồng bộ tất cả…");
+    try {
+      const r = await api.nasSyncAll();
+      setNasMsg(`✅ Đã đồng bộ ${r.synced}, lỗi ${r.failed}`);
+      loadNas();
+      load();
+    } catch (e) {
+      setNasMsg("❌ " + (e as Error).message);
+    }
+  }
 
   const pages = Math.max(1, Math.ceil(total / perPage));
   const allChecked = docs.length > 0 && docs.every((d) => sel.has(d.id));
@@ -87,6 +117,10 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
     load();
   }, [filter, page, perPage]);
 
+  useEffect(() => {
+    loadNas();
+  }, []);
+
   // Tìm kiếm: reset về trang 1
   useEffect(() => {
     const t = setTimeout(() => {
@@ -145,6 +179,27 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
       </div>
       {err && <div className="error">{err}</div>}
 
+      {nas && (
+        <div className="nas-bar">
+          <span>
+            🗄️ NAS ({nas.host}/{nas.share}):{" "}
+            {nas.enabled ? (
+              <b>
+                đã đồng bộ {nas.synced}/{nas.total}
+                {nas.pending > 0 ? ` · chờ ${nas.pending}` : ""}
+              </b>
+            ) : (
+              <b>đang tắt</b>
+            )}
+          </span>
+          <button onClick={testNas}>Kiểm tra kết nối</button>
+          <button onClick={syncAllNas} disabled={!nas.enabled}>
+            Đồng bộ tất cả
+          </button>
+          {nasMsg && <span className="muted">{nasMsg}</span>}
+        </div>
+      )}
+
       {sel.size > 0 && (
         <div className="bulk-bar">
           <span>Đã chọn {sel.size}</span>
@@ -186,7 +241,10 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               <td className="chk">
                 <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
               </td>
-              <td>{d.filename}</td>
+              <td>
+                {d.filename}
+                {d.nas_synced && <span className="nas-ok" title="Đã lên NAS"> 🗄️✓</span>}
+              </td>
               <td className="muted">{d.signer_name}</td>
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
               <td>

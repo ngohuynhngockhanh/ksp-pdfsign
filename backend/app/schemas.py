@@ -124,6 +124,7 @@ class DocumentOut(BaseModel):
     customer_name: str | None = None
     created_at: str
     download_url: str
+    nas_synced: bool = False
 
 
 class AssignRequest(BaseModel):

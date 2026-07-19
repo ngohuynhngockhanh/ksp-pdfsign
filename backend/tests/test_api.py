@@ -54,6 +54,7 @@ PDF = (
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NAS_ENABLED", "false")  # khong dong bo NAS that khi test
     from app.config import get_settings
 
     get_settings.cache_clear()

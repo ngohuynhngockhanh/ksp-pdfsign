@@ -6,13 +6,15 @@ import { Verify } from "./pages/Verify";
 import { Customers } from "./pages/Customers";
 import { Documents } from "./pages/Documents";
 import { MyDocuments } from "./pages/MyDocuments";
+import { NasBrowser } from "./pages/NasBrowser";
 
-type Tab = "sign" | "documents" | "customers" | "verify" | "mine";
+type Tab = "sign" | "documents" | "customers" | "nas" | "verify" | "mine";
 
 const ROUTES: Record<Tab, string> = {
   sign: "/ky-so",
   documents: "/ho-so",
   customers: "/khach-hang",
+  nas: "/nas",
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
 };
@@ -68,7 +70,7 @@ export function App() {
         setAuthed(true);
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
-          ? (["sign", "documents", "customers", "verify"] as Tab[])
+          ? (["sign", "documents", "customers", "nas", "verify"] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
@@ -95,6 +97,7 @@ export function App() {
     ["sign", "Ký số"],
     ["documents", "Hồ sơ"],
     ["customers", "Khách hàng"],
+    ["nas", "NAS"],
     ["verify", "Kiểm tra chữ ký"],
   ];
   const custTabs: [Tab, string][] = [
@@ -145,6 +148,7 @@ export function App() {
         )}
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
+        {tab === "nas" && isAdmin && <NasBrowser />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
