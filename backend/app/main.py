@@ -1,8 +1,11 @@
 """FastAPI app: dang nhap, ky, kiem tra, quan ly khach hang & ho so."""
 from __future__ import annotations
 
+import io as _io
+
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
@@ -388,6 +391,55 @@ def download_document(
         iter([data]), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{d.filename}"'},
     )
+
+
+@app.get("/api/documents/{doc_pk}/verify", response_model=VerifyResponse)
+def verify_document_record(
+    doc_pk: int,
+    user: CurrentUser = Depends(require_user),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Kiem tra chu ky cua mot ho so da luu (admin bat ky / khach hang cua minh)."""
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    if not user.is_admin and d.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
+    if not storage.exists(d.doc_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    return verify.verify_document(settings, storage.read_doc(d.doc_id), d.doc_id)
+
+
+# ---------------------------------------------------------------------------
+# Logo chu ky (thay the duoc)
+# ---------------------------------------------------------------------------
+@app.get("/api/logo")
+def get_logo(settings: Settings = Depends(get_settings)):
+    return Response(content=settings.logo_path.read_bytes(), media_type="image/png")
+
+
+@app.post("/api/logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    content = await file.read()
+    try:
+        img = Image.open(_io.BytesIO(content)).convert("RGBA")
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File anh khong hop le")
+    img.save(settings.data_path / "logo.png")
+    return {"ok": True}
+
+
+@app.delete("/api/logo")
+def reset_logo(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
+    p = settings.data_path / "logo.png"
+    if p.exists():
+        p.unlink()
+    return {"ok": True, "message": "Da khoi phuc logo mac dinh"}
 
 
 # ---------------------------------------------------------------------------

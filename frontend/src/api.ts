@@ -196,4 +196,24 @@ export const api = {
   async deleteDocument(docPk: number) {
     return req(`/api/documents/${docPk}`, { method: "DELETE" });
   },
+  async verifyDocument(docPk: number) {
+    return req<{
+      doc_id: string;
+      signature_count: number;
+      signatures: SignatureReport[];
+    }>(`/api/documents/${docPk}/verify`);
+  },
+
+  // --- Logo chu ky ---
+  logoUrl() {
+    return `/api/logo?t=${Date.now()}`;
+  },
+  async uploadLogo(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<{ ok: boolean }>("/api/logo", { method: "POST", body: fd });
+  },
+  async resetLogo() {
+    return req<{ ok: boolean }>("/api/logo", { method: "DELETE" });
+  },
 };

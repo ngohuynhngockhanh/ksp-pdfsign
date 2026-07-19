@@ -9,6 +9,17 @@ import { MyDocuments } from "./pages/MyDocuments";
 
 type Tab = "sign" | "documents" | "customers" | "verify" | "mine";
 
+const ROUTES: Record<Tab, string> = {
+  sign: "/ky-so",
+  documents: "/ho-so",
+  customers: "/khach-hang",
+  verify: "/kiem-tra",
+  mine: "/ho-so-cua-toi",
+};
+const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
+  Object.entries(ROUTES).map(([t, p]) => [p, t as Tab]),
+) as Record<string, Tab>;
+
 interface Me {
   username: string;
   role: string;
@@ -20,7 +31,20 @@ interface Me {
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<Tab>("sign");
+  const [tab, setTabState] = useState<Tab>("sign");
+  const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
+
+  function navigate(t: Tab, replace = false) {
+    const path = ROUTES[t];
+    if (replace) history.replaceState({ t }, "", path);
+    else history.pushState({ t }, "", path);
+    setTabState(t);
+  }
+
+  function goVerify(docPk: number) {
+    setVerifyDocPk(docPk);
+    navigate("verify");
+  }
 
   useEffect(() => {
     api
@@ -28,9 +52,25 @@ export function App() {
       .then((m) => {
         setMe(m as Me);
         setAuthed(true);
-        setTab(m.role === "admin" ? "sign" : "mine");
+        const isAdmin = m.role === "admin";
+        const allowed = isAdmin
+          ? (["sign", "documents", "customers", "verify"] as Tab[])
+          : (["mine", "verify"] as Tab[]);
+        const fromPath = PATH_TO_TAB[window.location.pathname];
+        const initial = fromPath && allowed.includes(fromPath)
+          ? fromPath
+          : isAdmin
+            ? "sign"
+            : "mine";
+        navigate(initial, true);
       })
       .catch(() => setAuthed(false));
+    const onPop = () => {
+      const t = PATH_TO_TAB[window.location.pathname];
+      if (t) setTabState(t);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   if (authed === null) return <div className="center">Đang tải…</div>;
@@ -55,7 +95,7 @@ export function App() {
         <div className="brand">🖊️ KSP PDF Signer</div>
         <nav>
           {tabs.map(([t, label]) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+            <button key={t} className={tab === t ? "active" : ""} onClick={() => navigate(t)}>
               {label}
             </button>
           ))}
@@ -84,10 +124,12 @@ export function App() {
 
       <main>
         {tab === "sign" && isAdmin && <Signer defaultIp={me.agent_default_ip} />}
-        {tab === "documents" && isAdmin && <Documents />}
+        {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
-        {tab === "mine" && <MyDocuments />}
-        {tab === "verify" && <Verify />}
+        {tab === "mine" && <MyDocuments onVerify={goVerify} />}
+        {tab === "verify" && (
+          <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
+        )}
       </main>
     </div>
   );

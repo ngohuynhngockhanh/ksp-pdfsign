@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type DocRecord } from "../api";
 
-export function MyDocuments() {
+export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [err, setErr] = useState("");
 
@@ -33,6 +33,9 @@ export function MyDocuments() {
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
               <td className="actions">
                 <a href={d.download_url}>⬇️ Tải</a>
+                <button className="link-btn" onClick={() => onVerify(d.id)}>
+                  Kiểm tra chữ ký
+                </button>
               </td>
             </tr>
           ))}

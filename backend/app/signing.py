@@ -12,14 +12,16 @@ from __future__ import annotations
 import io
 
 from asn1crypto import x509
+from pyhanko.pdf_utils.images import PdfImage
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+from pyhanko.pdf_utils.layout import AxisAlignment, InnerScaling, SimpleBoxLayoutRule
 from pyhanko.sign import fields, signers
 from pyhanko.sign.signers import Signer
 from pyhanko.sign.timestamps import HTTPTimeStamper
 from pyhanko.stamp import TextStampStyle
 from pyhanko_certvalidator.registry import SimpleCertificateStore
 
-from . import storage, token_backend
+from . import appearance, storage, token_backend
 from .config import Settings
 from .schemas import SignRequest
 
@@ -82,15 +84,14 @@ def sign_document(settings: Settings, req: SignRequest) -> tuple[str, str]:
     signing_cert, registry = _build_cert_registry(chain)
     external_signer = ExternalTokenSigner(settings, req, signing_cert, registry)
 
-    # 2) Cau hinh chu ky + o hien thi.
+    # 2) Cau hinh chu ky + o hien thi (kieu Foxit: logo chim + du truong).
     field_name = _next_field_name(pdf_bytes)
     signer_label = req.signer_name or _subject_common_name(signing_cert)
-    stamp_text = "Ky boi: %(signer)s\nThoi gian: %(ts)s"
-    if req.reason:
-        stamp_text += f"\nLy do: {req.reason}"
-    if req.location:
-        stamp_text += f"\nNoi: {req.location}"
-    stamp_style = TextStampStyle(stamp_text=stamp_text)
+    mst = _subject_mst(signing_cert)
+    x1, y1, x2, y2 = req.rect.as_box()
+    stamp_style = _build_stamp_style(
+        settings, req, signer_label, mst, box_w=x2 - x1, box_h=y2 - y1
+    )
 
     sig_meta = signers.PdfSignatureMetadata(
         field_name=field_name,
@@ -148,3 +149,42 @@ def _subject_common_name(cert: x509.Certificate) -> str:
         return cert.subject.native.get("common_name", "Nguoi ky")
     except Exception:
         return "Nguoi ky"
+
+
+def _subject_mst(cert: x509.Certificate) -> str:
+    """Trich ma so thue tu subject (truong userid dang 'MST:...')."""
+    try:
+        for v in cert.subject.native.values():
+            if isinstance(v, str) and "MST" in v.upper():
+                return v.split(":")[-1].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _build_stamp_style(
+    settings: Settings,
+    req: SignRequest,
+    signer_label: str,
+    mst: str,
+    box_w: float,
+    box_h: float,
+) -> TextStampStyle:
+    """Hinh thuc chu ky: ve toan bo bang Pillow (logo chim + du truong, tieng
+    Viet chuan, can trai) roi nhung lam ANH. Tranh loi gian chu cua pyHanko.
+    """
+    img = appearance.render_signature(
+        settings, box_w, box_h, signer_label, mst, req.reason, req.location
+    )
+    # Anh dung ty le khung -> STRETCH_FILL lap day khong meo.
+    return TextStampStyle(
+        stamp_text="",
+        border_width=0,
+        background=PdfImage(img),
+        background_opacity=1.0,
+        background_layout=SimpleBoxLayoutRule(
+            x_align=AxisAlignment.ALIGN_MID,
+            y_align=AxisAlignment.ALIGN_MID,
+            inner_content_scaling=InnerScaling.STRETCH_FILL,
+        ),
+    )

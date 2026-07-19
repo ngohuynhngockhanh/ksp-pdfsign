@@ -6,6 +6,7 @@ import io
 from pyhanko.pdf_utils.reader import PdfFileReader
 from pyhanko.sign.validation import validate_pdf_signature
 from pyhanko_certvalidator import ValidationContext
+from pyhanko_certvalidator.policy_decl import AcceptAllAlgorithms
 
 from .config import Settings
 from .schemas import SignatureReport, VerifyResponse
@@ -62,6 +63,12 @@ def _one_signature(embedded_sig, vc: ValidationContext) -> SignatureReport:
         problems.append("Tai lieu da bi sua sau khi ky (byte-range khong khop).")
     if not trusted:
         problems.append("Chuoi chung thu khong dan ve root CA tin cay (kiem tra trust store VN CA).")
+    try:
+        bits = status.signing_cert.public_key.bit_size
+        if bits and bits < 2048:
+            problems.append(f"Khoa RSA {bits}-bit (yeu, duoi 2048) - chung thu doi cu.")
+    except Exception:
+        pass
 
     if intact and valid and trusted:
         summary = "HOP LE"
@@ -94,6 +101,9 @@ def verify_document(settings: Settings, pdf_bytes: bytes, doc_id: str) -> Verify
         trust_roots=roots,
         allow_fetching=settings.verify_allow_fetching,
         revocation_mode="soft-fail",
+        # Chap nhan moi thuat toan de van kiem tra duoc chung thu VN doi cu
+        # (khoa RSA 1024-bit, SHA-1...). Khoa yeu se duoc ghi chu canh bao.
+        algorithm_usage_policy=AcceptAllAlgorithms(),
     )
 
     reader = PdfFileReader(io.BytesIO(pdf_bytes))

@@ -220,8 +220,56 @@ main {
 }
 
 /* Cert picker */
-.cert-picker .row {
-  margin-bottom: 6px;
+.cert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cert-card {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  background: #fff;
+}
+.cert-card:hover {
+  border-color: var(--primary);
+}
+.cert-card.selected {
+  border-color: var(--primary);
+  background: #eef4fd;
+}
+.cert-card input[type="radio"] {
+  width: auto;
+  margin-top: 3px;
+}
+.cert-body {
+  flex: 1;
+  min-width: 0;
+}
+.cert-cn {
+  font-weight: 600;
+  font-size: 0.86rem;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cert-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 3px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cert-meta b {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* Verify */
@@ -229,6 +277,48 @@ main {
   padding: 18px;
   max-width: 760px;
   margin: 0 auto;
+}
+.verify-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  height: calc(100vh - 52px);
+}
+.verify-left {
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+.verify-right {
+  overflow: auto;
+  background: #5b6675;
+}
+.pdfview {
+  padding: 12px;
+}
+.pdfview-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  color: #fff;
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+.pdfview-toolbar label {
+  color: #e8ecf1;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pdfview-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.pdfview-page {
+  max-width: 100%;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .sig-report table {
   width: 100%;
@@ -399,4 +489,51 @@ td.bad {
 }
 .unassigned-row td {
   background: #fffbea;
+}
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--primary);
+  padding: 2px 4px;
+  font-size: 0.82rem;
+}
+.link-btn:hover {
+  text-decoration: underline;
+  background: none;
+}
+
+/* Logo settings */
+.logo-settings {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.logo-preview {
+  max-width: 90px;
+  max-height: 90px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+}
+.logo-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 8px 0 4px;
+}
+.file-btn {
+  display: inline-block;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.file-btn:hover {
+  background: #f0f3f7;
 }

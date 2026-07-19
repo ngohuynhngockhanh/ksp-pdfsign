@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api, type Customer, type Rect } from "../api";
 import { PdfCanvas } from "../components/PdfCanvas";
 import { CertPicker } from "../components/CertPicker";
+import { LogoSettings } from "../components/LogoSettings";
+import { quickCreateCustomer } from "../util";
 
 export function Signer({ defaultIp }: { defaultIp: string }) {
   const [docId, setDocId] = useState<string | null>(null);
@@ -104,6 +106,9 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
         <h3>4. Chứng thư số</h3>
         <CertPicker ip={ip} adminPassword={adminPassword} value={certId} onChange={setCertId} />
 
+        <h3>Logo chữ ký (chìm)</h3>
+        <LogoSettings />
+
         <h3>5. Thông tin ký (tuỳ chọn)</h3>
         <label>
           Lý do
@@ -115,13 +120,27 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
         </label>
 
         <h3>6. Phân loại khách hàng (tuỳ chọn)</h3>
-        <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+        <select
+          value={customerId}
+          onChange={async (e) => {
+            if (e.target.value === "__new__") {
+              const created = await quickCreateCustomer();
+              if (created) {
+                setCustomers(await api.listCustomers());
+                setCustomerId(String(created.id));
+              }
+              return;
+            }
+            setCustomerId(e.target.value);
+          }}
+        >
           <option value="">— để trống, phân loại sau ở tab Hồ sơ —</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
+          <option value="__new__">+ Tạo khách hàng mới…</option>
         </select>
 
         {err && <div className="error">{err}</div>}

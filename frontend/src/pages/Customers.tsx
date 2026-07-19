@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Customer } from "../api";
+import { defaultPassword, slugUsername } from "../util";
 
 export function Customers() {
   const [list, setList] = useState<Customer[]>([]);
@@ -47,11 +48,29 @@ export function Customers() {
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onBlur={(e) => {
+                // Tự điền tài khoản mặc định nếu còn trống
+                const name = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  account_username: f.account_username || slugUsername(name),
+                  account_password: f.account_password || defaultPassword(f.tax_code),
+                }));
+              }}
             />
           </label>
           <label>
             Mã số thuế
-            <input value={form.tax_code} onChange={(e) => setForm({ ...form, tax_code: e.target.value })} />
+            <input
+              value={form.tax_code}
+              onChange={(e) => setForm({ ...form, tax_code: e.target.value })}
+              onBlur={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  account_password: f.account_password || defaultPassword(e.target.value),
+                }))
+              }
+            />
           </label>
           <label>
             Liên hệ

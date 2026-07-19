@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type Customer, type DocRecord } from "../api";
+import { quickCreateCustomer } from "../util";
 
-export function Documents() {
+export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filter, setFilter] = useState<"all" | "unassigned">("all");
@@ -24,8 +25,16 @@ export function Documents() {
     load();
   }, [filter]);
 
-  async function assign(docPk: number, customerId: number | null) {
-    await api.assignDocument(docPk, customerId);
+  async function assign(docPk: number, value: string) {
+    if (value === "__new__") {
+      const created = await quickCreateCustomer();
+      if (created) {
+        await api.assignDocument(docPk, created.id);
+      }
+      load();
+      return;
+    }
+    await api.assignDocument(docPk, value === "" ? null : Number(value));
     load();
   }
 
@@ -65,22 +74,21 @@ export function Documents() {
               <td className="muted">{d.signer_name}</td>
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
               <td>
-                <select
-                  value={d.customer_id ?? ""}
-                  onChange={(e) =>
-                    assign(d.id, e.target.value === "" ? null : Number(e.target.value))
-                  }
-                >
+                <select value={d.customer_id ?? ""} onChange={(e) => assign(d.id, e.target.value)}>
                   <option value="">— chưa phân loại —</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
+                  <option value="__new__">+ Tạo khách hàng mới…</option>
                 </select>
               </td>
               <td className="actions">
                 <a href={d.download_url}>Tải</a>
+                <button className="link-btn" onClick={() => onVerify(d.id)}>
+                  Kiểm tra chữ ký
+                </button>
                 <button
                   className="danger-link"
                   onClick={async () => {

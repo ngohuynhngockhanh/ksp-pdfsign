@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     tsa_url: str = ""
     enable_ltv: bool = False
 
+    # Hinh thuc chu ky (appearance)
+    signature_font: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    logo_opacity: float = 0.12  # do mo cua logo chim
+
     # Kiem tra chu ky: co thu tai OCSP/CRL khi kiem tra khong (can Internet).
     verify_allow_fetching: bool = False
 
@@ -60,6 +64,16 @@ class Settings(BaseSettings):
     @property
     def trust_path(self) -> Path:
         return REPO_ROOT / "backend" / "app" / "trust"
+
+    @property
+    def default_logo_path(self) -> Path:
+        return REPO_ROOT / "backend" / "app" / "assets" / "logo.png"
+
+    @property
+    def logo_path(self) -> Path:
+        """Logo dang dung: uu tien logo do admin tai len, neu khong dung mac dinh."""
+        uploaded = self.data_path / "logo.png"
+        return uploaded if uploaded.exists() else self.default_logo_path
 
     @property
     def using_default_secrets(self) -> bool:
