@@ -52,7 +52,7 @@ export function App() {
   const [tab, setTabState] = useState<Tab>("sign");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
   const [preSign, setPreSign] = useState<
-    { docId: string; filename: string; docType: string } | null
+    { docId: string; filename: string; docType: string; customerId: number | null } | null
   >(null);
 
   function navigate(t: Tab, replace = false) {
@@ -158,8 +158,8 @@ export function App() {
         )}
         {tab === "bbbg" && isAdmin && (
           <CreateBBBG
-            onGenerated={(docId, filename) => {
-              setPreSign({ docId, filename, docType: "bbbg" });
+            onGenerated={(docId, filename, customerId) => {
+              setPreSign({ docId, filename, docType: "bbbg", customerId });
               navigate("sign");
             }}
           />

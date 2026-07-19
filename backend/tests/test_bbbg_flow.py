@@ -80,3 +80,20 @@ def test_parse_real_invoice():
     assert any("iNut Manager Prime" in it["ten"] for it in data["items"])
     # khong lot dong danh so cot
     assert all(not (it["ten"].isdigit() and len(it["ten"]) <= 2) for it in data["items"])
+
+
+@pytest.mark.skipif(
+    not os.path.exists(os.path.expanduser("~/ihoadon.vn_4401053694_19_09072026.xml")),
+    reason="khong co hoa don XML mau",
+)
+def test_parse_invoice_xml():
+    from app import invoice
+
+    p = os.path.expanduser("~/ihoadon.vn_4401053694_19_09072026.xml")
+    data = invoice.parse_invoice_xml(open(p, "rb").read())
+    assert data["source"] == "xml"
+    assert data["buyer"]["mst"] == "2800817718"
+    assert "TÂN THANH PHƯƠNG" in data["buyer"]["name"]
+    assert data["ngay"] == {"year": 2026, "month": 7, "day": 9}
+    assert data["items"][0]["so_luong"] == "1"
+    assert "iNut Manager Prime" in data["items"][0]["ten"]

@@ -7,8 +7,65 @@ from __future__ import annotations
 
 import io
 import re
+import xml.etree.ElementTree as ET
 
 import pdfplumber
+
+
+def _num(s: str) -> str:
+    """Bo .00 cho so nguyen (1.00 -> 1), giu nguyen so khac."""
+    s = (s or "").strip()
+    try:
+        f = float(s.replace(",", ""))
+        return str(int(f)) if f == int(f) else s
+    except ValueError:
+        return s
+
+
+def parse_invoice_xml(xml_bytes: bytes) -> dict:
+    """Parse hoa don dien tu XML (chuan TT78/QD1450) — chinh xac hon PDF."""
+    root = ET.fromstring(xml_bytes)
+
+    def txt(el, tag, default=""):
+        if el is None:
+            return default
+        x = el.find(tag)
+        return (x.text or "").strip() if x is not None and x.text else default
+
+    nmua = root.find(".//NMua")
+    buyer = {
+        "name": txt(nmua, "Ten"),
+        "mst": txt(nmua, "MST"),
+        "address": txt(nmua, "DChi"),
+    }
+
+    ngay = None
+    nlap_el = root.find(".//NLap")
+    nlap = (nlap_el.text or "").strip() if nlap_el is not None else ""
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", nlap)
+    if m:
+        ngay = {"year": int(m.group(1)), "month": int(m.group(2)), "day": int(m.group(3))}
+
+    items = []
+    for hh in root.findall(".//DSHHDVu/HHDVu"):
+        items.append({
+            "stt": txt(hh, "STT"),
+            "ten": txt(hh, "THHDVu"),
+            "dvt": txt(hh, "DVTinh"),
+            "so_luong": _num(txt(hh, "SLuong")),
+            "don_gia": txt(hh, "DGia"),
+            "thanh_tien": txt(hh, "ThTien"),
+        })
+
+    kh = root.find(".//KHHDon")
+    return {
+        "buyer": buyer,
+        "items": items,
+        "ngay": ngay,
+        "ky_hieu": (kh.text or "").strip() if kh is not None else "",
+        "source": "xml",
+        "raw_text": "",
+    }
 
 
 def _cluster_lines(words, tol: float = 4.0):

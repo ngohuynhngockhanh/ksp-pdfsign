@@ -734,15 +734,42 @@ def admin_reset_password(
 # ---------------------------------------------------------------------------
 # Hoa don -> BBBG + phan loai
 # ---------------------------------------------------------------------------
+def _suggest_customer(db: Session, buyer: dict) -> dict | None:
+    """De xuat khach hang khop hoa don theo MST (uu tien) roi ten."""
+    mst = (buyer.get("mst") or "").strip()
+    if mst:
+        c = db.scalar(select(Customer).where(Customer.tax_code == mst))
+        if c:
+            return {"id": c.id, "name": c.name}
+    name = (buyer.get("name") or "").strip().lower()
+    if name:
+        for c in db.scalars(select(Customer)):
+            if c.name.strip().lower() == name:
+                return {"id": c.id, "name": c.name}
+    return None
+
+
 @app.post("/api/invoice/parse")
-async def invoice_parse(file: UploadFile = File(...), user: CurrentUser = Depends(require_admin)):
+async def invoice_parse(
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
     content = await file.read()
-    if not content.startswith(b"%PDF"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF")
+    head = content.lstrip()[:64]
     try:
-        return invoice.parse_invoice(content)
+        if content[:4] == b"%PDF":
+            data = invoice.parse_invoice(content)
+        elif head[:5] == b"<?xml" or head[:5] == b"<HDon" or b"<HDon" in content[:400]:
+            data = invoice.parse_invoice_xml(content)
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "File phai la hoa don PDF hoac XML")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
+    data["suggested_customer"] = _suggest_customer(db, data.get("buyer") or {})
+    return data
 
 
 @app.get("/api/bbbg/templates")

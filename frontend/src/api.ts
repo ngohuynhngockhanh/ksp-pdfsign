@@ -331,6 +331,8 @@ export const api = {
       ngay: { day: number; month: number; year: number } | null;
       ky_hieu: string;
       raw_text: string;
+      source?: string;
+      suggested_customer: { id: number; name: string } | null;
     }>("/api/invoice/parse", { method: "POST", body: fd });
   },
   async bbbgTemplates() {

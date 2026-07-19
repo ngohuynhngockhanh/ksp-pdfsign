@@ -12,7 +12,12 @@ export function Signer({
 }: {
   defaultIp: string;
   defaultLocation: string;
-  preSign?: { docId: string; filename: string; docType: string } | null;
+  preSign?: {
+    docId: string;
+    filename: string;
+    docType: string;
+    customerId: number | null;
+  } | null;
 }) {
   const [docId, setDocId] = useState<string | null>(null);
   const [filename, setFilename] = useState("");
@@ -43,6 +48,7 @@ export function Signer({
       setFilename(preSign.filename);
       setRect(null);
       setDownloadUrl("");
+      if (preSign.customerId != null) setCustomerId(String(preSign.customerId));
     }
   }, [preSign]);
 

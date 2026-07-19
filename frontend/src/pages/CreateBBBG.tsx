@@ -12,8 +12,9 @@ function soBB(n: Ngay): string {
 export function CreateBBBG({
   onGenerated,
 }: {
-  onGenerated: (docId: string, filename: string) => void;
+  onGenerated: (docId: string, filename: string, customerId: number | null) => void;
 }) {
+  const [suggested, setSuggested] = useState<{ id: number; name: string } | null>(null);
   const [templates, setTemplates] = useState<{ key: string; label: string }[]>([]);
   const [templateKey, setTemplateKey] = useState("bbbg_thiet_bi");
   const [parsing, setParsing] = useState(false);
@@ -57,6 +58,7 @@ export function CreateBBBG({
         setNgay(r.ngay);
         setSoBb(soBB(r.ngay));
       }
+      setSuggested(r.suggested_customer);
       setParsed(true);
     } catch (ex) {
       setErr((ex as Error).message);
@@ -82,7 +84,7 @@ export function CreateBBBG({
         template_key: templateKey,
         filename: `BBBG-${benB.name.slice(0, 20).trim() || "khach"}.pdf`,
       });
-      onGenerated(r.doc_id, r.filename);
+      onGenerated(r.doc_id, r.filename, suggested?.id ?? null);
     } catch (ex) {
       setErr((ex as Error).message);
     } finally {
@@ -96,11 +98,26 @@ export function CreateBBBG({
 
       <div className="panel">
         <label>
-          1. Tải hóa đơn (PDF) để tự điền
-          <input type="file" accept="application/pdf" onChange={onInvoice} />
+          1. Tải hóa đơn (PDF hoặc XML) để tự điền
+          <input
+            type="file"
+            accept="application/pdf,.xml,text/xml,application/xml"
+            onChange={onInvoice}
+          />
         </label>
+        <div className="muted">Nên dùng file XML — dữ liệu chính xác hơn PDF.</div>
         {parsing && <div className="muted">Đang đọc hóa đơn…</div>}
         {parsed && <div className="ok-note">✅ Đã đọc hóa đơn — kiểm tra & sửa bên dưới.</div>}
+        {parsed &&
+          (suggested ? (
+            <div className="ok-note">
+              👤 Khách hàng đề xuất: <b>{suggested.name}</b> — BBBG sẽ tự gán vào khách này khi ký.
+            </div>
+          ) : (
+            <div className="muted">
+              👤 Chưa có khách hàng khớp MST/tên — có thể tạo ở tab Khách hàng hoặc chọn lúc ký.
+            </div>
+          ))}
       </div>
 
       <div className="panel">
