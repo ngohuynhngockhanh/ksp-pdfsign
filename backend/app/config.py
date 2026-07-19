@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     bbbg_rep: str = "NGÔ HUỲNH NGỌC KHÁNH"
     bbbg_rep_title: str = "Giám đốc"
 
+    # De nghi thanh toan - letterhead rieng (khac BBBG: TP.HCM / Tong giam doc)
+    dntt_noi_lap: str = "TP.HCM"
+    dntt_email: str = "hotro@mysmarthome.com.vn"
+    dntt_website: str = "inut.vn"
+    dntt_rep: str = "NGÔ HUỲNH NGỌC KHÁNH"
+    dntt_rep_title: str = "Tổng giám đốc"
+
+    # Tai khoan nhan thanh toan (sau nay mo rong BANK_ACCOUNTS nhieu STK)
+    bank_account_name: str = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
+    bank_account_number: str = "79713"
+    bank_name: str = "Techcombank"
+
+    # AI (endpoint tuong thich OpenAI) - mac dinh 9router local
+    ai_enabled: bool = False
+    ai_base_url: str = "http://127.0.0.1:20128/v1"
+    ai_api_key: str = "public"
+    ai_model: str = "opencode/big-pickle"
+    ai_max_tokens: int = 3500
+    ai_timeout: float = 120.0
+
     # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
     nas_enabled: bool = True
     nas_host: str = "172.32.0.100"

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 13px; color: #000; line-height: 1.55;
+    position: relative;
+  }
+  .watermark {
+    position: fixed; top: 45%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%; opacity: 0.08; z-index: -1;
+  }
+  .letterhead { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1e6fd9; padding-bottom: 8px; }
+  .letterhead img.logo { width: 64px; height: 64px; object-fit: contain; }
+  .letterhead .info { font-size: 11px; line-height: 1.45; }
+  .letterhead .info .name { font-weight: bold; font-size: 12.5px; text-transform: uppercase; color: #1e2a3a; }
+  .place { text-align: right; font-style: italic; margin: 8px 0 4px; }
+  h1 { text-align: center; font-size: 19px; letter-spacing: 1px; margin: 10px 0 2px; }
+  .soline { text-align: center; font-size: 12px; margin-bottom: 4px; }
+  .dot-label { text-align: center; font-weight: bold; margin-bottom: 10px; }
+  .kg { margin: 10px 0 2px; }
+  .kg b { text-transform: uppercase; }
+  .intro, .thuyet-minh { text-align: justify; margin: 6px 0; }
+  .thuyet-minh { white-space: pre-line; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
+  th, td { border: 1px solid #000; padding: 4px 6px; font-size: 12px; }
+  th { text-align: center; font-weight: bold; background: #eef2f7; }
+  td.c { text-align: center; }
+  td.r { text-align: right; }
+  table.tong td { border: none; padding: 2px 6px; font-size: 12.5px; }
+  table.tong td.lbl { width: 62%; }
+  table.tong td.val { text-align: right; font-weight: bold; }
+  table.tong tr.grand td { font-weight: bold; font-size: 13.5px; border-top: 1px solid #000; padding-top: 5px; }
+  .bang-chu { font-style: italic; margin: 4px 0 10px; }
+  .bank { border: 1px solid #000; padding: 8px 12px; margin: 10px 0; font-size: 12.5px; }
+  .bank .title { font-weight: bold; margin-bottom: 3px; }
+  .signs { display: flex; justify-content: flex-end; margin-top: 20px; text-align: center; }
+  .signs .col { width: 46%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; }
+  .signs .hint { font-style: italic; font-size: 11.5px; }
+  .signs .space { height: 80px; }
+  .signs .name { font-weight: bold; }
+</style>
+</head>
+<body>
+  {% if logo_data_uri %}<img class="watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <div class="letterhead">
+    {% if logo_data_uri %}<img class="logo" src="{{ logo_data_uri }}">{% endif %}
+    <div class="info">
+      <div class="name">{{ ben_a.company }}</div>
+      <div>Địa chỉ: {{ ben_a.address }}</div>
+      <div>MST: {{ ben_a.mst }} · Điện thoại: {{ ben_a.phone }}</div>
+      <div>Email: {{ email }} · Website: {{ website }}</div>
+    </div>
+  </div>
+
+  <div class="place">{{ noi_lap }}, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }}</div>
+
+  <h1>ĐỀ NGHỊ THANH TOÁN</h1>
+  {% if so %}<div class="soline">Số: {{ so }}</div>{% endif %}
+  {% if loai_tt == "nhieu_phan" and dot_thu %}
+  <div class="dot-label">(Đợt {{ dot_thu }}{% if tong_so_dot %}/{{ tong_so_dot }}{% endif %})</div>
+  {% endif %}
+
+  <div class="kg">Kính gửi: <b>{{ ben_b.name }}</b></div>
+  {% if ben_b.address %}<div>Địa chỉ: {{ ben_b.address }}</div>{% endif %}
+  {% if ben_b.mst %}<div>Mã số thuế: {{ ben_b.mst }}</div>{% endif %}
+
+  <div class="intro">
+    <b>{{ ben_a.company }}</b> trân trọng đề nghị Quý khách hàng thanh toán
+    {% if loai_tt == "nhieu_phan" and dot_thu %}đợt {{ dot_thu }}{% if tong_so_dot %}/{{ tong_so_dot }}{% endif %}{% endif %}
+    cho các hạng mục{% if can_cu %} ({{ can_cu }}){% endif %} chi tiết như sau:
+  </div>
+
+  {% if thuyet_minh %}
+  <div class="thuyet-minh">{{ thuyet_minh }}</div>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:5%">STT</th>
+        <th>Hạng mục</th>
+        <th style="width:8%">ĐVT</th>
+        <th style="width:7%">SL</th>
+        <th style="width:13%">Đơn giá (đ)</th>
+        <th style="width:13%">Thành tiền (đ)</th>
+        <th style="width:7%">Thuế (%)</th>
+        <th style="width:12%">Tiền thuế (đ)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong|qty }}</td>
+        <td class="r">{{ it.don_gia|vnd }}</td>
+        <td class="r">{{ it.thanh_tien|vnd }}</td>
+        <td class="c">{{ it.thue_suat|int }}</td>
+        <td class="r">{{ it.tien_thue|vnd }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="tong">
+    <tr>
+      <td class="lbl">Tổng giá trị hợp đồng (đã gồm thuế GTGT):</td>
+      <td class="val">{{ tong_thanh_toan|vnd }} đ</td>
+    </tr>
+    {% if loai_tt in ("co_coc", "nhieu_phan") and tien_coc %}
+    <tr>
+      <td class="lbl">Số tiền đã đặt cọc:</td>
+      <td class="val">{{ tien_coc|vnd }} đ</td>
+    </tr>
+    {% endif %}
+    {% if loai_tt == "nhieu_phan" and da_thanh_toan %}
+    <tr>
+      <td class="lbl">Đã thanh toán các đợt trước:</td>
+      <td class="val">{{ da_thanh_toan|vnd }} đ</td>
+    </tr>
+    {% endif %}
+    <tr class="grand">
+      <td class="lbl">
+        {% if loai_tt == "nhieu_phan" %}SỐ TIỀN CẦN THANH TOÁN ĐỢT NÀY:{% else %}TỔNG SỐ TIỀN CÒN LẠI CẦN THANH TOÁN:{% endif %}
+      </td>
+      <td class="val">{{ con_lai|vnd }} đ</td>
+    </tr>
+  </table>
+  <div class="bang-chu">(Bằng chữ: <b>{{ bang_chu }}</b>)</div>
+
+  <div class="intro">
+    Kính đề nghị Quý khách hàng thanh toán trong vòng <b>{{ han_thanh_toan }}</b>
+    kể từ ngày nhận được đề nghị thanh toán này vào tài khoản dưới đây:
+  </div>
+
+  <div class="bank">
+    <div class="title">Thông tin tài khoản nhận thanh toán</div>
+    <div>Tên tài khoản: <b>{{ bank.account_name }}</b></div>
+    <div>Số tài khoản: <b>{{ bank.account_number }}</b></div>
+    <div>Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+  </div>
+
+  <div class="intro">Trân trọng cảm ơn sự hợp tác của Quý khách hàng./.</div>
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">{{ ben_a.title }}</div>
+      <div class="hint">(ký, đóng dấu và ghi rõ họ tên)</div>
+      <div class="space"></div>
+      <div class="name">{{ ben_a.rep }}</div>
+    </div>
+  </div>
+</body>
+</html>

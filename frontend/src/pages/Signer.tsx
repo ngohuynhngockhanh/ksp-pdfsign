@@ -17,6 +17,7 @@ export function Signer({
     filename: string;
     docType: string;
     customerId: number | null;
+    orderId?: number | null;
   } | null;
 }) {
   const [docId, setDocId] = useState<string | null>(null);
@@ -84,6 +85,7 @@ export function Signer({
         filename,
         customer_id: customerId === "" ? null : Number(customerId),
         doc_type: preSign?.docType || "",
+        order_id: preSign?.orderId ?? null,
       });
       setDownloadUrl(r.download_url);
     } catch (ex) {

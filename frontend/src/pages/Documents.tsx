@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, DOC_TYPES, type Customer, type DocRecord } from "../api";
+import { api, DOC_TYPES, type Customer, type DocRecord, type OrderRec } from "../api";
 import { copyText, quickCreateCustomer, shareDocument } from "../util";
 
 // ── Ô "Loại" dạng badge màu, bấm để sửa ──────────────────────────────
@@ -76,6 +76,48 @@ function CustomerCell({
   );
 }
 
+// ── Ô đơn hàng: chip bấm để gán/đổi ─────────────────────────────────
+function OrderCell({
+  d,
+  orders,
+  onAssign,
+}: {
+  d: DocRecord;
+  orders: OrderRec[];
+  onAssign: (id: number, value: string) => void;
+}) {
+  const [edit, setEdit] = useState(false);
+  if (edit)
+    return (
+      <select
+        autoFocus
+        className="cell-edit"
+        value={d.order_id ?? ""}
+        onBlur={() => setEdit(false)}
+        onChange={(e) => {
+          onAssign(d.id, e.target.value);
+          setEdit(false);
+        }}
+      >
+        <option value="">— không đơn hàng —</option>
+        {orders.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.code} · {o.name}
+          </option>
+        ))}
+      </select>
+    );
+  return (
+    <button
+      className={"chip sm " + (d.order_id ? "indigo" : "gray")}
+      onClick={() => setEdit(true)}
+      title="Gán đơn hàng (gom bộ hồ sơ)"
+    >
+      {d.order_code ? `📦 ${d.order_code}` : "📦 +"}
+    </button>
+  );
+}
+
 // ── Menu "⋯" cho hành động phụ ───────────────────────────────────────
 function RowMenu({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -100,6 +142,8 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [orders, setOrders] = useState<OrderRec[]>([]);
+  const [orderFilter, setOrderFilter] = useState("");
   const [filter, setFilter] = useState<"all" | "unassigned" | number>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -197,10 +241,16 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
       const opts: Parameters<typeof api.listDocuments>[0] = { search, page, perPage };
       if (filter === "unassigned") opts.unassigned = true;
       else if (typeof filter === "number") opts.customerId = filter;
-      const [d, c] = await Promise.all([api.listDocuments(opts), api.listCustomers()]);
+      if (orderFilter) opts.orderId = Number(orderFilter);
+      const [d, c, o] = await Promise.all([
+        api.listDocuments(opts),
+        api.listCustomers(),
+        api.listOrders(),
+      ]);
       setDocs(d.items);
       setTotal(d.total);
       setCustomers(c);
+      setOrders(o);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -209,7 +259,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   }
   useEffect(() => {
     load();
-  }, [filter, page, perPage]);
+  }, [filter, orderFilter, page, perPage]);
   useEffect(() => {
     loadNas();
   }, []);
@@ -265,6 +315,21 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
             {customers.map((c) => (
               <option key={c.id} value={`c${c.id}`}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="tb-select"
+            value={orderFilter}
+            onChange={(e) => {
+              setPage(1);
+              setOrderFilter(e.target.value);
+            }}
+          >
+            <option value="">Mọi đơn hàng</option>
+            {orders.map((o) => (
+              <option key={o.id} value={o.id}>
+                📦 {o.code} · {o.name} ({o.document_count})
               </option>
             ))}
           </select>
@@ -363,6 +428,22 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
                 </td>
                 <td className="fname">
                   <span className="ft">{d.filename}</span>
+                  <button
+                    className="rename-btn"
+                    title="Đổi tên bộ hồ sơ"
+                    onClick={async () => {
+                      const name = window.prompt("Tên mới cho bộ hồ sơ:", d.filename);
+                      if (!name || name.trim() === d.filename) return;
+                      try {
+                        await api.renameDocument(d.id, name.trim());
+                        load();
+                      } catch (e) {
+                        alert((e as Error).message);
+                      }
+                    }}
+                  >
+                    ✏️
+                  </button>
                   <span className="chips">
                     {d.nas_synced && (
                       <span className="chip green sm" title="Đã sao lưu NAS">
@@ -374,6 +455,14 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
                         📎 đã ký
                       </span>
                     )}
+                    <OrderCell
+                      d={d}
+                      orders={orders}
+                      onAssign={async (id, v) => {
+                        await api.setDocumentOrder(id, v === "" ? null : Number(v));
+                        load();
+                      }}
+                    />
                   </span>
                 </td>
                 <td>
@@ -398,6 +487,20 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
                       ✔
                     </button>
                     <RowMenu>
+                      <button
+                        onClick={async () => {
+                          const name = window.prompt("Tên mới cho bộ hồ sơ:", d.filename);
+                          if (!name || name.trim() === d.filename) return;
+                          try {
+                            await api.renameDocument(d.id, name.trim());
+                            load();
+                          } catch (e) {
+                            alert((e as Error).message);
+                          }
+                        }}
+                      >
+                        ✏️ Đổi tên
+                      </button>
                       {d.signed_upload_name && (
                         <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">
                           📎 Xem bản đã ký

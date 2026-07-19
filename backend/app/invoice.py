@@ -50,6 +50,7 @@ def parse_invoice_xml(xml_bytes: bytes) -> dict:
 
     items = []
     for hh in root.findall(".//DSHHDVu/HHDVu"):
+        # TSuat: "10%" / "8%" / "KCT" (khong chiu thue)
         items.append({
             "stt": txt(hh, "STT"),
             "ten": txt(hh, "THHDVu"),
@@ -57,6 +58,7 @@ def parse_invoice_xml(xml_bytes: bytes) -> dict:
             "so_luong": _num(txt(hh, "SLuong")),
             "don_gia": txt(hh, "DGia"),
             "thanh_tien": txt(hh, "ThTien"),
+            "thue_suat": txt(hh, "TSuat").replace("%", "").strip(),
         })
 
     kh = root.find(".//KHHDon")

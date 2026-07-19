@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import io as _io
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import (
@@ -31,10 +31,12 @@ from sqlalchemy.orm import Session
 
 from . import (
     accounts,
+    ai,
     audit,
     bbbg,
     classify,
     invoice,
+    money,
     nas,
     signing,
     storage,
@@ -51,7 +53,17 @@ from .auth import (
     require_user,
 )
 from .config import REPO_ROOT, Settings, get_settings
-from .db import AuditLog, Customer, Document, Share, User, get_session, init_db
+from .db import (
+    AuditLog,
+    Customer,
+    Document,
+    Order,
+    Product,
+    Share,
+    User,
+    get_session,
+    init_db,
+)
 from .schemas import (
     AccountCreate,
     AccountInfo,
@@ -64,6 +76,10 @@ from .schemas import (
     BulkIds,
     CustomerCreate,
     DocTypeUpdate,
+    DocumentRename,
+    OrderAssign,
+    OrderCreate,
+    OrderOut,
     CustomerOut,
     CustomerUpdate,
     DocumentOut,
@@ -71,6 +87,9 @@ from .schemas import (
     LoginRequest,
     PasswordChange,
     PasswordReset,
+    ProductOut,
+    QuoteGenerate,
+    QuoteNarrativeRequest,
     ShareRequest,
     ShareResponse,
     SignRequest,
@@ -80,7 +99,10 @@ from .schemas import (
 )
 from .security import hash_password, verify_password
 
+from .inv_api import router as inv_router  # noqa: E402
+
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
+app.include_router(inv_router)
 
 
 def _content_disposition(filename: str) -> str:
@@ -139,6 +161,59 @@ def health(settings: Settings = Depends(get_settings)):
     return {"status": "ok", "using_default_secrets": settings.using_default_secrets}
 
 
+# Chong do mat khau: sai lien tiep >= N lan trong cua so -> khoa IP 30 phut
+LOGIN_LOCK_FAILS = 5
+LOGIN_LOCK_MINUTES = 30
+
+
+def _recent_consecutive_fails(db: Session, ip: str) -> tuple[int, datetime | None]:
+    """(so lan login_fail lien tiep trong 30 phut, thoi diem sai gan nhat).
+
+    Dem tu audit log — khong can bang moi, song sot qua restart. Cac lan bi
+    chan (login_locked) khong tinh la fail de khoa tu het han sau 30 phut.
+    """
+    if not ip:
+        return 0, None
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+        minutes=LOGIN_LOCK_MINUTES
+    )
+    rows = db.scalars(
+        select(AuditLog)
+        .where(
+            AuditLog.ip == ip,
+            AuditLog.action.in_(["login", "login_fail"]),
+            AuditLog.ts >= since,
+        )
+        .order_by(AuditLog.ts.desc())
+        .limit(LOGIN_LOCK_FAILS * 4)
+    )
+    fails = 0
+    last_fail = None
+    for r in rows:
+        if r.action == "login":
+            break
+        fails += 1
+        if last_fail is None:
+            last_fail = r.ts
+    return fails, last_fail
+
+
+def _count_recent_fails(db: Session, ip: str) -> int:
+    return _recent_consecutive_fails(db, ip)[0]
+
+
+def _login_lock_remaining(db: Session, ip: str) -> int:
+    """So phut IP con bi khoa (0 = khong khoa)."""
+    fails, last_fail = _recent_consecutive_fails(db, ip)
+    if fails < LOGIN_LOCK_FAILS or last_fail is None:
+        return 0
+    if last_fail.tzinfo is not None:
+        last_fail = last_fail.astimezone(timezone.utc).replace(tzinfo=None)
+    elapsed = datetime.now(timezone.utc).replace(tzinfo=None) - last_fail
+    remaining = LOGIN_LOCK_MINUTES - int(elapsed.total_seconds() // 60)
+    return max(1, remaining) if remaining > 0 else 0
+
+
 @app.post("/api/login")
 def login(
     body: LoginRequest,
@@ -147,9 +222,23 @@ def login(
     db: Session = Depends(get_session),
 ):
     ip = request.client.host if request.client else ""
+    locked = _login_lock_remaining(db, ip)
+    if locked:
+        audit.record(db, body.username, "?", ip, "login_locked", detail=f"còn {locked} phút")
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"IP tạm khóa {LOGIN_LOCK_MINUTES} phút do nhập sai mật khẩu "
+            f"{LOGIN_LOCK_FAILS} lần liên tiếp — thử lại sau {locked} phút",
+        )
     user = authenticate(db, body.username, body.password)
     if user is None:
         audit.record(db, body.username, "?", ip, "login_fail")
+        con_lai = LOGIN_LOCK_FAILS - _count_recent_fails(db, ip)
+        if con_lai <= 0:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                f"Sai tai khoan hoac mat khau — IP bị khóa {LOGIN_LOCK_MINUTES} phút",
+            )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sai tai khoan hoac mat khau")
     audit.record(db, user.username, user.role, ip, "login")
     token = create_token(user, settings)
@@ -254,6 +343,7 @@ def sign(
         signed=True,
         customer_id=body.customer_id,
         doc_type=dtype,
+        order_id=body.order_id,
     )
     db.add(doc)
     db.commit()
@@ -411,6 +501,8 @@ def _doc_out(d: Document) -> DocumentOut:
         nas_synced=d.nas_synced_at is not None,
         doc_type=d.doc_type or "",
         signed_upload_name=d.signed_upload_name or "",
+        order_id=d.order_id,
+        order_code=f"{d.order.code} · {d.order.name}" if d.order else "",
     )
 
 
@@ -418,6 +510,7 @@ def _doc_out(d: Document) -> DocumentOut:
 def list_documents(
     customer_id: int | None = None,
     unassigned: bool = False,
+    order_id: int | None = None,
     search: str = "",
     page: int = 1,
     per_page: int = 20,
@@ -431,6 +524,8 @@ def list_documents(
         conds.append(Document.customer_id.is_(None))
     elif customer_id is not None:
         conds.append(Document.customer_id == customer_id)
+    if order_id is not None:
+        conds.append(Document.order_id == order_id)
     if search.strip():
         like = f"%{search.strip()}%"
         conds.append(Document.filename.ilike(like) | Document.signer_name.ilike(like))
@@ -464,6 +559,29 @@ def assign_document(
     db.refresh(d)
     _audit(db, user, "assign", d.filename, d.customer.name if d.customer else "—")
     background.add_task(_bg_nas_sync, d.id)  # day sang thu muc khach moi
+    return _doc_out(d)
+
+
+@app.post("/api/documents/{doc_pk}/rename", response_model=DocumentOut)
+def rename_document(
+    doc_pk: int, body: DocumentRename, background: BackgroundTasks,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    """Doi ten bo ho so (mac dinh la ten file luc tao) de de quan ly."""
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    name = body.filename.strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ten khong duoc de trong")
+    if not name.lower().endswith(".pdf"):
+        name += ".pdf"
+    old = d.filename
+    d.filename = name
+    db.commit()
+    db.refresh(d)
+    _audit(db, user, "rename_doc", name, f"từ: {old}")
+    background.add_task(_bg_nas_sync, d.id)  # dong bo NAS voi ten moi
     return _doc_out(d)
 
 
@@ -583,6 +701,83 @@ def verify_document_record(
     if not storage.exists(d.doc_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
     return verify.verify_document(settings, storage.read_doc(d.doc_id), d.doc_id)
+
+
+# ---------------------------------------------------------------------------
+# Don hang: gom nhieu bo ho so (bao gia -> BBBG -> BBNT -> de nghi TT)
+# ---------------------------------------------------------------------------
+def _order_out(db: Session, o: Order) -> OrderOut:
+    n = db.scalar(select(func.count(Document.id)).where(Document.order_id == o.id)) or 0
+    return OrderOut(
+        id=o.id, code=o.code, name=o.name, customer_id=o.customer_id,
+        customer_name=o.customer.name if o.customer else None,
+        note=o.note, created_at=o.created_at.isoformat(), document_count=n,
+    )
+
+
+@app.get("/api/orders", response_model=list[OrderOut])
+def list_orders(
+    customer_id: int | None = None,
+    search: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    q = select(Order)
+    if customer_id is not None:
+        q = q.where(Order.customer_id == customer_id)
+    if search.strip():
+        q = q.where(Order.name.ilike(f"%{search.strip()}%"))
+    return [_order_out(db, o) for o in db.scalars(q.order_by(Order.created_at.desc()))]
+
+
+@app.post("/api/orders", response_model=OrderOut)
+def create_order(
+    body: OrderCreate,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    if not body.name.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ten don hang trong")
+    if body.customer_id is not None and not db.get(Customer, body.customer_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
+    o = Order(name=body.name.strip(), customer_id=body.customer_id, note=body.note)
+    db.add(o)
+    db.commit()
+    db.refresh(o)
+    _audit(db, user, "order_create", o.code, o.name)
+    return _order_out(db, o)
+
+
+@app.delete("/api/orders/{oid}")
+def delete_order(
+    oid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    o = db.get(Order, oid)
+    if not o:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay don hang")
+    for d in db.scalars(select(Document).where(Document.order_id == oid)):
+        d.order_id = None  # bo gan, khong xoa ho so
+    _audit(db, user, "order_delete", o.code, o.name)
+    db.delete(o)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/documents/{doc_pk}/order", response_model=DocumentOut)
+def assign_document_order(
+    doc_pk: int, body: OrderAssign,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    if body.order_id is not None and not db.get(Order, body.order_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay don hang")
+    d.order_id = body.order_id
+    db.commit()
+    db.refresh(d)
+    _audit(db, user, "order_assign", d.filename, d.order.code if d.order else "—")
+    return _doc_out(d)
 
 
 # ---------------------------------------------------------------------------
@@ -814,10 +1009,23 @@ def admin_reset_password(
 # ---------------------------------------------------------------------------
 # Nhat ky thao tac (audit)
 # ---------------------------------------------------------------------------
+def _parse_iso_utc(s: str) -> datetime | None:
+    """ISO datetime (co the co 'Z'/offset) -> naive UTC de so voi AuditLog.ts."""
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 @app.get("/api/audit", response_model=AuditPage)
 def audit_log(
     search: str = "",
     action: str = "",
+    ts_from: str = "",
+    ts_to: str = "",
     page: int = 1,
     per_page: int = 50,
     user: CurrentUser = Depends(require_admin),
@@ -828,6 +1036,10 @@ def audit_log(
     q = select(AuditLog)
     if action:
         q = q.where(AuditLog.action == action)
+    if ts_from and (dt := _parse_iso_utc(ts_from)):
+        q = q.where(AuditLog.ts >= dt)
+    if ts_to and (dt := _parse_iso_utc(ts_to)):
+        q = q.where(AuditLog.ts <= dt)
     if search.strip():
         like = f"%{search.strip()}%"
         q = q.where(
@@ -888,6 +1100,10 @@ async def invoice_parse(
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
     data["suggested_customer"] = _suggest_customer(db, data.get("buyer") or {})
+    # Ghi nho hang hoa co don gia vao danh muc (autofill bao gia sau nay)
+    data["products_learned"] = _upsert_products(
+        db, [it for it in data.get("items") or [] if it.get("don_gia")]
+    )
     return data
 
 
@@ -948,6 +1164,181 @@ def bbbg_generate(
     customer_id = _upsert_customer(db, body.ben_b)
     _audit(db, user, "bbbg_generate", body.filename, body.ben_b.name)
     return {"doc_id": doc_id, "filename": body.filename, "customer_id": customer_id}
+
+
+@app.post("/api/invoice/parse-doc/{doc_pk}")
+def invoice_parse_stored(
+    doc_pk: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Doc hoa don tu ho so co san (nguon 'tu ho so' cua tab Bao gia)."""
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    if not storage.exists(d.doc_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    try:
+        data = invoice.parse_invoice(storage.read_doc(d.doc_id))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
+    data["suggested_customer"] = (
+        {"id": d.customer_id, "name": d.customer.name}
+        if d.customer
+        else _suggest_customer(db, data.get("buyer") or {})
+    )
+    data["products_learned"] = _upsert_products(
+        db, [it for it in data.get("items") or [] if it.get("don_gia")]
+    )
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Bao gia / De nghi thanh toan + thuyet minh AI
+# ---------------------------------------------------------------------------
+@app.get("/api/quote/templates")
+def quote_templates(user: CurrentUser = Depends(require_admin)):
+    return {"templates": bbbg.list_quote_templates()}
+
+
+@app.post("/api/quote/preview")
+def quote_preview(
+    body: QuoteGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Render PDF xem truoc (WYSIWYG) — khong luu storage, khong upsert KH/audit."""
+    try:
+        pdf, _ = bbbg.render_quote(settings, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh PDF that bai: {e}")
+    return Response(content=pdf, media_type="application/pdf")
+
+
+@app.post("/api/quote/generate")
+def quote_generate(
+    body: QuoteGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    if not body.items:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chua co dong hang hoa nao")
+    try:
+        pdf, totals = bbbg.render_quote(settings, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh PDF that bai: {e}")
+    doc_id = storage.save_upload(pdf)
+    customer_id = _upsert_customer(db, body.ben_b)
+    _upsert_products(db, [it.model_dump() for it in body.items])  # hoc danh muc
+    doc_type = bbbg.QUOTE_TEMPLATES.get(body.template_key, {}).get("doc_type", "bao_gia")
+    label = "đề nghị TT" if body.template_key == "de_nghi_tt" else "báo giá"
+    _audit(
+        db, user, "quote_generate", body.filename,
+        f"{label} · {body.ben_b.name} · {money.vnd(totals['tong_thanh_toan'])}đ",
+    )
+    return {
+        "doc_id": doc_id,
+        "filename": body.filename,
+        "customer_id": customer_id,
+        "doc_type": doc_type,
+        "totals": totals,
+    }
+
+
+def _upsert_products(db: Session, items: list[dict]) -> int:
+    """Hoc danh muc hang hoa (tu bao gia vua sinh HOAC hoa don vua parse).
+
+    Match theo ten (khong phan biet hoa/thuong); gia/DVT/thue lay theo lan moi nhat.
+    """
+    n = 0
+    for it in items:
+        ten = (it.get("ten") or "").strip()
+        if not ten:
+            continue
+        dg = money.parse_num(it.get("don_gia"))
+        p = db.scalar(select(Product).where(func.lower(Product.ten) == ten.lower()))
+        if p is None:
+            p = Product(ten=ten, thue_suat=10.0)
+            db.add(p)
+        if it.get("dvt"):
+            p.dvt = it["dvt"]
+        if dg:
+            p.don_gia = dg
+        ts = it.get("thue_suat")
+        if ts is not None and str(ts).strip() != "":
+            p.thue_suat = money.parse_num(ts)  # "KCT" -> 0
+        p.use_count = (p.use_count or 0) + 1
+        p.updated_at = datetime.utcnow()
+        n += 1
+    db.commit()
+    return n
+
+
+@app.get("/api/products", response_model=list[ProductOut])
+def list_products(
+    search: str = "",
+    limit: int = 200,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Danh muc hang hoa da dung — cho autofill form bao gia."""
+    q = select(Product)
+    if search.strip():
+        q = q.where(Product.ten.ilike(f"%{search.strip()}%"))
+    q = q.order_by(Product.use_count.desc(), Product.ten).limit(min(max(1, limit), 500))
+    return [
+        ProductOut(
+            id=p.id, ten=p.ten, dvt=p.dvt, don_gia=p.don_gia,
+            thue_suat=p.thue_suat, use_count=p.use_count,
+        )
+        for p in db.scalars(q)
+    ]
+
+
+@app.delete("/api/products/{pid}")
+def delete_product(
+    pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    p = db.get(Product, pid)
+    if not p:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay mat hang")
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/ai/status")
+def ai_status(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
+    return {"enabled": settings.ai_enabled, "model": settings.ai_model}
+
+
+@app.post("/api/ai/quote-narrative")
+def ai_quote_narrative(
+    body: QuoteNarrativeRequest,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    try:
+        text = ai.quote_narrative(
+            settings,
+            items=[it.model_dump() for it in body.items],
+            khach=body.khach,
+            tong=body.tong,
+            note=body.note,
+            loai=body.loai,
+        )
+    except ai.AINotConfigured as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    _audit(db, user, "ai_narrative", body.khach, f"model={settings.ai_model}")
+    return {"text": text}
 
 
 @app.post("/api/documents/{doc_pk}/type", response_model=DocumentOut)
@@ -1105,4 +1496,9 @@ if (_FRONTEND_DIST / "index.html").exists():
             p = _FRONTEND_DIST / full_path
             if p.exists():
                 return FileResponse(p, media_type=_ROOT_FILES[full_path])
-        return FileResponse(_FRONTEND_DIST / "index.html")
+        # index.html khong cache: deploy ban moi la thay ngay, khong can Ctrl+Shift+R
+        # (assets/*.js|css co hash trong ten nen van duoc cache binh thuong)
+        return FileResponse(
+            _FRONTEND_DIST / "index.html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )

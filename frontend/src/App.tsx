@@ -8,11 +8,23 @@ import { Documents } from "./pages/Documents";
 import { MyDocuments } from "./pages/MyDocuments";
 import { NasBrowser } from "./pages/NasBrowser";
 import { CreateBBBG } from "./pages/CreateBBBG";
+import { CreateQuote } from "./pages/CreateQuote";
 import { AuditLog } from "./pages/AuditLog";
+import { Inventory } from "./pages/Inventory";
+import { PurchaseImport } from "./pages/PurchaseImport";
+import { SalesInvoice } from "./pages/SalesInvoice";
+import { StockIssue } from "./pages/StockIssue";
+import { Production } from "./pages/Production";
 
 type Tab =
   | "sign"
   | "bbbg"
+  | "quote"
+  | "tonkho"
+  | "nhaphang"
+  | "banra"
+  | "xuatkho"
+  | "sanxuat"
   | "documents"
   | "customers"
   | "nas"
@@ -23,6 +35,12 @@ type Tab =
 const ROUTES: Record<Tab, string> = {
   sign: "/ky-so",
   bbbg: "/tao-bbbg",
+  quote: "/bao-gia",
+  tonkho: "/ton-kho",
+  nhaphang: "/nhap-hang",
+  banra: "/ban-ra",
+  xuatkho: "/xuat-kho",
+  sanxuat: "/san-xuat",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
@@ -61,9 +79,16 @@ export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTabState] = useState<Tab>("sign");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
+  const [openPurchaseId, setOpenPurchaseId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preSign, setPreSign] = useState<
-    { docId: string; filename: string; docType: string; customerId: number | null } | null
+    {
+      docId: string;
+      filename: string;
+      docType: string;
+      customerId: number | null;
+      orderId?: number | null;
+    } | null
   >(null);
 
   function navigate(t: Tab, replace = false) {
@@ -78,6 +103,11 @@ export function App() {
     navigate("verify");
   }
 
+  function goPurchase(purchaseId: number) {
+    setOpenPurchaseId(purchaseId);
+    navigate("nhaphang");
+  }
+
   useEffect(() => {
     api
       .me()
@@ -86,7 +116,10 @@ export function App() {
         setAuthed(true);
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
-          ? (["sign", "bbbg", "documents", "customers", "nas", "audit", "verify"] as Tab[])
+          ? ([
+              "sign", "bbbg", "quote", "tonkho", "nhaphang", "banra", "xuatkho", "sanxuat",
+              "documents", "customers", "nas", "audit", "verify",
+            ] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
@@ -109,27 +142,51 @@ export function App() {
   if (!authed || !me) return <Login onLogin={() => location.reload()} />;
 
   const isAdmin = me.role === "admin";
-  const adminTabs: [Tab, string][] = [
-    ["sign", "Ký số"],
-    ["bbbg", "Tạo BBBG"],
-    ["documents", "Hồ sơ"],
-    ["customers", "Khách hàng"],
-    ["nas", "NAS"],
-    ["audit", "Nhật ký"],
-    ["verify", "Kiểm tra chữ ký"],
+  // Menu gom nhom, hien o sidebar trai
+  const adminGroups: [string, [Tab, string, string][]][] = [
+    [
+      "Chữ ký số",
+      [
+        ["sign", "Ký số", "🖊️"],
+        ["bbbg", "Tạo BBBG", "📋"],
+        ["quote", "Báo giá", "🧮"],
+        ["verify", "Kiểm tra chữ ký", "🔎"],
+      ],
+    ],
+    [
+      "Kho hàng",
+      [
+        ["tonkho", "Tồn kho", "📦"],
+        ["nhaphang", "Nhập hàng", "🧾"],
+        ["banra", "Bán ra", "🧾"],
+        ["xuatkho", "Xuất kho", "📤"],
+        ["sanxuat", "Sản xuất", "🏭"],
+      ],
+    ],
+    [
+      "Quản lý",
+      [
+        ["documents", "Hồ sơ", "🗂️"],
+        ["customers", "Khách hàng", "👥"],
+        ["nas", "NAS", "💾"],
+        ["audit", "Nhật ký", "📜"],
+      ],
+    ],
   ];
-  const custTabs: [Tab, string][] = [
-    ["mine", "Hồ sơ của tôi"],
-    ["verify", "Kiểm tra chữ ký"],
+  const custGroups: [string, [Tab, string, string][]][] = [
+    [
+      "Hồ sơ",
+      [
+        ["mine", "Hồ sơ của tôi", "🗂️"],
+        ["verify", "Kiểm tra chữ ký", "🔎"],
+      ],
+    ],
   ];
-  const tabs = isAdmin ? adminTabs : custTabs;
+  const groups = isAdmin ? adminGroups : custGroups;
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="mark">🖊️</span> KSP PDF Signer
-        </div>
         <button
           className="hamburger"
           aria-label="Menu"
@@ -137,39 +194,26 @@ export function App() {
         >
           ☰
         </button>
-        <div className={"topbar-menu" + (menuOpen ? " open" : "")}>
-          <nav>
-            {tabs.map(([t, label]) => (
-              <button
-                key={t}
-                className={tab === t ? "active" : ""}
-                onClick={() => {
-                  navigate(t);
-                  setMenuOpen(false);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-          <div className="topbar-user">
-            <span className="who">
-              {me.username}
-              {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
-            </span>
-            <button className="link-btn" onClick={changePassword}>
-              Đổi mật khẩu
-            </button>
-            <button
-              className="logout"
-              onClick={async () => {
-                await api.logout();
-                location.reload();
-              }}
-            >
-              Đăng xuất
-            </button>
-          </div>
+        <div className="brand">
+          <span className="mark">🖊️</span> KSP PDF Signer
+        </div>
+        <div className="topbar-user">
+          <span className="who">
+            {me.username}
+            {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
+          </span>
+          <button className="link-btn" onClick={changePassword}>
+            Đổi mật khẩu
+          </button>
+          <button
+            className="logout"
+            onClick={async () => {
+              await api.logout();
+              location.reload();
+            }}
+          >
+            Đăng xuất
+          </button>
         </div>
       </header>
 
@@ -180,7 +224,29 @@ export function App() {
         </div>
       )}
 
-      <main>
+      <div className="body-row">
+        {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+        <aside className={"sidebar" + (menuOpen ? " open" : "")}>
+          {groups.map(([title, items]) => (
+            <div className="nav-group" key={title}>
+              <div className="nav-title">{title}</div>
+              {items.map(([t, label, icon]) => (
+                <button
+                  key={t}
+                  className={tab === t ? "active" : ""}
+                  onClick={() => {
+                    navigate(t);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span className="nav-ic">{icon}</span> {label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
+
+        <main>
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}
@@ -196,6 +262,21 @@ export function App() {
             }}
           />
         )}
+        {tab === "quote" && isAdmin && (
+          <CreateQuote
+            onGenerated={(docId, filename, docType, customerId, orderId) => {
+              setPreSign({ docId, filename, docType, customerId, orderId });
+              navigate("sign");
+            }}
+          />
+        )}
+        {tab === "tonkho" && isAdmin && <Inventory onOpenPurchase={goPurchase} />}
+        {tab === "nhaphang" && isAdmin && (
+          <PurchaseImport openId={openPurchaseId} onConsumed={() => setOpenPurchaseId(null)} />
+        )}
+        {tab === "banra" && isAdmin && <SalesInvoice />}
+        {tab === "xuatkho" && isAdmin && <StockIssue />}
+        {tab === "sanxuat" && isAdmin && <Production />}
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}
@@ -204,7 +285,8 @@ export function App() {
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
         )}
-      </main>
+        </main>
+      </div>
 
       {!isAdmin && (
         <footer className="thanks-bar">

@@ -1,0 +1,676 @@
+"""Engine so kho: replay gia binh quan gia quyen + chan am kho.
+
+Nguyen tac: moi lan post/void chung tu -> replay() lai toan bo so cua tung cap
+(mat hang, kho) bi anh huong, theo thu tu (ngay, uu tien loai, id):
+- Dong NHAP giu nguyen don_gia/gia_tri da ghi (tu chung tu goc).
+- Dong XUAT duoc TINH LAI don_gia = gia binh quan tai thoi diem do.
+- Bat ky thoi diem nao ton < 0 -> tra ve Violation; caller rollback + bao 400.
+Mot thuat toan = tinh gia von + chan am kho + xu ly chung tu nhap lui ngay.
+"""
+from __future__ import annotations
+
+import re
+import unicodedata
+from dataclasses import dataclass, field
+
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .db import (
+    InvIssue,
+    InvIssueLine,
+    InvItem,
+    InvMove,
+    InvProduction,
+    InvProductionLine,
+    InvPurchase,
+    InvRecipe,
+    InvWarehouse,
+)
+
+EPS = 1e-6
+
+# Cung ngay: dau_ky -> nhap -> dieu chinh -> xuat ("nhap truoc, xuat sau trong ngay")
+LOAI_PRIORITY = {
+    "dau_ky": 0,
+    "nhap": 1,
+    "sx_in": 1,
+    "dieu_chinh": 2,
+    "sx_out": 3,
+    "xuat": 3,
+}
+IN_TYPES = {"dau_ky", "nhap", "sx_in"}
+OUT_TYPES = {"xuat", "sx_out"}
+
+LOAI_LABELS = {
+    "dau_ky": "Tồn đầu kỳ",
+    "nhap": "Nhập mua",
+    "xuat": "Xuất bán",
+    "sx_in": "Nhập thành phẩm",
+    "sx_out": "Xuất sản xuất",
+    "dieu_chinh": "Điều chỉnh",
+}
+
+
+@dataclass
+class Violation:
+    """Mot thoi diem ton kho bi am."""
+
+    item_id: int
+    warehouse_id: int
+    ngay: str
+    thieu: float  # so luong bi am (duong)
+    loai: str = ""
+    ma_hang: str = ""
+    ten: str = ""
+
+
+class NegativeStockError(Exception):
+    """Ghi so se lam am kho — caller phai rollback."""
+
+    def __init__(self, violations: list[Violation]):
+        self.violations = violations
+        super().__init__("Âm kho")
+
+    def detail(self) -> dict:
+        return {
+            "message": "Không thể ghi sổ: tồn kho bị âm (bán thứ chưa có đầu vào)",
+            "violations": [
+                {
+                    "item_id": v.item_id,
+                    "ma_hang": v.ma_hang,
+                    "ten": v.ten,
+                    "warehouse_id": v.warehouse_id,
+                    "ngay": v.ngay,
+                    "thieu": round(v.thieu, 4),
+                }
+                for v in self.violations
+            ],
+        }
+
+
+def sort_key(m: InvMove) -> tuple:
+    return (m.ngay, LOAI_PRIORITY.get(m.loai, 2), m.id or 0)
+
+
+def _is_inbound(m: InvMove) -> bool:
+    return m.loai in IN_TYPES or (m.loai == "dieu_chinh" and m.so_luong >= 0)
+
+
+def _ordered_moves(db: Session, item_id: int, warehouse_id: int) -> list[InvMove]:
+    moves = list(
+        db.scalars(
+            select(InvMove).where(
+                InvMove.item_id == item_id, InvMove.warehouse_id == warehouse_id
+            )
+        )
+    )
+    moves.sort(key=sort_key)
+    return moves
+
+
+def replay(db: Session, item_id: int, warehouse_id: int) -> list[Violation]:
+    """Tinh lai gia xuat binh quan + kiem tra am kho cho 1 cap (mat hang, kho).
+
+    Ghi de don_gia/gia_tri cac dong xuat ngay tren session (chua commit).
+    """
+    qty = 0.0
+    value = 0.0
+    violations: list[Violation] = []
+    for m in _ordered_moves(db, item_id, warehouse_id):
+        if _is_inbound(m):
+            q = abs(m.so_luong)
+            # Dong nhap: giu gia_tri da ghi tu chung tu (chinh xac theo hoa don);
+            # neu chua co thi tinh tu don_gia.
+            if not m.gia_tri:
+                m.gia_tri = round(q * m.don_gia)
+            qty += q
+            value += m.gia_tri
+        else:
+            q = abs(m.so_luong)
+            avg = (value / qty) if qty > EPS else 0.0
+            m.don_gia = avg
+            m.gia_tri = round(q * avg)
+            qty -= q
+            value -= m.gia_tri
+            if -EPS <= qty <= EPS:
+                value = 0.0  # xa so du lam tron khi het hang
+        if qty < -EPS:
+            violations.append(
+                Violation(
+                    item_id=item_id,
+                    warehouse_id=warehouse_id,
+                    ngay=m.ngay,
+                    thieu=-qty,
+                    loai=m.loai,
+                )
+            )
+    return violations
+
+
+def validate_pairs(db: Session, pairs: set[tuple[int, int]]) -> None:
+    """Replay cac cap bi anh huong; neu am kho -> raise NegativeStockError.
+
+    Caller phai bat exception va db.rollback().
+    """
+    violations: list[Violation] = []
+    for item_id, wh_id in sorted(pairs):
+        violations.extend(replay(db, item_id, wh_id))
+    if violations:
+        items = {
+            i.id: i
+            for i in db.scalars(
+                select(InvItem).where(InvItem.id.in_({v.item_id for v in violations}))
+            )
+        }
+        for v in violations:
+            it = items.get(v.item_id)
+            if it:
+                v.ma_hang = it.ma_hang
+                v.ten = it.ten
+        raise NegativeStockError(violations)
+
+
+@dataclass
+class StockRow:
+    item_id: int
+    warehouse_id: int
+    ton: float = 0.0
+    gia_tri: float = 0.0
+    kha_dung: float | None = None
+    nhap_cuoi: str = ""  # ngay nhap (dau_ky/nhap/sx_in) gan nhat
+
+    @property
+    def don_gia_bq(self) -> float:
+        return self.gia_tri / self.ton if self.ton > EPS else 0.0
+
+
+def _all_moves_grouped(
+    db: Session, warehouse_id: int | None = None
+) -> dict[tuple[int, int], list[InvMove]]:
+    q = select(InvMove)
+    if warehouse_id:
+        q = q.where(InvMove.warehouse_id == warehouse_id)
+    grouped: dict[tuple[int, int], list[InvMove]] = {}
+    for m in db.scalars(q):
+        grouped.setdefault((m.item_id, m.warehouse_id), []).append(m)
+    for moves in grouped.values():
+        moves.sort(key=sort_key)
+    return grouped
+
+
+def stock_snapshot(
+    db: Session, warehouse_id: int | None = None, as_of: str | None = None
+) -> list[StockRow]:
+    """Ton + gia tri hien tai (hoac tai ngay as_of) cua tung (mat hang, kho)."""
+    rows: list[StockRow] = []
+    for (item_id, wh_id), moves in _all_moves_grouped(db, warehouse_id).items():
+        qty = 0.0
+        value = 0.0
+        nhap_cuoi = ""
+        for m in moves:
+            if as_of and m.ngay > as_of:
+                break
+            if _is_inbound(m):
+                qty += abs(m.so_luong)
+                value += m.gia_tri
+                if m.ngay >= nhap_cuoi:  # moves sap theo ngay -> giu ngay nhap moi nhat
+                    nhap_cuoi = m.ngay
+            else:
+                qty -= abs(m.so_luong)
+                value -= m.gia_tri
+                if -EPS <= qty <= EPS:
+                    value = 0.0
+        rows.append(StockRow(item_id=item_id, warehouse_id=wh_id, ton=qty, gia_tri=value, nhap_cuoi=nhap_cuoi))
+    return rows
+
+
+def availability(
+    db: Session, ngay: str, warehouse_id: int | None = None
+) -> list[StockRow]:
+    """Kha dung tai ngay D cho tung (mat hang, kho).
+
+    kha_dung = min(ton tai D, min ton tai moi thoi diem SAU D) — vi xuat them
+    tai D se tru vao tat ca so du ve sau (co the da co phieu xuat tuong lai).
+    """
+    rows: list[StockRow] = []
+    for (item_id, wh_id), moves in _all_moves_grouped(db, warehouse_id).items():
+        bal = 0.0
+        bal_at_d = 0.0
+        min_future: float | None = None
+        val_at_d = 0.0
+        value = 0.0
+        for m in moves:
+            if _is_inbound(m):
+                bal += abs(m.so_luong)
+                value += m.gia_tri
+            else:
+                bal -= abs(m.so_luong)
+                value -= m.gia_tri
+                if -EPS <= bal <= EPS:
+                    value = 0.0
+            if m.ngay <= ngay:
+                bal_at_d = bal
+                val_at_d = value
+            else:
+                min_future = bal if min_future is None else min(min_future, bal)
+        kha_dung = bal_at_d if min_future is None else min(bal_at_d, min_future)
+        rows.append(
+            StockRow(
+                item_id=item_id,
+                warehouse_id=wh_id,
+                ton=bal_at_d,
+                gia_tri=val_at_d,
+                kha_dung=max(0.0, kha_dung),
+            )
+        )
+    return rows
+
+
+def stock_card(
+    db: Session,
+    item_id: int,
+    warehouse_id: int,
+    tu: str | None = None,
+    den: str | None = None,
+) -> list[dict]:
+    """The kho: tung dong so + so du luy ke (loc theo khoang ngay sau khi tinh)."""
+    qty = 0.0
+    value = 0.0
+    out: list[dict] = []
+    for m in _ordered_moves(db, item_id, warehouse_id):
+        inbound = _is_inbound(m)
+        q = abs(m.so_luong)
+        if inbound:
+            qty += q
+            value += m.gia_tri
+        else:
+            qty -= q
+            value -= m.gia_tri
+            if -EPS <= qty <= EPS:
+                value = 0.0
+        if tu and m.ngay < tu:
+            continue
+        if den and m.ngay > den:
+            continue
+        out.append(
+            {
+                "id": m.id,
+                "ngay": m.ngay,
+                "loai": m.loai,
+                "loai_label": LOAI_LABELS.get(m.loai, m.loai),
+                "nhap": q if inbound else 0.0,
+                "xuat": 0.0 if inbound else q,
+                "don_gia": m.don_gia,
+                "gia_tri": m.gia_tri if inbound else -m.gia_tri,
+                "ton": qty,
+                "ton_gia_tri": value,
+                "ref_type": m.ref_type,
+                "ref_id": m.ref_id,
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Chuan hoa ten de match hoa don -> mat hang
+# ---------------------------------------------------------------------------
+def normalize_name(s: str) -> str:
+    """Chu thuong, bo dau tieng Viet, gom khoang trang: de so khop ten hang."""
+    s = (s or "").strip().lower().replace("đ", "d")
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s)
+
+
+def normalize_so_hd(s: str) -> str:
+    """Bo so 0 dau (00008407 -> 8407): de so sanh so HD giua cac nguon (XML/PDF/bang ke)."""
+    s = (s or "").strip()
+    if not s:
+        return ""
+    stripped = s.lstrip("0")
+    return stripped or "0"
+
+
+def get_warehouse_map(db: Session) -> dict[str, InvWarehouse]:
+    return {w.code: w for w in db.scalars(select(InvWarehouse))}
+
+
+# ---------------------------------------------------------------------------
+# Ghi so / huy ghi so chung tu (post/unpost)
+# ---------------------------------------------------------------------------
+class PostError(Exception):
+    """Chung tu chua du dieu kien ghi so (loi nghiep vu, tra 400)."""
+
+
+_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _check_ngay(ngay: str) -> None:
+    if not _ISO_RE.match(ngay or ""):
+        raise PostError("Ngày chứng từ không hợp lệ (cần YYYY-MM-DD)")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _delete_ref_moves(db: Session, ref_type: str, ref_id: int) -> set[tuple[int, int]]:
+    pairs: set[tuple[int, int]] = set()
+    for m in db.scalars(
+        select(InvMove).where(InvMove.ref_type == ref_type, InvMove.ref_id == ref_id)
+    ):
+        pairs.add((m.item_id, m.warehouse_id))
+        db.delete(m)
+    return pairs
+
+
+def post_purchase(db: Session, inv: InvPurchase) -> None:
+    """Ghi so hoa don mua vao.
+
+    hang_hoa: moi dong -> 1 move 'nhap' (vao kho).
+    dich_vu: chi phi/dich vu -> chi danh dau da ghi so, KHONG nhap kho.
+    """
+    if inv.status != "draft":
+        raise PostError(f"Hóa đơn đang ở trạng thái '{inv.status}', chỉ ghi sổ được bản nháp")
+    _check_ngay(inv.ngay)
+    # Chan ghi so trung (ca hai loai): cung MST ben ban + so HD (bo so 0 dau)
+    so_hd_norm = normalize_so_hd(inv.so_hd)
+    if inv.mst_ban and so_hd_norm:
+        for other in db.scalars(
+            select(InvPurchase).where(
+                InvPurchase.status == "posted",
+                InvPurchase.mst_ban == inv.mst_ban,
+                InvPurchase.id != inv.id,
+            )
+        ):
+            if normalize_so_hd(other.so_hd) == so_hd_norm:
+                raise PostError(
+                    f"Đã có hóa đơn #{other.id} ghi sổ với cùng MST bên bán + số HĐ "
+                    f"{inv.so_hd} — coi chừng ghi sổ trùng"
+                )
+
+    if inv.loai == "dich_vu":
+        # Hoa don dich vu/chi phi: chi luu vet + doi chieu bang ke, khong tao move
+        inv.status = "posted"
+        inv.posted_at = _utcnow()
+        db.commit()
+        return
+
+    if not inv.lines:
+        raise PostError("Hóa đơn chưa có dòng hàng nào")
+    pairs: set[tuple[int, int]] = set()
+    for ln in inv.lines:
+        if not ln.item_id or not ln.warehouse_id:
+            raise PostError(
+                f"Dòng {ln.stt} ({ln.ten_raw[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
+            )
+        if ln.so_luong <= 0:
+            raise PostError(f"Dòng {ln.stt} ({ln.ten_raw[:40]}): số lượng phải > 0")
+        # Thanh tien = so luong * don gia (tinh lai, khong tin so parse san)
+        gia_tri = round(ln.so_luong * ln.don_gia)
+        db.add(InvMove(
+            item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id,
+            ngay=inv.ngay,
+            loai="nhap",
+            so_luong=ln.so_luong,
+            don_gia=ln.don_gia or (gia_tri / ln.so_luong),
+            gia_tri=gia_tri,
+            ref_type="purchase",
+            ref_id=inv.id,
+            ref_line_id=ln.id,
+        ))
+        pairs.add((ln.item_id, ln.warehouse_id))
+    db.flush()
+    validate_pairs(db, pairs)
+    inv.status = "posted"
+    inv.posted_at = _utcnow()
+    db.commit()
+
+
+def unpost_purchase(db: Session, inv: InvPurchase) -> None:
+    """Huy ghi so (ve nhap): xoa moves; chan neu lam am kho phieu xuat sau do."""
+    if inv.status != "posted":
+        raise PostError("Hóa đơn chưa ghi sổ")
+    pairs = _delete_ref_moves(db, "purchase", inv.id)
+    db.flush()
+    validate_pairs(db, pairs)
+    inv.status = "draft"
+    inv.posted_at = None
+    db.commit()
+
+
+def post_issue(db: Session, iss: InvIssue) -> None:
+    """Ghi so phieu xuat: moi dong -> 1 move 'xuat' (gia von do replay tinh)."""
+    if iss.status != "draft":
+        raise PostError(f"Phiếu đang ở trạng thái '{iss.status}'")
+    _check_ngay(iss.ngay)
+    if not iss.lines:
+        raise PostError("Phiếu xuất chưa có dòng hàng nào")
+    pairs: set[tuple[int, int]] = set()
+    for ln in iss.lines:
+        if ln.so_luong <= 0:
+            raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
+        db.add(InvMove(
+            item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id,
+            ngay=iss.ngay,
+            loai="xuat",
+            so_luong=ln.so_luong,
+            ref_type="issue",
+            ref_id=iss.id,
+            ref_line_id=ln.id,
+        ))
+        pairs.add((ln.item_id, ln.warehouse_id))
+    db.flush()
+    validate_pairs(db, pairs)
+    iss.status = "posted"
+    iss.posted_at = _utcnow()
+    db.commit()
+
+
+def unpost_issue(db: Session, iss: InvIssue) -> None:
+    if iss.status != "posted":
+        raise PostError("Phiếu chưa ghi sổ")
+    pairs = _delete_ref_moves(db, "issue", iss.id)
+    db.flush()
+    validate_pairs(db, pairs)
+    iss.status = "draft"
+    iss.posted_at = None
+    db.commit()
+
+
+def post_production(db: Session, prod: InvProduction) -> None:
+    """Ghi so lenh san xuat: xuat tieu hao truoc -> gia thanh -> nhap thanh pham.
+
+    Gia nhap TP = tong gia tri tieu hao / tong SL dau ra (phan bo dong cuoi nhan
+    phan du lam tron de tong khop tuyet doi).
+    """
+    if prod.status != "draft":
+        raise PostError(f"Lệnh đang ở trạng thái '{prod.status}'")
+    _check_ngay(prod.ngay)
+    consumes = [ln for ln in prod.lines if ln.chieu == "vao"]
+    outputs = [ln for ln in prod.lines if ln.chieu == "ra"]
+    if not consumes or not outputs:
+        raise PostError("Lệnh sản xuất cần ít nhất 1 dòng tiêu hao và 1 dòng thành phẩm")
+    out_ids = {ln.item_id for ln in outputs}
+    if out_ids & {ln.item_id for ln in consumes}:
+        raise PostError("Một mặt hàng không thể vừa là nguyên liệu vừa là thành phẩm")
+    for ln in prod.lines:
+        if ln.so_luong <= 0:
+            raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
+
+    # 1) Xuat tieu hao (sx_out) — replay tinh gia von, co the bao am kho
+    pairs: set[tuple[int, int]] = set()
+    out_moves: list[InvMove] = []
+    for ln in consumes:
+        m = InvMove(
+            item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id,
+            ngay=prod.ngay,
+            loai="sx_out",
+            so_luong=ln.so_luong,
+            ref_type="production",
+            ref_id=prod.id,
+            ref_line_id=ln.id,
+        )
+        db.add(m)
+        out_moves.append(m)
+        pairs.add((ln.item_id, ln.warehouse_id))
+    db.flush()
+    validate_pairs(db, pairs)
+
+    # 2) Gia thanh = tong gia tri tieu hao (replay vua ghi lai gia_tri)
+    total_cost = sum(m.gia_tri for m in out_moves)
+    total_out_qty = sum(ln.so_luong for ln in outputs)
+    don_gia_tp = total_cost / total_out_qty if total_out_qty else 0.0
+
+    in_pairs: set[tuple[int, int]] = set()
+    allocated = 0.0
+    for i, ln in enumerate(outputs):
+        if i < len(outputs) - 1:
+            gia_tri = round(ln.so_luong * don_gia_tp)
+            allocated += gia_tri
+        else:
+            gia_tri = round(total_cost - allocated)  # dong cuoi nhan phan du
+        db.add(InvMove(
+            item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id,
+            ngay=prod.ngay,
+            loai="sx_in",
+            so_luong=ln.so_luong,
+            don_gia=don_gia_tp,
+            gia_tri=gia_tri,
+            ref_type="production",
+            ref_id=prod.id,
+            ref_line_id=ln.id,
+        ))
+        in_pairs.add((ln.item_id, ln.warehouse_id))
+    db.flush()
+    validate_pairs(db, pairs | in_pairs)
+    prod.status = "posted"
+    prod.posted_at = _utcnow()
+    db.commit()
+
+
+def unpost_production(db: Session, prod: InvProduction) -> None:
+    if prod.status != "posted":
+        raise PostError("Lệnh chưa ghi sổ")
+    pairs = _delete_ref_moves(db, "production", prod.id)
+    db.flush()
+    validate_pairs(db, pairs)
+    prod.status = "draft"
+    prod.posted_at = None
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# GD2: Sinh phieu xuat + lenh san xuat NHAP (draft) tu hoa don BAN RA
+# ---------------------------------------------------------------------------
+def _fmt_qty(x: float) -> str:
+    return f"{round(x, 4):g}"
+
+
+def generate_from_sale(db: Session, sale) -> dict:
+    """Sinh phieu xuat kho + lenh san xuat (DRAFT) tu 1 HD ban da duyet.
+
+    An toan: KHONG post (khong tao move). User duyet & post tay o tab Xuat kho /
+    San xuat — luc do post_issue/post_production se CHAN AM KHO. O day chi de xuat.
+
+    - Dong co ton du tai ngay HD -> gom vao 1 phieu xuat.
+    - Dong iNut/thanh pham thieu ton + co cong thuc (InvRecipe) -> tao lenh SX
+      (scale theo thieu hut), gan truy vet (sale_id/sale_line_id), roi xuat luon.
+    - Kiem thoi gian: NVL phai kha dung tai ngay HD, khong thi CANH BAO do.
+    - Thieu cong thuc -> canh bao (tao cong thuc o tab San xuat truoc).
+    """
+    if sale.is_dieu_chinh:
+        raise PostError("Hóa đơn điều chỉnh — không sinh chứng từ kho")
+    if not sale.ngay:
+        raise PostError("Hóa đơn chưa có ngày — không thể sinh chứng từ (rủi ro thuế)")
+
+    avail = {
+        (r.item_id, r.warehouse_id): (r.kha_dung or 0.0)
+        for r in availability(db, sale.ngay)
+    }
+    created_issues: list[int] = []
+    created_prods: list[int] = []
+    warnings: list[str] = []
+    issue_lines = []  # (item_id, warehouse_id, so_luong, don_gia_ban)
+
+    for ln in sale.lines:
+        if ln.fulfil_kind == "doanh_thu" or not ln.item_id or ln.so_luong <= 0:
+            continue
+        if not ln.warehouse_id:
+            warnings.append(f"Dòng '{ln.ten_raw[:40]}': chưa chọn kho — bỏ qua")
+            continue
+        kd = avail.get((ln.item_id, ln.warehouse_id), 0.0)
+        if kd >= ln.so_luong - EPS:
+            issue_lines.append((ln.item_id, ln.warehouse_id, ln.so_luong, ln.don_gia_ban))
+            continue
+
+        # Thieu ton -> can san xuat
+        shortfall = round(ln.so_luong - max(0.0, kd), 4)
+        recipe = db.scalars(
+            select(InvRecipe)
+            .where(InvRecipe.output_item_id == ln.item_id)
+            .order_by(InvRecipe.id.desc())
+        ).first()
+        if recipe is None:
+            warnings.append(
+                f"Dòng '{ln.ten_raw[:40]}': thiếu {_fmt_qty(shortfall)} nhưng CHƯA có công thức "
+                f"sản xuất — tạo công thức ở tab Sản xuất rồi sinh lại"
+            )
+            continue
+
+        scale = shortfall / (recipe.output_qty or 1.0)
+        prod = InvProduction(
+            ngay=sale.ngay, status="draft", sale_id=sale.id, sale_line_id=ln.id,
+            note=f"SX cho HĐ bán {sale.ky_hieu} {sale.so_hd} · {ln.ten_raw[:50]}",
+        )
+        db.add(prod)
+        db.add(InvProductionLine(
+            production=prod, chieu="ra", item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id, so_luong=shortfall,
+        ))
+        for rl in recipe.lines:
+            need = round(rl.so_luong * scale, 4)
+            db.add(InvProductionLine(
+                production=prod, chieu="vao", item_id=rl.item_id,
+                warehouse_id=rl.warehouse_id, so_luong=need,
+            ))
+            nvl_kd = avail.get((rl.item_id, rl.warehouse_id), 0.0)
+            if nvl_kd < need - EPS:
+                it = db.get(InvItem, rl.item_id)
+                warnings.append(
+                    f"⚠️ NVL '{(it.ten[:40] if it else rl.item_id)}' thiếu tại ngày HĐ "
+                    f"(cần {_fmt_qty(need)}, khả dụng {_fmt_qty(nvl_kd)}) — phải NHẬP trước "
+                    f"ngày {sale.ngay} hoặc thay hàng tương tự (ghi lý do) trước khi ghi sổ"
+                )
+        db.flush()
+        created_prods.append(prod.id)
+        # SX xong co thanh pham -> xuat luon (draft)
+        issue_lines.append((ln.item_id, ln.warehouse_id, ln.so_luong, ln.don_gia_ban))
+
+    if issue_lines:
+        iss = InvIssue(
+            ngay=sale.ngay, customer_id=sale.customer_id, status="draft",
+            note=f"Xuất bán theo HĐ {sale.ky_hieu} {sale.so_hd}",
+        )
+        db.add(iss)
+        for item_id, wh_id, sl, dg in issue_lines:
+            db.add(InvIssueLine(
+                issue=iss, item_id=item_id, warehouse_id=wh_id,
+                so_luong=sl, don_gia_ban=dg,
+            ))
+        db.flush()
+        created_issues.append(iss.id)
+
+    db.commit()
+    return {
+        "issues": created_issues,
+        "productions": created_prods,
+        "warnings": warnings,
+    }

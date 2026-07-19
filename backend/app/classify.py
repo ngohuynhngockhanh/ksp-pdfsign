@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import pypdfium2 as pdfium
 
-# Thu tu uu tien: BBBG truoc hoa_don (BBBG khong chua 'HOA DON', nguoc lai co the).
+# Thu tu uu tien: BBBG truoc hoa_don (BBBG khong chua 'HOA DON', nguoc lai co the);
+# de_nghi_tt truoc hop_dong (de nghi TT co dong 'Tong gia tri hop dong').
 KEYWORDS: list[tuple[str, list[str]]] = [
     ("bbbg", ["BIÊN BẢN BÀN GIAO", "BIEN BAN BAN GIAO"]),
+    ("bbnt", ["BIÊN BẢN NGHIỆM THU", "BIEN BAN NGHIEM THU"]),
+    ("de_nghi_tt", ["ĐỀ NGHỊ THANH TOÁN", "DE NGHI THANH TOAN"]),
     ("hop_dong", ["HỢP ĐỒNG", "HOP DONG"]),
     ("bao_gia", ["BÁO GIÁ", "BAO GIA", "BẢNG GIÁ"]),
     ("hoa_don", ["HÓA ĐƠN", "HOA DON", "GIÁ TRỊ GIA TĂNG"]),
@@ -17,6 +20,8 @@ KEYWORDS: list[tuple[str, list[str]]] = [
 
 LABELS = {
     "bbbg": "Biên bản bàn giao",
+    "bbnt": "Biên bản nghiệm thu",
+    "de_nghi_tt": "Đề nghị thanh toán",
     "hop_dong": "Hợp đồng",
     "bao_gia": "Báo giá",
     "hoa_don": "Hóa đơn",

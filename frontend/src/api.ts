@@ -42,13 +42,28 @@ export interface DocRecord {
   nas_synced: boolean;
   doc_type: string;
   signed_upload_name: string;
+  order_id: number | null;
+  order_code: string;
+}
+
+export interface OrderRec {
+  id: number;
+  code: string;
+  name: string;
+  customer_id: number | null;
+  customer_name: string | null;
+  note: string;
+  created_at: string;
+  document_count: number;
 }
 
 export const DOC_TYPES: Record<string, string> = {
   "": "Chưa phân loại",
   bbbg: "Biên bản bàn giao",
+  bbnt: "Biên bản nghiệm thu",
   hop_dong: "Hợp đồng",
   bao_gia: "Báo giá",
+  de_nghi_tt: "Đề nghị thanh toán",
   hoa_don: "Hóa đơn",
   khac: "Khác",
 };
@@ -134,6 +149,7 @@ export const api = {
     filename?: string;
     customer_id?: number | null;
     doc_type?: string;
+    order_id?: number | null;
   }) {
     return req<{ doc_id: string; signed: boolean; download_url: string }>(
       "/api/sign",
@@ -195,6 +211,7 @@ export const api = {
     opts: {
       customerId?: number;
       unassigned?: boolean;
+      orderId?: number;
       search?: string;
       page?: number;
       perPage?: number;
@@ -203,6 +220,7 @@ export const api = {
     const p = new URLSearchParams();
     if (opts.unassigned) p.set("unassigned", "true");
     if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    if (opts.orderId != null) p.set("order_id", String(opts.orderId));
     if (opts.search) p.set("search", opts.search);
     p.set("page", String(opts.page ?? 1));
     p.set("per_page", String(opts.perPage ?? 20));
@@ -218,6 +236,13 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ customer_id: customerId }),
+    });
+  },
+  async renameDocument(docPk: number, filename: string) {
+    return req<DocRecord>(`/api/documents/${docPk}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename }),
     });
   },
   async deleteDocument(docPk: number) {
@@ -328,12 +353,21 @@ export const api = {
     fd.append("file", file);
     return req<{
       buyer: { name: string; mst: string; address: string; email?: string; phone?: string };
-      items: { stt: number; ten: string; dvt: string; so_luong: string }[];
+      items: {
+        stt: number;
+        ten: string;
+        dvt: string;
+        so_luong: string;
+        don_gia?: string;
+        thanh_tien?: string;
+        thue_suat?: string;
+      }[];
       ngay: { day: number; month: number; year: number } | null;
       ky_hieu: string;
       raw_text: string;
       source?: string;
       suggested_customer: { id: number; name: string } | null;
+      products_learned?: number;
     }>("/api/invoice/parse", { method: "POST", body: fd });
   },
   async bbbgTemplates() {
@@ -341,6 +375,112 @@ export const api = {
   },
   async bbbgGenerate(body: unknown) {
     return req<{ doc_id: string; filename: string; customer_id: number | null }>("/api/bbbg/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  // --- Báo giá / Đề nghị thanh toán ---
+  async parseInvoiceDoc(docPk: number) {
+    return req<{
+      buyer: { name: string; mst: string; address: string; email?: string; phone?: string };
+      items: {
+        stt: number;
+        ten: string;
+        dvt: string;
+        so_luong: string;
+        don_gia?: string;
+        thanh_tien?: string;
+      }[];
+      ngay: { day: number; month: number; year: number } | null;
+      suggested_customer: { id: number; name: string } | null;
+    }>(`/api/invoice/parse-doc/${docPk}`, { method: "POST" });
+  },
+  async quoteTemplates() {
+    return req<{ templates: { key: string; label: string }[] }>("/api/quote/templates");
+  },
+  // --- Đơn hàng (gom bộ hồ sơ) ---
+  async listOrders(opts: { customerId?: number; search?: string } = {}) {
+    const p = new URLSearchParams();
+    if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    if (opts.search) p.set("search", opts.search);
+    return req<OrderRec[]>(`/api/orders?${p.toString()}`);
+  },
+  async createOrder(body: { name: string; customer_id?: number | null; note?: string }) {
+    return req<OrderRec>("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteOrder(id: number) {
+    return req(`/api/orders/${id}`, { method: "DELETE" });
+  },
+  async setDocumentOrder(docPk: number, orderId: number | null) {
+    return req<DocRecord>(`/api/documents/${docPk}/order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+  },
+
+  async listProducts(search = "") {
+    const p = new URLSearchParams();
+    if (search) p.set("search", search);
+    return req<
+      { id: number; ten: string; dvt: string; don_gia: number; thue_suat: number; use_count: number }[]
+    >(`/api/products?${p.toString()}`);
+  },
+  async deleteProduct(id: number) {
+    return req(`/api/products/${id}`, { method: "DELETE" });
+  },
+  async quotePreview(body: unknown): Promise<Blob> {
+    const res = await fetch("/api/quote/preview", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let msg = `Lỗi ${res.status}`;
+      try {
+        msg = (await res.json()).detail || msg;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+  async quoteGenerate(body: unknown) {
+    return req<{
+      doc_id: string;
+      filename: string;
+      customer_id: number | null;
+      doc_type: string;
+      totals: {
+        tong_truoc_thue: number;
+        tong_thue: number;
+        tong_thanh_toan: number;
+        con_lai: number;
+      };
+    }>("/api/quote/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async aiStatus() {
+    return req<{ enabled: boolean; model: string }>("/api/ai/status");
+  },
+  async aiQuoteNarrative(body: {
+    items: { ten: string; dvt: string; so_luong: number; don_gia: number; thue_suat: number }[];
+    khach: string;
+    tong: number;
+    note: string;
+    loai: string;
+  }) {
+    return req<{ text: string }>("/api/ai/quote-narrative", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -366,9 +506,21 @@ export const api = {
   },
 
   // --- Nhật ký thao tác ---
-  async auditLog(opts: { search?: string; page?: number; perPage?: number } = {}) {
+  async auditLog(
+    opts: {
+      search?: string;
+      action?: string;
+      tsFrom?: string;
+      tsTo?: string;
+      page?: number;
+      perPage?: number;
+    } = {},
+  ) {
     const p = new URLSearchParams();
     if (opts.search) p.set("search", opts.search);
+    if (opts.action) p.set("action", opts.action);
+    if (opts.tsFrom) p.set("ts_from", opts.tsFrom);
+    if (opts.tsTo) p.set("ts_to", opts.tsTo);
     p.set("page", String(opts.page ?? 1));
     p.set("per_page", String(opts.perPage ?? 50));
     return req<{
@@ -388,4 +540,505 @@ export const api = {
       per_page: number;
     }>(`/api/audit?${p.toString()}`);
   },
+
+  // --- Ton kho ---
+  async invWarehouses() {
+    return req<InvWarehouse[]>("/api/inv/warehouses");
+  },
+  async invItems(q = "") {
+    return req<InvItem[]>(`/api/inv/items?q=${encodeURIComponent(q)}`);
+  },
+  async invCreateItem(body: { ma_hang: string; ten: string; dvt?: string }) {
+    return req<InvItem>("/api/inv/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invUpdateItem(
+    id: number,
+    body: { ten?: string; dvt?: string; note?: string; active?: boolean },
+  ) {
+    return req<InvItem>(`/api/inv/items/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invMergeItems(sourceId: number, targetId: number) {
+    return req<InvItem>(`/api/inv/items/merge?source_id=${sourceId}&target_id=${targetId}`, {
+      method: "POST",
+    });
+  },
+  async invStock(opts: { warehouseId?: number; date?: string; allItems?: boolean } = {}) {
+    const p = new URLSearchParams();
+    if (opts.warehouseId) p.set("warehouse_id", String(opts.warehouseId));
+    if (opts.date) p.set("date", opts.date);
+    if (opts.allItems) p.set("all_items", "true");
+    return req<StockReport>(`/api/inv/stock?${p.toString()}`);
+  },
+  async invAvailability(date: string, warehouseId?: number) {
+    const p = new URLSearchParams({ date });
+    if (warehouseId) p.set("warehouse_id", String(warehouseId));
+    return req<StockReport>(`/api/inv/availability?${p.toString()}`);
+  },
+  async invStockCard(itemId: number, warehouseId: number) {
+    return req<StockCardRow[]>(
+      `/api/inv/items/${itemId}/card?warehouse_id=${warehouseId}`,
+    );
+  },
+  async invOpeningImport(file: File, dryRun: boolean) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<OpeningImportResult>(
+      `/api/inv/opening/import?dry_run=${dryRun}`,
+      { method: "POST", body: fd },
+    );
+  },
+  async invPurchaseUpload(files: File[]) {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return req<{ results: { filename: string; ok: boolean; purchase_id?: number; error?: string; dup_of?: number | null }[] }>(
+      "/api/inv/purchase/upload",
+      { method: "POST", body: fd },
+    );
+  },
+  async invPurchaseImportUrl(url: string) {
+    return req<{ results: { filename: string; ok: boolean; purchase_id?: number; error?: string; dup_of?: number | null }[] }>(
+      "/api/inv/purchase/import-url",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      },
+    );
+  },
+  async invPurchaseBangKe(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<BangKeResult>("/api/inv/purchase/bang-ke", { method: "POST", body: fd });
+  },
+  async invSuggestItemCode() {
+    return req<{ code: string }>("/api/inv/items/suggest-code");
+  },
+  async invPurchases(statusF = "") {
+    return req<InvPurchase[]>(`/api/inv/purchase?status_f=${statusF}`);
+  },
+  async invPurchase(id: number) {
+    return req<InvPurchase>(`/api/inv/purchase/${id}`);
+  },
+  async invPurchaseSave(id: number, body: unknown) {
+    return req<InvPurchase>(`/api/inv/purchase/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invPurchaseCreate(body: unknown) {
+    return req<InvPurchase>("/api/inv/purchase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invPurchasePost(id: number) {
+    return req<InvPurchase>(`/api/inv/purchase/${id}/post`, { method: "POST" });
+  },
+  async invPurchaseVoid(id: number) {
+    return req<InvPurchase>(`/api/inv/purchase/${id}/void`, { method: "POST" });
+  },
+  async invPurchaseDelete(id: number) {
+    return req(`/api/inv/purchase/${id}`, { method: "DELETE" });
+  },
+  async invPurchaseBulkDelete(ids: number[]) {
+    return req<{ deleted: number; skipped: number }>("/api/inv/purchase/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+  },
+  async invPurchaseBulkPost(ids: number[]) {
+    return req<{ results: { id: number; ok: boolean; ten?: string; error?: string }[]; ok: number; total: number }>(
+      "/api/inv/purchase/bulk-post",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) },
+    );
+  },
+  // --- Hoa don BAN RA ---
+  async invSaleUpload(files: File[]) {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return req<{ results: { filename: string; ok: boolean; sale_id?: number; error?: string; dup_of?: number | null; is_dieu_chinh?: boolean }[] }>(
+      "/api/inv/sale/upload",
+      { method: "POST", body: fd },
+    );
+  },
+  async invSaleImportUrl(url: string) {
+    return req<{ results: { filename: string; ok: boolean; sale_id?: number; error?: string; dup_of?: number | null }[] }>(
+      "/api/inv/sale/import-url",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) },
+    );
+  },
+  async invSales(statusF = "") {
+    return req<InvSale[]>(`/api/inv/sale?status_f=${statusF}`);
+  },
+  async invSale(id: number) {
+    return req<InvSale>(`/api/inv/sale/${id}`);
+  },
+  async invSaleSave(id: number, body: unknown) {
+    return req<InvSale>(`/api/inv/sale/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invSaleDelete(id: number) {
+    return req(`/api/inv/sale/${id}`, { method: "DELETE" });
+  },
+  async invSaleBulkDelete(ids: number[]) {
+    return req<{ deleted: number; skipped: number }>("/api/inv/sale/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+  },
+  async invSaleGenerate(id: number) {
+    return req<{ issues: number[]; productions: number[]; warnings: string[] }>(
+      `/api/inv/sale/${id}/generate`,
+      { method: "POST" },
+    );
+  },
+  async invSaleSuggestBom(
+    sid: number,
+    lineId: number,
+    context = "",
+    existing: { ten: string; so_luong: number; dvt?: string }[] = [],
+  ) {
+    return req<{
+      components: {
+        ten: string;
+        so_luong: number;
+        ly_do: string;
+        match: { item_id: number; ma_hang: string; ten: string; dvt: string; score: number } | null;
+        dvt: string;
+        don_gia_bq: number;
+        thue_suat_est: number;
+        kha_dung_tai_ngay: number;
+      }[];
+      cost_est: number | null;
+      margin_est: number | null;
+      note: string;
+      totals: {
+        cost_pretax: number;
+        cost_with_tax: number;
+        unmatched_count: number;
+        suggested_price_low: number;
+        suggested_price_high: number;
+        actual_gia_ban: number;
+        actual_margin_pct: number | null;
+      };
+    }>(`/api/inv/sale/${sid}/suggest-bom/${lineId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context, existing }),
+    });
+  },
+  async invItemCost(itemId: number, ngay = "") {
+    return req<{ dvt: string; don_gia_bq: number; thue_suat_est: number; kha_dung_tai_ngay: number }>(
+      `/api/inv/items/${itemId}/cost?ngay=${encodeURIComponent(ngay)}`,
+    );
+  },
+  async invSaleAssemble(
+    sid: number,
+    lineId: number,
+    body: {
+      output_item_id?: number | null;
+      output_ma_hang?: string;
+      output_warehouse_id: number;
+      components: { item_id: number; warehouse_id: number; so_luong: number; note?: string }[];
+      save_recipe?: boolean;
+      recipe_name?: string;
+    },
+  ) {
+    return req<{ production_id: number; output_item_id: number; recipe_id: number | null; warnings: string[] }>(
+      `/api/inv/sale/${sid}/assemble/${lineId}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    );
+  },
+  async invIssues(statusF = "") {
+    return req<InvIssue[]>(`/api/inv/issues?status_f=${statusF}`);
+  },
+  async invIssueCreate(body: unknown) {
+    return req<InvIssue>("/api/inv/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invIssueSave(id: number, body: unknown) {
+    return req<InvIssue>(`/api/inv/issues/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invIssuePost(id: number) {
+    return req<InvIssue>(`/api/inv/issues/${id}/post`, { method: "POST" });
+  },
+  async invIssueVoid(id: number) {
+    return req<InvIssue>(`/api/inv/issues/${id}/void`, { method: "POST" });
+  },
+  async invIssueDelete(id: number) {
+    return req(`/api/inv/issues/${id}`, { method: "DELETE" });
+  },
+  async invProductions(statusF = "") {
+    return req<InvProduction[]>(`/api/inv/productions?status_f=${statusF}`);
+  },
+  async invProductionCreate(body: unknown) {
+    return req<InvProduction>("/api/inv/productions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invProductionPost(id: number) {
+    return req<InvProduction>(`/api/inv/productions/${id}/post`, { method: "POST" });
+  },
+  async invProductionVoid(id: number) {
+    return req<InvProduction>(`/api/inv/productions/${id}/void`, { method: "POST" });
+  },
+  async invProductionDelete(id: number) {
+    return req(`/api/inv/productions/${id}`, { method: "DELETE" });
+  },
+  async invRecipes() {
+    return req<InvRecipe[]>("/api/inv/recipes");
+  },
+  async invRecipeCreate(body: unknown) {
+    return req<InvRecipe>("/api/inv/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invRecipeDelete(id: number) {
+    return req(`/api/inv/recipes/${id}`, { method: "DELETE" });
+  },
 };
+
+// --- Kieu du lieu ton kho ---
+export interface InvWarehouse {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface InvItem {
+  id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  note: string;
+  active: boolean;
+  product_id: number | null;
+}
+
+export interface StockRow {
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  warehouse_id: number;
+  warehouse_code: string;
+  ton: number;
+  don_gia_bq: number;
+  gia_tri: number;
+  kha_dung: number | null;
+  nhap_cuoi: string;
+}
+
+export interface StockReport {
+  rows: StockRow[];
+  tong_gia_tri: number;
+  ngay: string | null;
+}
+
+export interface StockCardRow {
+  id: number;
+  ngay: string;
+  loai: string;
+  loai_label: string;
+  nhap: number;
+  xuat: number;
+  don_gia: number;
+  gia_tri: number;
+  ton: number;
+  ton_gia_tri: number;
+  ref_type: string;
+  ref_id: number | null;
+}
+
+export interface OpeningImportResult {
+  dry_run: boolean;
+  tong: { so_ma: number; so_dong: number; so_ma_ton: number; tong_sl: number; tong_gia_tri: number };
+  warnings: { code: string; msg: string }[];
+  preview: { ma_hang: string; ten: string; dvt: string; kho: string; so_luong: number; gia_tri: number; don_gia: number }[];
+  applied: { items_new: number; items_total: number; moves: number } | null;
+}
+
+export interface BangKeRow {
+  so_hd: string;
+  ngay: string;
+  ten_ban: string;
+  gia_tri: number;
+  purchase_id?: number;
+  purchase_gia_tri?: number;
+}
+
+export interface BangKeResult {
+  khop: BangKeRow[];
+  lech_tien: BangKeRow[];
+  thieu_file: BangKeRow[];
+  ngoai_bang_ke: BangKeRow[];
+}
+
+export interface InvPurchaseLine {
+  id: number;
+  stt: number;
+  ten_raw: string;
+  dvt: string;
+  so_luong: number;
+  don_gia: number;
+  thanh_tien: number;
+  thue_suat: number;
+  item_id: number | null;
+  item_ma_hang: string;
+  item_ten: string;
+  warehouse_id: number | null;
+  match_kind: string;
+  confidence: number;
+  warnings: { code: string; msg: string }[];
+  suggestions: { item_id: number; ma_hang: string; ten: string; dvt: string; score?: number; reason?: string }[];
+}
+
+export interface InvPurchase {
+  id: number;
+  so_hd: string;
+  ky_hieu: string;
+  mst_ban: string;
+  ten_ban: string;
+  ngay: string;
+  tong_truoc_thue: number;
+  tong_thue: number;
+  tong_tien: number;
+  source: string;
+  status: string;
+  loai: string; // hang_hoa | dich_vu
+  confidence: number;
+  warnings: { code: string; msg: string }[];
+  dup_of: number | null;
+  created_at: string;
+  doc_url: string;
+  lines: InvPurchaseLine[];
+}
+
+export interface InvSaleLine {
+  id: number;
+  stt: number;
+  ten_raw: string;
+  dvt: string;
+  so_luong: number;
+  don_gia_ban: number;
+  thanh_tien: number;
+  thue_suat: number;
+  thue_kct: boolean;
+  item_id: number | null;
+  item_ma_hang: string;
+  item_ten: string;
+  warehouse_id: number | null;
+  match_kind: string;
+  line_class: string; // inut | camera | phan_mem | other
+  fulfil_kind: string; // ton | sx | doanh_thu | none
+  confidence: number;
+  warnings: { code: string; msg: string }[];
+  suggestions: { item_id: number; ma_hang: string; ten: string; dvt: string; score?: number; reason?: string }[];
+  ton_hien_co: number;
+  kha_dung_tai_ngay: number;
+  de_xuat: string;
+  warn_am_kho: boolean;
+  lech_dong: boolean;
+}
+
+export interface InvSale {
+  id: number;
+  so_hd: string;
+  ky_hieu: string;
+  mst_mua: string;
+  ten_mua: string;
+  customer_id: number | null;
+  ngay: string;
+  tong_truoc_thue: number;
+  tong_thue: number;
+  tong_tien: number;
+  source: string;
+  status: string; // draft | reviewed | void
+  is_dieu_chinh: boolean;
+  dc_ref: string;
+  confidence: number;
+  warnings: { code: string; msg: string }[];
+  dup_of: number | null;
+  created_at: string;
+  doc_url: string;
+  lines: InvSaleLine[];
+}
+
+export interface InvIssueLine {
+  id: number;
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  warehouse_id: number;
+  so_luong: number;
+  don_gia_ban: number;
+  gia_von: number;
+}
+
+export interface InvIssue {
+  id: number;
+  ngay: string;
+  customer_id: number | null;
+  customer_name: string;
+  note: string;
+  status: string;
+  created_at: string;
+  lines: InvIssueLine[];
+}
+
+export interface InvProductionLine {
+  id: number;
+  chieu: string;
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  warehouse_id: number;
+  so_luong: number;
+  gia_tri: number;
+}
+
+export interface InvProduction {
+  id: number;
+  ngay: string;
+  note: string;
+  status: string;
+  created_at: string;
+  lines: InvProductionLine[];
+}
+
+export interface InvRecipe {
+  id: number;
+  name: string;
+  output_item_id: number;
+  output_ten: string;
+  output_qty: number;
+  lines: { item_id: number; ma_hang: string; ten: string; dvt: string; warehouse_id: number; so_luong: number }[];
+}

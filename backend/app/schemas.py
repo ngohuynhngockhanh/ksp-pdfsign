@@ -51,6 +51,7 @@ class SignRequest(BaseModel):
     filename: str = ""
     customer_id: int | None = None  # gan luon khi ky (tuy chon)
     doc_type: str = ""  # phan loai (bbbg khi ky BBBG vua sinh)
+    order_id: int | None = None  # gan vao don hang (tuy chon)
 
 
 class SignResponse(BaseModel):
@@ -130,6 +131,12 @@ class DocumentOut(BaseModel):
     nas_synced: bool = False
     doc_type: str = ""
     signed_upload_name: str = ""  # rong = chua co ban da ky tai len
+    order_id: int | None = None
+    order_code: str = ""  # vd "DH-0001 · Ten don hang"
+
+
+class DocumentRename(BaseModel):
+    filename: str
 
 
 class AssignRequest(BaseModel):
@@ -209,6 +216,7 @@ class BBBGBenB(BaseModel):
     chuc_vu: str = ""
     nguoi_nhan: str = ""
     dien_thoai: str = ""
+    ten_ngan: str = ""  # ten goi tat trong BBNT (vd "PHE VIET NAM")
 
 
 class BBBGGenerate(BaseModel):
@@ -220,6 +228,77 @@ class BBBGGenerate(BaseModel):
     template_key: str = "bbbg_thiet_bi"
     ben_a: dict | None = None
     filename: str = "bien-ban-ban-giao.pdf"
+
+
+# --- Bao gia / De nghi thanh toan ---
+class QuoteItem(BaseModel):
+    ten: str = ""
+    dvt: str = ""
+    so_luong: float = 0
+    don_gia: float = 0
+    thue_suat: float = 0  # % (0/5/8/10)
+
+
+class QuoteGenerate(BaseModel):
+    template_key: str = "bao_gia"  # bao_gia | de_nghi_tt
+    so: str = ""
+    ngay: BBBGDate
+    noi_lap: str = ""  # rong = mac dinh theo template (Dak Lak / TP.HCM)
+    ben_b: BBBGBenB
+    items: list[QuoteItem] = Field(default_factory=list)
+    thuyet_minh: str = ""
+    hieu_luc: int = 30  # so ngay hieu luc bao gia
+    filename: str = "bao-gia.pdf"
+    # De nghi thanh toan
+    loai_tt: str = "toan_bo"  # toan_bo | co_coc | nhieu_phan
+    tien_coc: float = 0
+    da_thanh_toan: float = 0  # coc + cac dot truoc (nhieu_phan)
+    so_tien_dot_nay: float = 0
+    dot_thu: int = 0
+    tong_so_dot: int = 0
+    han_thanh_toan: str = "05 ngày"
+    can_cu: str = ""  # vd "theo hợp đồng số 01/2026/HĐKT"
+    # Bien ban nghiem thu (template bbnt)
+    bbnt_ghi_chu: str = "Bảo hành 1 năm 1 đổi 1 kể từ ngày nghiệm thu*"
+    bbnt_dieu_khoan: str = ""  # rong = dung dieu kien bao hanh mac dinh
+
+
+class OrderCreate(BaseModel):
+    name: str
+    customer_id: int | None = None
+    note: str = ""
+
+
+class OrderOut(BaseModel):
+    id: int
+    code: str
+    name: str
+    customer_id: int | None
+    customer_name: str | None = None
+    note: str
+    created_at: str
+    document_count: int = 0
+
+
+class OrderAssign(BaseModel):
+    order_id: int | None  # None = bo khoi don hang
+
+
+class ProductOut(BaseModel):
+    id: int
+    ten: str
+    dvt: str
+    don_gia: float
+    thue_suat: float
+    use_count: int
+
+
+class QuoteNarrativeRequest(BaseModel):
+    items: list[QuoteItem] = Field(default_factory=list)
+    khach: str = ""
+    tong: float = 0
+    note: str = ""
+    loai: str = "bao_gia"  # bao_gia | de_nghi_tt
 
 
 class DocTypeUpdate(BaseModel):
@@ -243,3 +322,345 @@ class AuditPage(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+# --- Ton kho ---
+class InvWarehouseOut(BaseModel):
+    id: int
+    code: str
+    name: str
+
+
+class InvItemCreate(BaseModel):
+    ma_hang: str
+    ten: str
+    dvt: str = ""
+    note: str = ""
+
+
+class InvItemUpdate(BaseModel):
+    ten: str | None = None
+    dvt: str | None = None
+    note: str | None = None
+    active: bool | None = None
+    product_id: int | None = None
+
+
+class InvItemOut(BaseModel):
+    id: int
+    ma_hang: str
+    ten: str
+    dvt: str
+    note: str = ""
+    active: bool = True
+    product_id: int | None = None
+
+
+class StockRowOut(BaseModel):
+    item_id: int
+    ma_hang: str
+    ten: str
+    dvt: str
+    warehouse_id: int
+    warehouse_code: str
+    ton: float
+    don_gia_bq: float
+    gia_tri: float
+    kha_dung: float | None = None
+    nhap_cuoi: str = ""
+
+
+class StockReport(BaseModel):
+    rows: list[StockRowOut]
+    tong_gia_tri: float
+    ngay: str | None = None
+
+
+class StockCardRow(BaseModel):
+    id: int
+    ngay: str
+    loai: str
+    loai_label: str
+    nhap: float
+    xuat: float
+    don_gia: float
+    gia_tri: float
+    ton: float
+    ton_gia_tri: float
+    ref_type: str = ""
+    ref_id: int | None = None
+
+
+class OpeningImportResult(BaseModel):
+    dry_run: bool
+    tong: dict
+    warnings: list[dict]
+    preview: list[dict] = Field(default_factory=list)  # cac dong se import
+    applied: dict | None = None  # ket qua khi commit
+
+
+class InvPurchaseLineIn(BaseModel):
+    stt: int = 0
+    ten_raw: str = ""
+    dvt: str = ""
+    so_luong: float = 0
+    don_gia: float = 0
+    thanh_tien: float = 0
+    thue_suat: float = 0
+    item_id: int | None = None
+    warehouse_id: int | None = None
+    match_kind: str = "none"
+
+
+class InvImportUrlIn(BaseModel):
+    url: str
+
+
+class InvPurchaseUpdate(BaseModel):
+    so_hd: str | None = None
+    ky_hieu: str | None = None
+    mst_ban: str | None = None
+    ten_ban: str | None = None
+    ngay: str | None = None
+    loai: str | None = None  # hang_hoa | dich_vu
+    lines: list[InvPurchaseLineIn] | None = None
+
+
+class InvPurchaseLineOut(BaseModel):
+    id: int
+    stt: int
+    ten_raw: str
+    dvt: str
+    so_luong: float
+    don_gia: float
+    thanh_tien: float
+    thue_suat: float
+    item_id: int | None
+    item_ma_hang: str = ""
+    item_ten: str = ""
+    warehouse_id: int | None
+    match_kind: str
+    confidence: float
+    warnings: list = Field(default_factory=list)
+    suggestions: list[dict] = Field(default_factory=list)
+
+
+class InvPurchaseOut(BaseModel):
+    id: int
+    so_hd: str
+    ky_hieu: str
+    mst_ban: str
+    ten_ban: str
+    ngay: str
+    tong_truoc_thue: float
+    tong_thue: float
+    tong_tien: float
+    source: str
+    status: str
+    loai: str = "hang_hoa"
+    confidence: float
+    warnings: list = Field(default_factory=list)
+    dup_of: int | None = None
+    created_at: str = ""
+    doc_url: str = ""
+    lines: list[InvPurchaseLineOut] = Field(default_factory=list)
+
+
+# --- Hoa don BAN RA (iNut = ben ban) ---
+class InvSaleLineIn(BaseModel):
+    stt: int = 0
+    ten_raw: str = ""
+    dvt: str = ""
+    so_luong: float = 0
+    don_gia_ban: float = 0
+    thanh_tien: float = 0
+    thue_suat: float = 0
+    thue_kct: bool = False
+    item_id: int | None = None
+    warehouse_id: int | None = None
+    match_kind: str = "none"
+    line_class: str = "other"
+    fulfil_kind: str = "none"
+
+
+class InvSaleUpdate(BaseModel):
+    so_hd: str | None = None
+    ky_hieu: str | None = None
+    mst_mua: str | None = None
+    ten_mua: str | None = None
+    customer_id: int | None = None
+    ngay: str | None = None
+    status: str | None = None  # draft | reviewed
+    lines: list[InvSaleLineIn] | None = None
+
+
+class InvSaleLineOut(BaseModel):
+    id: int
+    stt: int
+    ten_raw: str
+    dvt: str
+    so_luong: float
+    don_gia_ban: float
+    thanh_tien: float
+    thue_suat: float
+    thue_kct: bool = False
+    item_id: int | None
+    item_ma_hang: str = ""
+    item_ten: str = ""
+    warehouse_id: int | None
+    match_kind: str
+    line_class: str = "other"
+    fulfil_kind: str = "none"
+    confidence: float
+    warnings: list = Field(default_factory=list)
+    suggestions: list[dict] = Field(default_factory=list)
+    # doi chieu ton kho tai ngay HD
+    ton_hien_co: float = 0
+    kha_dung_tai_ngay: float = 0
+    de_xuat: str = ""
+    warn_am_kho: bool = False
+    lech_dong: bool = False  # SL x don gia_ban lech thanh_tien (loi parse PDF/XML)
+
+
+class InvSaleOut(BaseModel):
+    id: int
+    so_hd: str
+    ky_hieu: str
+    mst_mua: str
+    ten_mua: str
+    customer_id: int | None = None
+    ngay: str
+    tong_truoc_thue: float
+    tong_thue: float
+    tong_tien: float
+    source: str
+    status: str
+    is_dieu_chinh: bool = False
+    dc_ref: str = ""
+    confidence: float
+    warnings: list = Field(default_factory=list)
+    dup_of: int | None = None
+    created_at: str = ""
+    doc_url: str = ""
+    lines: list[InvSaleLineOut] = Field(default_factory=list)
+
+
+# --- Ghep bo (assembly / BOM) tu 1 dong ban ---
+class BomExistingIn(BaseModel):
+    ten: str
+    so_luong: float = 0
+    dvt: str = ""
+
+
+class SuggestBomIn(BaseModel):
+    context: str = ""  # ngu canh/huong dan them cua user cho AI (tung keo)
+    existing: list[BomExistingIn] = Field(default_factory=list)  # nut "AI goi y THEM"
+
+
+class BomComponentIn(BaseModel):
+    item_id: int
+    warehouse_id: int
+    so_luong: float
+    note: str = ""
+
+
+class AssembleIn(BaseModel):
+    output_item_id: int | None = None  # neu bo da la 1 mat hang; None -> tao moi
+    output_ma_hang: str = ""  # ma cho thanh pham bo moi (khi tao moi)
+    output_warehouse_id: int
+    components: list[BomComponentIn] = Field(default_factory=list)
+    save_recipe: bool = False
+    recipe_name: str = ""
+
+
+class InvIssueLineIn(BaseModel):
+    item_id: int
+    warehouse_id: int
+    so_luong: float
+    don_gia_ban: float = 0
+
+
+class InvIssueIn(BaseModel):
+    ngay: str
+    customer_id: int | None = None
+    note: str = ""
+    lines: list[InvIssueLineIn] = Field(default_factory=list)
+
+
+class InvIssueLineOut(BaseModel):
+    id: int
+    item_id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    warehouse_id: int
+    so_luong: float
+    don_gia_ban: float = 0
+    gia_von: float = 0  # tu so kho sau khi post
+
+
+class InvIssueOut(BaseModel):
+    id: int
+    ngay: str
+    customer_id: int | None
+    customer_name: str = ""
+    note: str
+    status: str
+    created_at: str = ""
+    lines: list[InvIssueLineOut] = Field(default_factory=list)
+
+
+class InvProductionLineIn(BaseModel):
+    chieu: str  # vao | ra
+    item_id: int
+    warehouse_id: int
+    so_luong: float
+
+
+class InvProductionIn(BaseModel):
+    ngay: str
+    note: str = ""
+    lines: list[InvProductionLineIn] = Field(default_factory=list)
+
+
+class InvProductionLineOut(BaseModel):
+    id: int
+    chieu: str
+    item_id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    warehouse_id: int
+    so_luong: float
+    gia_tri: float = 0  # sau khi post: gia von tieu hao / gia thanh nhap
+
+
+class InvProductionOut(BaseModel):
+    id: int
+    ngay: str
+    note: str
+    status: str
+    created_at: str = ""
+    lines: list[InvProductionLineOut] = Field(default_factory=list)
+
+
+class InvRecipeLineIn(BaseModel):
+    item_id: int
+    warehouse_id: int
+    so_luong: float
+
+
+class InvRecipeIn(BaseModel):
+    name: str
+    output_item_id: int
+    output_qty: float = 1
+    lines: list[InvRecipeLineIn] = Field(default_factory=list)
+
+
+class InvRecipeOut(BaseModel):
+    id: int
+    name: str
+    output_item_id: int
+    output_ten: str = ""
+    output_qty: float
+    lines: list[dict] = Field(default_factory=list)

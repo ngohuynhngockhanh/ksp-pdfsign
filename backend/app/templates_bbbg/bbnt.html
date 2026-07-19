@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 13px; color: #000; line-height: 1.55;
+    position: relative;
+  }
+  .watermark {
+    position: fixed; top: 45%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%; opacity: 0.08; z-index: -1;
+  }
+  .letterhead { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1e6fd9; padding-bottom: 8px; }
+  .letterhead img.logo { width: 64px; height: 64px; object-fit: contain; }
+  .letterhead .info { font-size: 11px; line-height: 1.45; }
+  .letterhead .info .name { font-weight: bold; font-size: 12.5px; text-transform: uppercase; color: #1e2a3a; }
+  h1 { text-align: center; font-size: 19px; letter-spacing: 1px; margin: 14px 0 4px; }
+  .soline { text-align: center; font-size: 12px; margin-bottom: 8px; }
+  .intro { text-align: justify; margin: 6px 0; }
+  .party { margin: 8px 0 2px; }
+  .party table { width: 100%; border-collapse: collapse; }
+  .party td { padding: 1px 4px; vertical-align: top; font-size: 13px; }
+  .party td.k { width: 16%; font-weight: bold; text-transform: uppercase; }
+  .party td.sep { width: 3%; text-align: center; }
+  .alias { margin: 4px 0 8px; }
+  .va { font-weight: bold; margin: 6px 0; }
+  table.items { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
+  table.items th, table.items td { border: 1px solid #000; padding: 4px 6px; font-size: 12px; }
+  table.items th { text-align: center; font-weight: bold; background: #eef2f7; }
+  table.items td.c { text-align: center; }
+  .dieu-khoan { font-size: 12px; white-space: pre-line; text-align: justify; margin: 8px 0; }
+  .closing { margin: 10px 0; }
+  .closing div { margin: 2px 0; }
+  .signs { display: flex; justify-content: space-between; margin-top: 24px; text-align: center; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; }
+  .signs .hint { font-style: italic; font-size: 11.5px; }
+  .signs .space { height: 80px; }
+  .signs .name { font-weight: bold; }
+</style>
+</head>
+<body>
+  {% if logo_data_uri %}<img class="watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <div class="letterhead">
+    {% if logo_data_uri %}<img class="logo" src="{{ logo_data_uri }}">{% endif %}
+    <div class="info">
+      <div class="name">{{ ben_a.company }}</div>
+      <div>Địa chỉ: {{ ben_a.address }}</div>
+      <div>MST: {{ ben_a.mst }} · Điện thoại: {{ ben_a.phone }}</div>
+      <div>Email: {{ email }} · Website: {{ website }}</div>
+    </div>
+  </div>
+
+  <h1>BIÊN BẢN NGHIỆM THU</h1>
+  {% if so %}<div class="soline">Số: {{ so }}</div>{% endif %}
+
+  <div class="intro">
+    Hôm nay, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }},
+    chúng tôi gồm có:
+  </div>
+
+  <div class="party">
+    <table>
+      <tr><td class="k">Bên mua</td><td class="sep">:</td><td><b>{{ ben_b.name }}</b></td></tr>
+      {% if ben_b.address %}<tr><td class="k">Địa chỉ</td><td class="sep">:</td><td>{{ ben_b.address }}</td></tr>{% endif %}
+      {% if ben_b.mst %}<tr><td class="k">MST</td><td class="sep">:</td><td>{{ ben_b.mst }}</td></tr>{% endif %}
+      {% if ben_b.dai_dien %}<tr><td class="k">Đại diện</td><td class="sep">:</td><td>{{ ben_b.dai_dien }}</td></tr>{% endif %}
+    </table>
+  </div>
+  {% if ben_b.ten_ngan %}
+  <div class="alias">{{ ben_b.name }} sau đây được gọi là <b>“{{ ben_b.ten_ngan }}”</b></div>
+  {% endif %}
+
+  <div class="va">VÀ</div>
+
+  <div class="party">
+    <table>
+      <tr><td class="k">Bên bán</td><td class="sep">:</td><td><b>{{ ben_a.company }}</b></td></tr>
+      <tr><td class="k">Địa chỉ</td><td class="sep">:</td><td>{{ ben_a.address }}</td></tr>
+      <tr><td class="k">MST</td><td class="sep">:</td><td>{{ ben_a.mst }}</td></tr>
+      <tr><td class="k">Đại diện</td><td class="sep">:</td><td>Ông {{ ben_a.rep }}</td></tr>
+    </table>
+  </div>
+  <div class="alias">{{ ben_a.company }} sau đây được gọi là <b>“INUT”</b></div>
+
+  <div class="intro">
+    Các Bên thực hiện việc nghiệm thu các công việc được nêu tại hạng mục ghi nhận
+    ở phần thông tin chung như sau:
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:6%">STT</th>
+        <th>Hạng mục</th>
+        <th style="width:10%">Đơn vị</th>
+        <th style="width:8%">SL</th>
+        <th style="width:30%">Ghi chú</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong|qty }}</td>
+        <td>{{ bbnt_ghi_chu }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if bbnt_dieu_khoan %}
+  <div class="dieu-khoan">{{ bbnt_dieu_khoan }}</div>
+  {% endif %}
+
+  <div class="closing">
+    <div>1. Sau khi nghiệm thu các hạng mục nêu trên, 2 bên xác nhận bằng biên bản này.</div>
+    <div>2. Biên bản này được lập thành 2 bản và mỗi bên giữ một bản gốc.</div>
+  </div>
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">Đại diện cho Bên mua</div>
+      <div class="hint">(Ký và ghi rõ họ tên)</div>
+      <div class="space"></div>
+      <div class="name">{{ ben_b.dai_dien }}</div>
+    </div>
+    <div class="col">
+      <div class="role">Đại diện cho Bên bán</div>
+      <div class="hint">(Ký và ghi rõ họ tên)</div>
+      <div class="space"></div>
+      <div class="name">{{ ben_a.rep }}</div>
+    </div>
+  </div>
+</body>
+</html>
