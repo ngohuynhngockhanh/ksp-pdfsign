@@ -523,8 +523,19 @@ _FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 if (_FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
 
+    _ROOT_FILES = {
+        "favicon.ico": "image/x-icon",
+        "favicon.png": "image/png",
+        "apple-touch-icon.png": "image/png",
+    }
+
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+        # Phuc vu cac file tinh o goc (favicon...) neu co
+        if full_path in _ROOT_FILES:
+            p = _FRONTEND_DIST / full_path
+            if p.exists():
+                return FileResponse(p, media_type=_ROOT_FILES[full_path])
         return FileResponse(_FRONTEND_DIST / "index.html")
