@@ -1,22 +1,42 @@
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 :root {
-  --bg: #f4f6f8;
+  --bg: #f5f7fa;
   --panel: #ffffff;
-  --border: #d9dee5;
+  --border: #e7ebf0;
+  --border-strong: #d7dce3;
   --primary: #1e6fd9;
   --primary-dark: #1857aa;
-  --text: #1c2530;
-  --muted: #6b7683;
+  --primary-soft: #eaf2fd;
+  --text: #10233b;
+  --muted: #64748b;
   --green: #1a9e56;
   --amber: #c8860a;
-  --red: #d13b3b;
+  --red: #dc2f38;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 6px 22px rgba(16, 24, 40, 0.09);
+  --ring: 0 0 0 3px rgba(30, 111, 217, 0.16);
 }
 
 * {
   box-sizing: border-box;
 }
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   background: var(--bg);
   color: var(--text);
 }
@@ -32,20 +52,29 @@ body {
 .error {
   background: #fdecec;
   color: var(--red);
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
+  border: 1px solid #f7d4d4;
 }
 button {
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: #fff;
+  color: var(--text);
   padding: 8px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 button:hover {
-  background: #f0f3f7;
+  background: #f4f6f9;
+}
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 button.primary,
 button[type="submit"] {
@@ -53,9 +82,11 @@ button[type="submit"] {
   color: #fff;
   border-color: var(--primary);
   width: 100%;
-  margin-top: 10px;
+  margin-top: 12px;
+  box-shadow: 0 1px 2px rgba(30, 111, 217, 0.25);
 }
-button.primary:hover {
+button.primary:hover,
+button[type="submit"]:hover {
   background: var(--primary-dark);
 }
 button:disabled {
@@ -63,39 +94,53 @@ button:disabled {
   cursor: not-allowed;
 }
 input,
-select {
+select,
+textarea {
   width: 100%;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
+  font-family: inherit;
   background: #fff;
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring);
 }
 label {
   display: block;
   font-size: 0.8rem;
   color: var(--muted);
-  margin: 8px 0 0;
+  margin: 10px 0 0;
+  font-weight: 500;
 }
 label input,
 label select {
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 /* Login */
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px;
+  border-radius: var(--radius);
+  padding: 22px;
   margin: 12px 0;
+  box-shadow: var(--shadow);
 }
 .login {
-  width: 340px;
+  width: 360px;
 }
 .login h1 {
   margin: 0 0 4px;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
+  font-weight: 700;
 }
 
 /* Layout */
@@ -107,32 +152,62 @@ label select {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 20px;
-  background: var(--panel);
+  gap: 18px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
-  padding: 10px 18px;
+  padding: 10px 22px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+.brand .mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #2f83f0, #1857aa);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  box-shadow: 0 2px 6px rgba(30, 111, 217, 0.35);
 }
 .topbar nav {
   display: flex;
-  gap: 8px;
+  gap: 3px;
+}
+.topbar nav button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 13px;
+  border-radius: 9px;
+  font-weight: 500;
+}
+.topbar nav button:hover {
+  background: #eef1f5;
+  color: var(--text);
 }
 .topbar nav button.active {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .topbar .logout {
-  margin-left: auto;
+  margin-left: 12px;
 }
 .warn-banner {
-  background: #fff6e0;
-  color: #8a6300;
-  padding: 8px 18px;
-  font-size: 0.85rem;
-  border-bottom: 1px solid #f0dca0;
+  background: #fff8ea;
+  color: #915b00;
+  padding: 7px 22px;
+  font-size: 0.82rem;
+  border-bottom: 1px solid #f2e2bd;
 }
 main {
   flex: 1;
@@ -956,6 +1031,62 @@ label.link-btn.file-inline {
 .nas-name {
   font-size: 0.9rem;
   text-align: left;
+}
+
+/* ===== Đổ bóng & độ sâu (đại tu giao diện) ===== */
+.table-wrap,
+.page-1col .panel,
+.page-2col .panel {
+  box-shadow: var(--shadow);
+}
+.docs-page,
+.page-1col {
+  padding-top: 22px;
+}
+.docs-toolbar h3,
+.page-1col > h3 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.dt tbody tr {
+  transition: background 0.12s;
+}
+.iact,
+.kebab,
+.btn-sm,
+.tb-select,
+.search {
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.iact:hover,
+.kebab:hover {
+  box-shadow: var(--shadow);
+}
+.count {
+  font-weight: 600;
+}
+.nas-bar,
+.bulk-bar {
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+}
+.badge,
+.pill,
+.chip {
+  letter-spacing: 0.01em;
+}
+/* Panel viewer (ký/kiểm tra) nền dịu hơn */
+.viewer,
+.verify-right {
+  background: #e9edf3;
+}
+.pdf-toolbar,
+.pdfview-toolbar {
+  color: #334155;
+}
+.pdf-toolbar label,
+.pdfview-toolbar label {
+  color: #475569;
 }
 /* input trong bảng (CreateBBBG) gọn hơn */
 .doc-table td input {

@@ -115,7 +115,9 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">🖊️ KSP PDF Signer</div>
+        <div className="brand">
+          <span className="mark">🖊️</span> KSP PDF Signer
+        </div>
         <nav>
           {tabs.map(([t, label]) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => navigate(t)}>
