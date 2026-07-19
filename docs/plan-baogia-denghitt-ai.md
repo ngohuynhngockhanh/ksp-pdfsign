@@ -56,10 +56,28 @@ AI_MAX_TOKENS=3500                          # reasoning -> cần lớn, nếu nh
 Lưu ý: response 9router có thể kèm đuôi `data: [DONE]` sau JSON → parse bằng
 `JSONDecoder().raw_decode()` (lấy object JSON đầu tiên). Đã test thật OK (tiếng Việt).
 
-### Đề nghị thanh toán — trường
-Số ĐN, ngày, bên nhận (khách), **số tiền** (+ bằng chữ), **lý do/nội dung**, tham chiếu
-(hợp đồng/hóa đơn/BBBG số), **tài khoản nhận**. TK mặc định: **79713 - Techcombank**
-(thiết kế danh sách nhiều STK, hiện 1; cấu hình `BANK_ACCOUNTS` trong config để mở rộng).
+### Đề nghị thanh toán — theo mẫu thật (template `de_nghi_tt.html`)
+Bố cục: header INUT (Email hotro@mysmarthome.com.vn, Website inut.vn) · "TP.HCM, ngày…" ·
+tiêu đề **ĐỀ NGHỊ THANH TOÁN** · "Kính gửi: {khách}" · câu đề nghị · **bảng hạng mục**
+(STT | Hạng mục | ĐVT | SL | Đơn giá | Thuế (%) | Thành tiền) · khối tổng:
+- **Tổng giá trị hợp đồng (đã gồm thuế)**
+- **Số tiền đã đặt cọc** (nếu có)
+- **Đã thanh toán các đợt trước** (nếu thanh toán nhiều phần)
+- **TỔNG SỐ TIỀN CÒN LẠI CẦN THANH TOÁN** (= tổng − cọc − đã trả) + **bằng chữ**
+· hạn "trong vòng 05 ngày" · **thông tin tài khoản nhận** · ký **TỔNG GIÁM ĐỐC Ngô Huỳnh Ngọc Khánh**.
+
+**Nhiều loại đề nghị TT** (field `loai_tt`):
+- `toan_bo`: thanh toán toàn bộ.
+- `co_coc`: đã đặt cọc → hiện dòng cọc, còn lại = tổng − cọc.
+- `nhieu_phan`: thanh toán nhiều đợt → nhập tổng + đã trả (cọc + các đợt) + **số tiền đợt này**
+  (kèm nhãn "Đợt k/n"), còn lại cần thanh toán = số đợt này.
+
+TK nhận (mặc định, cấu hình `BANK_ACCOUNTS` cho nhiều STK sau — hiện 1):
+- Tên TK: CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT
+- Số TK: **79713** · Ngân hàng: **Techcombank**
+
+Lưu ý letterhead đề nghị TT khác BBBG: nơi lập **TP.HCM**, email **hotro@mysmarthome.com.vn**,
+ký **Tổng giám đốc** (BBBG dùng Đắk Lắk / Giám đốc) → tách config riêng `dntt_*`.
 
 ## Kiểm thử
 - `money.so_tien_bang_chu`: 60000000 → "Sáu mươi triệu đồng chẵn"; test vài mốc.
