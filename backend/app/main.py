@@ -1022,6 +1022,8 @@ def reset_logo(user: CurrentUser = Depends(require_admin), settings: Settings = 
 _FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 if (_FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+    if (_FRONTEND_DIST / "fonts").exists():
+        app.mount("/fonts", StaticFiles(directory=_FRONTEND_DIST / "fonts"), name="fonts")
 
     _ROOT_FILES = {
         "favicon.ico": "image/x-icon",
