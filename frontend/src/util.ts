@@ -27,6 +27,43 @@ export function parseDn(dn: string): { cn: string; mst: string } {
   return { cn, mst };
 }
 
+// Copy text vào clipboard (có fallback nếu trình duyệt chặn).
+export async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+}
+
+// Tạo link chia sẻ 1 hồ sơ, tạo text (kèm tài khoản nếu chọn) và copy clipboard.
+export async function shareDocument(docPk: number): Promise<string | null> {
+  const includeAccount = window.confirm(
+    "Kèm tài khoản đăng nhập mặc định cho khách?\n(OK = có kèm tài khoản/mật khẩu, Cancel = chỉ link tải)",
+  );
+  const s = await api.createShare(docPk, 7, includeAccount);
+  const exp = new Date(s.expires_at).toLocaleString("vi-VN");
+  let text = `Tài liệu: ${s.filename}\nLink tải (hết hạn ${exp}):\n${s.url}`;
+  if (s.account) {
+    const origin = new URL(s.url).origin;
+    text +=
+      `\n\nHoặc đăng nhập để xem tất cả hồ sơ tại ${origin}` +
+      `\nTài khoản: ${s.account.username}\nMật khẩu: ${s.account.password}`;
+  }
+  await copyText(text);
+  return text;
+}
+
 // Tạo nhanh khách hàng mới (kèm tài khoản mặc định). Trả về id hoặc null.
 export async function quickCreateCustomer(
   suggestName = "",

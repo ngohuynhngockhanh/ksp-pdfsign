@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type DocRecord } from "../api";
+import { copyText } from "../util";
 
 export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
@@ -33,8 +34,20 @@ export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void })
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
               <td className="actions">
                 <a href={d.download_url}>⬇️ Tải</a>
+                <button
+                  className="link-btn"
+                  onClick={async () => {
+                    const s = await api.createShare(d.id, 7, false);
+                    const exp = new Date(s.expires_at).toLocaleString("vi-VN");
+                    const text = `${s.filename}\n${s.url}\n(hết hạn ${exp})`;
+                    await copyText(text);
+                    window.alert("Đã tạo link & copy:\n\n" + text);
+                  }}
+                >
+                  Chia sẻ
+                </button>
                 <button className="link-btn" onClick={() => onVerify(d.id)}>
-                  Kiểm tra chữ ký
+                  Kiểm tra
                 </button>
               </td>
             </tr>

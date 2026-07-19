@@ -152,3 +152,30 @@ class UserOut(BaseModel):
     role: str
     customer_id: int | None
     customer_name: str | None = None
+
+
+class ShareRequest(BaseModel):
+    days: int = 7
+    include_account: bool = False
+
+
+class AccountInfo(BaseModel):
+    username: str
+    password: str
+
+
+class ShareResponse(BaseModel):
+    token: str
+    url: str
+    filename: str
+    expires_at: str
+    account: AccountInfo | None = None
+
+
+class BulkAssign(BaseModel):
+    ids: list[int]
+    customer_id: int | None
+
+
+class BulkIds(BaseModel):
+    ids: list[int]

@@ -210,6 +210,33 @@ export const api = {
   async deleteDocument(docPk: number) {
     return req(`/api/documents/${docPk}`, { method: "DELETE" });
   },
+  async bulkAssign(ids: number[], customerId: number | null) {
+    return req<{ ok: boolean; count: number }>("/api/documents/bulk-assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, customer_id: customerId }),
+    });
+  },
+  async bulkDelete(ids: number[]) {
+    return req<{ ok: boolean; count: number }>("/api/documents/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+  },
+  async createShare(docPk: number, days: number, includeAccount: boolean) {
+    return req<{
+      token: string;
+      url: string;
+      filename: string;
+      expires_at: string;
+      account: { username: string; password: string } | null;
+    }>(`/api/documents/${docPk}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days, include_account: includeAccount }),
+    });
+  },
   async verifyDocument(docPk: number) {
     return req<{
       doc_id: string;

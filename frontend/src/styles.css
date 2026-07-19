@@ -467,6 +467,27 @@ td.bad {
   margin: 16px 0;
   font-size: 0.85rem;
 }
+.bulk-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #eef4fd;
+  border: 1px solid #bcd4f5;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+.bulk-bar select {
+  width: auto;
+}
+.doc-table .chk {
+  width: 28px;
+  text-align: center;
+}
+.doc-table .chk input {
+  width: auto;
+}
 
 /* Document table */
 .doc-table {

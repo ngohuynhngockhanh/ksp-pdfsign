@@ -2,16 +2,24 @@
 from __future__ import annotations
 
 import io as _io
+import secrets
+from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import signing, storage, token_backend, verify
+from . import accounts, signing, storage, token_backend, verify
 from .auth import (
     COOKIE_NAME,
     CurrentUser,
@@ -22,11 +30,14 @@ from .auth import (
     require_user,
 )
 from .config import REPO_ROOT, Settings, get_settings
-from .db import Customer, Document, User, get_session, init_db
+from .db import Customer, Document, Share, User, get_session, init_db
 from .schemas import (
     AccountCreate,
+    AccountInfo,
     AgentTarget,
     AssignRequest,
+    BulkAssign,
+    BulkIds,
     CustomerCreate,
     CustomerOut,
     CustomerUpdate,
@@ -35,6 +46,8 @@ from .schemas import (
     LoginRequest,
     PasswordChange,
     PasswordReset,
+    ShareRequest,
+    ShareResponse,
     SignRequest,
     SignResponse,
     UserOut,
@@ -43,6 +56,12 @@ from .schemas import (
 from .security import hash_password, verify_password
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
+
+
+def _content_disposition(filename: str) -> str:
+    """Content-Disposition an toan cho ten file tieng Viet (RFC 5987)."""
+    ascii_name = filename.encode("ascii", "ignore").decode() or "document.pdf"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
 
 app.add_middleware(
     CORSMiddleware,
@@ -416,7 +435,7 @@ def download_document(
     data = storage.read_doc(d.doc_id)
     return StreamingResponse(
         iter([data]), media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{d.filename}"'},
+        headers={"Content-Disposition": _content_disposition(d.filename)},
     )
 
 
@@ -436,6 +455,146 @@ def verify_document_record(
     if not storage.exists(d.doc_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
     return verify.verify_document(settings, storage.read_doc(d.doc_id), d.doc_id)
+
+
+# ---------------------------------------------------------------------------
+# Thao tac hang loat (bulk)
+# ---------------------------------------------------------------------------
+@app.post("/api/documents/bulk-assign")
+def bulk_assign(
+    body: BulkAssign, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    if body.customer_id is not None and not db.get(Customer, body.customer_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
+    n = 0
+    for d in db.scalars(select(Document).where(Document.id.in_(body.ids))):
+        d.customer_id = body.customer_id
+        n += 1
+    db.commit()
+    return {"ok": True, "count": n}
+
+
+@app.post("/api/documents/bulk-delete")
+def bulk_delete(
+    body: BulkIds, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    n = 0
+    for d in db.scalars(select(Document).where(Document.id.in_(body.ids))):
+        db.delete(d)
+        n += 1
+    db.commit()
+    return {"ok": True, "count": n}
+
+
+# ---------------------------------------------------------------------------
+# Chia se file qua link cong khai (co han)
+# ---------------------------------------------------------------------------
+def _share_url(settings: Settings, token: str) -> str:
+    return f"{settings.public_base_url.rstrip('/')}/s/{token}"
+
+
+@app.post("/api/documents/{doc_pk}/share", response_model=ShareResponse)
+def create_share(
+    doc_pk: int,
+    body: ShareRequest,
+    user: CurrentUser = Depends(require_user),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    if not user.is_admin and d.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
+    days = body.days if body.days and body.days > 0 else settings.share_default_days
+    token = secrets.token_urlsafe(16)
+    expires = datetime.utcnow() + timedelta(days=days)
+    db.add(Share(token=token, document_id=d.id, expires_at=expires))
+    db.commit()
+
+    account = None
+    if body.include_account and d.customer_id:
+        c = db.get(Customer, d.customer_id)
+        if c:
+            uname, pwd = accounts.ensure_account(db, c)
+            account = AccountInfo(username=uname, password=pwd)
+
+    return ShareResponse(
+        token=token, url=_share_url(settings, token), filename=d.filename,
+        expires_at=expires.isoformat(), account=account,
+    )
+
+
+@app.get("/api/share/{token}")
+def share_meta(token: str, db: Session = Depends(get_session)):
+    s = db.scalar(select(Share).where(Share.token == token))
+    if not s:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link khong ton tai")
+    return {
+        "filename": s.document.filename,
+        "expires_at": s.expires_at.isoformat(),
+        "expired": datetime.utcnow() > s.expires_at,
+    }
+
+
+@app.get("/api/share/{token}/download")
+def share_download(token: str, db: Session = Depends(get_session)):
+    s = db.scalar(select(Share).where(Share.token == token))
+    if not s:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link khong ton tai")
+    if datetime.utcnow() > s.expires_at:
+        raise HTTPException(status.HTTP_410_GONE, "Link da het han")
+    d = s.document
+    if not storage.exists(d.doc_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    return StreamingResponse(
+        iter([storage.read_doc(d.doc_id)]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition(d.filename)},
+    )
+
+
+@app.get("/s/{token}", response_class=HTMLResponse)
+def share_page(token: str, db: Session = Depends(get_session)):
+    s = db.scalar(select(Share).where(Share.token == token))
+    if not s:
+        return HTMLResponse(_share_html("Link không tồn tại", None, None), status_code=404)
+    expired = datetime.utcnow() > s.expires_at
+    exp = s.expires_at.strftime("%d/%m/%Y %H:%M")
+    if expired:
+        return HTMLResponse(
+            _share_html(f"Link đã hết hạn (từ {exp})", s.document.filename, None), status_code=410
+        )
+    return HTMLResponse(_share_html(None, s.document.filename, token, exp))
+
+
+def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "") -> str:
+    body = (
+        f'<p class="err">{error}</p>'
+        if error
+        else (
+            f'<p class="fn">📄 {filename}</p>'
+            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
+            f'<p class="exp">Link có hiệu lực đến {exp}</p>'
+        )
+    )
+    return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png"><title>Tải tài liệu — KSP</title>
+<style>
+body{{font-family:system-ui,'Segoe UI',Roboto,sans-serif;background:#f4f6f8;margin:0;
+display:grid;place-items:center;min-height:100vh;color:#1c2530}}
+.card{{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:34px 40px;
+text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08);max-width:420px}}
+h1{{font-size:1.2rem;margin:0 0 6px}}.brand{{color:#1e6fd9;font-weight:700;margin-bottom:14px}}
+.fn{{font-size:1.05rem;margin:16px 0}}
+.btn{{display:inline-block;background:#1e6fd9;color:#fff;text-decoration:none;
+padding:12px 26px;border-radius:8px;font-size:1rem;margin:8px 0}}
+.btn:hover{{background:#1857aa}}.exp{{color:#6b7683;font-size:.82rem;margin-top:14px}}
+.err{{color:#d13b3b;font-size:1rem}}
+</style></head><body><div class="card">
+<div class="brand">🖊️ KSP PDF Signer</div><h1>Chia sẻ tài liệu</h1>{body}
+</div></body></html>"""
 
 
 # ---------------------------------------------------------------------------

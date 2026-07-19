@@ -76,6 +76,20 @@ class Document(Base):
     customer: Mapped["Customer | None"] = relationship(back_populates="documents")
 
 
+class Share(Base):
+    """Link chia se cong khai (khong can dang nhap) toi mot ho so, co han."""
+
+    __tablename__ = "shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    document: Mapped["Document"] = relationship()
+
+
 _engine = None
 _SessionLocal = None
 

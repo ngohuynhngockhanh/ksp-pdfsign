@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Ky so - mac dinh
     default_location: str = "Đắk Lắk"
 
+    # Chia se file: URL goc dung de tao link + so ngay het han mac dinh
+    public_base_url: str = "https://ksp-pdf-signer.a.inut.vn"
+    share_default_days: int = 7
+
     # Windows agent (may cam token)
     agent_default_ip: str = "192.168.1.4"
     agent_port: int = 8443

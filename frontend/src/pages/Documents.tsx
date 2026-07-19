@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Customer, type DocRecord } from "../api";
-import { quickCreateCustomer } from "../util";
+import { copyText, quickCreateCustomer, shareDocument } from "../util";
 
 export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
@@ -11,8 +11,59 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [err, setErr] = useState("");
+  const [sel, setSel] = useState<Set<number>>(new Set());
 
   const pages = Math.max(1, Math.ceil(total / perPage));
+  const allChecked = docs.length > 0 && docs.every((d) => sel.has(d.id));
+
+  function toggle(id: number) {
+    const s = new Set(sel);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setSel(s);
+  }
+  function toggleAll() {
+    setSel(allChecked ? new Set() : new Set(docs.map((d) => d.id)));
+  }
+
+  async function shareOne(id: number) {
+    try {
+      const text = await shareDocument(id);
+      if (text) window.alert("Đã tạo link & copy vào clipboard:\n\n" + text);
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  }
+
+  async function bulkShare() {
+    const ids = [...sel];
+    if (!ids.length) return;
+    const includeAccount = window.confirm("Kèm tài khoản đăng nhập mặc định cho khách?");
+    const lines: string[] = [];
+    for (const id of ids) {
+      const s = await api.createShare(id, 7, includeAccount);
+      const exp = new Date(s.expires_at).toLocaleString("vi-VN");
+      let t = `• ${s.filename}: ${s.url} (hết hạn ${exp})`;
+      if (s.account) t += ` — TK: ${s.account.username} / MK: ${s.account.password}`;
+      lines.push(t);
+    }
+    await copyText(lines.join("\n"));
+    window.alert(`Đã tạo ${ids.length} link & copy vào clipboard:\n\n` + lines.join("\n"));
+  }
+
+  async function bulkAssignTo(value: string) {
+    if (value === "") return;
+    const cid = value === "none" ? null : Number(value);
+    await api.bulkAssign([...sel], cid);
+    setSel(new Set());
+    load();
+  }
+
+  async function bulkDelete() {
+    if (!confirm(`Xoá ${sel.size} hồ sơ đã chọn?`)) return;
+    await api.bulkDelete([...sel]);
+    setSel(new Set());
+    load();
+  }
 
   async function load() {
     setErr("");
@@ -94,9 +145,34 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
       </div>
       {err && <div className="error">{err}</div>}
 
+      {sel.size > 0 && (
+        <div className="bulk-bar">
+          <span>Đã chọn {sel.size}</span>
+          <select defaultValue="" onChange={(e) => bulkAssignTo(e.target.value)}>
+            <option value="">Gán khách hàng…</option>
+            <option value="none">— Bỏ phân loại —</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={bulkShare}>Chia sẻ</button>
+          <button className="danger-link" onClick={bulkDelete}>
+            Xoá
+          </button>
+          <button className="link-btn" onClick={() => setSel(new Set())}>
+            Bỏ chọn
+          </button>
+        </div>
+      )}
+
       <table className="doc-table">
         <thead>
           <tr>
+            <th className="chk">
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+            </th>
             <th>Tên file</th>
             <th>Người ký</th>
             <th>Thời gian</th>
@@ -107,6 +183,9 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
         <tbody>
           {docs.map((d) => (
             <tr key={d.id} className={d.customer_id ? "" : "unassigned-row"}>
+              <td className="chk">
+                <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
+              </td>
               <td>{d.filename}</td>
               <td className="muted">{d.signer_name}</td>
               <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
@@ -123,8 +202,11 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               </td>
               <td className="actions">
                 <a href={d.download_url}>Tải</a>
+                <button className="link-btn" onClick={() => shareOne(d.id)}>
+                  Chia sẻ
+                </button>
                 <button className="link-btn" onClick={() => onVerify(d.id)}>
-                  Kiểm tra chữ ký
+                  Kiểm tra
                 </button>
                 <button
                   className="danger-link"
@@ -142,7 +224,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
           ))}
           {docs.length === 0 && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={6} className="muted">
                 Không có hồ sơ.
               </td>
             </tr>
