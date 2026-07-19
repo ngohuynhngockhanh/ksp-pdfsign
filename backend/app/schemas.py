@@ -224,3 +224,22 @@ class BBBGGenerate(BaseModel):
 
 class DocTypeUpdate(BaseModel):
     doc_type: str
+
+
+class AuditOut(BaseModel):
+    id: int
+    ts: str
+    username: str
+    role: str
+    ip: str
+    action: str
+    action_label: str
+    target: str
+    detail: str
+
+
+class AuditPage(BaseModel):
+    items: list[AuditOut]
+    total: int
+    page: int
+    per_page: int

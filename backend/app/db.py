@@ -101,6 +101,21 @@ class Share(Base):
     document: Mapped["Document"] = relationship()
 
 
+class AuditLog(Base):
+    """Nhat ky thao tac de truy vet."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    username: Mapped[str] = mapped_column(String(150), default="", index=True)
+    role: Mapped[str] = mapped_column(String(20), default="")
+    ip: Mapped[str] = mapped_column(String(50), default="")
+    action: Mapped[str] = mapped_column(String(50), index=True)
+    target: Mapped[str] = mapped_column(String(255), default="")
+    detail: Mapped[str] = mapped_column(String(500), default="")
+
+
 _engine = None
 _SessionLocal = None
 

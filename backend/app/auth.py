@@ -22,6 +22,7 @@ class CurrentUser:
     username: str
     role: str
     customer_id: int | None
+    ip: str = ""
 
     @property
     def is_admin(self) -> bool:
@@ -78,6 +79,7 @@ def require_user(
         username=str(p.get("sub", "")),
         role=str(p.get("role", "customer")),
         customer_id=p.get("cid"),
+        ip=request.client.host if request.client else "",
     )
 
 

@@ -12,6 +12,7 @@ from fastapi import (
     FastAPI,
     File,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     status,
@@ -30,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from . import (
     accounts,
+    audit,
     bbbg,
     classify,
     invoice,
@@ -49,12 +51,14 @@ from .auth import (
     require_user,
 )
 from .config import REPO_ROOT, Settings, get_settings
-from .db import Customer, Document, Share, User, get_session, init_db
+from .db import AuditLog, Customer, Document, Share, User, get_session, init_db
 from .schemas import (
     AccountCreate,
     AccountInfo,
     AgentTarget,
     AssignRequest,
+    AuditOut,
+    AuditPage,
     BBBGGenerate,
     BulkAssign,
     BulkIds,
@@ -83,6 +87,10 @@ def _content_disposition(filename: str) -> str:
     """Content-Disposition an toan cho ten file tieng Viet (RFC 5987)."""
     ascii_name = filename.encode("ascii", "ignore").decode() or "document.pdf"
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _audit(db, user, action: str, target: str = "", detail: str = "") -> None:
+    audit.record(db, user.username, user.role, user.ip, action, target, detail)
 
 
 def _bg_nas_sync(doc_id: int) -> None:
@@ -134,12 +142,16 @@ def health(settings: Settings = Depends(get_settings)):
 @app.post("/api/login")
 def login(
     body: LoginRequest,
+    request: Request,
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
+    ip = request.client.host if request.client else ""
     user = authenticate(db, body.username, body.password)
     if user is None:
+        audit.record(db, body.username, "?", ip, "login_fail")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sai tai khoan hoac mat khau")
+    audit.record(db, user.username, user.role, ip, "login")
     token = create_token(user, settings)
     resp = JSONResponse({"ok": True, "username": user.username, "role": user.role})
     resp.set_cookie(
@@ -245,6 +257,7 @@ def sign(
     )
     db.add(doc)
     db.commit()
+    _audit(db, user, "sign", doc.filename, f"loại={dtype or '?'}")
     background.add_task(_bg_nas_sync, doc.id)  # backup len NAS (nen)
     return SignResponse(doc_id=signed_id, signed=True, download_url=f"/api/download/{signed_id}")
 
@@ -455,6 +468,7 @@ def delete_document(doc_pk: int, user: CurrentUser = Depends(require_admin), db:
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    _audit(db, user, "delete_doc", d.filename)
     db.delete(d)
     db.commit()
     return {"ok": True}
@@ -513,6 +527,7 @@ async def upload_signed(
     d.signed_upload_name = file.filename or f"da-ky-{up_id}.pdf"
     d.signed_upload_at = datetime.utcnow()
     db.commit()
+    _audit(db, user, "upload_signed", d.filename, d.signed_upload_name)
     # Backup NAS (best-effort)
     if settings.nas_enabled:
         try:
@@ -623,6 +638,7 @@ def create_share(
     expires = datetime.utcnow() + timedelta(days=days)
     db.add(Share(token=token, document_id=d.id, expires_at=expires))
     db.commit()
+    _audit(db, user, "share", d.filename, f"{days} ngày")
 
     account = None
     if body.include_account and d.customer_id:
@@ -758,6 +774,7 @@ def change_my_password(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau moi qua ngan")
     u.password_hash = hash_password(body.new_password)
     db.commit()
+    _audit(db, user, "password_change", user.username)
     return {"ok": True}
 
 
@@ -785,7 +802,47 @@ def admin_reset_password(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau qua ngan")
     u.password_hash = hash_password(body.new_password)
     db.commit()
+    _audit(db, user, "password_reset", u.username)
     return {"ok": True, "username": u.username}
+
+
+# ---------------------------------------------------------------------------
+# Nhat ky thao tac (audit)
+# ---------------------------------------------------------------------------
+@app.get("/api/audit", response_model=AuditPage)
+def audit_log(
+    search: str = "",
+    action: str = "",
+    page: int = 1,
+    per_page: int = 50,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    page = max(1, page)
+    per_page = min(max(1, per_page), 200)
+    q = select(AuditLog)
+    if action:
+        q = q.where(AuditLog.action == action)
+    if search.strip():
+        like = f"%{search.strip()}%"
+        q = q.where(
+            AuditLog.username.ilike(like)
+            | AuditLog.target.ilike(like)
+            | AuditLog.detail.ilike(like)
+        )
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    rows = db.scalars(
+        q.order_by(AuditLog.ts.desc()).offset((page - 1) * per_page).limit(per_page)
+    )
+    items = [
+        AuditOut(
+            id=r.id, ts=r.ts.isoformat(), username=r.username, role=r.role, ip=r.ip,
+            action=r.action, action_label=audit.ACTION_LABELS.get(r.action, r.action),
+            target=r.target, detail=r.detail,
+        )
+        for r in rows
+    ]
+    return AuditPage(items=items, total=total, page=page, per_page=per_page)
 
 
 # ---------------------------------------------------------------------------
@@ -884,6 +941,7 @@ def bbbg_generate(
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh BBBG that bai: {e}")
     doc_id = storage.save_upload(pdf)
     customer_id = _upsert_customer(db, body.ben_b)
+    _audit(db, user, "bbbg_generate", body.filename, body.ben_b.name)
     return {"doc_id": doc_id, "filename": body.filename, "customer_id": customer_id}
 
 

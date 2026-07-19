@@ -364,4 +364,28 @@ export const api = {
   signedFileUrl(docPk: number, inline: boolean) {
     return `/api/documents/${docPk}/signed-file${inline ? "?inline=true" : ""}`;
   },
+
+  // --- Nhật ký thao tác ---
+  async auditLog(opts: { search?: string; page?: number; perPage?: number } = {}) {
+    const p = new URLSearchParams();
+    if (opts.search) p.set("search", opts.search);
+    p.set("page", String(opts.page ?? 1));
+    p.set("per_page", String(opts.perPage ?? 50));
+    return req<{
+      items: {
+        id: number;
+        ts: string;
+        username: string;
+        role: string;
+        ip: string;
+        action: string;
+        action_label: string;
+        target: string;
+        detail: string;
+      }[];
+      total: number;
+      page: number;
+      per_page: number;
+    }>(`/api/audit?${p.toString()}`);
+  },
 };

@@ -8,8 +8,17 @@ import { Documents } from "./pages/Documents";
 import { MyDocuments } from "./pages/MyDocuments";
 import { NasBrowser } from "./pages/NasBrowser";
 import { CreateBBBG } from "./pages/CreateBBBG";
+import { AuditLog } from "./pages/AuditLog";
 
-type Tab = "sign" | "bbbg" | "documents" | "customers" | "nas" | "verify" | "mine";
+type Tab =
+  | "sign"
+  | "bbbg"
+  | "documents"
+  | "customers"
+  | "nas"
+  | "audit"
+  | "verify"
+  | "mine";
 
 const ROUTES: Record<Tab, string> = {
   sign: "/ky-so",
@@ -17,6 +26,7 @@ const ROUTES: Record<Tab, string> = {
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
+  audit: "/nhat-ky",
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
 };
@@ -76,7 +86,7 @@ export function App() {
         setAuthed(true);
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
-          ? (["sign", "bbbg", "documents", "customers", "nas", "verify"] as Tab[])
+          ? (["sign", "bbbg", "documents", "customers", "nas", "audit", "verify"] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
@@ -105,6 +115,7 @@ export function App() {
     ["documents", "Hồ sơ"],
     ["customers", "Khách hàng"],
     ["nas", "NAS"],
+    ["audit", "Nhật ký"],
     ["verify", "Kiểm tra chữ ký"],
   ];
   const custTabs: [Tab, string][] = [
@@ -188,6 +199,7 @@ export function App() {
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}
+        {tab === "audit" && isAdmin && <AuditLog />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
