@@ -5,7 +5,13 @@ import { CertPicker } from "../components/CertPicker";
 import { LogoSettings } from "../components/LogoSettings";
 import { quickCreateCustomer } from "../util";
 
-export function Signer({ defaultIp }: { defaultIp: string }) {
+export function Signer({
+  defaultIp,
+  defaultLocation,
+}: {
+  defaultIp: string;
+  defaultLocation: string;
+}) {
   const [docId, setDocId] = useState<string | null>(null);
   const [filename, setFilename] = useState("");
   const [rect, setRect] = useState<Rect | null>(null);
@@ -15,7 +21,7 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
   const [adminPassword, setAdminPassword] = useState("NhapHang123");
   const [certId, setCertId] = useState("");
   const [reason, setReason] = useState("");
-  const [location, setLocation] = useState("");
+  const [location, setLocation] = useState(defaultLocation || "");
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerId, setCustomerId] = useState<string>("");

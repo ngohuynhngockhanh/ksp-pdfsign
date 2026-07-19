@@ -171,8 +171,8 @@ def test_customer_account_and_documents(client):
     # Ky 1 ho so chua gan
     assert _sign_one(client).status_code == 200
     docs = client.get("/api/documents", params={"unassigned": "true"}).json()
-    assert len(docs) == 1
-    docpk = docs[0]["id"]
+    assert docs["total"] == 1
+    docpk = docs["items"][0]["id"]
 
     # Gan ho so cho khach hang (phan loai bang tay)
     a = client.post(f"/api/documents/{docpk}/assign", json={"customer_id": cid})
@@ -185,6 +185,24 @@ def test_customer_account_and_documents(client):
     mine = client.get("/api/my/documents").json()
     assert len(mine) == 1 and mine[0]["id"] == docpk
     assert client.get(f"/api/documents/{docpk}/download").status_code == 200
-    # Khach hang khong duoc dung route admin
+    # Khach hang khong duoc dung route admin (chong chiem quyen)
     assert client.get("/api/customers").status_code == 403
     assert client.post("/api/upload", files={"file": ("t.pdf", PDF, "application/pdf")}).status_code == 403
+    assert client.get("/api/users").status_code == 403
+    assert client.post("/api/users/1/password", json={"new_password": "x"}).status_code == 403
+
+    # Khach hang tu doi mat khau
+    r = client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "moi12345"})
+    assert r.status_code == 200
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "kha", "password": "moi12345"}).status_code == 200
+
+
+def test_forged_admin_token_rejected(client):
+    # Gia mao JWT bang secret MAC DINH cong khai -> phai bi tu choi (401),
+    # vi server tu sinh secret ngau nhien.
+    from jose import jwt
+    forged = jwt.encode({"sub": "hacker", "uid": 999, "role": "admin", "cid": None},
+                        "change-me-to-a-long-random-string", algorithm="HS256")
+    client.cookies.set("ksp_session", forged)
+    assert client.get("/api/customers").status_code == 401

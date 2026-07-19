@@ -25,7 +25,21 @@ interface Me {
   role: string;
   customer_name: string | null;
   agent_default_ip: string;
+  default_location: string;
   using_default_secrets: boolean;
+}
+
+async function changePassword() {
+  const oldp = window.prompt("Mật khẩu hiện tại:");
+  if (!oldp) return;
+  const newp = window.prompt("Mật khẩu mới:");
+  if (!newp) return;
+  try {
+    await api.changeMyPassword(oldp, newp);
+    window.alert("Đã đổi mật khẩu.");
+  } catch (e) {
+    window.alert((e as Error).message);
+  }
 }
 
 export function App() {
@@ -104,6 +118,9 @@ export function App() {
           {me.username}
           {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
         </div>
+        <button className="link-btn" onClick={changePassword}>
+          Đổi mật khẩu
+        </button>
         <button
           className="logout"
           onClick={async () => {
@@ -123,7 +140,9 @@ export function App() {
       )}
 
       <main>
-        {tab === "sign" && isAdmin && <Signer defaultIp={me.agent_default_ip} />}
+        {tab === "sign" && isAdmin && (
+          <Signer defaultIp={me.agent_default_ip} defaultLocation={me.default_location} />
+        )}
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}

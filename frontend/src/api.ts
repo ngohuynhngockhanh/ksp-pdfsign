@@ -89,6 +89,7 @@ export const api = {
       customer_id: number | null;
       customer_name: string | null;
       agent_default_ip: string;
+      default_location: string;
       using_default_secrets: boolean;
     }>("/api/me");
   },
@@ -177,11 +178,24 @@ export const api = {
   },
 
   // --- Ho so ---
-  async listDocuments(opts: { customerId?: number; unassigned?: boolean } = {}) {
+  async listDocuments(
+    opts: {
+      customerId?: number;
+      unassigned?: boolean;
+      search?: string;
+      page?: number;
+      perPage?: number;
+    } = {},
+  ) {
     const p = new URLSearchParams();
     if (opts.unassigned) p.set("unassigned", "true");
     if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
-    return req<DocRecord[]>(`/api/documents?${p.toString()}`);
+    if (opts.search) p.set("search", opts.search);
+    p.set("page", String(opts.page ?? 1));
+    p.set("per_page", String(opts.perPage ?? 20));
+    return req<{ items: DocRecord[]; total: number; page: number; per_page: number }>(
+      `/api/documents?${p.toString()}`,
+    );
   },
   async myDocuments() {
     return req<DocRecord[]>("/api/my/documents");
@@ -215,5 +229,26 @@ export const api = {
   },
   async resetLogo() {
     return req<{ ok: boolean }>("/api/logo", { method: "DELETE" });
+  },
+
+  // --- Mat khau / users ---
+  async changeMyPassword(oldPassword: string, newPassword: string) {
+    return req<{ ok: boolean }>("/api/me/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    });
+  },
+  async listUsers() {
+    return req<
+      { id: number; username: string; role: string; customer_name: string | null }[]
+    >("/api/users");
+  },
+  async adminResetPassword(uid: number, newPassword: string) {
+    return req<{ ok: boolean; username: string }>(`/api/users/${uid}/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: newPassword }),
+    });
   },
 };

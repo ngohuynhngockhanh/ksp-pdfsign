@@ -128,3 +128,27 @@ class DocumentOut(BaseModel):
 
 class AssignRequest(BaseModel):
     customer_id: int | None  # None = bo gan (chua phan loai)
+
+
+class DocumentsPage(BaseModel):
+    items: list[DocumentOut]
+    total: int
+    page: int
+    per_page: int
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class PasswordReset(BaseModel):
+    new_password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    customer_id: int | None
+    customer_name: str | None = None

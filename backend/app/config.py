@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-to-a-long-random-string"
     jwt_ttl_minutes: int = 480
 
+    # Ky so - mac dinh
+    default_location: str = "Đắk Lắk"
+
     # Windows agent (may cam token)
     agent_default_ip: str = "192.168.1.4"
     agent_port: int = 8443
@@ -75,13 +78,30 @@ class Settings(BaseSettings):
         uploaded = self.data_path / "logo.png"
         return uploaded if uploaded.exists() else self.default_logo_path
 
+    def effective_jwt_secret(self) -> str:
+        """Bi mat ky JWT thuc su dung. Neu con de MAC DINH (cong khai trong repo),
+        tu sinh mot secret ngau nhien manh va luu lai — dong lo hong gia mao token
+        role=admin ngay ca khi nguoi dung chua cau hinh JWT_SECRET.
+        """
+        if "change-me" not in self.jwt_secret and len(self.jwt_secret) >= 24:
+            return self.jwt_secret
+        keyfile = self.data_path / "jwt_secret.key"
+        if keyfile.exists():
+            return keyfile.read_text().strip()
+        import secrets
+
+        s = secrets.token_urlsafe(48)
+        keyfile.write_text(s)
+        keyfile.chmod(0o600)
+        return s
+
     @property
     def using_default_secrets(self) -> bool:
         """True neu con dung mat khau/bi mat mac dinh (de canh bao tren UI)."""
+        # JWT secret duoc tu sinh (effective_jwt_secret) nen khong tinh vao day.
         return (
             self.app_admin_password == "NhapHang123@"
             or self.agent_admin_password == "NhapHang123"
-            or "change-me" in self.jwt_secret
         )
 
 

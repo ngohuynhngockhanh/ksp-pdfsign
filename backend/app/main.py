@@ -31,12 +31,16 @@ from .schemas import (
     CustomerOut,
     CustomerUpdate,
     DocumentOut,
+    DocumentsPage,
     LoginRequest,
+    PasswordChange,
+    PasswordReset,
     SignRequest,
     SignResponse,
+    UserOut,
     VerifyResponse,
 )
-from .security import hash_password
+from .security import hash_password, verify_password
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 
@@ -111,6 +115,7 @@ def me(
         "customer_id": user.customer_id,
         "customer_name": customer_name,
         "agent_default_ip": settings.agent_default_ip,
+        "default_location": settings.default_location,
         "using_default_secrets": settings.using_default_secrets,
     }
 
@@ -321,17 +326,39 @@ def _doc_out(d: Document) -> DocumentOut:
     )
 
 
-@app.get("/api/documents", response_model=list[DocumentOut])
+@app.get("/api/documents", response_model=DocumentsPage)
 def list_documents(
-    customer_id: int | None = None, unassigned: bool = False,
-    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+    customer_id: int | None = None,
+    unassigned: bool = False,
+    search: str = "",
+    page: int = 1,
+    per_page: int = 20,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
 ):
-    q = select(Document).order_by(Document.created_at.desc())
+    page = max(1, page)
+    per_page = min(max(1, per_page), 200)
+    conds = []
     if unassigned:
-        q = q.where(Document.customer_id.is_(None))
+        conds.append(Document.customer_id.is_(None))
     elif customer_id is not None:
-        q = q.where(Document.customer_id == customer_id)
-    return [_doc_out(d) for d in db.scalars(q)]
+        conds.append(Document.customer_id == customer_id)
+    if search.strip():
+        like = f"%{search.strip()}%"
+        conds.append(Document.filename.ilike(like) | Document.signer_name.ilike(like))
+
+    base = select(Document)
+    for c in conds:
+        base = base.where(c)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = db.scalars(
+        base.order_by(Document.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    )
+    return DocumentsPage(
+        items=[_doc_out(d) for d in rows], total=total, page=page, per_page=per_page
+    )
 
 
 @app.post("/api/documents/{doc_pk}/assign", response_model=DocumentOut)
@@ -409,6 +436,53 @@ def verify_document_record(
     if not storage.exists(d.doc_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
     return verify.verify_document(settings, storage.read_doc(d.doc_id), d.doc_id)
+
+
+# ---------------------------------------------------------------------------
+# Doi mat khau
+# ---------------------------------------------------------------------------
+@app.post("/api/me/password")
+def change_my_password(
+    body: PasswordChange,
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+):
+    """Nguoi dung tu doi mat khau cua chinh minh (can mat khau cu)."""
+    u = db.get(User, user.id)
+    if not u or not verify_password(body.old_password, u.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau cu khong dung")
+    if len(body.new_password) < 4:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau moi qua ngan")
+    u.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/users", response_model=list[UserOut])
+def list_users(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    out = []
+    for u in db.scalars(select(User).order_by(User.role, User.username)):
+        out.append(UserOut(
+            id=u.id, username=u.username, role=u.role, customer_id=u.customer_id,
+            customer_name=u.customer.name if u.customer else None,
+        ))
+    return out
+
+
+@app.post("/api/users/{uid}/password")
+def admin_reset_password(
+    uid: int, body: PasswordReset,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    """Admin doi mat khau cho bat ky user nao."""
+    u = db.get(User, uid)
+    if not u:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay user")
+    if len(body.new_password) < 4:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau qua ngan")
+    u.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"ok": True, "username": u.username}
 
 
 # ---------------------------------------------------------------------------

@@ -59,7 +59,7 @@ def create_token(user: User, settings: Settings) -> str:
         "iat": now,
         "exp": now + timedelta(minutes=settings.jwt_ttl_minutes),
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+    return jwt.encode(payload, settings.effective_jwt_secret(), algorithm="HS256")
 
 
 def require_user(
@@ -70,7 +70,7 @@ def require_user(
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Chua dang nhap")
     try:
-        p = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        p = jwt.decode(token, settings.effective_jwt_secret(), algorithms=["HS256"])
     except JWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phien khong hop le")
     return CurrentUser(
