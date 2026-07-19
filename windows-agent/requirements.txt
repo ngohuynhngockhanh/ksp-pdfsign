@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-pkcs11==0.7.0
+asn1crypto==1.5.1
+pydantic==2.10.4
+# Chi tren Windows (xac thuc bang LogonUser):
+pywin32==308; sys_platform == "win32"

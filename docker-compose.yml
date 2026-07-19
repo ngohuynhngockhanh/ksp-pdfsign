@@ -1,0 +1,22 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/app/trust:/app/app/trust
+    environment:
+      - DATA_DIR=/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+# Windows Agent KHONG chay o day — no chay tren may Windows 192.168.1.4
+# (xem windows-agent/install-service.md).
