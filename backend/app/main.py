@@ -314,6 +314,7 @@ def create_customer(
     )
     db.add(c)
     db.flush()
+    _audit(db, user, "customer_create", body.name, body.tax_code)
     # Tao luon tai khoan neu co
     if body.account_username and body.account_password:
         if db.scalar(select(User).where(User.username == body.account_username)):
@@ -366,6 +367,7 @@ def delete_customer(cid: int, user: CurrentUser = Depends(require_admin), db: Se
     # Bo gan ho so, xoa tai khoan khach hang
     for d in db.scalars(select(Document).where(Document.customer_id == cid)):
         d.customer_id = None
+    _audit(db, user, "customer_delete", c.name)
     for u in list(c.users):
         db.delete(u)
     db.delete(c)
@@ -392,6 +394,7 @@ def create_account(
             role="customer", customer_id=cid,
         ))
     db.commit()
+    _audit(db, user, "account_set", c.name, body.username)
     return {"ok": True, "username": body.username}
 
 
@@ -459,6 +462,7 @@ def assign_document(
     d.customer_id = body.customer_id
     db.commit()
     db.refresh(d)
+    _audit(db, user, "assign", d.filename, d.customer.name if d.customer else "—")
     background.add_task(_bg_nas_sync, d.id)  # day sang thu muc khach moi
     return _doc_out(d)
 
@@ -610,6 +614,7 @@ def bulk_delete(
         db.delete(d)
         n += 1
     db.commit()
+    _audit(db, user, "bulk_delete", f"{n} hồ sơ")
     return {"ok": True, "count": n}
 
 
@@ -956,6 +961,7 @@ def set_doc_type(
     d.doc_type = body.doc_type
     db.commit()
     db.refresh(d)
+    _audit(db, user, "set_type", d.filename, body.doc_type)
     return _doc_out(d)
 
 
@@ -1040,6 +1046,7 @@ def nas_sync_all(user: CurrentUser = Depends(require_admin), settings: Settings 
             synced += 1
         else:
             failed += 1
+    _audit(db, user, "nas_sync_all", f"{synced} ok / {failed} lỗi")
     return {"ok": True, "synced": synced, "failed": failed}
 
 
