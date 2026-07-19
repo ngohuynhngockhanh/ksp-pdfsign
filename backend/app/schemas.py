@@ -48,6 +48,8 @@ class SignRequest(BaseModel):
     reason: str = ""
     location: str = ""
     signer_name: str = ""
+    filename: str = ""
+    customer_id: int | None = None  # gan luon khi ky (tuy chon)
 
 
 class SignResponse(BaseModel):
@@ -75,3 +77,54 @@ class VerifyResponse(BaseModel):
     doc_id: str
     signature_count: int
     signatures: list[SignatureReport]
+
+
+# --- Khach hang / Tai khoan / Ho so ---
+class CustomerCreate(BaseModel):
+    name: str
+    tax_code: str = ""
+    contact: str = ""
+    note: str = ""
+    # Tao luon tai khoan cho khach hang (tuy chon)
+    account_username: str | None = None
+    account_password: str | None = None
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = None
+    tax_code: str | None = None
+    contact: str | None = None
+    note: str | None = None
+
+
+class AccountCreate(BaseModel):
+    username: str
+    password: str
+
+
+class CustomerOut(BaseModel):
+    id: int
+    name: str
+    tax_code: str
+    contact: str
+    note: str
+    created_at: str
+    document_count: int = 0
+    account_usernames: list[str] = Field(default_factory=list)
+
+
+class DocumentOut(BaseModel):
+    id: int
+    doc_id: str
+    filename: str
+    signer_name: str
+    signed: bool
+    note: str
+    customer_id: int | None
+    customer_name: str | None = None
+    created_at: str
+    download_url: str
+
+
+class AssignRequest(BaseModel):
+    customer_id: int | None  # None = bo gan (chua phan loai)

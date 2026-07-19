@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, type Rect } from "../api";
+import { useEffect, useState } from "react";
+import { api, type Customer, type Rect } from "../api";
 import { PdfCanvas } from "../components/PdfCanvas";
 import { CertPicker } from "../components/CertPicker";
 
@@ -15,9 +15,16 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
   const [reason, setReason] = useState("");
   const [location, setLocation] = useState("");
 
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState<string>("");
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [downloadUrl, setDownloadUrl] = useState("");
+
+  useEffect(() => {
+    api.listCustomers().then(setCustomers).catch(() => {});
+  }, []);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -48,6 +55,8 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
         reason,
         location,
         signer_name: "",
+        filename,
+        customer_id: customerId === "" ? null : Number(customerId),
       });
       setDownloadUrl(r.download_url);
     } catch (ex) {
@@ -105,6 +114,16 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
           <input value={location} onChange={(e) => setLocation(e.target.value)} />
         </label>
 
+        <h3>6. Phân loại khách hàng (tuỳ chọn)</h3>
+        <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+          <option value="">— để trống, phân loại sau ở tab Hồ sơ —</option>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
         {err && <div className="error">{err}</div>}
         <button
           className="primary"
@@ -114,9 +133,12 @@ export function Signer({ defaultIp }: { defaultIp: string }) {
           {busy ? "Đang ký…" : "Ký số"}
         </button>
         {downloadUrl && (
-          <a className="download" href={downloadUrl}>
-            ⬇️ Tải PDF đã ký
-          </a>
+          <>
+            <div className="ok-note">✅ Đã ký và lưu vào hồ sơ.</div>
+            <a className="download" href={downloadUrl}>
+              ⬇️ Tải PDF đã ký
+            </a>
+          </>
         )}
       </aside>
 

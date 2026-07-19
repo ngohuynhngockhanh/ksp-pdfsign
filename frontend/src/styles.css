@@ -276,3 +276,127 @@ td.bad {
   color: var(--red);
   font-size: 0.83rem;
 }
+
+/* Topbar user + roles */
+.topbar .who {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.topbar .logout {
+  margin-left: 12px;
+}
+.ok-note {
+  margin-top: 10px;
+  color: var(--green);
+  font-size: 0.9rem;
+}
+
+/* Customers / Documents layout */
+.page-2col {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 18px;
+  padding: 18px;
+  align-items: start;
+}
+.page-1col {
+  padding: 18px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.page-2col .panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.list-col h3,
+.page-1col h3 {
+  margin: 4px 0 12px;
+}
+.sub {
+  margin: 14px 0 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.danger-link {
+  border: none;
+  background: none;
+  color: var(--red);
+  padding: 2px 4px;
+  font-size: 0.82rem;
+}
+.danger-link:hover {
+  background: #fdecec;
+}
+.account-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.account-add input {
+  flex: 1;
+  min-width: 0;
+}
+.account-add button {
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+/* Toolbar + filters */
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.filters {
+  display: flex;
+  gap: 6px;
+}
+.filters button.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* Document table */
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.doc-table th,
+.doc-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef1f4;
+}
+.doc-table th {
+  background: #f4f6f8;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.doc-table select {
+  min-width: 160px;
+}
+.doc-table .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.doc-table .actions a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.unassigned-row td {
+  background: #fffbea;
+}

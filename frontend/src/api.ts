@@ -17,6 +17,30 @@ export interface Rect {
   y2: number;
 }
 
+export interface Customer {
+  id: number;
+  name: string;
+  tax_code: string;
+  contact: string;
+  note: string;
+  created_at: string;
+  document_count: number;
+  account_usernames: string[];
+}
+
+export interface DocRecord {
+  id: number;
+  doc_id: string;
+  filename: string;
+  signer_name: string;
+  signed: boolean;
+  note: string;
+  customer_id: number | null;
+  customer_name: string | null;
+  created_at: string;
+  download_url: string;
+}
+
 export interface SignatureReport {
   field_name: string;
   signer_name: string;
@@ -61,6 +85,9 @@ export const api = {
   async me() {
     return req<{
       username: string;
+      role: string;
+      customer_id: number | null;
+      customer_name: string | null;
       agent_default_ip: string;
       using_default_secrets: boolean;
     }>("/api/me");
@@ -91,6 +118,8 @@ export const api = {
     reason: string;
     location: string;
     signer_name: string;
+    filename?: string;
+    customer_id?: number | null;
   }) {
     return req<{ doc_id: string; signed: boolean; download_url: string }>(
       "/api/sign",
@@ -109,5 +138,62 @@ export const api = {
       signature_count: number;
       signatures: SignatureReport[];
     }>("/api/verify", { method: "POST", body: fd });
+  },
+
+  // --- Khach hang ---
+  async listCustomers() {
+    return req<Customer[]>("/api/customers");
+  },
+  async createCustomer(body: {
+    name: string;
+    tax_code?: string;
+    contact?: string;
+    note?: string;
+    account_username?: string;
+    account_password?: string;
+  }) {
+    return req<Customer>("/api/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async updateCustomer(id: number, body: Partial<Customer>) {
+    return req<Customer>(`/api/customers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteCustomer(id: number) {
+    return req(`/api/customers/${id}`, { method: "DELETE" });
+  },
+  async createAccount(id: number, username: string, password: string) {
+    return req<{ ok: boolean; username: string }>(`/api/customers/${id}/account`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
+  // --- Ho so ---
+  async listDocuments(opts: { customerId?: number; unassigned?: boolean } = {}) {
+    const p = new URLSearchParams();
+    if (opts.unassigned) p.set("unassigned", "true");
+    if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    return req<DocRecord[]>(`/api/documents?${p.toString()}`);
+  },
+  async myDocuments() {
+    return req<DocRecord[]>("/api/my/documents");
+  },
+  async assignDocument(docPk: number, customerId: number | null) {
+    return req<DocRecord>(`/api/documents/${docPk}/assign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: customerId }),
+    });
+  },
+  async deleteDocument(docPk: number) {
+    return req(`/api/documents/${docPk}`, { method: "DELETE" });
   },
 };

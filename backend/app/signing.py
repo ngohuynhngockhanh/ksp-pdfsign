@@ -71,8 +71,8 @@ def _build_cert_registry(
     return signing_cert, registry
 
 
-def sign_document(settings: Settings, req: SignRequest) -> str:
-    """Ky PDF theo yeu cau, tra ve doc_id cua file da ky."""
+def sign_document(settings: Settings, req: SignRequest) -> tuple[str, str]:
+    """Ky PDF theo yeu cau, tra ve (doc_id file da ky, ten nguoi ky)."""
     pdf_bytes = storage.read_doc(req.doc_id)
 
     # 1) Lay chung thu ky + chuoi tu backend token.
@@ -125,7 +125,7 @@ def sign_document(settings: Settings, req: SignRequest) -> str:
         appearance_text_params={"signer": signer_label},
     )
 
-    return storage.save_upload(out.getvalue())
+    return storage.save_upload(out.getvalue()), signer_label
 
 
 def _next_field_name(pdf_bytes: bytes) -> str:

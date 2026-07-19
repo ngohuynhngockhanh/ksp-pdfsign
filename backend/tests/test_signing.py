@@ -119,7 +119,8 @@ def test_sign_and_verify_roundtrip(tmp_path, monkeypatch):
         location="Ha Noi",
     )
 
-    signed_id = signing.sign_document(settings, req)
+    signed_id, signer_label = signing.sign_document(settings, req)
+    assert "INUT" in signer_label or signer_label
     signed_bytes = storage.read_doc(signed_id)
 
     result = verify.verify_document(settings, signed_bytes, signed_id)

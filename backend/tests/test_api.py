@@ -58,8 +58,18 @@ def client(tmp_path, monkeypatch):
 
     get_settings.cache_clear()
 
+    from app import db as dbmod
     from app import token_backend, verify
+    from app.auth import ensure_admin_seed
     from asn1crypto import x509 as ax509
+
+    # DB moi theo tmp_path + seed admin
+    dbmod.reset_engine_for_tests()
+    dbmod.init_db()
+    gen = dbmod.get_session()
+    _s = next(gen)
+    ensure_admin_seed(_s, get_settings())
+    gen.close()
 
     key, cert = _key_cert()
     cert_der = cert.public_bytes(serialization.Encoding.DER)
@@ -129,3 +139,52 @@ def test_full_flow(client):
     assert body["signature_count"] == 1
     sig = body["signatures"][0]
     assert sig["intact"] and sig["valid"] and sig["trusted"]
+
+
+def _sign_one(client, customer_id=None):
+    up = client.post("/api/upload", files={"file": ("t.pdf", PDF, "application/pdf")})
+    doc_id = up.json()["doc_id"]
+    return client.post(
+        "/api/sign",
+        json={
+            "doc_id": doc_id,
+            "rect": {"page": 0, "x1": 350, "y1": 50, "x2": 560, "y2": 130},
+            "cert_id": "test",
+            "agent": {"ip": "127.0.0.1", "admin_password": "NhapHang123", "pin": "1"},
+            "reason": "", "location": "", "signer_name": "",
+            "filename": "hopdong.pdf", "customer_id": customer_id,
+        },
+    )
+
+
+def test_customer_account_and_documents(client):
+    _login(client)
+    # Tao khach hang + tai khoan
+    r = client.post("/api/customers", json={
+        "name": "Khach Hang A", "tax_code": "123",
+        "account_username": "kha", "account_password": "matkhau123",
+    })
+    assert r.status_code == 200, r.text
+    cid = r.json()["id"]
+    assert r.json()["account_usernames"] == ["kha"]
+
+    # Ky 1 ho so chua gan
+    assert _sign_one(client).status_code == 200
+    docs = client.get("/api/documents", params={"unassigned": "true"}).json()
+    assert len(docs) == 1
+    docpk = docs[0]["id"]
+
+    # Gan ho so cho khach hang (phan loai bang tay)
+    a = client.post(f"/api/documents/{docpk}/assign", json={"customer_id": cid})
+    assert a.status_code == 200
+    assert a.json()["customer_name"] == "Khach Hang A"
+
+    # Khach hang dang nhap -> chi thay ho so cua minh
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "kha", "password": "matkhau123"}).status_code == 200
+    mine = client.get("/api/my/documents").json()
+    assert len(mine) == 1 and mine[0]["id"] == docpk
+    assert client.get(f"/api/documents/{docpk}/download").status_code == 200
+    # Khach hang khong duoc dung route admin
+    assert client.get("/api/customers").status_code == 403
+    assert client.post("/api/upload", files={"file": ("t.pdf", PDF, "application/pdf")}).status_code == 403
