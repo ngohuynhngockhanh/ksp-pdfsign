@@ -537,8 +537,7 @@ def share_meta(token: str, db: Session = Depends(get_session)):
     }
 
 
-@app.get("/api/share/{token}/download")
-def share_download(token: str, db: Session = Depends(get_session)):
+def _share_file(token: str, db: Session, inline: bool):
     s = db.scalar(select(Share).where(Share.token == token))
     if not s:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link khong ton tai")
@@ -547,11 +546,26 @@ def share_download(token: str, db: Session = Depends(get_session)):
     d = s.document
     if not storage.exists(d.doc_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    if inline:
+        # Xem truc tiep trong trinh duyet
+        disp = f"inline; filename*=UTF-8''{quote(d.filename)}"
+    else:
+        disp = _content_disposition(d.filename)
     return StreamingResponse(
         iter([storage.read_doc(d.doc_id)]),
         media_type="application/pdf",
-        headers={"Content-Disposition": _content_disposition(d.filename)},
+        headers={"Content-Disposition": disp},
     )
+
+
+@app.get("/api/share/{token}/download")
+def share_download(token: str, db: Session = Depends(get_session)):
+    return _share_file(token, db, inline=False)
+
+
+@app.get("/api/share/{token}/view")
+def share_view(token: str, db: Session = Depends(get_session)):
+    return _share_file(token, db, inline=True)
 
 
 @app.get("/s/{token}", response_class=HTMLResponse)
@@ -569,32 +583,44 @@ def share_page(token: str, db: Session = Depends(get_session)):
 
 
 def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "") -> str:
-    body = (
-        f'<p class="err">{error}</p>'
-        if error
-        else (
-            f'<p class="fn">📄 {filename}</p>'
-            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
-            f'<p class="exp">Link có hiệu lực đến {exp}</p>'
+    if error:
+        inner = (
+            f'<div class="card"><div class="brand">🖊️ KSP PDF Signer</div>'
+            f'<h1>Chia sẻ tài liệu</h1><p class="err">{error}</p></div>'
         )
-    )
+        preview = ""
+    else:
+        inner = (
+            f'<div class="bar">'
+            f'<div class="brand">🖊️ KSP · <span class="fn">📄 {filename}</span></div>'
+            f'<div class="acts">'
+            f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
+            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp}</div>'
+        )
+        preview = f'<iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe>'
     return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="/favicon.png"><title>Tải tài liệu — KSP</title>
+<link rel="icon" href="/favicon.png"><title>Xem / Tải tài liệu — KSP</title>
 <style>
-body{{font-family:system-ui,'Segoe UI',Roboto,sans-serif;background:#f4f6f8;margin:0;
-display:grid;place-items:center;min-height:100vh;color:#1c2530}}
-.card{{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:34px 40px;
-text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08);max-width:420px}}
-h1{{font-size:1.2rem;margin:0 0 6px}}.brand{{color:#1e6fd9;font-weight:700;margin-bottom:14px}}
-.fn{{font-size:1.05rem;margin:16px 0}}
+*{{box-sizing:border-box}}
+body{{font-family:system-ui,'Segoe UI',Roboto,sans-serif;background:#eef1f4;margin:0;
+color:#1c2530;min-height:100vh;display:flex;flex-direction:column}}
+.bar{{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+background:#fff;border-bottom:1px solid #d9dee5;padding:12px 18px}}
+.brand{{color:#1e6fd9;font-weight:700}}.fn{{color:#1c2530;font-weight:600}}
+.acts{{display:flex;gap:8px;flex-wrap:wrap}}
 .btn{{display:inline-block;background:#1e6fd9;color:#fff;text-decoration:none;
-padding:12px 26px;border-radius:8px;font-size:1rem;margin:8px 0}}
-.btn:hover{{background:#1857aa}}.exp{{color:#6b7683;font-size:.82rem;margin-top:14px}}
-.err{{color:#d13b3b;font-size:1rem}}
-</style></head><body><div class="card">
-<div class="brand">🖊️ KSP PDF Signer</div><h1>Chia sẻ tài liệu</h1>{body}
-</div></body></html>"""
+padding:9px 18px;border-radius:8px;font-size:.9rem}}
+.btn:hover{{background:#1857aa}}
+.btn.ghost{{background:#fff;color:#1e6fd9;border:1px solid #1e6fd9}}
+.btn.ghost:hover{{background:#eef4fd}}
+.exp{{background:#fff6e0;color:#8a6300;font-size:.8rem;padding:5px 18px;border-bottom:1px solid #f0dca0}}
+.pdf{{flex:1;width:100%;border:0;min-height:70vh}}
+.card{{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:34px 40px;
+text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08);max-width:420px;margin:auto}}
+h1{{font-size:1.2rem;margin:0 0 6px}}.err{{color:#d13b3b}}
+</style></head><body>{inner}{preview}</body></html>"""
 
 
 # ---------------------------------------------------------------------------
