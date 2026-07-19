@@ -45,13 +45,21 @@ Tab "Báo giá": nguồn (nhập tay | hóa đơn | hồ sơ) → form (hàng+đ
 - `api.ts`: `quoteGenerate`, `aiQuoteNarrative`.
 - Badge loại: thêm `bao_gia`, `de_nghi_tt` (đã có màu trong DOC_TYPES).
 
-### Config (.env)
+### Config (.env) — dùng 9router có sẵn của inut-apphub
 ```
 AI_ENABLED=true
-AI_BASE_URL=https://openrouter.ai/api/v1   # hoặc local/khac
-AI_API_KEY=...                              # key free
-AI_MODEL=...                                # model mien phi
+AI_BASE_URL=http://127.0.0.1:20128/v1      # 9router (OpenAI-compat, đã chạy)
+AI_MODEL=opencode/big-pickle               # free, no-signup (DeepSeek-V4-Flash)
+AI_API_KEY=public                          # Bearer public
+AI_MAX_TOKENS=3500                          # reasoning -> cần lớn, nếu nhỏ content rỗng
 ```
+Lưu ý: response 9router có thể kèm đuôi `data: [DONE]` sau JSON → parse bằng
+`JSONDecoder().raw_decode()` (lấy object JSON đầu tiên). Đã test thật OK (tiếng Việt).
+
+### Đề nghị thanh toán — trường
+Số ĐN, ngày, bên nhận (khách), **số tiền** (+ bằng chữ), **lý do/nội dung**, tham chiếu
+(hợp đồng/hóa đơn/BBBG số), **tài khoản nhận**. TK mặc định: **79713 - Techcombank**
+(thiết kế danh sách nhiều STK, hiện 1; cấu hình `BANK_ACCOUNTS` trong config để mở rộng).
 
 ## Kiểm thử
 - `money.so_tien_bang_chu`: 60000000 → "Sáu mươi triệu đồng chẵn"; test vài mốc.
