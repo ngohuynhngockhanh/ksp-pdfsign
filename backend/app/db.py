@@ -76,6 +76,10 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     # Phan loai: hop_dong | bbbg | bao_gia | hoa_don | khac | ""
     doc_type: Mapped[str] = mapped_column(String(20), default="", index=True)
+    # Ban da ky cua cac ben tai len (vd hop dong nhieu chu ky)
+    signed_upload_id: Mapped[str] = mapped_column(String(64), default="")
+    signed_upload_name: Mapped[str] = mapped_column(String(255), default="")
+    signed_upload_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Dong bo NAS
     nas_path: Mapped[str] = mapped_column(String(500), default="")
     nas_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -128,6 +132,9 @@ def _migrate_add_columns() -> None:
             "nas_path": "VARCHAR(500) DEFAULT ''",
             "nas_synced_at": "DATETIME",
             "doc_type": "VARCHAR(20) DEFAULT ''",
+            "signed_upload_id": "VARCHAR(64) DEFAULT ''",
+            "signed_upload_name": "VARCHAR(255) DEFAULT ''",
+            "signed_upload_at": "DATETIME",
         },
         "customers": {
             "address": "VARCHAR(500) DEFAULT ''",

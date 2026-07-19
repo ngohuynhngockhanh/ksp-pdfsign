@@ -394,6 +394,7 @@ def _doc_out(d: Document) -> DocumentOut:
         download_url=f"/api/documents/{d.id}/download",
         nas_synced=d.nas_synced_at is not None,
         doc_type=d.doc_type or "",
+        signed_upload_name=d.signed_upload_name or "",
     )
 
 
@@ -489,6 +490,61 @@ def download_document(
     return StreamingResponse(
         iter([data]), media_type="application/pdf",
         headers={"Content-Disposition": _content_disposition(d.filename)},
+    )
+
+
+@app.post("/api/documents/{doc_pk}/upload-signed", response_model=DocumentOut)
+async def upload_signed(
+    doc_pk: int,
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Tai len ban tai lieu da co du chu ky cua cac ben (vd hop dong nhieu chu ky)."""
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    content = await file.read()
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
+    up_id = storage.save_upload(content)
+    d.signed_upload_id = up_id
+    d.signed_upload_name = file.filename or f"da-ky-{up_id}.pdf"
+    d.signed_upload_at = datetime.utcnow()
+    db.commit()
+    # Backup NAS (best-effort)
+    if settings.nas_enabled:
+        try:
+            nas.sync_extra_file(
+                settings, d.customer.name if d.customer else "",
+                "da-ky", d.signed_upload_name, content,
+            )
+        except Exception:
+            pass
+    db.refresh(d)
+    return _doc_out(d)
+
+
+@app.get("/api/documents/{doc_pk}/signed-file")
+def download_signed_upload(
+    doc_pk: int,
+    inline: bool = False,
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d or not d.signed_upload_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chua co ban da ky tai len")
+    if not user.is_admin and d.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
+    if not storage.exists(d.signed_upload_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    data = storage.read_doc(d.signed_upload_id)
+    kind = "inline" if inline else "attachment"
+    disp = f"{kind}; filename*=UTF-8''{quote(d.signed_upload_name)}"
+    return StreamingResponse(
+        iter([data]), media_type="application/pdf", headers={"Content-Disposition": disp}
     )
 
 

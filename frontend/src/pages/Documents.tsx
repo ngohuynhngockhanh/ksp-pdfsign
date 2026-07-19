@@ -282,6 +282,25 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
                 <button className="link-btn" onClick={() => onVerify(d.id)}>
                   Kiểm tra
                 </button>
+                {d.signed_upload_name && (
+                  <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer" title={d.signed_upload_name}>
+                    📎 Bản đã ký
+                  </a>
+                )}
+                <label className="link-btn file-inline">
+                  {d.signed_upload_name ? "Thay bản ký" : "Tải bản ký lên"}
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    hidden
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      await api.uploadSigned(d.id, f);
+                      load();
+                    }}
+                  />
+                </label>
                 <button
                   className="danger-link"
                   onClick={async () => {

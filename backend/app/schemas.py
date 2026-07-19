@@ -129,6 +129,7 @@ class DocumentOut(BaseModel):
     download_url: str
     nas_synced: bool = False
     doc_type: str = ""
+    signed_upload_name: str = ""  # rong = chua co ban da ky tai len
 
 
 class AssignRequest(BaseModel):

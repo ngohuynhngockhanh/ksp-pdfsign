@@ -150,5 +150,17 @@ def sync_document(settings: Settings, db_session, doc) -> tuple[bool, str]:
         return False, _last_error
 
 
+def sync_extra_file(settings: Settings, customer_name: str, subfolder: str, filename: str, data: bytes) -> tuple[bool, str]:
+    """Day 1 file phu (vd ban da ky tai len) vao NAS: {khach}/{subfolder}/{file}."""
+    global _last_error
+    try:
+        target = rf"{_base(settings)}\{settings.nas_base_path}\{_sanitize(customer_name)}\{_sanitize(subfolder)}\{_sanitize(filename) or 'file.pdf'}"
+        _upload(settings, target, data)
+        return True, target
+    except Exception as e:  # noqa: BLE001
+        _last_error = f"NAS extra: {type(e).__name__}: {e}"
+        return False, _last_error
+
+
 def last_error() -> str:
     return _last_error

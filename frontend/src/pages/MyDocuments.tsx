@@ -49,6 +49,11 @@ export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void })
                 <button className="link-btn" onClick={() => onVerify(d.id)}>
                   Kiểm tra
                 </button>
+                {d.signed_upload_name && (
+                  <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">
+                    📎 Bản đã ký
+                  </a>
+                )}
               </td>
             </tr>
           ))}

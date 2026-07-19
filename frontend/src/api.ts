@@ -41,6 +41,7 @@ export interface DocRecord {
   download_url: string;
   nas_synced: boolean;
   doc_type: string;
+  signed_upload_name: string;
 }
 
 export const DOC_TYPES: Record<string, string> = {
@@ -351,5 +352,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ doc_type: docType }),
     });
+  },
+  async uploadSigned(docPk: number, file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<DocRecord>(`/api/documents/${docPk}/upload-signed`, {
+      method: "POST",
+      body: fd,
+    });
+  },
+  signedFileUrl(docPk: number, inline: boolean) {
+    return `/api/documents/${docPk}/signed-file${inline ? "?inline=true" : ""}`;
   },
 };

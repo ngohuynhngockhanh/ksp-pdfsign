@@ -595,6 +595,10 @@ td.bad {
   text-decoration: underline;
   background: none;
 }
+label.link-btn.file-inline {
+  display: inline;
+  cursor: pointer;
+}
 
 /* Logo settings */
 .logo-settings {
