@@ -32,9 +32,19 @@ class Settings(BaseSettings):
     agent_admin_password: str = "NhapHang123"
     agent_verify_tls: bool = False
 
+    # Che do ky: "ssh" (SSH + PowerShell + kho chung thu Windows, KHONG can cai
+    # gi tren may Windows) hoac "agent" (goi HTTP toi Windows Agent da cai).
+    signing_mode: str = "ssh"
+    ssh_user: str = "Administrator"
+    ssh_connect_timeout: int = 10
+    ssh_command_timeout: int = 60
+
     # Ky so
     tsa_url: str = ""
     enable_ltv: bool = False
+
+    # Kiem tra chu ky: co thu tai OCSP/CRL khi kiem tra khong (can Internet).
+    verify_allow_fetching: bool = False
 
     # Luu tru
     data_dir: str = "./backend/data"

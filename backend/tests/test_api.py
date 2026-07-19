@@ -58,21 +58,21 @@ def client(tmp_path, monkeypatch):
 
     get_settings.cache_clear()
 
-    from app import agent_client, signing, verify
+    from app import token_backend, verify
     from asn1crypto import x509 as ax509
 
     key, cert = _key_cert()
     cert_der = cert.public_bytes(serialization.Encoding.DER)
 
     monkeypatch.setattr(
-        agent_client, "get_cert_chain", lambda s, ip, pw, cid: [cert_der]
+        token_backend, "get_cert_chain", lambda s, ip, pw, cid: [cert_der]
     )
 
     def fake_sign_raw(s, agent, cid, data, alg):
         h = {"sha256": hashes.SHA256}[alg]()
         return key.sign(data, padding.PKCS1v15(), h)
 
-    monkeypatch.setattr(signing.agent_client, "sign_raw", fake_sign_raw)
+    monkeypatch.setattr(token_backend, "sign_raw", fake_sign_raw)
     monkeypatch.setattr(
         verify, "load_trust_roots", lambda s: [ax509.Certificate.load(cert_der)]
     )

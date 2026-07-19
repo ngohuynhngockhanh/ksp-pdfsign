@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 
 # pyHanko[pkcs11] can build deps toi thieu; slim thuong du.
+# build-essential/libffi cho pyHanko; openssh-client + sshpass cho SIGNING_MODE=ssh
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libffi-dev \
+    build-essential libffi-dev openssh-client sshpass \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

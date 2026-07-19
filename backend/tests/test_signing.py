@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes, serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: E402
 from cryptography.x509.oid import NameOID  # noqa: E402
 
-from app import agent_client, signing, storage, verify  # noqa: E402
+from app import signing, storage, token_backend, verify  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.schemas import AgentTarget, Rect, SignRequest  # noqa: E402
 
@@ -101,8 +101,8 @@ def test_sign_and_verify_roundtrip(tmp_path, monkeypatch):
         h = _HASHES[digest_algorithm]()
         return key.sign(data, padding.PKCS1v15(), h)
 
-    monkeypatch.setattr(agent_client, "get_cert_chain", fake_chain)
-    monkeypatch.setattr(signing.agent_client, "sign_raw", fake_sign_raw)
+    monkeypatch.setattr(token_backend, "get_cert_chain", fake_chain)
+    monkeypatch.setattr(token_backend, "sign_raw", fake_sign_raw)
     # verify: tin tuong chinh cert nay lam root
     from asn1crypto import x509 as ax509
     monkeypatch.setattr(

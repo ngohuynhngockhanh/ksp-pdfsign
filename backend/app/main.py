@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
-from . import agent_client, signing, storage, verify
+from . import signing, storage, token_backend, verify
 from .auth import COOKIE_NAME, create_token, require_user, verify_login
-from .config import Settings, get_settings
+from .config import REPO_ROOT, Settings, get_settings
 from .schemas import (
     AgentTarget,
     LoginRequest,
@@ -93,10 +94,10 @@ def list_certs(
     user: str = Depends(require_user),
     settings: Settings = Depends(get_settings),
 ):
-    """Liet ke chung thu tren token qua agent."""
+    """Liet ke chung thu tren token (qua SSH hoac HTTP agent)."""
     try:
-        certs = agent_client.list_certs(settings, body.ip, body.admin_password)
-    except agent_client.AgentError as e:
+        certs = token_backend.list_certs(settings, body.ip, body.admin_password)
+    except token_backend.BackendError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     return {"certs": [c.model_dump() for c in certs]}
 
@@ -111,7 +112,7 @@ def sign(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay tai lieu")
     try:
         signed_id = signing.sign_document(settings, body)
-    except agent_client.AgentError as e:
+    except token_backend.BackendError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Ky that bai: {e}")
@@ -159,3 +160,23 @@ def verify_existing(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay tai lieu")
     data = storage.read_doc(doc_id)
     return verify.verify_document(settings, data, doc_id)
+
+
+# ---------------------------------------------------------------------------
+# Phuc vu frontend da build (SPA) — cho phep chay tren MOT cong duy nhat.
+# Cac route /api/* o tren duoc dang ky truoc nen luon uu tien.
+# ---------------------------------------------------------------------------
+_FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
+if (_FRONTEND_DIST / "index.html").exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_FRONTEND_DIST / "assets"),
+        name="assets",
+    )
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        # Khong de SPA nuot cac duong dan API.
+        if full_path.startswith("api/"):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+        return FileResponse(_FRONTEND_DIST / "index.html")

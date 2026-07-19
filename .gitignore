@@ -6,6 +6,8 @@
 *.key
 *.p12
 *.pfx
+# Ngoai le: chung thu CA goc cong khai (trust store) duoc commit
+!backend/app/trust/*.pem
 
 # Python
 __pycache__/

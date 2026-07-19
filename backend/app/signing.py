@@ -19,7 +19,7 @@ from pyhanko.sign.timestamps import HTTPTimeStamper
 from pyhanko.stamp import TextStampStyle
 from pyhanko_certvalidator.registry import SimpleCertificateStore
 
-from . import agent_client, storage
+from . import storage, token_backend
 from .config import Settings
 from .schemas import SignRequest
 
@@ -49,8 +49,8 @@ class ExternalTokenSigner(Signer):
         if dry_run:
             # Chi can dung KICH THUOC de pyHanko cap phat cho de nhung chu ky.
             return b"\x00" * self._key_len
-        # Goi agent (blocking httpx) de token ky raw `data`.
-        return agent_client.sign_raw(
+        # Goi backend token (SSH hoac HTTP agent) de token ky raw `data`.
+        return token_backend.sign_raw(
             self._settings,
             self._request.agent,
             self._request.cert_id,
@@ -75,8 +75,8 @@ def sign_document(settings: Settings, req: SignRequest) -> str:
     """Ky PDF theo yeu cau, tra ve doc_id cua file da ky."""
     pdf_bytes = storage.read_doc(req.doc_id)
 
-    # 1) Lay chung thu ky + chuoi tu agent.
-    chain = agent_client.get_cert_chain(
+    # 1) Lay chung thu ky + chuoi tu backend token.
+    chain = token_backend.get_cert_chain(
         settings, req.agent.ip, req.agent.admin_password, req.cert_id
     )
     signing_cert, registry = _build_cert_registry(chain)

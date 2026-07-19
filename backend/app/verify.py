@@ -88,7 +88,13 @@ def _one_signature(embedded_sig, vc: ValidationContext) -> SignatureReport:
 
 def verify_document(settings: Settings, pdf_bytes: bytes, doc_id: str) -> VerifyResponse:
     roots = load_trust_roots(settings)
-    vc = ValidationContext(trust_roots=roots, allow_fetching=True)
+    # soft-fail: van dung chuoi toi root CA, khong danh rot chu ky chi vi khong
+    # tai duoc OCSP/CRL (server LAN thuong khong ra Internet toi CA Viet Nam).
+    vc = ValidationContext(
+        trust_roots=roots,
+        allow_fetching=settings.verify_allow_fetching,
+        revocation_mode="soft-fail",
+    )
 
     reader = PdfFileReader(io.BytesIO(pdf_bytes))
     reports = [_one_signature(sig, vc) for sig in reader.embedded_signatures]
