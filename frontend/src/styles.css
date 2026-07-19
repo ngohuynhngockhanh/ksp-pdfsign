@@ -600,6 +600,347 @@ label.link-btn.file-inline {
   cursor: pointer;
 }
 
+/* ===== Trang Hồ sơ (refactor) ===== */
+.docs-page {
+  padding: 18px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.docs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.docs-toolbar h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.docs-toolbar .count {
+  background: #eef1f4;
+  color: var(--muted);
+  border-radius: 20px;
+  padding: 1px 10px;
+  font-size: 0.82rem;
+  margin-left: 4px;
+}
+.tb-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.tb-group .search {
+  width: 240px;
+}
+.tb-select {
+  width: auto;
+  padding: 7px 9px;
+}
+.btn-sm {
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.btn-sm:hover {
+  background: #f2f5f9;
+}
+.btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-sm.danger {
+  color: var(--red);
+  border-color: #f2c4c4;
+}
+.btn-sm.ghost {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+/* Chips / badges */
+.chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip.sm {
+  font-size: 0.72rem;
+  padding: 1px 7px;
+}
+.chip.green {
+  background: #dcfce7;
+  color: #166534;
+}
+.chip.amber {
+  background: #fef3c7;
+  color: #92400e;
+}
+.chip.gray {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.chip.indigo {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.badge.tb-bbbg {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+.badge.tb-hop_dong {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.badge.tb-bao_gia {
+  background: #dbeafe;
+  color: #075985;
+}
+.badge.tb-hoa_don {
+  background: #fef3c7;
+  color: #92400e;
+}
+.badge.tb-khac {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.dt .badge,
+.dt .pill {
+  border: 0;
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.dt .pill.cust {
+  background: #eef4fd;
+  color: var(--primary-dark);
+}
+.dt .pill.cust.none {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  font-weight: 500;
+}
+.dt .pill:hover,
+.dt .badge:hover {
+  filter: brightness(0.96);
+}
+.cell-edit {
+  width: 100%;
+  min-width: 150px;
+  padding: 5px 7px;
+}
+
+/* Bảng */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.dt {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.dt thead th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f9fafb;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.dt tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #eef1f4;
+  vertical-align: middle;
+}
+.dt tbody tr:hover {
+  background: #f7f9fc;
+}
+.dt tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dt .chk {
+  width: 34px;
+  text-align: center;
+}
+.dt .chk input {
+  width: auto;
+}
+.dt .fname {
+  max-width: 320px;
+}
+.dt .fname .ft {
+  display: block;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt .fname .chips {
+  display: inline-flex;
+  gap: 5px;
+  margin-top: 3px;
+}
+.dt .nowrap {
+  white-space: nowrap;
+}
+.dt .col-act {
+  width: 1%;
+  text-align: right;
+}
+
+/* Hành động trên hàng */
+.row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.iact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 7px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.iact:hover {
+  background: #eef4fd;
+  border-color: var(--primary);
+}
+.rowmenu {
+  position: relative;
+  display: inline-flex;
+}
+.kebab {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.kebab:hover {
+  background: #eef4fd;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 41;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  min-width: 190px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.menu > a,
+.menu > button,
+.menu .menu-file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+}
+.menu > a:hover,
+.menu > button:hover,
+.menu .menu-file:hover {
+  background: #f2f5f9;
+}
+.menu .menu-danger {
+  color: var(--red);
+}
+.menu .menu-danger:hover {
+  background: #fdecec;
+}
+
+/* Empty & skeleton */
+.empty {
+  text-align: center;
+  padding: 42px 16px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.empty-ic {
+  font-size: 2.4rem;
+}
+.skel-row td {
+  padding: 10px 12px;
+}
+.skel {
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f4 25%, #f6f8fa 37%, #eef1f4 63%);
+  background-size: 400% 100%;
+  animation: skel 1.2s ease infinite;
+}
+@keyframes skel {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (max-width: 820px) {
+  .col-hide-sm {
+    display: none;
+  }
+  .tb-group .search {
+    width: 160px;
+  }
+}
+
 /* Logo settings */
 .logo-settings {
   border: 1px dashed var(--border);

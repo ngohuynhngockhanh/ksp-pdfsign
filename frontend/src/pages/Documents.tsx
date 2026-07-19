@@ -1,6 +1,100 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api, DOC_TYPES, type Customer, type DocRecord } from "../api";
 import { copyText, quickCreateCustomer, shareDocument } from "../util";
+
+// ── Ô "Loại" dạng badge màu, bấm để sửa ──────────────────────────────
+function TypeCell({ d, onChanged }: { d: DocRecord; onChanged: () => void }) {
+  const [edit, setEdit] = useState(false);
+  const k = d.doc_type || "";
+  if (edit)
+    return (
+      <select
+        autoFocus
+        className="cell-edit"
+        value={k}
+        onBlur={() => setEdit(false)}
+        onChange={async (e) => {
+          await api.setDocType(d.id, e.target.value);
+          setEdit(false);
+          onChanged();
+        }}
+      >
+        {Object.entries(DOC_TYPES).map(([kk, label]) => (
+          <option key={kk} value={kk}>
+            {label}
+          </option>
+        ))}
+      </select>
+    );
+  return (
+    <button className={"badge tb-" + (k || "khac")} onClick={() => setEdit(true)} title="Đổi loại">
+      {DOC_TYPES[k]}
+    </button>
+  );
+}
+
+// ── Ô "Khách hàng" dạng pill, bấm để sửa ─────────────────────────────
+function CustomerCell({
+  d,
+  customers,
+  onAssign,
+}: {
+  d: DocRecord;
+  customers: Customer[];
+  onAssign: (id: number, value: string) => void;
+}) {
+  const [edit, setEdit] = useState(false);
+  if (edit)
+    return (
+      <select
+        autoFocus
+        className="cell-edit"
+        value={d.customer_id ?? ""}
+        onBlur={() => setEdit(false)}
+        onChange={(e) => {
+          onAssign(d.id, e.target.value);
+          setEdit(false);
+        }}
+      >
+        <option value="">— chưa phân loại —</option>
+        {customers.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+        <option value="__new__">+ Tạo khách hàng mới…</option>
+      </select>
+    );
+  return d.customer_id ? (
+    <button className="pill cust" onClick={() => setEdit(true)} title="Đổi khách hàng">
+      {d.customer_name}
+    </button>
+  ) : (
+    <button className="pill cust none" onClick={() => setEdit(true)}>
+      + phân loại
+    </button>
+  );
+}
+
+// ── Menu "⋯" cho hành động phụ ───────────────────────────────────────
+function RowMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="rowmenu">
+      <button className="kebab" title="Thêm" onClick={() => setOpen((o) => !o)}>
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div className="menu-backdrop" onClick={() => setOpen(false)} />
+          <div className="menu" onClick={() => setOpen(false)}>
+            {children}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
 
 export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
@@ -11,6 +105,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [nas, setNas] = useState<Awaited<ReturnType<typeof api.nasStatus>> | null>(null);
   const [nasMsg, setNasMsg] = useState("");
@@ -19,7 +114,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
     try {
       setNas(await api.nasStatus());
     } catch {
-      /* bo qua */
+      /* bỏ qua */
     }
   }
   async function testNas() {
@@ -97,12 +192,9 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
 
   async function load() {
     setErr("");
+    setLoading(true);
     try {
-      const opts: Parameters<typeof api.listDocuments>[0] = {
-        search,
-        page,
-        perPage,
-      };
+      const opts: Parameters<typeof api.listDocuments>[0] = { search, page, perPage };
       if (filter === "unassigned") opts.unassigned = true;
       else if (typeof filter === "number") opts.customerId = filter;
       const [d, c] = await Promise.all([api.listDocuments(opts), api.listCustomers()]);
@@ -111,17 +203,16 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
       setCustomers(c);
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
     load();
   }, [filter, page, perPage]);
-
   useEffect(() => {
     loadNas();
   }, []);
-
-  // Tìm kiếm: reset về trang 1
   useEffect(() => {
     const t = setTimeout(() => {
       setPage(1);
@@ -141,18 +232,27 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
     load();
   }
 
+  async function uploadSigned(id: number, f: File) {
+    await api.uploadSigned(id, f);
+    load();
+  }
+
   return (
-    <div className="page-1col">
-      <div className="toolbar-row">
-        <h3>Hồ sơ ({total})</h3>
-        <div className="filters">
+    <div className="docs-page">
+      {/* Toolbar */}
+      <div className="docs-toolbar">
+        <h3>
+          Hồ sơ <span className="count">{total}</span>
+        </h3>
+        <div className="tb-group">
           <input
             className="search"
-            placeholder="Tìm tên file / người ký…"
+            placeholder="🔍 Tìm tên file / người ký…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <select
+            className="tb-select"
             value={typeof filter === "number" ? `c${filter}` : filter}
             onChange={(e) => {
               const v = e.target.value;
@@ -160,7 +260,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               setFilter(v === "all" || v === "unassigned" ? v : Number(v.slice(1)));
             }}
           >
-            <option value="all">Tất cả khách hàng</option>
+            <option value="all">Mọi khách hàng</option>
             <option value="unassigned">Chưa phân loại</option>
             {customers.map((c) => (
               <option key={c.id} value={`c${c.id}`}>
@@ -168,7 +268,14 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               </option>
             ))}
           </select>
-          <select value={perPage} onChange={(e) => { setPage(1); setPerPage(Number(e.target.value)); }}>
+          <select
+            className="tb-select"
+            value={perPage}
+            onChange={(e) => {
+              setPage(1);
+              setPerPage(Number(e.target.value));
+            }}
+          >
             {[10, 20, 50, 100].map((n) => (
               <option key={n} value={n}>
                 {n}/trang
@@ -177,33 +284,39 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
           </select>
         </div>
       </div>
-      {err && <div className="error">{err}</div>}
 
+      {/* NAS status */}
       {nas && (
         <div className="nas-bar">
-          <span>
-            🗄️ NAS ({nas.host}/{nas.share}):{" "}
+          <span className={"chip " + (nas.enabled ? (nas.pending ? "amber" : "green") : "gray")}>
+            🗄️ NAS
+          </span>
+          <span className="muted">
+            {nas.host}/{nas.share} ·{" "}
             {nas.enabled ? (
-              <b>
-                đã đồng bộ {nas.synced}/{nas.total}
+              <>
+                đồng bộ <b>{nas.synced}/{nas.total}</b>
                 {nas.pending > 0 ? ` · chờ ${nas.pending}` : ""}
-              </b>
+              </>
             ) : (
               <b>đang tắt</b>
             )}
           </span>
-          <button onClick={testNas}>Kiểm tra kết nối</button>
-          <button onClick={syncAllNas} disabled={!nas.enabled}>
+          <button className="btn-sm" onClick={testNas}>
+            Kiểm tra
+          </button>
+          <button className="btn-sm" onClick={syncAllNas} disabled={!nas.enabled}>
             Đồng bộ tất cả
           </button>
           {nasMsg && <span className="muted">{nasMsg}</span>}
         </div>
       )}
 
+      {/* Bulk bar */}
       {sel.size > 0 && (
         <div className="bulk-bar">
-          <span>Đã chọn {sel.size}</span>
-          <select defaultValue="" onChange={(e) => bulkAssignTo(e.target.value)}>
+          <b>Đã chọn {sel.size}</b>
+          <select className="tb-select" defaultValue="" onChange={(e) => bulkAssignTo(e.target.value)}>
             <option value="">Gán khách hàng…</option>
             <option value="none">— Bỏ phân loại —</option>
             {customers.map((c) => (
@@ -212,128 +325,156 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
               </option>
             ))}
           </select>
-          <button onClick={bulkShare}>Chia sẻ</button>
-          <button className="danger-link" onClick={bulkDelete}>
+          <button className="btn-sm" onClick={bulkShare}>
+            Chia sẻ
+          </button>
+          <button className="btn-sm danger" onClick={bulkDelete}>
             Xoá
           </button>
-          <button className="link-btn" onClick={() => setSel(new Set())}>
+          <button className="btn-sm ghost" onClick={() => setSel(new Set())}>
             Bỏ chọn
           </button>
         </div>
       )}
 
-      <table className="doc-table">
-        <thead>
-          <tr>
-            <th className="chk">
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
-            </th>
-            <th>Tên file</th>
-            <th>Loại</th>
-            <th>Người ký</th>
-            <th>Thời gian</th>
-            <th>Khách hàng (phân loại)</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map((d) => (
-            <tr key={d.id} className={d.customer_id ? "" : "unassigned-row"}>
-              <td className="chk">
-                <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
-              </td>
-              <td>
-                {d.filename}
-                {d.nas_synced && <span className="nas-ok" title="Đã lên NAS"> 🗄️✓</span>}
-              </td>
-              <td>
-                <select
-                  value={d.doc_type || ""}
-                  onChange={async (e) => {
-                    await api.setDocType(d.id, e.target.value);
-                    load();
-                  }}
-                >
-                  {Object.entries(DOC_TYPES).map(([k, label]) => (
-                    <option key={k} value={k}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td className="muted">{d.signer_name}</td>
-              <td className="muted">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
-              <td>
-                <select value={d.customer_id ?? ""} onChange={(e) => assign(d.id, e.target.value)}>
-                  <option value="">— chưa phân loại —</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Tạo khách hàng mới…</option>
-                </select>
-              </td>
-              <td className="actions">
-                <a href={d.download_url}>Tải</a>
-                <button className="link-btn" onClick={() => shareOne(d.id)}>
-                  Chia sẻ
-                </button>
-                <button className="link-btn" onClick={() => onVerify(d.id)}>
-                  Kiểm tra
-                </button>
-                {d.signed_upload_name && (
-                  <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer" title={d.signed_upload_name}>
-                    📎 Bản đã ký
-                  </a>
-                )}
-                <label className="link-btn file-inline">
-                  {d.signed_upload_name ? "Thay bản ký" : "Tải bản ký lên"}
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    hidden
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      await api.uploadSigned(d.id, f);
-                      load();
-                    }}
-                  />
-                </label>
-                <button
-                  className="danger-link"
-                  onClick={async () => {
-                    if (confirm("Xoá hồ sơ này?")) {
-                      await api.deleteDocument(d.id);
-                      load();
-                    }
-                  }}
-                >
-                  Xoá
-                </button>
-              </td>
-            </tr>
-          ))}
-          {docs.length === 0 && (
+      {err && <div className="error">{err}</div>}
+
+      {/* Table */}
+      <div className="table-wrap">
+        <table className="dt">
+          <thead>
             <tr>
-              <td colSpan={7} className="muted">
-                Không có hồ sơ.
-              </td>
+              <th className="chk">
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+              </th>
+              <th>Tên file</th>
+              <th>Loại</th>
+              <th className="col-hide-sm">Người ký</th>
+              <th className="col-hide-sm">Thời gian</th>
+              <th>Khách hàng</th>
+              <th className="col-act"></th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {docs.map((d) => (
+              <tr key={d.id}>
+                <td className="chk">
+                  <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
+                </td>
+                <td className="fname">
+                  <span className="ft">{d.filename}</span>
+                  <span className="chips">
+                    {d.nas_synced && (
+                      <span className="chip green sm" title="Đã sao lưu NAS">
+                        NAS ✓
+                      </span>
+                    )}
+                    {d.signed_upload_name && (
+                      <span className="chip indigo sm" title={d.signed_upload_name}>
+                        📎 đã ký
+                      </span>
+                    )}
+                  </span>
+                </td>
+                <td>
+                  <TypeCell d={d} onChanged={load} />
+                </td>
+                <td className="muted col-hide-sm">{d.signer_name}</td>
+                <td className="muted col-hide-sm nowrap">
+                  {new Date(d.created_at).toLocaleString("vi-VN")}
+                </td>
+                <td>
+                  <CustomerCell d={d} customers={customers} onAssign={assign} />
+                </td>
+                <td className="col-act">
+                  <div className="row-actions">
+                    <a className="iact" href={d.download_url} title="Tải xuống">
+                      ⬇
+                    </a>
+                    <button className="iact" onClick={() => shareOne(d.id)} title="Chia sẻ">
+                      🔗
+                    </button>
+                    <button className="iact" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">
+                      ✔
+                    </button>
+                    <RowMenu>
+                      {d.signed_upload_name && (
+                        <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">
+                          📎 Xem bản đã ký
+                        </a>
+                      )}
+                      <label className="menu-file">
+                        {d.signed_upload_name ? "🖊 Thay bản đã ký" : "🖊 Tải bản đã ký lên"}
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          hidden
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadSigned(d.id, f);
+                          }}
+                        />
+                      </label>
+                      <button
+                        className="menu-danger"
+                        onClick={async () => {
+                          if (confirm("Xoá hồ sơ này?")) {
+                            await api.deleteDocument(d.id);
+                            load();
+                          }
+                        }}
+                      >
+                        🗑 Xoá hồ sơ
+                      </button>
+                    </RowMenu>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!loading && docs.length === 0 && (
+              <tr>
+                <td colSpan={7}>
+                  <div className="empty">
+                    <div className="empty-ic">🗂️</div>
+                    <div>Không có hồ sơ nào khớp.</div>
+                    {(search || filter !== "all") && (
+                      <button
+                        className="btn-sm"
+                        onClick={() => {
+                          setSearch("");
+                          setFilter("all");
+                          setPage(1);
+                        }}
+                      >
+                        Xoá bộ lọc
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )}
+            {loading &&
+              docs.length === 0 &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={"sk" + i} className="skel-row">
+                  <td colSpan={7}>
+                    <div className="skel" />
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
 
       {pages > 1 && (
         <div className="pager">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}>
+          <button className="btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
             ‹ Trước
           </button>
-          <span>
+          <span className="muted">
             Trang {page}/{pages}
           </span>
-          <button disabled={page >= pages} onClick={() => setPage(page + 1)}>
+          <button className="btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>
             Sau ›
           </button>
         </div>
