@@ -326,7 +326,7 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     return req<{
-      buyer: { name: string; mst: string; address: string };
+      buyer: { name: string; mst: string; address: string; email?: string; phone?: string };
       items: { stt: number; ten: string; dvt: string; so_luong: string }[];
       ngay: { day: number; month: number; year: number } | null;
       ky_hieu: string;
@@ -339,7 +339,7 @@ export const api = {
     return req<{ templates: { key: string; label: string }[] }>("/api/bbbg/templates");
   },
   async bbbgGenerate(body: unknown) {
-    return req<{ doc_id: string; filename: string }>("/api/bbbg/generate", {
+    return req<{ doc_id: string; filename: string; customer_id: number | null }>("/api/bbbg/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

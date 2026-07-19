@@ -35,6 +35,8 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(String(255))
     tax_code: Mapped[str] = mapped_column(String(50), default="")
     contact: Mapped[str] = mapped_column(String(255), default="")
+    address: Mapped[str] = mapped_column(String(500), default="")
+    email: Mapped[str] = mapped_column(String(255), default="")
     note: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -126,6 +128,10 @@ def _migrate_add_columns() -> None:
             "nas_path": "VARCHAR(500) DEFAULT ''",
             "nas_synced_at": "DATETIME",
             "doc_type": "VARCHAR(20) DEFAULT ''",
+        },
+        "customers": {
+            "address": "VARCHAR(500) DEFAULT ''",
+            "email": "VARCHAR(255) DEFAULT ''",
         },
     }
     with _engine.begin() as conn:

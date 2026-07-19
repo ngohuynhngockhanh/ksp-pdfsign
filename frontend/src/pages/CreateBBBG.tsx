@@ -34,6 +34,7 @@ export function CreateBBBG({
     name: "",
     address: "",
     mst: "",
+    email: "",
     dai_dien: "",
     chuc_vu: "",
     nguoi_nhan: "",
@@ -52,7 +53,13 @@ export function CreateBBBG({
     setErr("");
     try {
       const r = await api.parseInvoice(f);
-      setBenB((b) => ({ ...b, name: r.buyer.name, address: r.buyer.address, mst: r.buyer.mst }));
+      setBenB((b) => ({
+        ...b,
+        name: r.buyer.name,
+        address: r.buyer.address,
+        mst: r.buyer.mst,
+        email: (r.buyer as { email?: string }).email || "",
+      }));
       setItems(r.items.map((it) => ({ ten: it.ten, dvt: it.dvt, so_luong: it.so_luong })));
       if (r.ngay) {
         setNgay(r.ngay);
@@ -84,7 +91,7 @@ export function CreateBBBG({
         template_key: templateKey,
         filename: `BBBG-${benB.name.slice(0, 20).trim() || "khach"}.pdf`,
       });
-      onGenerated(r.doc_id, r.filename, suggested?.id ?? null);
+      onGenerated(r.doc_id, r.filename, r.customer_id ?? suggested?.id ?? null);
     } catch (ex) {
       setErr((ex as Error).message);
     } finally {

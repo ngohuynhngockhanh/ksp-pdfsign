@@ -37,6 +37,8 @@ def parse_invoice_xml(xml_bytes: bytes) -> dict:
         "name": txt(nmua, "Ten"),
         "mst": txt(nmua, "MST"),
         "address": txt(nmua, "DChi"),
+        "email": txt(nmua, "DCTDTu"),
+        "phone": txt(nmua, "SDThoai"),
     }
 
     ngay = None
@@ -95,7 +97,7 @@ def parse_invoice(pdf_bytes: bytes) -> dict:
         tables = page.extract_tables()
         lines = _cluster_lines(page.extract_words(use_text_flow=True))
 
-    buyer = {"name": "", "mst": "", "address": ""}
+    buyer = {"name": "", "mst": "", "address": "", "email": "", "phone": ""}
     idx = None
     for i, line in enumerate(lines):
         t = _line_text(line)

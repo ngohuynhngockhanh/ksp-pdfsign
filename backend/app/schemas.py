@@ -108,6 +108,8 @@ class CustomerOut(BaseModel):
     name: str
     tax_code: str
     contact: str
+    address: str = ""
+    email: str = ""
     note: str
     created_at: str
     document_count: int = 0
@@ -201,6 +203,7 @@ class BBBGBenB(BaseModel):
     name: str = ""
     address: str = ""
     mst: str = ""
+    email: str = ""
     dai_dien: str = ""
     chuc_vu: str = ""
     nguoi_nhan: str = ""

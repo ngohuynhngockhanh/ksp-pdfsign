@@ -283,7 +283,8 @@ def _customer_out(db: Session, c: Customer) -> CustomerOut:
     )
     usernames = [u.username for u in c.users]
     return CustomerOut(
-        id=c.id, name=c.name, tax_code=c.tax_code, contact=c.contact, note=c.note,
+        id=c.id, name=c.name, tax_code=c.tax_code, contact=c.contact,
+        address=c.address or "", email=c.email or "", note=c.note,
         created_at=c.created_at.isoformat(), document_count=doc_count or 0,
         account_usernames=usernames,
     )
@@ -777,18 +778,57 @@ def bbbg_templates(user: CurrentUser = Depends(require_admin)):
     return {"templates": bbbg.list_templates()}
 
 
+def _upsert_customer(db: Session, benb) -> int | None:
+    """Tao/cap nhat ho so khach hang tu thong tin ben B (tu XML/form).
+
+    Merge profile theo XML; KHONG dong toi tai khoan/mat khau. Match theo MST roi ten.
+    """
+    mst = (benb.mst or "").strip()
+    name = (benb.name or "").strip()
+    c = None
+    if mst:
+        c = db.scalar(select(Customer).where(Customer.tax_code == mst))
+    if c is None and name:
+        for x in db.scalars(select(Customer)):
+            if x.name.strip().lower() == name.lower():
+                c = x
+                break
+    if c is None:
+        if not name:
+            return None
+        c = Customer(name=name, tax_code=mst, note="Tạo từ hóa đơn")
+        db.add(c)
+        db.flush()
+    else:
+        # Cap nhat profile theo XML (khong tao/doi tai khoan)
+        if name:
+            c.name = name
+        if mst and not c.tax_code:
+            c.tax_code = mst
+    if benb.address:
+        c.address = benb.address
+    if benb.email:
+        c.email = benb.email
+    if benb.dien_thoai and not c.contact:
+        c.contact = benb.dien_thoai
+    db.commit()
+    return c.id
+
+
 @app.post("/api/bbbg/generate")
 def bbbg_generate(
     body: BBBGGenerate,
     user: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
 ):
     try:
         pdf = bbbg.render_bbbg(settings, body.model_dump())
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh BBBG that bai: {e}")
     doc_id = storage.save_upload(pdf)
-    return {"doc_id": doc_id, "filename": body.filename}
+    customer_id = _upsert_customer(db, body.ben_b)
+    return {"doc_id": doc_id, "filename": body.filename, "customer_id": customer_id}
 
 
 @app.post("/api/documents/{doc_pk}/type", response_model=DocumentOut)
