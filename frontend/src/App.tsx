@@ -15,6 +15,7 @@ import { PurchaseImport } from "./pages/PurchaseImport";
 import { SalesInvoice } from "./pages/SalesInvoice";
 import { StockIssue } from "./pages/StockIssue";
 import { Production } from "./pages/Production";
+import { Recipes } from "./pages/Recipes";
 
 type Tab =
   | "sign"
@@ -25,6 +26,7 @@ type Tab =
   | "banra"
   | "xuatkho"
   | "sanxuat"
+  | "congthuc"
   | "documents"
   | "customers"
   | "nas"
@@ -41,6 +43,7 @@ const ROUTES: Record<Tab, string> = {
   banra: "/ban-ra",
   xuatkho: "/xuat-kho",
   sanxuat: "/san-xuat",
+  congthuc: "/cong-thuc",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
@@ -117,7 +120,7 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "sign", "bbbg", "quote", "tonkho", "nhaphang", "banra", "xuatkho", "sanxuat",
+              "sign", "bbbg", "quote", "tonkho", "nhaphang", "banra", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
@@ -161,6 +164,7 @@ export function App() {
         ["banra", "Bán ra", "🧾"],
         ["xuatkho", "Xuất kho", "📤"],
         ["sanxuat", "Sản xuất", "🏭"],
+        ["congthuc", "Công thức SX", "🧩"],
       ],
     ],
     [
@@ -277,6 +281,7 @@ export function App() {
         {tab === "banra" && isAdmin && <SalesInvoice />}
         {tab === "xuatkho" && isAdmin && <StockIssue />}
         {tab === "sanxuat" && isAdmin && <Production />}
+        {tab === "congthuc" && isAdmin && <Recipes />}
         {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}

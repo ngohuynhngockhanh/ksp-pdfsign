@@ -826,6 +826,13 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async invRecipeUpdate(id: number, body: unknown) {
+    return req<InvRecipe>(`/api/inv/recipes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   async invRecipeDelete(id: number) {
     return req(`/api/inv/recipes/${id}`, { method: "DELETE" });
   },

@@ -1613,6 +1613,31 @@ def recipe_create(
     return _recipe_out(db, r)
 
 
+@router.patch("/recipes/{rid}", response_model=InvRecipeOut)
+def recipe_update(
+    rid: int,
+    body: InvRecipeIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    r = db.get(InvRecipe, rid)
+    if not r:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy công thức")
+    r.name = body.name
+    r.output_item_id = body.output_item_id
+    r.output_qty = body.output_qty
+    for ln in list(r.lines):
+        db.delete(ln)
+    for ln in body.lines:
+        db.add(InvRecipeLine(
+            recipe=r, item_id=ln.item_id, warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
+        ))
+    db.commit()
+    db.refresh(r)
+    _audit(db, user, "inv_recipe_update", body.name)
+    return _recipe_out(db, r)
+
+
 @router.delete("/recipes/{rid}")
 def recipe_delete(
     rid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
