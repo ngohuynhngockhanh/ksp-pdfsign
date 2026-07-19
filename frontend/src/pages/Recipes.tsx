@@ -1,26 +1,30 @@
 import { useEffect, useState } from "react";
 import { api, InvItem, InvRecipe, InvWarehouse } from "../api";
 
-interface EditLine {
-  item_id: number;
+interface EditRow {
+  item_id: number | null;
   ma_hang: string;
   ten: string;
   dvt: string;
   warehouse_id: number;
   so_luong: number;
+  q: string;
+  results: InvItem[];
 }
 interface EditState {
   id: number | null; // null = tao moi
   name: string;
   output_item_id: number | null;
   outputLabel: string;
+  outputQ: string;
+  outputResults: InvItem[];
   output_qty: number;
-  lines: EditLine[];
+  rows: EditRow[];
 }
 
-const EMPTY_EDIT: EditState = {
-  id: null, name: "", output_item_id: null, outputLabel: "", output_qty: 1, lines: [],
-};
+function newRow(defaultWh: number): EditRow {
+  return { item_id: null, ma_hang: "", ten: "", dvt: "", warehouse_id: defaultWh, so_luong: 1, q: "", results: [] };
+}
 
 export function Recipes() {
   const [list, setList] = useState<InvRecipe[]>([]);
@@ -28,10 +32,6 @@ export function Recipes() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<EditState | null>(null);
-  const [outQ, setOutQ] = useState("");
-  const [outResults, setOutResults] = useState<InvItem[]>([]);
-  const [lineQ, setLineQ] = useState("");
-  const [lineResults, setLineResults] = useState<InvItem[]>([]);
 
   async function load() {
     try {
@@ -47,75 +47,65 @@ export function Recipes() {
 
   function openNew() {
     setErr("");
-    setOutQ("");
-    setOutResults([]);
-    setLineQ("");
-    setLineResults([]);
-    setEdit({ ...EMPTY_EDIT });
+    setEdit({
+      id: null, name: "", output_item_id: null, outputLabel: "", outputQ: "", outputResults: [],
+      output_qty: 1, rows: [],
+    });
   }
   function openEdit(r: InvRecipe) {
     setErr("");
-    setOutQ("");
-    setOutResults([]);
-    setLineQ("");
-    setLineResults([]);
     setEdit({
       id: r.id,
       name: r.name,
       output_item_id: r.output_item_id,
-      outputLabel: `${r.output_ten}`,
+      outputLabel: r.output_ten,
+      outputQ: "",
+      outputResults: [],
       output_qty: r.output_qty,
-      lines: r.lines.map((l) => ({ ...l })),
+      rows: r.lines.map((l) => ({ ...l, item_id: l.item_id, q: "", results: [] })),
     });
   }
 
   async function searchOutput(q: string) {
-    setOutQ(q);
+    if (!edit) return;
+    setEdit({ ...edit, outputQ: q });
     if (q.trim().length >= 2) {
       try {
-        setOutResults(await api.invItems(q));
+        const results = await api.invItems(q);
+        setEdit((e) => (e ? { ...e, outputResults: results } : e));
       } catch {
         /* ignore */
       }
-    } else setOutResults([]);
+    } else setEdit((e) => (e ? { ...e, outputResults: [] } : e));
   }
   function pickOutput(it: InvItem) {
     if (!edit) return;
-    setEdit({ ...edit, output_item_id: it.id, outputLabel: `${it.ma_hang} · ${it.ten}` });
-    setOutQ("");
-    setOutResults([]);
+    setEdit({ ...edit, output_item_id: it.id, outputLabel: `${it.ma_hang} · ${it.ten}`, outputQ: "", outputResults: [] });
   }
 
-  async function searchLine(q: string) {
-    setLineQ(q);
+  function addRow() {
+    if (!edit) return;
+    setEdit({ ...edit, rows: [...edit.rows, newRow(whs[0]?.id ?? 0)] });
+  }
+  function setRow(i: number, patch: Partial<EditRow>) {
+    setEdit((e) => (e ? { ...e, rows: e.rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) } : e));
+  }
+  function delRow(i: number) {
+    setEdit((e) => (e ? { ...e, rows: e.rows.filter((_, idx) => idx !== i) } : e));
+  }
+  async function searchRow(i: number, q: string) {
+    setRow(i, { q });
     if (q.trim().length >= 2) {
       try {
-        setLineResults(await api.invItems(q));
+        const results = await api.invItems(q);
+        setRow(i, { results });
       } catch {
         /* ignore */
       }
-    } else setLineResults([]);
+    } else setRow(i, { results: [] });
   }
-  function addLine(it: InvItem) {
-    if (!edit) return;
-    if (edit.lines.some((l) => l.item_id === it.id)) return;
-    setEdit({
-      ...edit,
-      lines: [
-        ...edit.lines,
-        { item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt, warehouse_id: whs[0]?.id ?? 0, so_luong: 1 },
-      ],
-    });
-    setLineQ("");
-    setLineResults([]);
-  }
-  function patchLine(itemId: number, patch: Partial<EditLine>) {
-    if (!edit) return;
-    setEdit({ ...edit, lines: edit.lines.map((l) => (l.item_id === itemId ? { ...l, ...patch } : l)) });
-  }
-  function removeLine(itemId: number) {
-    if (!edit) return;
-    setEdit({ ...edit, lines: edit.lines.filter((l) => l.item_id !== itemId) });
+  function pickRow(i: number, it: InvItem) {
+    setRow(i, { item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt, q: "", results: [] });
   }
 
   async function save() {
@@ -127,7 +117,9 @@ export function Recipes() {
         name: edit.name.trim(),
         output_item_id: edit.output_item_id,
         output_qty: edit.output_qty,
-        lines: edit.lines.map((l) => ({ item_id: l.item_id, warehouse_id: l.warehouse_id, so_luong: l.so_luong })),
+        lines: edit.rows
+          .filter((r) => r.item_id != null)
+          .map((r) => ({ item_id: r.item_id, warehouse_id: r.warehouse_id, so_luong: r.so_luong })),
       };
       if (edit.id == null) await api.invRecipeCreate(body);
       else await api.invRecipeUpdate(edit.id, body);
@@ -209,115 +201,149 @@ export function Recipes() {
 
       {edit && (
         <div className="modal-backdrop" onClick={() => setEdit(null)}>
-          <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
-            <h3>{edit.id == null ? "Công thức mới" : `Sửa công thức #${edit.id}`}</h3>
+          <div className="modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
+            <h3>🧩 {edit.id == null ? "Công thức mới" : `Sửa công thức #${edit.id}`}</h3>
             {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
-              <label style={{ flex: 1 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
+              <label style={{ flex: 1, minWidth: 200 }}>
                 Tên công thức
                 <input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
               </label>
-            </div>
-
-            <h4>Thành phẩm</h4>
-            {edit.output_item_id != null ? (
-              <div>
-                <b>{edit.outputLabel}</b> · SL:{" "}
+              <button className="btn-sm ghost" onClick={addRow}>
+                + Thêm dòng
+              </button>
+              {edit.output_item_id != null ? (
+                <span style={{ marginLeft: "auto" }} className="muted">
+                  Thành phẩm: <span className="chip green sm">{edit.outputLabel.split(" · ")[0]}</span>{" "}
+                  {edit.outputLabel.split(" · ").slice(1).join(" · ")}{" "}
+                  <button
+                    className="btn-sm ghost"
+                    onClick={() => setEdit({ ...edit, output_item_id: null, outputLabel: "" })}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <div style={{ marginLeft: "auto", position: "relative" }}>
+                  <input
+                    style={{ width: 220 }}
+                    placeholder="🔍 tìm mã/tên thành phẩm…"
+                    value={edit.outputQ}
+                    onChange={(e) => searchOutput(e.target.value)}
+                  />
+                  {edit.outputResults.slice(0, 5).map((it) => (
+                    <div key={it.id}>
+                      <button className="btn-sm ghost" onClick={() => pickOutput(it)}>
+                        <b>{it.ma_hang}</b> · {it.ten}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label>
+                SL thành phẩm
                 <input
-                  style={{ width: 80, textAlign: "right" }}
+                  style={{ width: 70, textAlign: "right" }}
                   type="number"
                   min={0}
                   value={edit.output_qty}
                   onChange={(e) => setEdit({ ...edit, output_qty: Number(e.target.value) || 0 })}
-                />{" "}
-                <button
-                  className="btn-sm ghost"
-                  onClick={() => setEdit({ ...edit, output_item_id: null, outputLabel: "" })}
-                >
-                  Đổi
-                </button>
-              </div>
-            ) : (
-              <div>
-                <input
-                  className="search"
-                  placeholder="🔍 tìm mã/tên thành phẩm…"
-                  value={outQ}
-                  onChange={(e) => searchOutput(e.target.value)}
                 />
-                {outResults.slice(0, 8).map((it) => (
-                  <div key={it.id}>
-                    <button className="btn-sm ghost" onClick={() => pickOutput(it)}>
-                      {it.ma_hang} · {it.ten.slice(0, 50)}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+              </label>
+            </div>
 
-            <h4>Vật tư định mức</h4>
-            {edit.lines.length > 0 && (
-              <div className="table-wrap">
-                <table className="dt">
-                  <tbody>
-                    {edit.lines.map((l) => (
-                      <tr key={l.item_id}>
-                        <td>
-                          {l.ma_hang} · {l.ten}
-                        </td>
-                        <td>
-                          <select
-                            value={l.warehouse_id}
-                            onChange={(e) => patchLine(l.item_id, { warehouse_id: Number(e.target.value) })}
-                          >
-                            {whs.map((w) => (
-                              <option key={w.id} value={w.id}>
-                                {w.code}
-                              </option>
+            <div className="table-wrap" style={{ maxHeight: "42vh", overflow: "auto" }}>
+              <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Vật tư (mã kho)</th>
+                    <th>ĐVT</th>
+                    <th>Kho</th>
+                    <th style={{ textAlign: "right" }}>SL</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {edit.rows.map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ minWidth: 220, maxWidth: 320, whiteSpace: "normal", wordBreak: "break-word" }}>
+                        {r.item_id ? (
+                          <span>
+                            <span className="chip green sm">{r.ma_hang}</span> {r.ten}{" "}
+                            <button
+                              className="btn-sm ghost"
+                              onClick={() => setRow(i, { item_id: null, ma_hang: "", ten: "", dvt: "" })}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ) : (
+                          <div>
+                            <input
+                              style={{ width: 160 }}
+                              placeholder="tìm mã/tên kho…"
+                              value={r.q}
+                              onChange={(e) => searchRow(i, e.target.value)}
+                            />
+                            {r.results.slice(0, 5).map((it) => (
+                              <div key={it.id}>
+                                <button className="btn-sm ghost" onClick={() => pickRow(i, it)}>
+                                  <b>{it.ma_hang}</b> · {it.ten}
+                                </button>
+                              </div>
                             ))}
-                          </select>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <input
-                            style={{ width: 80, textAlign: "right" }}
-                            type="number"
-                            min={0}
-                            value={l.so_luong}
-                            onChange={(e) => patchLine(l.item_id, { so_luong: Number(e.target.value) || 0 })}
-                          />{" "}
-                          {l.dvt}
-                        </td>
-                        <td>
-                          <button className="btn-sm ghost" onClick={() => removeLine(l.item_id)}>
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <input
-              className="search"
-              placeholder="🔍 Tìm vật tư để thêm vào định mức…"
-              value={lineQ}
-              onChange={(e) => searchLine(e.target.value)}
-            />
-            {lineResults.slice(0, 8).map((it) => (
-              <div key={it.id}>
-                <button className="btn-sm ghost" onClick={() => addLine(it)}>
-                  {it.ma_hang} · {it.ten.slice(0, 50)}
-                </button>
-              </div>
-            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="muted">{r.dvt}</td>
+                      <td>
+                        <select value={r.warehouse_id} onChange={(e) => setRow(i, { warehouse_id: Number(e.target.value) })}>
+                          {whs.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.code}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <input
+                          style={{ width: 70, textAlign: "right" }}
+                          type="number"
+                          value={r.so_luong}
+                          onChange={(e) => setRow(i, { so_luong: Number(e.target.value) })}
+                        />
+                      </td>
+                      <td>
+                        <button className="btn-sm ghost" onClick={() => delRow(i)}>
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!edit.rows.length && (
+                    <tr>
+                      <td colSpan={5}>
+                        <div className="muted" style={{ padding: 12 }}>
+                          Chưa có vật tư — bấm + Thêm dòng.
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
             <div className="modal-actions">
               <button onClick={() => setEdit(null)}>Hủy</button>
               <button
                 className="primary"
-                disabled={busy || !edit.name.trim() || edit.output_item_id == null || edit.lines.length === 0}
+                disabled={
+                  busy ||
+                  !edit.name.trim() ||
+                  edit.output_item_id == null ||
+                  edit.rows.filter((r) => r.item_id != null).length === 0
+                }
                 onClick={save}
               >
                 💾 Lưu
