@@ -496,6 +496,23 @@ export function SalesInvoice() {
     }
     return { rows: [...order.map((id) => byItem.get(id) as BomRow), ...noItem], mergedCount };
   }
+  // AI cham (>60s) bi reverse proxy cat 504 -> chay job nen + tham do moi 2.5s
+  async function suggestBomViaJob(
+    saleId: number,
+    lineId: number,
+    context: string,
+    existing?: { ten: string; so_luong: number; dvt?: string }[],
+  ) {
+    const { job_id } = await api.invSaleSuggestBomStart(saleId, lineId, context, existing);
+    for (let i = 0; i < 72; i++) {
+      // toi da ~3 phut
+      await new Promise((r) => setTimeout(r, 2500));
+      const j = await api.invSaleSuggestBomJob(job_id);
+      if (j.status === "done" && j.result) return j.result;
+      if (j.status === "error") throw new Error(j.error || "AI lỗi");
+    }
+    throw new Error("AI xử lý quá lâu — thử lại sau");
+  }
   async function aiSuggestBom() {
     if (!cur || !bom) return;
     if (
@@ -505,7 +522,7 @@ export function SalesInvoice() {
       return;
     setBom({ ...bom, aiBusy: true });
     try {
-      const r = await api.invSaleSuggestBom(cur.id, bom.lineId, bom.context);
+      const r = await suggestBomViaJob(cur.id, bom.lineId, bom.context);
       const { rows, mergedCount } = mergeBomRows(mapAiComponents(r.components));
       const dupNote = mergedCount ? ` (🔗 đã tự gộp ${mergedCount} dòng trùng mã)` : "";
       setBom((b) =>
@@ -523,7 +540,7 @@ export function SalesInvoice() {
       const existing = bom.rows
         .filter((r) => r.item_id || r.ten)
         .map((r) => ({ ten: r.ten || r.ma_hang, so_luong: r.so_luong, dvt: r.dvt }));
-      const r = await api.invSaleSuggestBom(cur.id, bom.lineId, bom.context, existing);
+      const r = await suggestBomViaJob(cur.id, bom.lineId, bom.context, existing);
       const added = mapAiComponents(r.components);
       const { rows: merged, mergedCount } = mergeBomRows([...bom.rows, ...added]);
       const dupNote = mergedCount ? ` (🔗 đã tự gộp ${mergedCount} dòng trùng mã với phần đã có)` : "";

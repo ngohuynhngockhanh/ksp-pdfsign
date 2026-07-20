@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading as _threading
+import time as _time
+import uuid as _uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
@@ -1536,22 +1539,15 @@ def _sale_line(db: Session, sid: int, line_id: int):
     return inv, ln
 
 
-@router.post("/sale/{sid}/suggest-bom/{line_id}")
-def sale_suggest_bom(
+def _suggest_bom_core(
+    db: Session,
+    settings: Settings,
+    user: CurrentUser,
     sid: int,
     line_id: int,
-    body: SuggestBomIn = SuggestBomIn(),
-    user: CurrentUser = Depends(require_admin),
-    settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_session),
-):
-    """AI opencode boc tach dong 'bo lap dat' -> linh kien, match vao ton kho.
-
-    Enrich moi linh kien: DVT, gia von binh quan (chua thue), thue suat uoc luong
-    (tu lan mua gan nhat), kha dung tai ngay HD (kiem tra thoi gian nhap). Kem
-    tong hop (totals): gia von chua/co thue, bien loi nhuan thuc te, khoang gia
-    ban de xuat theo bien 15-20%.
-    """
+    body: SuggestBomIn,
+) -> dict:
+    """Loi chinh AI boc tach BOM — dung chung cho endpoint sync va job nen."""
     inv, ln = _sale_line(db, sid, line_id)
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
     agg: dict[int, list[float]] = {}
@@ -1669,6 +1665,87 @@ def sale_suggest_bom(
             "actual_margin_pct": round(actual_margin, 1) if actual_margin is not None else None,
         },
     }
+
+
+@router.post("/sale/{sid}/suggest-bom/{line_id}")
+def sale_suggest_bom(
+    sid: int,
+    line_id: int,
+    body: SuggestBomIn = SuggestBomIn(),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """AI boc tach dong 'bo lap dat' -> linh kien (dong bo — co the cham).
+
+    Enrich moi linh kien: DVT, gia von binh quan, thue suat, kha dung tai ngay HD,
+    kem totals. Voi AI cham (>60s) proxy co the cat 504 — dung cap endpoint
+    /suggest-bom/{line_id}/start + /suggest-bom-job/{job_id} thay the.
+    """
+    return _suggest_bom_core(db, settings, user, sid, line_id, body)
+
+
+# Job nen cho AI goi y BOM — tranh 504 khi reverse proxy timeout truoc AI.
+_BOM_JOBS: dict[str, dict] = {}
+_BOM_JOBS_LOCK = _threading.Lock()
+
+
+def _bom_jobs_prune() -> None:
+    cutoff = _time.time() - 1800  # giu ket qua 30 phut
+    with _BOM_JOBS_LOCK:
+        for k in [k for k, v in _BOM_JOBS.items() if v.get("ts", 0) < cutoff]:
+            _BOM_JOBS.pop(k, None)
+
+
+@router.post("/sale/{sid}/suggest-bom/{line_id}/start")
+def sale_suggest_bom_start(
+    sid: int,
+    line_id: int,
+    body: SuggestBomIn = SuggestBomIn(),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Chay AI goi y BOM o thread nen, tra job_id de FE tham do ket qua."""
+    _sale_line(db, sid, line_id)  # validate truoc khi nhan job
+    _bom_jobs_prune()
+    job_id = _uuid.uuid4().hex
+    with _BOM_JOBS_LOCK:
+        _BOM_JOBS[job_id] = {"status": "running", "ts": _time.time()}
+    u = CurrentUser(
+        id=user.id, username=user.username, role=user.role,
+        customer_id=user.customer_id, ip=user.ip,
+    )
+
+    def _work() -> None:
+        gen = get_session()
+        db2 = next(gen)
+        try:
+            res = _suggest_bom_core(db2, settings, u, sid, line_id, body)
+            with _BOM_JOBS_LOCK:
+                _BOM_JOBS[job_id] = {"status": "done", "result": res, "ts": _time.time()}
+        except HTTPException as e:
+            with _BOM_JOBS_LOCK:
+                _BOM_JOBS[job_id] = {"status": "error", "error": str(e.detail), "ts": _time.time()}
+        except Exception as e:  # noqa: BLE001
+            with _BOM_JOBS_LOCK:
+                _BOM_JOBS[job_id] = {"status": "error", "error": str(e), "ts": _time.time()}
+        finally:
+            gen.close()
+
+    _threading.Thread(target=_work, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@router.get("/suggest-bom-job/{job_id}")
+def sale_suggest_bom_job(
+    job_id: str, user: CurrentUser = Depends(require_admin)
+):
+    with _BOM_JOBS_LOCK:
+        job = _BOM_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy job (đã hết hạn?)")
+    return {k: v for k, v in job.items() if k != "ts"}
 
 
 @router.post("/sale/{sid}/assemble/{line_id}")

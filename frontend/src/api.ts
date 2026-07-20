@@ -747,37 +747,29 @@ export const api = {
     context = "",
     existing: { ten: string; so_luong: number; dvt?: string }[] = [],
   ) {
-    return req<{
-      components: {
-        ten: string;
-        so_luong: number;
-        ly_do: string;
-        match: {
-          item_id: number; ma_hang: string; ten: string; dvt: string; score: number;
-          warehouse_id: number | null;
-        } | null;
-        dvt: string;
-        don_gia_bq: number;
-        thue_suat_est: number;
-        kha_dung_tai_ngay: number;
-      }[];
-      cost_est: number | null;
-      margin_est: number | null;
-      note: string;
-      totals: {
-        cost_pretax: number;
-        cost_with_tax: number;
-        unmatched_count: number;
-        suggested_price_low: number;
-        suggested_price_high: number;
-        actual_gia_ban: number;
-        actual_margin_pct: number | null;
-      };
-    }>(`/api/inv/sale/${sid}/suggest-bom/${lineId}`, {
+    return req<SuggestBomResult>(`/api/inv/sale/${sid}/suggest-bom/${lineId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ context, existing }),
     });
+  },
+  // AI cham (>60s) co the bi proxy cat 504 -> chay job nen + tham do ket qua
+  async invSaleSuggestBomStart(
+    sid: number,
+    lineId: number,
+    context = "",
+    existing: { ten: string; so_luong: number; dvt?: string }[] = [],
+  ) {
+    return req<{ job_id: string }>(`/api/inv/sale/${sid}/suggest-bom/${lineId}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context, existing }),
+    });
+  },
+  async invSaleSuggestBomJob(jobId: string) {
+    return req<{ status: "running" | "done" | "error"; result?: SuggestBomResult; error?: string }>(
+      `/api/inv/suggest-bom-job/${jobId}`,
+    );
   },
   async invItemCost(itemId: number, ngay = "") {
     return req<{
@@ -1232,4 +1224,32 @@ export interface HangingValueRow {
   warehouse_code: string;
   ton: number;
   gia_tri: number;
+}
+
+export interface SuggestBomResult {
+  components: {
+    ten: string;
+    so_luong: number;
+    ly_do: string;
+    match: {
+      item_id: number; ma_hang: string; ten: string; dvt: string; score: number;
+      warehouse_id: number | null;
+    } | null;
+    dvt: string;
+    don_gia_bq: number;
+    thue_suat_est: number;
+    kha_dung_tai_ngay: number;
+  }[];
+  cost_est: number | null;
+  margin_est: number | null;
+  note: string;
+  totals: {
+    cost_pretax: number;
+    cost_with_tax: number;
+    unmatched_count: number;
+    suggested_price_low: number;
+    suggested_price_high: number;
+    actual_gia_ban: number;
+    actual_margin_pct: number | null;
+  };
 }
