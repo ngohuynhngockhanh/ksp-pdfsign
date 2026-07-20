@@ -374,7 +374,11 @@ export function Production() {
             {list.map((p) => {
               const outs = p.lines.filter((l) => l.chieu === "ra");
               const ins = p.lines.filter((l) => l.chieu === "vao");
+              const outQ = outs.reduce((s, l) => s + l.so_luong, 0);
               const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
+              const posted = p.status === "posted";
+              const total = posted ? (p.tong_gia_thanh || cost) : p.tong_gia_thanh_uoc;
+              const dv = posted ? (outQ ? total / outQ : 0) : p.gia_thanh_dv_uoc;
               return (
                 <tr key={p.id} style={{ cursor: "pointer" }} title="Xem/sửa lệnh sản xuất" onClick={() => openView(p)}>
                   <td className="muted nowrap">
@@ -388,7 +392,14 @@ export function Production() {
                   <td className="nowrap">{p.ngay}</td>
                   <td>{outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ")}</td>
                   <td className="muted">{ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
-                  <td style={{ textAlign: "right" }}>{vnd(cost)}</td>
+                  <td style={{ textAlign: "right" }} className="nowrap">
+                    {posted ? vnd(total) : <span className="muted">~{vnd(total)}</span>}
+                    {outQ > 1 && dv > 0 && (
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        {posted ? "" : "~"}{vnd(dv)}/đv
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <span className={`chip sm ${p.status === "posted" ? "green" : "amber"}`}>
                       {p.status === "posted" ? "Đã ghi sổ" : "Nháp"}
@@ -832,7 +843,7 @@ export function Production() {
                           </td>
                         )}
                         <td style={{ textAlign: "right" }} className="muted">
-                          {view.status === "posted" ? vnd(l.gia_tri) : "—"}
+                          {view.status === "posted" ? vnd(l.gia_tri) : `~${vnd(l.gia_tri_uoc)}`}
                         </td>
                       </tr>
                     );
@@ -844,9 +855,23 @@ export function Production() {
             {/* Tong hop gia thanh */}
             <div className="warn-banner" style={{ marginTop: 10 }}>
               {view.status === "draft" ? (
-                <div className="muted">
-                  Giá thành NVL sẽ được tính khi <b>ghi sổ</b> (bình quân gia quyền tại ngày SX). Nhập
-                  <b> giá tạm tính</b> cho NVL chưa có giá vốn để không bị 0đ.
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px" }}>
+                  <span>Giá thành ước tính (621+622+627):</span>
+                  <b style={{ textAlign: "right" }}>~{vnd(view.tong_gia_thanh_uoc)} đ</b>
+                  <span>Giá thành đơn vị ước tính:</span>
+                  <b style={{ textAlign: "right" }}>~{vnd(view.gia_thanh_dv_uoc)} đ</b>
+                  {giaBan > 0 && view.gia_thanh_dv_uoc > 0 && (
+                    <>
+                      <span>Tỉ suất LN ước tính:</span>
+                      <b style={{ textAlign: "right" }}>
+                        {(((giaBan - view.gia_thanh_dv_uoc) / giaBan) * 100).toFixed(1)}%
+                      </b>
+                    </>
+                  )}
+                  <span style={{ gridColumn: "1 / -1" }} className="muted">
+                    Ước tính theo giá vốn BQ hiện tại; khi <b>ghi sổ</b> dùng bình quân tại ngày SX. Nhập
+                    <b> giá tạm tính</b> cho NVL chưa có giá vốn để không bị 0đ.
+                  </span>
                 </div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px" }}>

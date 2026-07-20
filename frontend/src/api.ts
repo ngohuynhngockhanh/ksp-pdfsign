@@ -1044,6 +1044,8 @@ export interface InvIssueLine {
   don_gia_ban: number;
   thanh_tien_ban: number;
   gia_von: number;
+  gia_von_uoc: number;
+  don_gia_von_uoc: number;
 }
 
 // Muc dich xuat kho -> dinh khoan goi y (dong bo backend inventory.DINH_KHOAN_XUAT)
@@ -1069,6 +1071,7 @@ export interface InvIssue {
   tk_no: string;
   tk_co: string;
   tong_gia_von: number;
+  tong_gia_von_uoc: number;
   note: string;
   status: string;
   created_at: string;
@@ -1086,6 +1089,7 @@ export interface InvProductionLine {
   so_luong: number;
   don_gia_tam: number;
   gia_tri: number;
+  gia_tri_uoc: number;
   so_luong_dinh_muc: number | null;
   gia_tri_dinh_muc: number | null;
 }
@@ -1101,6 +1105,8 @@ export interface InvProduction {
   cp_nhan_cong: number;
   cp_sxc: number;
   tong_gia_thanh: number;
+  tong_gia_thanh_uoc: number;
+  gia_thanh_dv_uoc: number;
   gia_ban_du_kien: number;
   sale_id: number | null;
   created_at: string;

@@ -236,7 +236,10 @@ export function StockIssue() {
           <tbody>
             {list.map((i) => {
               const [color, label] = STATUS_CHIP[i.status] ?? ["gray", i.status];
-              const giaVon = i.lines.reduce((s, l) => s + l.gia_von, 0);
+              const posted = i.status === "posted";
+              const giaVon = posted
+                ? i.lines.reduce((s, l) => s + l.gia_von, 0)
+                : i.tong_gia_von_uoc;
               const dk = MUC_DICH_XUAT[i.muc_dich];
               return (
                 <tr key={i.id} style={{ cursor: "pointer" }} title="Xem/sửa phiếu xuất" onClick={() => openView(i)}>
@@ -252,7 +255,9 @@ export function StockIssue() {
                     {i.lines.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
                     {i.note ? ` — ${i.note}` : ""}
                   </td>
-                  <td style={{ textAlign: "right" }}>{vnd(giaVon)}</td>
+                  <td style={{ textAlign: "right" }} className="nowrap">
+                    {posted ? vnd(giaVon) : <span className="muted">~{vnd(giaVon)}</span>}
+                  </td>
                   <td>
                     <span className={`chip sm ${color}`}>{label}</span>
                   </td>
@@ -565,7 +570,14 @@ export function StockIssue() {
                           {vnd(l.so_luong * l.don_gia_ban)}
                         </td>
                         <td style={{ textAlign: "right" }} className="muted">
-                          {vnd(l.gia_von)}
+                          {view.status === "posted" ? vnd(l.gia_von) : `~${vnd(l.gia_von_uoc)}`}
+                          {l.don_gia_von_uoc > 0 && (
+                            <div style={{ fontSize: 11 }}>
+                              {view.status === "posted" && l.so_luong
+                                ? vnd(l.gia_von / l.so_luong)
+                                : `~${vnd(l.don_gia_von_uoc)}`}/đv
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -580,7 +592,11 @@ export function StockIssue() {
                       <b>{vnd(view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0))}</b>
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <b>{vnd(view.lines.reduce((s, l) => s + l.gia_von, 0))}</b>
+                      <b>
+                        {view.status === "posted"
+                          ? vnd(view.lines.reduce((s, l) => s + l.gia_von, 0))
+                          : `~${vnd(view.lines.reduce((s, l) => s + l.gia_von_uoc, 0))}`}
+                      </b>
                     </td>
                   </tr>
                 </tfoot>

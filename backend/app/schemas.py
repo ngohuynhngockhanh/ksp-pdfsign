@@ -605,6 +605,8 @@ class InvIssueLineOut(BaseModel):
     don_gia_ban: float = 0
     thanh_tien_ban: float = 0
     gia_von: float = 0  # tu so kho sau khi post (dong bang tren dong)
+    gia_von_uoc: float = 0  # uoc tinh theo gia von BQ hien tai (dung cho draft)
+    don_gia_von_uoc: float = 0  # gia von BQ / don vi
 
 
 class InvIssueOut(BaseModel):
@@ -620,6 +622,7 @@ class InvIssueOut(BaseModel):
     tk_no: str = ""
     tk_co: str = ""
     tong_gia_von: float = 0
+    tong_gia_von_uoc: float = 0  # uoc tinh (draft chua ghi so)
     note: str
     status: str
     created_at: str = ""
@@ -656,6 +659,7 @@ class InvProductionLineOut(BaseModel):
     so_luong: float
     don_gia_tam: float = 0
     gia_tri: float = 0  # sau khi post: gia von tieu hao / gia thanh nhap
+    gia_tri_uoc: float = 0  # uoc tinh theo gia von BQ hien tai (dung cho draft)
     # so dinh muc (tu recipe_id) de so sanh - chi co khi lenh gan cong thuc
     so_luong_dinh_muc: float | None = None
     gia_tri_dinh_muc: float | None = None
@@ -672,6 +676,8 @@ class InvProductionOut(BaseModel):
     cp_nhan_cong: float = 0
     cp_sxc: float = 0
     tong_gia_thanh: float = 0
+    tong_gia_thanh_uoc: float = 0  # uoc tinh (draft chua ghi so)
+    gia_thanh_dv_uoc: float = 0  # uoc tinh / don vi thanh pham
     gia_ban_du_kien: float = 0
     sale_id: int | None = None  # truy vet: LSX sinh tu HD ban nao (neu co)
     created_at: str = ""

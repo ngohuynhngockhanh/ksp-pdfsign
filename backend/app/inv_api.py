@@ -1321,6 +1321,12 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
             select(InvMove).where(InvMove.ref_type == "issue", InvMove.ref_id == iss.id)
         )
     }
+    # Don gia binh quan hien tai theo cap (item, kho) -> uoc tinh gia von cho draft
+    snap_pair: dict[tuple[int, int], list[float]] = {}
+    for r in inventory.stock_snapshot(db):
+        b = snap_pair.setdefault((r.item_id, r.warehouse_id), [0.0, 0.0])
+        b[0] += r.ton
+        b[1] += r.gia_tri
     lines = []
     for ln in iss.lines:
         it = items.get(ln.item_id)
@@ -1329,6 +1335,8 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
         # Giu mo hinh binh quan di dong: hien gia von SONG tu so kho (tinh lai khi
         # co HD mua lui ngay). Cot ln.gia_von chi la snapshot luu khi post (in an).
         gia_von = mv.gia_tri if mv is not None else (ln.gia_von or 0)
+        b = snap_pair.get((ln.item_id, ln.warehouse_id), [0.0, 0.0])
+        bq = (b[1] / b[0]) if b[0] > inventory.EPS else 0.0
         lines.append(InvIssueLineOut(
             id=ln.id, item_id=ln.item_id,
             ma_hang=it.ma_hang if it else "", ten=it.ten if it else "",
@@ -1337,6 +1345,8 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
             so_luong=ln.so_luong, don_gia_ban=ln.don_gia_ban,
             thanh_tien_ban=ln.thanh_tien_ban or round(ln.so_luong * (ln.don_gia_ban or 0)),
             gia_von=gia_von,
+            gia_von_uoc=round(ln.so_luong * bq),
+            don_gia_von_uoc=round(bq, 2),
         ))
     cust = db.get(Customer, iss.customer_id) if iss.customer_id else None
     # Dinh khoan goi y tuc thoi (khi con draft chua luu tk) de FE hien thi
@@ -1351,6 +1361,7 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
         ly_do=iss.ly_do, nguoi_nhan=iss.nguoi_nhan, bo_phan=iss.bo_phan,
         tk_no=tk_no, tk_co=tk_co,
         tong_gia_von=sum(l.gia_von for l in lines),
+        tong_gia_von_uoc=sum(l.gia_von_uoc for l in lines),
         note=iss.note, status=iss.status,
         created_at=iss.created_at.isoformat() if iss.created_at else "", lines=lines,
     )
@@ -1503,13 +1514,19 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             ratio = (out_qty_prod / rec.output_qty) if rec.output_qty else 1.0
             for rl in rec.lines:
                 dinh_muc[rl.item_id] = dinh_muc.get(rl.item_id, 0.0) + rl.so_luong * ratio
-    # Don gia binh quan hien tai (de tinh gia tri dinh muc khi chua post)
+    # Don gia binh quan hien tai: snap theo item (dinh muc) + theo cap (item,kho)
+    # cho uoc tinh gia von tieu hao dung theo kho.
     snap: dict[int, list[float]] = {}
+    snap_pair: dict[tuple[int, int], list[float]] = {}
     for r in inventory.stock_snapshot(db):
         a = snap.setdefault(r.item_id, [0.0, 0.0])
         a[0] += r.ton
         a[1] += r.gia_tri
+        b = snap_pair.setdefault((r.item_id, r.warehouse_id), [0.0, 0.0])
+        b[0] += r.ton
+        b[1] += r.gia_tri
     lines = []
+    nvl_uoc = 0.0
     for ln in sorted(prod.lines, key=lambda x: (x.chieu != "vao", x.id)):
         it = items.get(ln.item_id)
         mv = moves.get(ln.id)
@@ -1519,19 +1536,30 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             a = snap.get(ln.item_id, [0.0, 0.0])
             dg = (a[1] / a[0]) if a[0] > inventory.EPS else (ln.don_gia_tam or 0.0)
             gt_dm = round(sl_dm * dg)
+        gia_tri_uoc = 0
+        if ln.chieu == "vao":
+            b = snap_pair.get((ln.item_id, ln.warehouse_id), [0.0, 0.0])
+            bq = (b[1] / b[0]) if b[0] > inventory.EPS else (ln.don_gia_tam or 0.0)
+            gia_tri_uoc = round(ln.so_luong * bq)
+            nvl_uoc += gia_tri_uoc
         lines.append(InvProductionLineOut(
             id=ln.id, chieu=ln.chieu, item_id=ln.item_id,
             ma_hang=it.ma_hang if it else "", ten=it.ten if it else "",
             dvt=it.dvt if it else "", warehouse_id=ln.warehouse_id,
             so_luong=ln.so_luong, don_gia_tam=ln.don_gia_tam or 0,
-            gia_tri=mv.gia_tri if mv else 0,
+            gia_tri=mv.gia_tri if mv else 0, gia_tri_uoc=gia_tri_uoc,
             so_luong_dinh_muc=sl_dm, gia_tri_dinh_muc=gt_dm,
         ))
+    out_qty = sum(l.so_luong for l in prod.lines if l.chieu == "ra")
+    tong_uoc = nvl_uoc + (prod.cp_nhan_cong or 0) + (prod.cp_sxc or 0)
     return InvProductionOut(
         id=prod.id, so_ct=prod.so_ct, ngay=prod.ngay, note=prod.note,
         description=prod.description, status=prod.status, recipe_id=prod.recipe_id,
         cp_nhan_cong=prod.cp_nhan_cong or 0, cp_sxc=prod.cp_sxc or 0,
-        tong_gia_thanh=prod.tong_gia_thanh or 0, gia_ban_du_kien=prod.gia_ban_du_kien or 0,
+        tong_gia_thanh=prod.tong_gia_thanh or 0,
+        tong_gia_thanh_uoc=tong_uoc,
+        gia_thanh_dv_uoc=round(tong_uoc / out_qty) if out_qty else 0,
+        gia_ban_du_kien=prod.gia_ban_du_kien or 0,
         sale_id=prod.sale_id,
         created_at=prod.created_at.isoformat() if prod.created_at else "", lines=lines,
     )
