@@ -781,3 +781,60 @@ def test_extract_ngay_and_so_hd_patterns():
     )
     assert _extract_ngay(raw4, None) == "2026-01-17"
     assert _extract_so_hd(raw4) == "3122"
+
+
+# ---------------------------------------------------------------------------
+# Filter tu/den + xuat Excel/ZIP
+# ---------------------------------------------------------------------------
+def test_purchase_list_filter_tu_den(client):
+    client.post("/api/inv/purchase", json={
+        "so_hd": "A1", "mst_ban": "0123456789", "ten_ban": "NCC A", "ngay": "2026-01-05",
+    })
+    client.post("/api/inv/purchase", json={
+        "so_hd": "A2", "mst_ban": "0123456789", "ten_ban": "NCC B", "ngay": "2026-03-10",
+    })
+    r = client.get("/api/inv/purchase", params={"tu": "2026-01-01", "den": "2026-01-31"})
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["so_hd"] == "A1"
+
+
+def test_purchase_export_xlsx(client):
+    client.post("/api/inv/purchase", json={
+        "so_hd": "B1", "mst_ban": "0123456789", "ten_ban": "NCC B1", "ngay": "2026-02-01",
+        "lines": [{"ten_raw": "Hàng X", "dvt": "Cái", "so_luong": 2, "don_gia": 100000,
+                   "thanh_tien": 200000, "thue_suat": 10}],
+    })
+    r = client.get("/api/inv/purchase/export-xlsx")
+    assert r.status_code == 200, r.text
+    assert "spreadsheetml" in r.headers["content-type"]
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames == ["Hóa đơn", "Dòng hàng"]
+    ws = wb["Hóa đơn"]
+    assert ws.max_row == 2  # header + 1 hoa don
+    ws2 = wb["Dòng hàng"]
+    assert ws2.max_row == 2  # header + 1 dong
+
+
+def test_purchase_export_zip(client):
+    r = client.post(
+        "/api/inv/purchase/upload",
+        files=[("files", ("hdzip.xml", _XML.encode(), "text/xml"))],
+    )
+    assert r.status_code == 200, r.text
+    pid = r.json()["results"][0]["purchase_id"]
+
+    r = client.get("/api/inv/purchase/export-zip")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/zip"
+    import zipfile
+
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    assert len(zf.namelist()) == 1
+
+    # Xoa file goc chua bi xoa -> loc theo ids ma khong co file goc nao -> 404
+    r2 = client.get("/api/inv/purchase/export-zip", params={"ids": "999999"})
+    assert r2.status_code == 404

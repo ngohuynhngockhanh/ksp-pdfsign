@@ -24,6 +24,7 @@ ACTION_LABELS = {
     "bulk_assign": "Gán hàng loạt",
     "customer_create": "Tạo khách hàng",
     "customer_delete": "Xoá khách hàng",
+    "customer_merge": "Gộp khách hàng",
     "account_set": "Cấp/đổi tài khoản KH",
     "password_change": "Đổi mật khẩu",
     "password_reset": "Reset mật khẩu",

@@ -7,7 +7,8 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db import Customer, User
+from .db import Customer, CustomerAlias, User
+from .inventory import normalize_name
 from .security import hash_password
 
 
@@ -44,3 +45,31 @@ def ensure_account(db: Session, customer: Customer) -> tuple[str, str]:
         ))
     db.commit()
     return username, password
+
+
+def find_customer(db: Session, name: str, mst: str = "") -> Customer | None:
+    """Tim khach hang khop voi (ten, MST) — dung chung cho parse hoa don,
+    import HD ban, tu goi y.
+
+    Thu tu uu tien: (1) MST khop Customer.tax_code (khi mst khong rong);
+    (2) ten khop chinh xac (strip().lower()); (3) ten chuan hoa
+    (normalize_name, bo dau/hoa thuong) tra trong bang alias da hoc tu gop.
+    """
+    mst = (mst or "").strip()
+    if mst:
+        c = db.scalar(select(Customer).where(Customer.tax_code == mst))
+        if c:
+            return c
+    name = (name or "").strip()
+    if not name:
+        return None
+    low = name.lower()
+    for x in db.scalars(select(Customer)):
+        if x.name.strip().lower() == low:
+            return x
+    norm = normalize_name(name)
+    if norm:
+        alias = db.scalar(select(CustomerAlias).where(CustomerAlias.name_norm == norm))
+        if alias:
+            return db.get(Customer, alias.customer_id)
+    return None

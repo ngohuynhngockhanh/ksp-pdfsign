@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
+import { DateFilter, DateRange } from "../components/DateFilter";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -45,6 +46,7 @@ export function PurchaseImport({
 }: { openId?: number | null; onConsumed?: () => void } = {}) {
   const [list, setList] = useState<InvPurchase[]>([]);
   const [statusF, setStatusF] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [cur, setCur] = useState<InvPurchase | null>(null);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
   const [err, setErr] = useState("");
@@ -67,6 +69,13 @@ export function PurchaseImport({
     });
   }
   const dupIds = list.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
+
+  // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
+  function exportParams() {
+    return sel.size > 0
+      ? { ids: [...sel].join(",") }
+      : { status_f: statusF, tu: dateRange.tu, den: dateRange.den };
+  }
 
   async function bulkDelete(ids: number[], label: string) {
     if (ids.length === 0) return;
@@ -109,7 +118,7 @@ export function PurchaseImport({
 
   async function load() {
     try {
-      setList(await api.invPurchases(statusF));
+      setList(await api.invPurchases(statusF, dateRange));
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -120,7 +129,7 @@ export function PurchaseImport({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusF]);
+  }, [statusF, dateRange.tu, dateRange.den]);
   // Nhay tu Tho kho (Ton kho) sang -> tu mo hoa don can sua
   useEffect(() => {
     if (openId) {
@@ -311,6 +320,7 @@ export function PurchaseImport({
             <option value="draft">Nháp chờ duyệt</option>
             <option value="posted">Đã ghi sổ</option>
           </select>
+          <DateFilter value={dateRange} onChange={setDateRange} />
           <input
             ref={fileRef}
             type="file"
@@ -370,6 +380,28 @@ export function PurchaseImport({
             🧹 Xóa hết trùng ({dupIds.length})
           </button>
         )}
+        <button
+          className="btn-sm ghost"
+          onClick={() =>
+            window.open(
+              api.invExportUrl("purchase", "zip", exportParams()),
+              "_blank",
+            )
+          }
+        >
+          ⬇ ZIP gốc
+        </button>
+        <button
+          className="btn-sm ghost"
+          onClick={() =>
+            window.open(
+              api.invExportUrl("purchase", "xlsx", exportParams()),
+              "_blank",
+            )
+          }
+        >
+          ⬇ Excel
+        </button>
       </div>
 
       <div className="table-wrap">
@@ -543,6 +575,7 @@ export function PurchaseImport({
                     <th style={{ textAlign: "right" }}>SL</th>
                     <th style={{ textAlign: "right" }}>Đơn giá</th>
                     <th style={{ textAlign: "right" }}>Thành tiền</th>
+                    <th style={{ textAlign: "right", width: 70 }}>VAT %</th>
                     <th>Kho</th>
                     <th style={{ minWidth: 240 }}>Mặt hàng tồn kho</th>
                     <th style={{ width: 28 }}></th>
@@ -606,6 +639,17 @@ export function PurchaseImport({
                               HĐ ghi {vnd(ln.thanh_tien)}
                             </div>
                           )}
+                      </td>
+                      <td style={{ textAlign: "right", width: 70 }}>
+                        {cur.status === "draft" ? (
+                          <input
+                            style={{ width: 60, textAlign: "right" }}
+                            value={ln.thue_suat}
+                            onChange={(e) => setLine(idx, { thue_suat: vnNum(e.target.value) })}
+                          />
+                        ) : (
+                          `${ln.thue_suat}%`
+                        )}
                       </td>
                       <td>
                         <select

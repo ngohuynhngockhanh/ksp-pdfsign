@@ -8,6 +8,7 @@ import {
   MucDichXuat,
   StockRow,
 } from "../api";
+import { DateFilter, DateRange } from "../components/DateFilter";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -39,6 +40,7 @@ const NHAN_CONG_PER_SP = 300_000;
 export function StockIssue() {
   const [list, setList] = useState<InvIssue[]>([]);
   const [err, setErr] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [creating, setCreating] = useState(false);
   const [ngay, setNgay] = useState(today());
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -57,15 +59,18 @@ export function StockIssue() {
 
   async function load() {
     try {
-      setList(await api.invIssues());
+      setList(await api.invIssues("", dateRange));
     } catch (e) {
       setErr((e as Error).message);
     }
   }
   useEffect(() => {
-    load();
     api.listCustomers().then(setCustomers).catch(() => {});
   }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.tu, dateRange.den]);
 
   // Doi ngay -> tai lai kha dung (chi hien thu co the xuat tai ngay do)
   useEffect(() => {
@@ -214,8 +219,20 @@ export function StockIssue() {
           Xuất kho <span className="count">{list.length}</span>
         </h3>
         <div className="tb-group">
+          <DateFilter value={dateRange} onChange={setDateRange} />
           <button className="btn-sm" onClick={() => setCreating(true)}>
             ＋ Tạo phiếu xuất
+          </button>
+          <button
+            className="btn-sm ghost"
+            onClick={() =>
+              window.open(
+                api.invExportUrl("issues", "xlsx", { tu: dateRange.tu, den: dateRange.den }),
+                "_blank",
+              )
+            }
+          >
+            ⬇ Excel
           </button>
         </div>
       </div>

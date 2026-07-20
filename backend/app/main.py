@@ -58,7 +58,10 @@ from .config import REPO_ROOT, Settings, get_settings
 from .db import (
     AuditLog,
     Customer,
+    CustomerAlias,
     Document,
+    InvIssue,
+    InvSale,
     Order,
     Product,
     Share,
@@ -66,6 +69,7 @@ from .db import (
     get_session,
     init_db,
 )
+from .inventory import normalize_name
 from .schemas import (
     AccountCreate,
     AccountInfo,
@@ -77,6 +81,7 @@ from .schemas import (
     BulkAssign,
     BulkIds,
     CustomerCreate,
+    CustomerMerge,
     DocTypeUpdate,
     DocumentRename,
     OrderAssign,
@@ -439,11 +444,16 @@ def _customer_out(db: Session, c: Customer) -> CustomerOut:
         select(func.count(Document.id)).where(Document.customer_id == c.id)
     )
     usernames = [u.username for u in c.users]
+    aliases = list(
+        db.scalars(
+            select(CustomerAlias.name_norm).where(CustomerAlias.customer_id == c.id)
+        )
+    )
     return CustomerOut(
         id=c.id, name=c.name, tax_code=c.tax_code, contact=c.contact,
         address=c.address or "", email=c.email or "", note=c.note,
         created_at=c.created_at.isoformat(), document_count=doc_count or 0,
-        account_usernames=usernames,
+        account_usernames=usernames, aliases=aliases,
     )
 
 
@@ -540,6 +550,79 @@ def create_account(
     db.commit()
     _audit(db, user, "account_set", c.name, body.username)
     return {"ok": True, "username": body.username}
+
+
+@app.post("/api/customers/merge")
+def merge_customers(
+    body: CustomerMerge,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Gop cong ty NGUON vao cong ty DICH: chuyen (khong xoa) tai khoan/don
+    hang/ho so/hoa don ban/phieu xuat sang dich, hoc ten nguon lam alias,
+    roi xoa cong ty nguon."""
+    if body.source_id == body.target_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Khong the gop mot cong ty vao chinh no")
+    src = db.get(Customer, body.source_id)
+    tgt = db.get(Customer, body.target_id)
+    if not src or not tgt:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
+
+    moved = {
+        "users": db.scalar(select(func.count(User.id)).where(User.customer_id == src.id)) or 0,
+        "orders": db.scalar(select(func.count(Order.id)).where(Order.customer_id == src.id)) or 0,
+        "documents": db.scalar(select(func.count(Document.id)).where(Document.customer_id == src.id)) or 0,
+        "sales": db.scalar(select(func.count(InvSale.id)).where(InvSale.customer_id == src.id)) or 0,
+        "issues": db.scalar(select(func.count(InvIssue.id)).where(InvIssue.customer_id == src.id)) or 0,
+    }
+
+    # Chuyen (KHONG xoa) 5 FK tro nguon -> dich.
+    # Users/documents co Customer.users/documents (back_populates) -> phai gan
+    # qua thuoc tinh quan he (.customer = tgt), khong chi doi cot customer_id,
+    # neu khong khi xoa src ben duoi ORM se tu NULL lai FK (cascade ngam dinh).
+    for u in db.scalars(select(User).where(User.customer_id == src.id)):
+        u.customer = tgt
+    for d in db.scalars(select(Document).where(Document.customer_id == src.id)):
+        d.customer = tgt
+    # Order/InvSale/InvIssue chi co quan he 1 chieu (Customer khong co orders/
+    # sales/issues) nen doi thang cot la du, khong bi cascade null.
+    for o in db.scalars(select(Order).where(Order.customer_id == src.id)):
+        o.customer_id = tgt.id
+    for s in db.scalars(select(InvSale).where(InvSale.customer_id == src.id)):
+        s.customer_id = tgt.id
+    for i in db.scalars(select(InvIssue).where(InvIssue.customer_id == src.id)):
+        i.customer_id = tgt.id
+
+    # Field mem: dich trong ma nguon co thi lay sang
+    for f in ("tax_code", "contact", "address", "email", "note"):
+        if not getattr(tgt, f) and getattr(src, f):
+            setattr(tgt, f, getattr(src, f))
+
+    # Hoc alias: ten nguon -> tro ve dich (de nhan dien lai o cac lan sau)
+    norm = normalize_name(src.name)
+    if norm:
+        existing = db.scalar(select(CustomerAlias).where(CustomerAlias.name_norm == norm))
+        if existing:
+            existing.customer_id = tgt.id
+        else:
+            db.add(CustomerAlias(name_norm=norm, customer_id=tgt.id))
+    # Cac alias khac dang tro ve nguon -> chuyen sang dich (bo dong trung ten_norm)
+    for al in list(db.scalars(select(CustomerAlias).where(CustomerAlias.customer_id == src.id))):
+        dup = db.scalar(
+            select(CustomerAlias).where(
+                CustomerAlias.name_norm == al.name_norm, CustomerAlias.customer_id == tgt.id
+            )
+        )
+        if dup:
+            db.delete(al)
+        else:
+            al.customer_id = tgt.id
+
+    db.delete(src)
+    _audit(db, user, "customer_merge", f"{src.name} → {tgt.name}", f"gộp #{src.id} vào #{tgt.id}")
+    db.commit()
+    db.refresh(tgt)
+    return {"target": _customer_out(db, tgt), "moved": moved}
 
 
 # ---------------------------------------------------------------------------
@@ -1120,17 +1203,10 @@ def audit_log(
 # Hoa don -> BBBG + phan loai
 # ---------------------------------------------------------------------------
 def _suggest_customer(db: Session, buyer: dict) -> dict | None:
-    """De xuat khach hang khop hoa don theo MST (uu tien) roi ten."""
-    mst = (buyer.get("mst") or "").strip()
-    if mst:
-        c = db.scalar(select(Customer).where(Customer.tax_code == mst))
-        if c:
-            return {"id": c.id, "name": c.name}
-    name = (buyer.get("name") or "").strip().lower()
-    if name:
-        for c in db.scalars(select(Customer)):
-            if c.name.strip().lower() == name:
-                return {"id": c.id, "name": c.name}
+    """De xuat khach hang khop hoa don theo MST (uu tien) roi ten/alias."""
+    c = accounts.find_customer(db, buyer.get("name") or "", buyer.get("mst") or "")
+    if c:
+        return {"id": c.id, "name": c.name}
     return None
 
 
@@ -1169,18 +1245,12 @@ def bbbg_templates(user: CurrentUser = Depends(require_admin)):
 def _upsert_customer(db: Session, benb) -> int | None:
     """Tao/cap nhat ho so khach hang tu thong tin ben B (tu XML/form).
 
-    Merge profile theo XML; KHONG dong toi tai khoan/mat khau. Match theo MST roi ten.
+    Merge profile theo XML; KHONG dong toi tai khoan/mat khau. Match theo
+    MST roi ten roi alias (find_customer); chi tao moi khi ca 3 deu truot.
     """
     mst = (benb.mst or "").strip()
     name = (benb.name or "").strip()
-    c = None
-    if mst:
-        c = db.scalar(select(Customer).where(Customer.tax_code == mst))
-    if c is None and name:
-        for x in db.scalars(select(Customer)):
-            if x.name.strip().lower() == name.lower():
-                c = x
-                break
+    c = accounts.find_customer(db, name, mst)
     if c is None:
         if not name:
             return None

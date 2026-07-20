@@ -346,3 +346,20 @@ def test_lech_dong_blocks_review(client):
     )
     assert r2.status_code == 200, r2.text
     assert r2.json()["status"] == "reviewed"
+
+
+def test_auto_assign_customer_on_import(client):
+    """MST ben mua trung tax_code khach hang co san -> tu gan customer_id,
+    KHONG tao khach hang moi tu luong import HD ban."""
+    r = client.post("/api/customers", json={"name": "Khach Hang ABC", "tax_code": "0100108945"})
+    assert r.status_code == 200
+    cid = r.json()["id"]
+
+    xml = _hdon_xml("50", "2026-06-01", [{"ten": "Camera auto gan", "ts": "8%"}])
+    res = _upload(client, "ihoadon_4401053694_50_1_01062026_0.xml", xml)
+    sid = res["results"][0]["sale_id"]
+    inv = client.get(f"/api/inv/sale/{sid}").json()
+    assert inv["customer_id"] == cid
+
+    # Khong sinh them khach hang moi
+    assert len(client.get("/api/customers").json()) == 1

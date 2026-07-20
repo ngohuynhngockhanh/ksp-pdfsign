@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, InvProduction, InvProductionLine, InvRecipe, InvWarehouse, StockRow } from "../api";
+import { DateFilter, DateRange } from "../components/DateFilter";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -25,6 +26,7 @@ export function Production() {
   const [recipes, setRecipes] = useState<InvRecipe[]>([]);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
   const [err, setErr] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [creating, setCreating] = useState(false);
   const [ngay, setNgay] = useState(today());
   const [note, setNote] = useState("");
@@ -44,16 +46,19 @@ export function Production() {
 
   async function load() {
     try {
-      setList(await api.invProductions());
+      setList(await api.invProductions("", dateRange));
       setRecipes(await api.invRecipes());
     } catch (e) {
       setErr((e as Error).message);
     }
   }
   useEffect(() => {
-    load();
     api.invWarehouses().then(setWhs).catch(() => {});
   }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.tu, dateRange.den]);
   useEffect(() => {
     if (!creating) return;
     api
@@ -329,6 +334,7 @@ export function Production() {
           Sản xuất <span className="count">{list.length}</span>
         </h3>
         <div className="tb-group">
+          <DateFilter value={dateRange} onChange={setDateRange} />
           <button
             className="btn-sm ghost"
             title="Chạy lại bình quân gia quyền, khắc phục phiếu treo giá vốn"
@@ -348,6 +354,17 @@ export function Production() {
           </button>
           <button className="btn-sm" onClick={() => setCreating(true)}>
             ＋ Tạo lệnh sản xuất
+          </button>
+          <button
+            className="btn-sm ghost"
+            onClick={() =>
+              window.open(
+                api.invExportUrl("productions", "xlsx", { tu: dateRange.tu, den: dateRange.den }),
+                "_blank",
+              )
+            }
+          >
+            ⬇ Excel
           </button>
         </div>
       </div>

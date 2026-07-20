@@ -100,6 +100,12 @@ class CustomerUpdate(BaseModel):
     note: str | None = None
 
 
+class CustomerMerge(BaseModel):
+    """Gop cong ty NGUON vao cong ty DICH: dich giu lai, nguon bien mat."""
+    source_id: int
+    target_id: int
+
+
 class AccountCreate(BaseModel):
     username: str
     password: str
@@ -116,6 +122,7 @@ class CustomerOut(BaseModel):
     created_at: str
     document_count: int = 0
     account_usernames: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
 
 
 class DocumentOut(BaseModel):

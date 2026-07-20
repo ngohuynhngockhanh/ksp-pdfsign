@@ -243,3 +243,95 @@ def test_forged_admin_token_rejected(client):
                         "change-me-to-a-long-random-string", algorithm="HS256")
     client.cookies.set("ksp_session", forged)
     assert client.get("/api/customers").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Gop cong ty (merge) + alias ten
+# ---------------------------------------------------------------------------
+def test_customer_merge(client):
+    from app.db import (
+        InvIssue,
+        InvSale,
+        get_session,
+    )
+
+    _login(client)
+    # A tao truoc, B tao sau (A se la dich mac dinh theo created_at)
+    ra = client.post("/api/customers", json={"name": "Cong Ty A", "tax_code": "111"})
+    rb = client.post("/api/customers", json={
+        "name": "Cong Ty B", "tax_code": "222",
+        "account_username": "ktyb", "account_password": "matkhau123",
+    })
+    assert ra.status_code == 200 and rb.status_code == 200
+    aid, bid = ra.json()["id"], rb.json()["id"]
+
+    # Gan cho B: 1 ho so (qua sign) + 1 don hang
+    a = _sign_one(client, customer_id=bid)
+    assert a.status_code == 200
+    order = client.post("/api/orders", json={"name": "DH cua B", "customer_id": bid})
+    assert order.status_code == 200
+
+    # Tao truc tiep 1 InvSale + 1 InvIssue gan cho B (khong qua HTTP vi khong co
+    # route tao tay don gian cho InvSale)
+    gen = get_session()
+    db = next(gen)
+    try:
+        sale = InvSale(so_hd="1", ky_hieu="C25TAA", mst_mua="222", ten_mua="Cong Ty B",
+                        customer_id=bid, ngay="2026-01-01")
+        db.add(sale)
+        issue = InvIssue(ngay="2026-01-01", customer_id=bid)
+        db.add(issue)
+        db.commit()
+    finally:
+        gen.close()
+
+    # Gop B (nguon) vao A (dich)
+    m = client.post("/api/customers/merge", json={"source_id": bid, "target_id": aid})
+    assert m.status_code == 200, m.text
+    body = m.json()
+    assert body["moved"] == {"users": 1, "orders": 1, "documents": 1, "sales": 1, "issues": 1}
+    assert body["target"]["id"] == aid
+    assert "cong ty b" in body["target"]["aliases"]
+
+    # B khong con
+    assert client.get(f"/api/customers/{bid}").status_code == 404
+
+    # Ca 5 loai da chuyen sang A
+    docs = client.get("/api/documents", params={"customer_id": aid}).json()
+    assert docs["total"] == 1
+    orders = client.get("/api/orders", params={"customer_id": aid}).json()
+    assert len(orders) == 1
+
+    gen = get_session()
+    db = next(gen)
+    try:
+        s = db.get(InvSale, sale.id)
+        i = db.get(InvIssue, issue.id)
+        assert s.customer_id == aid
+        assert i.customer_id == aid
+    finally:
+        gen.close()
+
+    # Tai khoan cua B van dang nhap duoc, gio thuoc ve A
+    client.post("/api/logout")
+    assert client.post(
+        "/api/login", json={"username": "ktyb", "password": "matkhau123"}
+    ).status_code == 200
+    client.post("/api/logout")
+    _login(client)
+
+    # Parse hoa don voi ten B (viet hoa/thuong khac) -> tra ve A qua alias,
+    # khong tao khach hang moi
+    from app.db import Customer, get_session as _gs
+
+    gen = _gs()
+    db = next(gen)
+    try:
+        from app import accounts
+
+        found = accounts.find_customer(db, "CONG TY b", "")
+        assert found is not None and found.id == aid
+        total_customers = db.query(Customer).count()
+    finally:
+        gen.close()
+    assert total_customers == 1  # khong sinh khach hang moi tu B

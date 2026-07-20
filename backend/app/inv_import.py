@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 import httpx
 
-from . import ai, invoice, money
+from . import accounts, ai, invoice, money
 from .config import Settings
 from .db import (
     InvItem,
@@ -1028,6 +1028,10 @@ def create_sale_draft(
         warnings=json.dumps(warnings, ensure_ascii=False),
         dup_of=dup_of,
     )
+    # Tu gan khach hang neu MST/ten khop san (khong tao moi tu luong nay)
+    matched = accounts.find_customer(db, inv.ten_mua, inv.mst_mua)
+    if matched:
+        inv.customer_id = matched.id
     db.add(inv)
 
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))

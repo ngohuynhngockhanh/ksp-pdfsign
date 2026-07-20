@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, inv_import, inventory, storage
+from . import ai, audit, inv_export, inv_import, inventory, storage
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -76,6 +76,27 @@ def _jload(s: str) -> list:
         return json.loads(s or "[]")
     except json.JSONDecodeError:
         return []
+
+
+_STATUS_VI = {"draft": "Nháp", "posted": "Đã ghi sổ", "reviewed": "Đã duyệt", "void": "Đã hủy"}
+
+
+def _export_scope(stmt, Model, ids: str, tu: str, den: str, status_f: str):
+    """Loc pham vi xuat: co ids -> uu tien loc theo ids (bo qua tu/den/status_f).
+    Khong co ids -> loc theo status_f + tu/den (giong list-endpoint)."""
+    if ids.strip():
+        try:
+            id_list = [int(x) for x in ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "ids không hợp lệ")
+        return stmt.where(Model.id.in_(id_list))
+    if status_f:
+        stmt = stmt.where(Model.status == status_f)
+    if tu:
+        stmt = stmt.where(Model.ngay >= tu)
+    if den:
+        stmt = stmt.where(Model.ngay <= den)
+    return stmt
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +621,8 @@ def purchase_create_manual(
 def purchase_list(
     status_f: str = "",
     q: str = "",
+    tu: str = "",
+    den: str = "",
     limit: int = 100,
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -614,8 +637,75 @@ def purchase_list(
             | InvPurchase.so_hd.ilike(like)
             | InvPurchase.mst_ban.ilike(like)
         )
+    if tu:
+        stmt = stmt.where(InvPurchase.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvPurchase.ngay <= den)
     stmt = stmt.order_by(InvPurchase.id.desc()).limit(min(limit, 500))
     return [_purchase_out(db, p, with_lines=False) for p in db.scalars(stmt)]
+
+
+@router.get("/purchase/export-zip")
+def purchase_export_zip(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Zip cac file goc (PDF/XML) cua cac HD mua khop pham vi loc."""
+    stmt = _export_scope(select(InvPurchase), InvPurchase, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvPurchase.ngay, InvPurchase.id)
+    files: list[tuple[str, bytes]] = []
+    for inv in db.scalars(stmt):
+        suffix = inv.doc_suffix or ".pdf"
+        if not inv.doc_id or not storage.exists(inv.doc_id, suffix):
+            continue
+        data = storage.read_doc(inv.doc_id, suffix)
+        stem = inv_export.sanitize_arcname(f"{inv.ngay}_{inv.so_hd}_{inv.ten_ban[:40]}")
+        files.append((f"{stem}{suffix}", data))
+    if not files:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có file gốc nào trong phạm vi lọc")
+    return inv_export.zip_response(files, "hoa-don-mua.zip")
+
+
+@router.get("/purchase/export-xlsx")
+def purchase_export_xlsx(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    stmt = _export_scope(select(InvPurchase), InvPurchase, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvPurchase.ngay, InvPurchase.id)
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    hd_rows, dong_rows = [], []
+    for inv in db.scalars(stmt):
+        hd_rows.append([
+            inv.so_hd, inv.ky_hieu, inv.ngay, inv.ten_ban, inv.mst_ban,
+            inv.tong_truoc_thue, inv.tong_thue, inv.tong_tien,
+            inv.source, inv.loai or "hang_hoa", _STATUS_VI.get(inv.status, inv.status),
+        ])
+        for ln in sorted(inv.lines, key=lambda x: (x.stt, x.id)):
+            it = items.get(ln.item_id) if ln.item_id else None
+            dong_rows.append([
+                inv.so_hd, ln.ten_raw, ln.dvt, ln.so_luong, ln.don_gia, ln.thanh_tien,
+                ln.thue_suat, it.ma_hang if it else "",
+            ])
+    sheets = [
+        ("Hóa đơn", [
+            "Số HĐ", "Ký hiệu", "Ngày", "Người bán", "MST", "Trước thuế", "Thuế",
+            "Tổng", "Nguồn", "Loại", "Trạng thái",
+        ], hd_rows),
+        ("Dòng hàng", [
+            "Số HĐ", "Tên trên HĐ", "ĐVT", "SL", "Đơn giá", "Thành tiền", "VAT %",
+            "Mã hàng đã khớp",
+        ], dong_rows),
+    ]
+    return inv_export.xlsx_response(sheets, "hoa-don-mua.xlsx")
 
 
 @router.get("/purchase/{pid}", response_model=InvPurchaseOut)
@@ -938,6 +1028,8 @@ async def sale_import_url(
 def sale_list(
     status_f: str = "",
     q: str = "",
+    tu: str = "",
+    den: str = "",
     limit: int = 100,
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -950,8 +1042,75 @@ def sale_list(
         stmt = stmt.where(
             InvSale.ten_mua.ilike(like) | InvSale.so_hd.ilike(like) | InvSale.mst_mua.ilike(like)
         )
+    if tu:
+        stmt = stmt.where(InvSale.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvSale.ngay <= den)
     stmt = stmt.order_by(InvSale.id.desc()).limit(min(limit, 500))
     return [_sale_out(db, s, with_lines=False) for s in db.scalars(stmt)]
+
+
+@router.get("/sale/export-zip")
+def sale_export_zip(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Zip cac file goc (PDF/XML) cua cac HD ban khop pham vi loc."""
+    stmt = _export_scope(select(InvSale), InvSale, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvSale.ngay, InvSale.id)
+    files: list[tuple[str, bytes]] = []
+    for inv in db.scalars(stmt):
+        suffix = inv.doc_suffix or ".pdf"
+        if not inv.doc_id or not storage.exists(inv.doc_id, suffix):
+            continue
+        data = storage.read_doc(inv.doc_id, suffix)
+        stem = inv_export.sanitize_arcname(f"{inv.ngay}_{inv.so_hd}_{inv.ten_mua[:40]}")
+        files.append((f"{stem}{suffix}", data))
+    if not files:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có file gốc nào trong phạm vi lọc")
+    return inv_export.zip_response(files, "hoa-don-ban.zip")
+
+
+@router.get("/sale/export-xlsx")
+def sale_export_xlsx(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    stmt = _export_scope(select(InvSale), InvSale, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvSale.ngay, InvSale.id)
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    hd_rows, dong_rows = [], []
+    for inv in db.scalars(stmt):
+        hd_rows.append([
+            inv.so_hd, inv.ky_hieu, inv.ngay, inv.ten_mua, inv.mst_mua,
+            inv.tong_truoc_thue, inv.tong_thue, inv.tong_tien,
+            _STATUS_VI.get(inv.status, inv.status),
+        ])
+        for ln in sorted(inv.lines, key=lambda x: (x.stt, x.id)):
+            it = items.get(ln.item_id) if ln.item_id else None
+            dong_rows.append([
+                inv.so_hd, ln.ten_raw, ln.dvt, ln.so_luong, ln.don_gia_ban, ln.thanh_tien,
+                ln.thue_suat, it.ma_hang if it else "",
+            ])
+    sheets = [
+        ("Hóa đơn", [
+            "Số HĐ", "Ký hiệu", "Ngày", "Người mua", "MST mua", "Trước thuế", "Thuế",
+            "Tổng", "Trạng thái",
+        ], hd_rows),
+        ("Dòng hàng", [
+            "Số HĐ", "Tên trên HĐ", "ĐVT", "SL", "Đơn giá", "Thành tiền", "VAT %",
+            "Mã hàng đã khớp",
+        ], dong_rows),
+    ]
+    return inv_export.xlsx_response(sheets, "hoa-don-ban.xlsx")
 
 
 @router.get("/sale/{sid}", response_model=InvSaleOut)
@@ -1403,6 +1562,8 @@ def issue_create(
 @router.get("/issues", response_model=list[InvIssueOut])
 def issue_list(
     status_f: str = "",
+    tu: str = "",
+    den: str = "",
     limit: int = 100,
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -1410,8 +1571,51 @@ def issue_list(
     stmt = select(InvIssue)
     if status_f:
         stmt = stmt.where(InvIssue.status == status_f)
+    if tu:
+        stmt = stmt.where(InvIssue.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvIssue.ngay <= den)
     stmt = stmt.order_by(InvIssue.id.desc()).limit(min(limit, 500))
     return [_issue_out(db, i) for i in db.scalars(stmt)]
+
+
+@router.get("/issues/export-xlsx")
+def issue_export_xlsx(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    stmt = _export_scope(select(InvIssue), InvIssue, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvIssue.ngay, InvIssue.id)
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    customers = {c.id: c for c in db.scalars(select(Customer))}
+    px_rows, dong_rows = [], []
+    for iss in db.scalars(stmt):
+        cust = customers.get(iss.customer_id) if iss.customer_id else None
+        tong_gia_von = sum(l.gia_von for l in iss.lines)
+        px_rows.append([
+            iss.so_ct, iss.ngay, cust.name if cust else "", iss.muc_dich,
+            iss.tk_no, iss.tk_co, iss.note, tong_gia_von, _STATUS_VI.get(iss.status, iss.status),
+        ])
+        for ln in iss.lines:
+            it = items.get(ln.item_id)
+            wh = whs.get(ln.warehouse_id)
+            dong_rows.append([
+                iss.so_ct, it.ma_hang if it else "", it.ten if it else "",
+                wh.code if wh else "", ln.so_luong, ln.don_gia_ban, ln.gia_von,
+            ])
+    sheets = [
+        ("Phiếu xuất", [
+            "Số CT", "Ngày", "Khách hàng", "Mục đích", "TK Nợ", "TK Có", "Ghi chú",
+            "Tổng giá vốn", "Trạng thái",
+        ], px_rows),
+        ("Dòng", ["Số CT", "Mã hàng", "Tên", "Kho", "SL", "Giá bán", "Giá vốn"], dong_rows),
+    ]
+    return inv_export.xlsx_response(sheets, "phieu-xuat-kho.xlsx")
 
 
 @router.patch("/issues/{iid}", response_model=InvIssueOut)
@@ -1604,6 +1808,8 @@ def production_create(
 @router.get("/productions", response_model=list[InvProductionOut])
 def production_list(
     status_f: str = "",
+    tu: str = "",
+    den: str = "",
     limit: int = 100,
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -1611,8 +1817,55 @@ def production_list(
     stmt = select(InvProduction)
     if status_f:
         stmt = stmt.where(InvProduction.status == status_f)
+    if tu:
+        stmt = stmt.where(InvProduction.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvProduction.ngay <= den)
     stmt = stmt.order_by(InvProduction.id.desc()).limit(min(limit, 500))
     return [_prod_out(db, p) for p in db.scalars(stmt)]
+
+
+@router.get("/productions/export-xlsx")
+def production_export_xlsx(
+    tu: str = "",
+    den: str = "",
+    status_f: str = "",
+    ids: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    stmt = _export_scope(select(InvProduction), InvProduction, ids, tu, den, status_f)
+    stmt = stmt.order_by(InvProduction.ngay, InvProduction.id)
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    moves = {
+        (m.ref_id, m.ref_line_id): m
+        for m in db.scalars(select(InvMove).where(InvMove.ref_type == "production"))
+    }
+    lsx_rows, dong_rows = [], []
+    for prod in db.scalars(stmt):
+        out_line = next((l for l in prod.lines if l.chieu == "ra"), None)
+        it_out = items.get(out_line.item_id) if out_line else None
+        lsx_rows.append([
+            prod.so_ct, prod.ngay, it_out.ten if it_out else "",
+            prod.tong_gia_thanh, prod.cp_nhan_cong, prod.cp_sxc,
+            _STATUS_VI.get(prod.status, prod.status),
+        ])
+        for ln in sorted(prod.lines, key=lambda x: (x.chieu != "vao", x.id)):
+            it = items.get(ln.item_id)
+            wh = whs.get(ln.warehouse_id)
+            mv = moves.get((prod.id, ln.id))
+            dong_rows.append([
+                prod.so_ct, ln.chieu, it.ma_hang if it else "", it.ten if it else "",
+                wh.code if wh else "", ln.so_luong, mv.gia_tri if mv else 0,
+            ])
+    sheets = [
+        ("Lệnh SX", [
+            "Số CT", "Ngày", "Thành phẩm", "Tổng giá thành", "CP NC", "CP SXC", "Trạng thái",
+        ], lsx_rows),
+        ("Dòng", ["Số CT", "Chiều", "Mã hàng", "Tên", "Kho", "SL", "Giá trị"], dong_rows),
+    ]
+    return inv_export.xlsx_response(sheets, "lenh-san-xuat.xlsx")
 
 
 @router.patch("/productions/{pid}", response_model=InvProductionOut)

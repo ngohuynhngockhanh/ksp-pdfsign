@@ -26,6 +26,7 @@ export interface Customer {
   created_at: string;
   document_count: number;
   account_usernames: string[];
+  aliases: string[];
 }
 
 export interface DocRecord {
@@ -210,6 +211,16 @@ export const api = {
   },
   async deleteCustomer(id: number) {
     return req(`/api/customers/${id}`, { method: "DELETE" });
+  },
+  async mergeCustomers(source_id: number, target_id: number) {
+    return req<{ target: Customer; moved: Record<string, number> }>(
+      "/api/customers/merge",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_id, target_id }),
+      }
+    );
   },
   async createAccount(id: number, username: string, password: string) {
     return req<{ ok: boolean; username: string }>(`/api/customers/${id}/account`, {
@@ -634,8 +645,11 @@ export const api = {
   async invSuggestItemCode() {
     return req<{ code: string }>("/api/inv/items/suggest-code");
   },
-  async invPurchases(statusF = "") {
-    return req<InvPurchase[]>(`/api/inv/purchase?status_f=${statusF}`);
+  async invPurchases(statusF = "", filters: { tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams({ status_f: statusF });
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvPurchase[]>(`/api/inv/purchase?${p.toString()}`);
   },
   async invPurchase(id: number) {
     return req<InvPurchase>(`/api/inv/purchase/${id}`);
@@ -691,8 +705,11 @@ export const api = {
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) },
     );
   },
-  async invSales(statusF = "") {
-    return req<InvSale[]>(`/api/inv/sale?status_f=${statusF}`);
+  async invSales(statusF = "", filters: { tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams({ status_f: statusF });
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvSale[]>(`/api/inv/sale?${p.toString()}`);
   },
   async invSale(id: number) {
     return req<InvSale>(`/api/inv/sale/${id}`);
@@ -781,8 +798,11 @@ export const api = {
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
     );
   },
-  async invIssues(statusF = "") {
-    return req<InvIssue[]>(`/api/inv/issues?status_f=${statusF}`);
+  async invIssues(statusF = "", filters: { tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams({ status_f: statusF });
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvIssue[]>(`/api/inv/issues?${p.toString()}`);
   },
   async invIssueCreate(body: unknown) {
     return req<InvIssue>("/api/inv/issues", {
@@ -807,8 +827,11 @@ export const api = {
   async invIssueDelete(id: number) {
     return req(`/api/inv/issues/${id}`, { method: "DELETE" });
   },
-  async invProductions(statusF = "") {
-    return req<InvProduction[]>(`/api/inv/productions?status_f=${statusF}`);
+  async invProductions(statusF = "", filters: { tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams({ status_f: statusF });
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvProduction[]>(`/api/inv/productions?${p.toString()}`);
   },
   async invProductionCreate(body: unknown) {
     return req<InvProduction>("/api/inv/productions", {
@@ -876,6 +899,19 @@ export const api = {
   },
   async invHangingValue() {
     return req<{ rows: HangingValueRow[] }>("/api/inv/hanging-value");
+  },
+  // URL tai ZIP/Excel hang loat (FE mo bang window.open, cookie session tu gui kem)
+  invExportUrl(
+    kind: "purchase" | "sale" | "issues" | "productions",
+    fmt: "zip" | "xlsx",
+    params: { tu?: string; den?: string; status_f?: string; ids?: string } = {},
+  ) {
+    const p = new URLSearchParams();
+    if (params.tu) p.set("tu", params.tu);
+    if (params.den) p.set("den", params.den);
+    if (params.status_f) p.set("status_f", params.status_f);
+    if (params.ids) p.set("ids", params.ids);
+    return `/api/inv/${kind}/export-${fmt}?${p.toString()}`;
   },
 };
 

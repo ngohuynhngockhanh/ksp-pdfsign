@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, InvItem, InvSale, InvSaleLine, InvWarehouse } from "../api";
+import { DateFilter, DateRange } from "../components/DateFilter";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -105,6 +106,7 @@ function bomTotals(rows: BomRow[], giaBan: number) {
 export function SalesInvoice() {
   const [list, setList] = useState<InvSale[]>([]);
   const [statusF, setStatusF] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [cur, setCur] = useState<InvSale | null>(null);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -121,7 +123,7 @@ export function SalesInvoice() {
   async function load() {
     setErr("");
     try {
-      setList(await api.invSales(statusF));
+      setList(await api.invSales(statusF, dateRange));
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -132,7 +134,14 @@ export function SalesInvoice() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusF]);
+  }, [statusF, dateRange.tu, dateRange.den]);
+
+  // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
+  function exportParams() {
+    return sel.size > 0
+      ? { ids: [...sel].join(",") }
+      : { status_f: statusF, tu: dateRange.tu, den: dateRange.den };
+  }
 
   async function upload(files: FileList | null) {
     if (!files || !files.length) return;
@@ -485,6 +494,7 @@ export function SalesInvoice() {
             <option value="reviewed">Đã duyệt</option>
             <option value="void">Hủy</option>
           </select>
+          <DateFilter value={dateRange} onChange={setDateRange} />
           <input
             ref={fileRef}
             type="file"
@@ -504,6 +514,18 @@ export function SalesInvoice() {
               🗑️ Xóa ({sel.size})
             </button>
           )}
+          <button
+            className="btn-sm ghost"
+            onClick={() => window.open(api.invExportUrl("sale", "zip", exportParams()), "_blank")}
+          >
+            ⬇ ZIP gốc
+          </button>
+          <button
+            className="btn-sm ghost"
+            onClick={() => window.open(api.invExportUrl("sale", "xlsx", exportParams()), "_blank")}
+          >
+            ⬇ Excel
+          </button>
         </div>
       </div>
       {err && <div className="error">{err}</div>}

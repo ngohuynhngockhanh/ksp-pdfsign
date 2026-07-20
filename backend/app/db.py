@@ -47,6 +47,22 @@ class Customer(Base):
     documents: Mapped[list["Document"]] = relationship(back_populates="customer")
 
 
+class CustomerAlias(Base):
+    """Ten cong ty khac da hoc tu gop (merge) -> tro toi 1 Customer chuan.
+
+    name_norm = normalize_name() cua ten cu (cong ty bi gop, hoac ten khac
+    cua cung 1 khach). Dung de auto nhan khach o cac lan sau (import HD,
+    parse ben B...) ngay ca khi ten ghi khac nhau/sai chinh ta nhe.
+    """
+
+    __tablename__ = "customer_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name_norm: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class User(Base):
     __tablename__ = "users"
 
