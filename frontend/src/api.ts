@@ -611,6 +611,9 @@ export const api = {
       `/api/inv/items/${itemId}/card?warehouse_id=${warehouseId}`,
     );
   },
+  async invItemFlow(itemId: number) {
+    return req<ItemFlow>(`/api/inv/items/${itemId}/flow`);
+  },
   async invOpeningImport(file: File, dryRun: boolean) {
     const fd = new FormData();
     fd.append("file", file);
@@ -966,6 +969,41 @@ export interface StockCardRow {
   ton_gia_tri: number;
   ref_type: string;
   ref_id: number | null;
+}
+
+export interface ItemFlowDoc {
+  kind: string;
+  id: number | null;
+  label: string;
+  status: string;
+}
+
+export interface ItemFlowStep {
+  ngay: string;
+  loai: string;
+  loai_label: string;
+  warehouse_code: string;
+  so_luong: number;
+  gia_tri: number;
+  so_du: number;
+  doc: ItemFlowDoc | null;
+  flow_to: { ma_hang: string; ten: string; so_luong: number }[] | null;
+}
+
+export interface ItemFlowStuck {
+  kind: string;
+  id: number;
+  label: string;
+  ngay: string;
+  so_luong: number;
+  warehouse_code: string;
+}
+
+export interface ItemFlow {
+  item: { id: number; ma_hang: string; ten: string; dvt: string };
+  ton: { warehouse_code: string; ton: number; gia_tri: number }[];
+  steps: ItemFlowStep[];
+  stuck: ItemFlowStuck[];
 }
 
 export interface OpeningImportResult {

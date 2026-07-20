@@ -380,6 +380,165 @@ def stock_card(
     ]
 
 
+@router.get("/items/{item_id}/flow")
+def item_flow(
+    item_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Dong chay 1 mat hang: vao tu dau, chay vao cai gi (SX), ket o dau (chung tu nhap giu).
+
+    Gom timeline tu inv_moves (moi kho chung 1 danh sach, sap theo ngay+uu tien loai+id),
+    kem tra nguoc ve chung tu goc (mua/xuat/SX) va cac chung tu NHAP con o trang thai
+    nhap dang giu mat hang nay (chua ghi so).
+    """
+    item = db.get(InvItem, item_id)
+    if not item:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy mặt hàng")
+
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
+
+    # --- Ton hien tai theo kho ---
+    ton = [
+        {
+            "warehouse_code": whs[r.warehouse_id].code,
+            "ton": round(r.ton, 4),
+            "gia_tri": r.gia_tri,
+        }
+        for r in inventory.stock_snapshot(db)
+        if r.item_id == item_id
+        and whs.get(r.warehouse_id)
+        and (abs(r.ton) > inventory.EPS or abs(r.gia_tri) > 0.5)
+    ]
+
+    # --- Timeline: toan bo dong so cua mat hang, gop moi kho, sap theo thoi gian ---
+    moves = list(db.scalars(select(InvMove).where(InvMove.item_id == item_id)))
+    moves.sort(key=inventory.sort_key)
+
+    purchase_ids = {m.ref_id for m in moves if m.ref_type == "purchase" and m.ref_id}
+    issue_ids = {m.ref_id for m in moves if m.ref_type == "issue" and m.ref_id}
+    prod_ids = {m.ref_id for m in moves if m.ref_type == "production" and m.ref_id}
+
+    purchases = {
+        p.id: p for p in db.scalars(select(InvPurchase).where(InvPurchase.id.in_(purchase_ids)))
+    } if purchase_ids else {}
+    issues = {
+        i.id: i for i in db.scalars(select(InvIssue).where(InvIssue.id.in_(issue_ids)))
+    } if issue_ids else {}
+    prods = {
+        p.id: p for p in db.scalars(select(InvProduction).where(InvProduction.id.in_(prod_ids)))
+    } if prod_ids else {}
+    cust_ids = {i.customer_id for i in issues.values() if i.customer_id}
+    customers = {
+        c.id: c for c in db.scalars(select(Customer).where(Customer.id.in_(cust_ids)))
+    } if cust_ids else {}
+
+    # Thanh pham dau ra cua cac LSX lien quan (dich den cho dong sx_out)
+    out_lines: dict[int, list[dict]] = {}
+    if prod_ids:
+        items_map = {i.id: i for i in db.scalars(select(InvItem))}
+        for ln in db.scalars(
+            select(InvProductionLine).where(
+                InvProductionLine.production_id.in_(prod_ids),
+                InvProductionLine.chieu == "ra",
+            )
+        ):
+            it = items_map.get(ln.item_id)
+            out_lines.setdefault(ln.production_id, []).append({
+                "ma_hang": it.ma_hang if it else "",
+                "ten": it.ten if it else "",
+                "so_luong": ln.so_luong,
+            })
+
+    def _doc(m: InvMove) -> dict | None:
+        if m.ref_type == "purchase" and m.ref_id in purchases:
+            p = purchases[m.ref_id]
+            label = f"HĐ mua {p.so_hd or ('#' + str(p.id))}"
+            if p.ten_ban:
+                label += f" · {p.ten_ban}"
+            return {"kind": "purchase", "id": p.id, "label": label, "status": p.status}
+        if m.ref_type == "issue" and m.ref_id in issues:
+            iss = issues[m.ref_id]
+            cust = customers.get(iss.customer_id)
+            label = iss.so_ct or f"PX nháp #{iss.id}"
+            if cust:
+                label += f" · {cust.name}"
+            return {"kind": "issue", "id": iss.id, "label": label, "status": iss.status}
+        if m.ref_type == "production" and m.ref_id in prods:
+            prod = prods[m.ref_id]
+            label = prod.so_ct or f"LSX nháp #{prod.id}"
+            return {"kind": "production", "id": prod.id, "label": label, "status": prod.status}
+        if m.ref_type == "opening":
+            return {"kind": "opening", "id": None, "label": "Tồn đầu kỳ", "status": "posted"}
+        if m.ref_type:
+            return {"kind": m.ref_type, "id": m.ref_id, "label": m.ref_type, "status": ""}
+        return None
+
+    so_du_kho: dict[int, float] = {}
+    steps = []
+    for m in moves:
+        wh = whs.get(m.warehouse_id)
+        inbound = m.loai in inventory.IN_TYPES or (m.loai == "dieu_chinh" and m.so_luong >= 0)
+        signed_qty = abs(m.so_luong) if inbound else -abs(m.so_luong)
+        so_du_kho[m.warehouse_id] = so_du_kho.get(m.warehouse_id, 0.0) + signed_qty
+        flow_to = out_lines.get(m.ref_id) if (m.loai == "sx_out" and m.ref_id) else None
+        steps.append({
+            "ngay": m.ngay,
+            "loai": m.loai,
+            "loai_label": inventory.LOAI_LABELS.get(m.loai, m.loai),
+            "warehouse_code": wh.code if wh else "",
+            "so_luong": round(signed_qty, 4),
+            "gia_tri": m.gia_tri if inbound else -m.gia_tri,
+            "so_du": round(so_du_kho[m.warehouse_id], 4),
+            "doc": _doc(m),
+            "flow_to": flow_to,
+        })
+
+    # --- Ket o dau: chung tu NHAP (draft) dang giu mat hang nay ---
+    stuck = []
+    for ln in db.scalars(
+        select(InvIssueLine)
+        .join(InvIssue, InvIssueLine.issue_id == InvIssue.id)
+        .where(InvIssueLine.item_id == item_id, InvIssue.status == "draft")
+    ):
+        iss = issues.get(ln.issue_id) or db.get(InvIssue, ln.issue_id)
+        wh = whs.get(ln.warehouse_id)
+        stuck.append({
+            "kind": "issue",
+            "id": iss.id,
+            "label": iss.so_ct or f"Phiếu xuất nháp #{iss.id}",
+            "ngay": iss.ngay,
+            "so_luong": ln.so_luong,
+            "warehouse_code": wh.code if wh else "",
+        })
+    for ln in db.scalars(
+        select(InvProductionLine)
+        .join(InvProduction, InvProductionLine.production_id == InvProduction.id)
+        .where(
+            InvProductionLine.item_id == item_id,
+            InvProductionLine.chieu == "vao",
+            InvProduction.status == "draft",
+        )
+    ):
+        prod = prods.get(ln.production_id) or db.get(InvProduction, ln.production_id)
+        wh = whs.get(ln.warehouse_id)
+        stuck.append({
+            "kind": "production",
+            "id": prod.id,
+            "label": prod.so_ct or f"Lệnh SX nháp #{prod.id}",
+            "ngay": prod.ngay,
+            "so_luong": ln.so_luong,
+            "warehouse_code": wh.code if wh else "",
+        })
+
+    return {
+        "item": {"id": item.id, "ma_hang": item.ma_hang, "ten": item.ten, "dvt": item.dvt},
+        "ton": ton,
+        "steps": steps,
+        "stuck": stuck,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Import ton dau ky tu Excel
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, InvItem, InvWarehouse, OpeningImportResult, StockCardRow, StockRow } from "../api";
+import { api, InvItem, InvWarehouse, ItemFlow, OpeningImportResult, StockCardRow, StockRow } from "../api";
 import { PurchaseFixModal } from "./PurchaseFixModal";
 
 function vnd(n: number): string {
@@ -7,6 +7,18 @@ function vnd(n: number): string {
 }
 function qty(n: number): string {
   return Number(n.toFixed(4)).toLocaleString("vi-VN");
+}
+// Mau chip theo loai dong so (dau_ky xam, nhap/sx_in xanh, xuat/sx_out do, dieu_chinh vang)
+function loaiChipClass(loai: string): string {
+  if (loai === "nhap" || loai === "sx_in") return "green";
+  if (loai === "xuat" || loai === "sx_out") return "red";
+  if (loai === "dieu_chinh") return "amber";
+  return "gray";
+}
+function statusChipClass(status: string): string {
+  if (status === "posted") return "green";
+  if (status === "void") return "gray";
+  return "amber";
 }
 
 type SortKey = "ma_hang" | "ten" | "dvt" | "warehouse_code" | "ton" | "don_gia_bq" | "gia_tri" | "nhap_cuoi";
@@ -22,6 +34,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
   const [search, setSearch] = useState("");
   const [err, setErr] = useState("");
   const [card, setCard] = useState<{ row: StockRow; moves: StockCardRow[] } | null>(null);
+  const [flow, setFlow] = useState<ItemFlow | null>(null);
   const [preview, setPreview] = useState<OpeningImportResult | null>(null);
   const [reviewItems, setReviewItems] = useState<InvItem[]>([]);
   const [dvtInputs, setDvtInputs] = useState<Record<number, string>>({});
@@ -87,6 +100,14 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
     try {
       const moves = await api.invStockCard(row.item_id, row.warehouse_id);
       setCard({ row, moves });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function openFlow(row: StockRow) {
+    try {
+      setFlow(await api.invItemFlow(row.item_id));
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -302,7 +323,19 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                   title={treo ? "⚠️ Tồn = 0 nhưng còn treo giá trị — cần soát" : "Xem thẻ kho"}
                   onClick={() => openCard(r)}
                 >
-                  <td className="nowrap">{r.ma_hang}</td>
+                  <td className="nowrap">
+                    {r.ma_hang}{" "}
+                    <button
+                      className="btn-sm ghost"
+                      title="Dòng chảy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openFlow(r);
+                      }}
+                    >
+                      🔀
+                    </button>
+                  </td>
                   <td>
                     {r.ten}
                     {treo && <span className="chip amber sm" style={{ marginLeft: 6 }}>treo giá trị</span>}
@@ -481,6 +514,128 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
             </div>
             <div className="modal-actions">
               <button onClick={() => setCard(null)}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {flow && (
+        <div className="modal-backdrop" onClick={() => setFlow(null)}>
+          <div className="modal" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
+            <h3>
+              🔀 Dòng chảy — {flow.item.ma_hang} · {flow.item.ten}
+            </h3>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {flow.ton.length === 0 ? (
+                <span className="muted">Không còn tồn ở kho nào</span>
+              ) : (
+                flow.ton.map((t) => (
+                  <span key={t.warehouse_code} className="chip gray sm">
+                    {t.warehouse_code} · {qty(t.ton)} · {vnd(t.gia_tri)} đ
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="table-wrap" style={{ maxHeight: "50vh", overflow: "auto" }}>
+              <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Ngày</th>
+                    <th>Loại</th>
+                    <th>Chứng từ</th>
+                    <th>Đích đến</th>
+                    <th style={{ textAlign: "right" }}>±SL</th>
+                    <th style={{ textAlign: "right" }}>Giá trị</th>
+                    <th style={{ textAlign: "right" }}>Số dư</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {flow.steps.map((s, i) => (
+                    <tr key={i}>
+                      <td className="nowrap">{s.ngay}</td>
+                      <td className="nowrap">
+                        <span className={`chip sm ${loaiChipClass(s.loai)}`}>{s.loai_label}</span>{" "}
+                        <span className="chip gray sm">{s.warehouse_code}</span>
+                      </td>
+                      <td>
+                        {s.doc ? (
+                          <span>
+                            {s.doc.label}{" "}
+                            {s.doc.status && (
+                              <span className={`chip sm ${statusChipClass(s.doc.status)}`}>
+                                {s.doc.status}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td className="muted">
+                        {s.flow_to && s.flow_to.length > 0
+                          ? "→ " +
+                            s.flow_to
+                                .map((f) => `${f.ma_hang} · ${f.ten} ×${qty(f.so_luong)}`)
+                                .join(", ")
+                          : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {s.so_luong > 0 ? "+" : ""}
+                        {qty(s.so_luong)}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="muted">
+                        {vnd(s.gia_tri)}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <b>{qty(s.so_du)}</b>
+                      </td>
+                    </tr>
+                  ))}
+                  {flow.steps.length === 0 && (
+                    <tr>
+                      <td colSpan={7}>
+                        <span className="muted">Chưa có phát sinh</span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h4 style={{ marginTop: 14 }}>⚠ Đang kẹt ở chứng từ nháp</h4>
+            {flow.stuck.length === 0 ? (
+              <div className="muted">Không có gì kẹt ✅</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th>Loại</th>
+                      <th>Chứng từ</th>
+                      <th>Ngày</th>
+                      <th>Kho</th>
+                      <th style={{ textAlign: "right" }}>SL giữ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flow.stuck.map((s, i) => (
+                      <tr key={i}>
+                        <td>{s.kind === "issue" ? "Phiếu xuất" : "Lệnh SX"}</td>
+                        <td>{s.label}</td>
+                        <td className="nowrap">{s.ngay}</td>
+                        <td>
+                          <span className="chip gray sm">{s.warehouse_code}</span>
+                        </td>
+                        <td style={{ textAlign: "right" }}>{qty(s.so_luong)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button onClick={() => setFlow(null)}>Đóng</button>
             </div>
           </div>
         </div>

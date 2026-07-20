@@ -298,6 +298,65 @@ def test_production_insufficient_nvl_blocked(client):
 
 
 # ---------------------------------------------------------------------------
+# Dong chay NVL: trace 1 mat hang qua mua -> SX -> ket o chung tu nhap nhap
+# ---------------------------------------------------------------------------
+def test_item_flow_trace(client):
+    nvl, tp = _wh(client, "NVL"), _wh(client, "TP")
+    n1 = _mk_item(client, "N020", "Linh kien trace")
+    out = _mk_item(client, "TP020", "May trace")
+    _purchase(client, "2026-01-05", [(n1, nvl, 10, 100_000)], so_hd="1")
+    r = client.post("/api/inv/productions", json={
+        "ngay": "2026-01-10",
+        "lines": [
+            {"chieu": "vao", "item_id": n1, "warehouse_id": nvl, "so_luong": 3},
+            {"chieu": "ra", "item_id": out, "warehouse_id": tp, "so_luong": 1},
+        ],
+    })
+    pid = r.json()["id"]
+    assert client.post(f"/api/inv/productions/{pid}/post").status_code == 200
+
+    # Phieu xuat NHAP (khong ghi so) -> giu 2 don vi n1
+    r = client.post("/api/inv/issues", json={
+        "ngay": "2026-01-15",
+        "lines": [{"item_id": n1, "warehouse_id": nvl, "so_luong": 2}],
+    })
+    assert r.status_code == 200, r.text
+    draft_issue_id = r.json()["id"]
+
+    r = client.get(f"/api/inv/items/{n1}/flow")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["item"]["ma_hang"] == "N020"
+
+    # Ton hien tai: 10 - 3 = 7 (phieu xuat con nhap, khong tru kho)
+    ton_nvl = [t for t in body["ton"] if t["warehouse_code"] == "NVL"][0]
+    assert ton_nvl["ton"] == 7
+
+    steps = body["steps"]
+    nhap_step = next(s for s in steps if s["loai"] == "nhap")
+    assert nhap_step["doc"]["kind"] == "purchase"
+    assert nhap_step["so_luong"] == 10
+
+    sx_out_step = next(s for s in steps if s["loai"] == "sx_out")
+    assert sx_out_step["doc"]["kind"] == "production"
+    assert sx_out_step["so_luong"] == -3
+    assert sx_out_step["flow_to"] == [{"ma_hang": "TP020", "ten": "May trace", "so_luong": 1}]
+
+    # So du kho cuoi cung (sau nhap 10 roi xuat SX 3) = 7
+    assert steps[-1]["so_du"] == 7
+
+    stuck = body["stuck"]
+    assert len(stuck) == 1
+    assert stuck[0]["kind"] == "issue"
+    assert stuck[0]["id"] == draft_issue_id
+    assert stuck[0]["so_luong"] == 2
+    assert stuck[0]["warehouse_code"] == "NVL"
+
+    # Mat hang khong ton tai -> 404
+    assert client.get("/api/inv/items/999999/flow").status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Import Excel ton dau ky
 # ---------------------------------------------------------------------------
 def _make_opening_xlsx() -> bytes:
