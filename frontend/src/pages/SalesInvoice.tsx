@@ -700,6 +700,7 @@ export function SalesInvoice() {
               <th style={{ textAlign: "right" }}>Tổng tiền</th>
               <th>Trạng thái</th>
               <th>Xuất kho</th>
+              <th style={{ textAlign: "right" }}>Lợi nhuận</th>
             </tr>
           </thead>
           <tbody>
@@ -736,6 +737,28 @@ export function SalesInvoice() {
                         {fNotes[0]}
                         {fNotes.length > 1 && ` (+${fNotes.length - 1})`}
                       </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right" }} className="nowrap">
+                    {p.ln_truoc_nc == null ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      <>
+                        <b className={p.ln_truoc_nc < 0 ? "chip red sm" : ""}>
+                          {p.ln_uoc ? "~" : ""}{vnd(p.ln_truoc_nc)}
+                          {p.tong_truoc_thue > 0 &&
+                            ` (${((p.ln_truoc_nc / p.tong_truoc_thue) * 100).toFixed(1)}%)`}
+                        </b>
+                        {p.nhan_cong_uoc > 0 && p.ln_sau_nc != null && (
+                          <div
+                            className="muted"
+                            style={{ fontSize: 11 }}
+                            title={`Nhân công ước lượng ${vnd(p.nhan_cong_uoc)}đ (300.000đ/thành phẩm SX)`}
+                          >
+                            sau NC: {p.ln_uoc ? "~" : ""}{vnd(p.ln_sau_nc)}
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>

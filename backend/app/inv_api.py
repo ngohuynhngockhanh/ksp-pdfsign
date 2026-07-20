@@ -1054,10 +1054,16 @@ def _sale_line_lech(so_luong: float, don_gia_ban: float, thanh_tien: float, is_d
     return abs(so_luong * don_gia_ban - thanh_tien) > max(1.0, thanh_tien * 0.01)
 
 
-def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str, list[str]]]:
-    """Tinh trang thai XUAT KHO cho danh sach HD ban — batch 1 lan, tranh N+1.
+def _sale_fulfil_batch(
+    db: Session, sales: list[InvSale]
+) -> dict[int, tuple[str, list[str], dict | None]]:
+    """Tinh trang thai XUAT KHO + LOI NHUAN cho danh sach HD ban — batch 1 lan.
 
-    Tra ve {sale_id: (fulfil_status, [ghi chu])}. fulfil_status: du|mot_phan|chua|na.
+    Tra ve {sale_id: (fulfil_status, [ghi chu], profit|None)}. profit:
+    {ln_truoc_nc, nhan_cong, ln_sau_nc, uoc} — doanh thu truoc thue tru gia von
+    cac phieu xuat lien ket; nhan cong 300k/SP CHI tinh dong xuat tu kho TP
+    (thanh pham SX — hang thuong mai khong co nhan cong). uoc=True khi con
+    phieu nhap/chua xuat het (gia von uoc tinh theo BQ hien tai).
     """
     ids = [s.id for s in sales]
     if not ids:
@@ -1076,13 +1082,49 @@ def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str
     for iss in issues:
         issues_by_sale.setdefault(iss.sale_id, []).append(iss)
 
+    # Cho tinh loi nhuan: kho TP (nhan cong) + gia BQ hien tai cho phieu nhap
+    wh_code = {w.id: w.code for w in db.scalars(select(InvWarehouse))}
+    snap_pair: dict[tuple[int, int], list[float]] = {}
+    if any(i.status == "draft" for i in issues):
+        for r in inventory.stock_snapshot(db):
+            b = snap_pair.setdefault((r.item_id, r.warehouse_id), [0.0, 0.0])
+            b[0] += r.ton
+            b[1] += r.gia_tri
+
     prods = list(db.scalars(select(InvProduction).where(InvProduction.sale_id.in_(ids))))
     prods_by_sale: dict[int, list[InvProduction]] = {}
     for p in prods:
         prods_by_sale.setdefault(p.sale_id, []).append(p)
 
-    out: dict[int, tuple[str, list[str]]] = {}
+    out: dict[int, tuple[str, list[str], dict | None]] = {}
     for s in sales:
+        # Loi nhuan tu cac phieu xuat lien ket (posted: gia von dong bang;
+        # draft: uoc theo BQ hien tai). Nhan cong chi cho dong kho TP.
+        profit: dict | None = None
+        s_iss = issues_by_sale.get(s.id, [])
+        if s_iss:
+            cost = 0.0
+            nc_qty = 0.0
+            uoc = False
+            for iss in s_iss:
+                for il in lines_by_issue.get(iss.id, []):
+                    if iss.status == "posted":
+                        cost += il.gia_von or 0.0
+                    else:
+                        uoc = True
+                        b = snap_pair.get((il.item_id, il.warehouse_id), [0.0, 0.0])
+                        bq = (b[1] / b[0]) if b[0] > inventory.EPS else 0.0
+                        cost += il.so_luong * bq
+                    if wh_code.get(il.warehouse_id) == "TP":
+                        nc_qty += il.so_luong
+            doanh_thu = s.tong_truoc_thue or 0.0
+            nhan_cong = inventory.NHAN_CONG_PER_SP * nc_qty
+            profit = {
+                "ln_truoc_nc": round(doanh_thu - cost),
+                "nhan_cong": round(nhan_cong),
+                "ln_sau_nc": round(doanh_thu - cost - nhan_cong),
+                "uoc": uoc,
+            }
         need_lines = [
             ln for ln in s.lines
             if ln.item_id and ln.so_luong > 0 and ln.fulfil_kind != "doanh_thu"
@@ -1095,7 +1137,7 @@ def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str
             and ln.fulfil_kind != "doanh_thu" and ln.line_class != "phan_mem"
         ]
         if not need_lines and not unmatched:
-            out[s.id] = ("na", [])
+            out[s.id] = ("na", [], profit)
             continue
 
         s_issues = issues_by_sale.get(s.id, [])
@@ -1144,14 +1186,17 @@ def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str
             status_out = "mot_phan"
         else:
             status_out = "chua"
-        out[s.id] = (status_out, [] if status_out == "du" else notes)
+        # Chua xuat het -> gia von con thieu -> loi nhuan chi la tam tinh
+        if profit is not None and status_out != "du":
+            profit["uoc"] = True
+        out[s.id] = (status_out, [] if status_out == "du" else notes, profit)
 
     return out
 
 
 def _sale_out(
     db: Session, inv: InvSale, with_lines: bool = True,
-    fulfil_pre: tuple[str, list[str]] | None = None,
+    fulfil_pre: tuple[str, list[str], dict | None] | None = None,
 ) -> InvSaleOut:
     lines_out: list[InvSaleLineOut] = []
     if with_lines:
@@ -1218,8 +1263,8 @@ def _sale_out(
             ))
     cust = db.get(Customer, inv.customer_id) if inv.customer_id else None
     if fulfil_pre is None:
-        fulfil_pre = _sale_fulfil_batch(db, [inv]).get(inv.id, ("na", []))
-    fulfil_status, fulfil_note = fulfil_pre
+        fulfil_pre = _sale_fulfil_batch(db, [inv]).get(inv.id, ("na", [], None))
+    fulfil_status, fulfil_note, profit = fulfil_pre
     return InvSaleOut(
         id=inv.id, so_hd=inv.so_hd, ky_hieu=inv.ky_hieu, mst_mua=inv.mst_mua,
         ten_mua=inv.ten_mua, customer_id=inv.customer_id or (cust.id if cust else None),
@@ -1231,6 +1276,10 @@ def _sale_out(
         doc_url=f"/api/inv/sale/{inv.id}/file" if inv.doc_id else "",
         lines=lines_out,
         fulfil_status=fulfil_status, fulfil_note=fulfil_note,
+        ln_truoc_nc=(profit or {}).get("ln_truoc_nc"),
+        nhan_cong_uoc=(profit or {}).get("nhan_cong") or 0,
+        ln_sau_nc=(profit or {}).get("ln_sau_nc"),
+        ln_uoc=bool((profit or {}).get("uoc")),
     )
 
 
@@ -1324,7 +1373,7 @@ def sale_list(
     sales = list(db.scalars(stmt))
     fulfil_map = _sale_fulfil_batch(db, sales)
     return [
-        _sale_out(db, s, with_lines=False, fulfil_pre=fulfil_map.get(s.id, ("na", [])))
+        _sale_out(db, s, with_lines=False, fulfil_pre=fulfil_map.get(s.id, ("na", [], None)))
         for s in sales
     ]
 

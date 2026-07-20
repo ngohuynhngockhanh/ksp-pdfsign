@@ -1112,6 +1112,10 @@ export interface InvSale {
   lines: InvSaleLine[];
   fulfil_status: string; // du | mot_phan | chua | na
   fulfil_note: string[];
+  ln_truoc_nc: number | null;
+  nhan_cong_uoc: number;
+  ln_sau_nc: number | null;
+  ln_uoc: boolean;
 }
 
 export interface InvIssueLine {

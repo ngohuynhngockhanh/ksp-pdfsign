@@ -65,6 +65,11 @@ DINH_KHOAN_XUAT: dict[str, tuple[str, str, str]] = {
 }
 
 
+# Dinh muc nhan cong trung binh de uoc luong loi nhuan (dong / 1 thanh pham SX).
+# Chi ap cho dong xuat tu kho TP — hang thuong mai khong co nhan cong.
+NHAN_CONG_PER_SP = 300_000
+
+
 def dinh_khoan_xuat(muc_dich: str) -> tuple[str, str]:
     """Tra ve (tk_no, tk_co) goi y theo muc dich xuat; mac dinh 'ban'."""
     no, co, _ = DINH_KHOAN_XUAT.get(muc_dich, DINH_KHOAN_XUAT["ban"])

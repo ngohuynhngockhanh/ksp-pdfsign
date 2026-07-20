@@ -554,6 +554,11 @@ class InvSaleOut(BaseModel):
     # trang thai XUAT KHO (tong hop tu InvIssue/InvProduction lien ket sale_id)
     fulfil_status: str = "na"  # du | mot_phan | chua | na
     fulfil_note: list[str] = Field(default_factory=list)
+    # Loi nhuan tu phieu xuat lien ket (None = chua co phieu xuat nao)
+    ln_truoc_nc: float | None = None  # doanh thu truoc thue - gia von
+    nhan_cong_uoc: float = 0  # 300k x SL thanh pham SX (kho TP)
+    ln_sau_nc: float | None = None
+    ln_uoc: bool = False  # True = con uoc tinh (phieu nhap/chua xuat het)
 
 
 # --- Ghep bo (assembly / BOM) tu 1 dong ban ---
