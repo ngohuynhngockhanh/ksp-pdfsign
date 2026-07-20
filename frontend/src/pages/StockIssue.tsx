@@ -623,15 +623,18 @@ export function StockIssue() {
               </table>
             </div>
 
-            {/* Loi nhuan tam tinh (chua/da gom nhan cong ~300k/SP) */}
+            {/* Loi nhuan tam tinh — nhan cong CHI tinh cho thanh pham SX (kho TP);
+                hang thuong mai (mua di ban lai, kho HH/NVL) xuat thang khong co NC */}
             {(() => {
               const posted = view.status === "posted";
               const tongBan = view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0);
               const tongVon = posted
                 ? view.lines.reduce((s, l) => s + l.gia_von, 0)
                 : view.lines.reduce((s, l) => s + l.gia_von_uoc, 0);
-              const tongSl = view.lines.reduce((s, l) => s + l.so_luong, 0);
-              const nhanCong = NHAN_CONG_PER_SP * tongSl;
+              const slTP = view.lines
+                .filter((l) => l.warehouse_code === "TP")
+                .reduce((s, l) => s + l.so_luong, 0);
+              const nhanCong = NHAN_CONG_PER_SP * slTP;
               const lnChuaNc = tongBan - tongVon;
               const lnGomNc = lnChuaNc - nhanCong;
               const p = posted ? "" : "~";
@@ -642,6 +645,23 @@ export function StockIssue() {
                   </p>
                 );
               }
+              if (nhanCong <= 0) {
+                // Xuat thuong mai thuan — khong co nhan cong
+                return (
+                  <div className="warn-banner" style={{ marginTop: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 16px" }}>
+                      <span>Lợi nhuận tạm tính (thương mại — không tính nhân công):</span>
+                      <b style={{ textAlign: "right" }} className={lnChuaNc < 0 ? "chip red sm" : ""}>
+                        {p}{vnd(lnChuaNc)} đ ({((lnChuaNc / tongBan) * 100).toFixed(1)}%)
+                      </b>
+                    </div>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                      Giá vốn {posted ? "theo sổ kho" : "ước tính theo giá BQ hiện tại"}. Hàng mua đi
+                      bán lại xuất thẳng — nhân công chỉ tính khi xuất thành phẩm sản xuất (kho TP).
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div className="warn-banner" style={{ marginTop: 8 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 16px" }}>
@@ -650,7 +670,7 @@ export function StockIssue() {
                       {p}{vnd(lnChuaNc)} đ{tongBan > 0 ? ` (${((lnChuaNc / tongBan) * 100).toFixed(1)}%)` : ""}
                     </b>
                     <span>
-                      Nhân công tạm tính ({vnd(NHAN_CONG_PER_SP)} đ × {tongSl} SP):
+                      Nhân công tạm tính ({vnd(NHAN_CONG_PER_SP)} đ × {slTP} thành phẩm SX):
                     </span>
                     <b style={{ textAlign: "right" }}>{vnd(nhanCong)} đ</b>
                     <span>Lợi nhuận tạm tính (đã gồm nhân công):</span>
@@ -660,7 +680,7 @@ export function StockIssue() {
                   </div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
                     Giá vốn {posted ? "theo sổ kho" : "ước tính theo giá BQ hiện tại"}; nhân công ước
-                    lượng bình quân {vnd(NHAN_CONG_PER_SP)}đ/sản phẩm.
+                    lượng {vnd(NHAN_CONG_PER_SP)}đ/thành phẩm SX (chỉ tính dòng xuất từ kho TP).
                   </div>
                 </div>
               );
