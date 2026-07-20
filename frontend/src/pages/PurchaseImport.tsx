@@ -46,6 +46,7 @@ export function PurchaseImport({
 }: { openId?: number | null; onConsumed?: () => void } = {}) {
   const [list, setList] = useState<InvPurchase[]>([]);
   const [statusF, setStatusF] = useState("");
+  const [vatF, setVatF] = useState(""); // "" = tat ca; "0"|"5"|"8"|"10" = HD co dong thue suat do
   const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [cur, setCur] = useState<InvPurchase | null>(null);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
@@ -69,6 +70,10 @@ export function PurchaseImport({
     });
   }
   const dupIds = list.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
+  // Loc theo VAT (client-side): giu HD co it nhat 1 dong dung thue suat da chon
+  const shown = vatF === ""
+    ? list
+    : list.filter((p) => p.lines.some((ln) => (ln.thue_suat || 0) === Number(vatF)));
 
   // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
   function exportParams() {
@@ -321,6 +326,13 @@ export function PurchaseImport({
             <option value="posted">Đã ghi sổ</option>
           </select>
           <DateFilter value={dateRange} onChange={setDateRange} />
+          <select className="tb-select" value={vatF} onChange={(e) => setVatF(e.target.value)} title="Lọc theo thuế suất dòng hàng">
+            <option value="">VAT: tất cả</option>
+            <option value="0">VAT 0% / KCT</option>
+            <option value="5">VAT 5%</option>
+            <option value="8">VAT 8%</option>
+            <option value="10">VAT 10%</option>
+          </select>
           <input
             ref={fileRef}
             type="file"
@@ -363,7 +375,10 @@ export function PurchaseImport({
         </div>
       )}
       <div className="tb-group" style={{ margin: "6px 0", flexWrap: "wrap", gap: 8 }}>
-        <span className="muted">{sel.size > 0 ? `Đã chọn ${sel.size}` : `${list.length} hóa đơn`}</span>
+        <span className="muted">
+          {sel.size > 0 ? `Đã chọn ${sel.size}` : `${shown.length} hóa đơn`}
+          {vatF !== "" && <span className="chip amber sm" style={{ marginLeft: 6 }}>lọc VAT {vatF}%</span>}
+        </span>
         {sel.size > 0 && (
           <>
             <button className="btn-sm" disabled={busy} onClick={bulkPost}>
@@ -412,8 +427,8 @@ export function PurchaseImport({
                 <input
                   type="checkbox"
                   style={{ width: "auto" }}
-                  checked={list.length > 0 && sel.size === list.length}
-                  onChange={(e) => setSel(e.target.checked ? new Set(list.map((p) => p.id)) : new Set())}
+                  checked={shown.length > 0 && sel.size === shown.length}
+                  onChange={(e) => setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
                 />
               </th>
               <th>#</th>
@@ -426,7 +441,7 @@ export function PurchaseImport({
             </tr>
           </thead>
           <tbody>
-            {list.map((p) => {
+            {shown.map((p) => {
               const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
               return (
                 <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => open(p.id)}>
