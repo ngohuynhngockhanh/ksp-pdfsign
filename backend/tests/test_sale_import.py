@@ -419,3 +419,32 @@ def test_auto_assign_customer_on_import(client):
 
     # Khong sinh them khach hang moi
     assert len(client.get("/api/customers").json()) == 1
+
+
+def test_fulfil_unmatched_line_blocks_du(client):
+    """Dong chua khop ma (hang phai giao) phai chan trang thai 'du' — du dong
+    khac da xuat du van chi la 'mot_phan' (bug: truoc day bao Da xuat du)."""
+    it = client.post("/api/inv/items", json={"ma_hang": "HH700", "ten": "Camera ban le", "dvt": "Cai"}).json()
+    whs = client.get("/api/inv/warehouses").json()
+    hh = next(w["id"] for w in whs if w["code"] == "HH")
+    r = client.post("/api/inv/purchase", json={
+        "ngay": "2026-05-01", "ten_ban": "NCC", "mst_ban": "111",
+        "lines": [{"ten_raw": "cam", "so_luong": 10, "don_gia": 100000,
+                   "thanh_tien": 1000000, "item_id": it["id"], "warehouse_id": hh}],
+    })
+    client.post(f"/api/inv/purchase/{r.json()['id']}/post")
+
+    xml = _hdon_xml("40", "2026-05-10", [
+        {"ten": "Camera ban le", "dvt": "Cai", "sl": 5, "dg": 200000, "tt": 1000000, "ts": "8%"},
+        {"ten": "Bo thiet bi camera giam sat lap dat tai ABC", "dvt": "Bo", "sl": 1, "dg": 5000000, "tt": 5000000, "ts": "8%"},
+    ])
+    res = _upload(client, "ihoadon_4401053694_40_1_10052026_0.xml", xml)
+    sid = res["results"][0]["sale_id"]
+    client.patch(f"/api/inv/sale/{sid}", json={"status": "reviewed"})
+    gen = client.post(f"/api/inv/sale/{sid}/generate").json()
+    # Post phieu xuat camera (dong khop ma) — dong "bo" van chua khop
+    for iid in gen["issues"]:
+        client.post(f"/api/inv/issues/{iid}/post")
+    s = next(x for x in client.get("/api/inv/sale").json() if x["id"] == sid)
+    assert s["fulfil_status"] == "mot_phan", s["fulfil_status"]
+    assert any("chưa khớp mã" in n for n in s["fulfil_note"])

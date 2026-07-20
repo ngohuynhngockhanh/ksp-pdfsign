@@ -1084,7 +1084,14 @@ def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str
             ln for ln in s.lines
             if ln.item_id and ln.so_luong > 0 and ln.fulfil_kind != "doanh_thu"
         ]
-        if not need_lines:
+        # Dong CHUA khop ma nhung van la hang phai giao (khong phai doanh thu/PM)
+        # -> tinh la CHUA XUAT DUOC, chan trang thai "du" (bug: truoc day chi note).
+        unmatched = [
+            ln for ln in s.lines
+            if not ln.item_id and ln.so_luong > 0
+            and ln.fulfil_kind != "doanh_thu" and ln.line_class != "phan_mem"
+        ]
+        if not need_lines and not unmatched:
             out[s.id] = ("na", [])
             continue
 
@@ -1113,10 +1120,10 @@ def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str
                     f"Dòng '{ln.ten_raw[:30]}' thiếu {_fmt(ln.so_luong - posted)} sp chưa có phiếu xuất"
                 )
 
-        # dong chua khop ma kho (khong nam trong need_lines vi thieu item_id)
-        for ln in s.lines:
-            if not ln.item_id and ln.fulfil_kind != "doanh_thu" and ln.line_class != "phan_mem":
-                notes.append(f"Dòng '{ln.ten_raw[:30]}' chưa khớp mã kho")
+        # dong chua khop ma kho -> chua the xuat -> khong duoc tinh "du"
+        for ln in unmatched:
+            all_du = False
+            notes.append(f"Dòng '{ln.ten_raw[:30]}' chưa khớp mã kho")
 
         for iss in s_issues:
             if iss.status == "draft":
