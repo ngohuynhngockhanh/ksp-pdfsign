@@ -623,6 +623,7 @@ def purchase_list(
     q: str = "",
     tu: str = "",
     den: str = "",
+    vat: str = "",
     limit: int = 100,
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -641,6 +642,15 @@ def purchase_list(
         stmt = stmt.where(InvPurchase.ngay >= tu)
     if den:
         stmt = stmt.where(InvPurchase.ngay <= den)
+    if vat != "":
+        # Loc HD co it nhat 1 dong dung thue suat (list khong tra lines -> loc o server)
+        stmt = stmt.where(
+            InvPurchase.id.in_(
+                select(InvPurchaseLine.invoice_id).where(
+                    InvPurchaseLine.thue_suat == float(vat)
+                )
+            )
+        )
     stmt = stmt.order_by(InvPurchase.id.desc()).limit(min(limit, 500))
     return [_purchase_out(db, p, with_lines=False) for p in db.scalars(stmt)]
 

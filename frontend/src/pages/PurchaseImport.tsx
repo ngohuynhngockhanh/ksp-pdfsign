@@ -70,10 +70,8 @@ export function PurchaseImport({
     });
   }
   const dupIds = list.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
-  // Loc theo VAT (client-side): giu HD co it nhat 1 dong dung thue suat da chon
-  const shown = vatF === ""
-    ? list
-    : list.filter((p) => p.lines.some((ln) => (ln.thue_suat || 0) === Number(vatF)));
+  // Loc VAT o server (list khong tra lines) — `shown` giu ten de render
+  const shown = list;
 
   // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
   function exportParams() {
@@ -123,7 +121,7 @@ export function PurchaseImport({
 
   async function load() {
     try {
-      setList(await api.invPurchases(statusF, dateRange));
+      setList(await api.invPurchases(statusF, { ...dateRange, vat: vatF }));
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -134,7 +132,7 @@ export function PurchaseImport({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusF, dateRange.tu, dateRange.den]);
+  }, [statusF, dateRange.tu, dateRange.den, vatF]);
   // Nhay tu Tho kho (Ton kho) sang -> tu mo hoa don can sua
   useEffect(() => {
     if (openId) {

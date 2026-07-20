@@ -645,10 +645,11 @@ export const api = {
   async invSuggestItemCode() {
     return req<{ code: string }>("/api/inv/items/suggest-code");
   },
-  async invPurchases(statusF = "", filters: { tu?: string; den?: string } = {}) {
+  async invPurchases(statusF = "", filters: { tu?: string; den?: string; vat?: string } = {}) {
     const p = new URLSearchParams({ status_f: statusF });
     if (filters.tu) p.set("tu", filters.tu);
     if (filters.den) p.set("den", filters.den);
+    if (filters.vat != null && filters.vat !== "") p.set("vat", filters.vat);
     return req<InvPurchase[]>(`/api/inv/purchase?${p.toString()}`);
   },
   async invPurchase(id: number) {
