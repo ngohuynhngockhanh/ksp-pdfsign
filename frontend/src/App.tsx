@@ -83,6 +83,7 @@ export function App() {
   const [tab, setTabState] = useState<Tab>("sign");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
   const [openPurchaseId, setOpenPurchaseId] = useState<number | null>(null);
+  const [highlightDocPk, setHighlightDocPk] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preSign, setPreSign] = useState<
     {
@@ -109,6 +110,11 @@ export function App() {
   function goPurchase(purchaseId: number) {
     setOpenPurchaseId(purchaseId);
     navigate("nhaphang");
+  }
+
+  function goDocuments(docPk: number) {
+    setHighlightDocPk(docPk);
+    navigate("documents");
   }
 
   useEffect(() => {
@@ -256,6 +262,7 @@ export function App() {
             defaultIp={me.agent_default_ip}
             defaultLocation={me.default_location}
             preSign={preSign}
+            onOpenDocument={goDocuments}
           />
         )}
         {tab === "bbbg" && isAdmin && (
@@ -282,7 +289,13 @@ export function App() {
         {tab === "xuatkho" && isAdmin && <StockIssue />}
         {tab === "sanxuat" && isAdmin && <Production />}
         {tab === "congthuc" && isAdmin && <Recipes />}
-        {tab === "documents" && isAdmin && <Documents onVerify={goVerify} />}
+        {tab === "documents" && isAdmin && (
+          <Documents
+            onVerify={goVerify}
+            highlightId={highlightDocPk}
+            onConsumed={() => setHighlightDocPk(null)}
+          />
+        )}
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}
         {tab === "audit" && isAdmin && <AuditLog />}

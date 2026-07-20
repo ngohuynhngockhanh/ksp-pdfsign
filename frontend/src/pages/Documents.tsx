@@ -138,7 +138,15 @@ function RowMenu({ children }: { children: ReactNode }) {
   );
 }
 
-export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
+export function Documents({
+  onVerify,
+  highlightId,
+  onConsumed,
+}: {
+  onVerify: (docPk: number) => void;
+  highlightId?: number | null;
+  onConsumed?: () => void;
+}) {
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -153,6 +161,7 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [nas, setNas] = useState<Awaited<ReturnType<typeof api.nasStatus>> | null>(null);
   const [nasMsg, setNasMsg] = useState("");
+  const [flashId, setFlashId] = useState<number | null>(null);
 
   async function loadNas() {
     try {
@@ -270,6 +279,20 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
     }, 350);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Ho so vua ky xong tu tab Ky so: neu dang o trang hien tai -> cuon toi + highlight
+  // vai giay. Khong thay (VD o trang khac) thi bo qua, khong lam gi phuc tap them.
+  useEffect(() => {
+    if (highlightId == null) return;
+    if (!docs.some((d) => d.id === highlightId)) return;
+    setFlashId(highlightId);
+    document
+      .getElementById(`doc-row-${highlightId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    onConsumed?.();
+    const t = setTimeout(() => setFlashId(null), 3000);
+    return () => clearTimeout(t);
+  }, [docs, highlightId]);
 
   async function assign(docPk: number, value: string) {
     if (value === "__new__") {
@@ -422,7 +445,11 @@ export function Documents({ onVerify }: { onVerify: (docPk: number) => void }) {
           </thead>
           <tbody>
             {docs.map((d) => (
-              <tr key={d.id}>
+              <tr
+                key={d.id}
+                id={`doc-row-${d.id}`}
+                style={flashId === d.id ? { background: "#fff3cd" } : undefined}
+              >
                 <td className="chk">
                   <input type="checkbox" checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
                 </td>

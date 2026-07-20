@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime
+import io
+import zipfile
 
 import pytest
 
@@ -197,6 +199,40 @@ def test_customer_account_and_documents(client):
     assert r.status_code == 200
     client.post("/api/logout")
     assert client.post("/api/login", json={"username": "kha", "password": "moi12345"}).status_code == 200
+
+
+def _make_zip(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_upload_zip(client):
+    _login(client)
+    data = _make_zip({
+        "a.pdf": PDF,
+        "sub/b.pdf": PDF,  # trong thu muc con -> chi lay ten file
+        "ghi-chu.txt": b"khong phai pdf",
+    })
+    r = client.post(
+        "/api/upload-zip", files={"file": ("bo.zip", data, "application/zip")}
+    )
+    assert r.status_code == 200, r.text
+    files = r.json()["files"]
+    assert len(files) == 2
+    assert {f["filename"] for f in files} == {"a.pdf", "b.pdf"}
+    assert all(f["size"] == len(PDF) for f in files)
+
+
+def test_upload_zip_empty(client):
+    _login(client)
+    data = _make_zip({"readme.txt": b"khong co pdf nao"})
+    r = client.post(
+        "/api/upload-zip", files={"file": ("rong.zip", data, "application/zip")}
+    )
+    assert r.status_code == 400
 
 
 def test_forged_admin_token_rejected(client):

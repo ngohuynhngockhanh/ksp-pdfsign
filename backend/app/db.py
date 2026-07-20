@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import (
@@ -273,6 +274,27 @@ class InvPurchaseLine(Base):
     warnings: Mapped[str] = mapped_column(Text, default="[]")
 
     invoice: Mapped["InvPurchase"] = relationship(back_populates="lines")
+
+
+class InvItemAlias(Base):
+    """Alias hoc tu tu lan gan tay: (ten hang chuan hoa, MST ben ban) -> mat hang.
+
+    Ghi tu dong khi ghi so hoa don mua co dong match_kind='manual'/'learned'.
+    mst_ban="" la fallback dung chung cho moi NCC khi khong co ban ghi rieng.
+    Dung de auto-match cac lan import sau, thay vi phai chon tay lai tu ten.
+    """
+
+    __tablename__ = "inv_item_aliases"
+    __table_args__ = (UniqueConstraint("ten_norm", "mst_ban"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ten_norm: Mapped[str] = mapped_column(String(500), index=True)
+    mst_ban: Mapped[str] = mapped_column(String(20), default="")
+    item_id: Mapped[int] = mapped_column(ForeignKey("inv_items.id"))
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inv_warehouses.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class InvSale(Base):

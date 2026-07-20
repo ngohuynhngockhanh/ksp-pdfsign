@@ -5,10 +5,23 @@ import { CertPicker } from "../components/CertPicker";
 import { LogoSettings } from "../components/LogoSettings";
 import { quickCreateCustomer } from "../util";
 
+interface ZipFileEntry {
+  doc_id: string;
+  filename: string;
+  size: number;
+  signed?: boolean;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+
 export function Signer({
   defaultIp,
   defaultLocation,
   preSign,
+  onOpenDocument,
 }: {
   defaultIp: string;
   defaultLocation: string;
@@ -19,10 +32,12 @@ export function Signer({
     customerId: number | null;
     orderId?: number | null;
   } | null;
+  onOpenDocument?: (docPk: number) => void;
 }) {
   const [docId, setDocId] = useState<string | null>(null);
   const [filename, setFilename] = useState("");
   const [rect, setRect] = useState<Rect | null>(null);
+  const [zipFiles, setZipFiles] = useState<ZipFileEntry[]>([]);
 
   const [ip, setIp] = useState(defaultIp);
   const [pin, setPin] = useState("");
@@ -37,6 +52,7 @@ export function Signer({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [downloadUrl, setDownloadUrl] = useState("");
+  const [documentId, setDocumentId] = useState<number | null>(null);
 
   useEffect(() => {
     api.listCustomers().then(setCustomers).catch(() => {});
@@ -49,6 +65,8 @@ export function Signer({
       setFilename(preSign.filename);
       setRect(null);
       setDownloadUrl("");
+      setDocumentId(null);
+      setZipFiles([]);
       if (preSign.customerId != null) setCustomerId(String(preSign.customerId));
     }
   }, [preSign]);
@@ -58,14 +76,33 @@ export function Signer({
     if (!f) return;
     setErr("");
     setDownloadUrl("");
+    setDocumentId(null);
     setRect(null);
+    const isZip = f.name.toLowerCase().endsWith(".zip") || f.type.includes("zip");
     try {
-      const r = await api.upload(f);
-      setDocId(r.doc_id);
-      setFilename(r.filename);
+      if (isZip) {
+        const r = await api.uploadZip(f);
+        setZipFiles(r.files.map((x) => ({ ...x, signed: false })));
+        setDocId(null);
+        setFilename("");
+      } else {
+        setZipFiles([]);
+        const r = await api.upload(f);
+        setDocId(r.doc_id);
+        setFilename(r.filename);
+      }
     } catch (ex) {
       setErr((ex as Error).message);
     }
+  }
+
+  // Chon 1 file trong danh sach ZIP de xem/ky (khong dong tab, ky xong chon file ke)
+  function pickZipFile(zf: ZipFileEntry) {
+    setDocId(zf.doc_id);
+    setFilename(zf.filename);
+    setRect(null);
+    setDownloadUrl("");
+    setDocumentId(null);
   }
 
   async function doSign() {
@@ -88,6 +125,12 @@ export function Signer({
         order_id: preSign?.orderId ?? null,
       });
       setDownloadUrl(r.download_url);
+      setDocumentId(r.document_id);
+      if (zipFiles.length) {
+        setZipFiles((prev) =>
+          prev.map((z) => (z.doc_id === docId ? { ...z, signed: true } : z)),
+        );
+      }
     } catch (ex) {
       setErr((ex as Error).message);
     } finally {
@@ -99,8 +142,32 @@ export function Signer({
     <div className="signer">
       <aside className="panel">
         <h3>1. Tải PDF</h3>
-        <input type="file" accept="application/pdf" onChange={onUpload} />
-        {filename && <div className="muted">{filename}</div>}
+        <input type="file" accept="application/pdf,.zip" onChange={onUpload} />
+        {filename && zipFiles.length === 0 && <div className="muted">{filename}</div>}
+        {zipFiles.length > 0 && (
+          <div className="zip-list">
+            <div className="muted">
+              {zipFiles.length} file trong ZIP — chọn từng file để ký lần lượt:
+            </div>
+            {zipFiles.map((zf) => (
+              <div
+                key={zf.doc_id}
+                className={
+                  "zip-item" +
+                  (docId === zf.doc_id ? " active" : "") +
+                  (zf.signed ? " signed" : "")
+                }
+                onClick={() => pickZipFile(zf)}
+              >
+                <span className="zip-name">
+                  {zf.signed ? "✅ " : ""}
+                  {zf.filename}
+                </span>
+                <span className="muted">{formatSize(zf.size)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <h3>2. Vùng chữ ký</h3>
         {rect ? (
@@ -184,6 +251,11 @@ export function Signer({
             <a className="download" href={downloadUrl}>
               ⬇️ Tải PDF đã ký
             </a>
+            {documentId != null && onOpenDocument && (
+              <button className="link-btn" onClick={() => onOpenDocument(documentId)}>
+                📁 Mở trong Hồ sơ
+              </button>
+            )}
           </>
         )}
       </aside>

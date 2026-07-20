@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import io as _io
 import secrets
+import zipfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import (
@@ -290,6 +292,54 @@ async def upload(file: UploadFile = File(...), user: CurrentUser = Depends(requi
     return {"doc_id": doc_id, "filename": file.filename}
 
 
+# Chong zip-bomb: gioi han tong dung luong (giai nen) va so PDF trong 1 ZIP.
+_ZIP_MAX_TOTAL_SIZE = 200 * 1024 * 1024  # 200MB
+_ZIP_MAX_FILES = 50
+
+
+@app.post("/api/upload-zip")
+async def upload_zip(file: UploadFile = File(...), user: CurrentUser = Depends(require_admin)):
+    """Tai len 1 file ZIP chua nhieu PDF, tach tung file de ky lan luot."""
+    content = await file.read()
+    if not content.startswith(b"PK"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai ZIP hop le")
+    try:
+        zf = zipfile.ZipFile(_io.BytesIO(content))
+    except zipfile.BadZipFile:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File ZIP bi loi, khong doc duoc")
+
+    total_size = 0
+    pdf_infos = []
+    for info in zf.infolist():
+        if info.is_dir() or "__MACOSX" in info.filename:
+            continue
+        if not info.filename.lower().endswith(".pdf"):
+            continue
+        total_size += info.file_size
+        pdf_infos.append(info)
+
+    if total_size > _ZIP_MAX_TOTAL_SIZE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ZIP qua lon (giai nen > 200MB)")
+    if len(pdf_infos) > _ZIP_MAX_FILES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"ZIP co qua nhieu file (> {_ZIP_MAX_FILES})")
+
+    files = []
+    for info in pdf_infos:
+        data = zf.read(info)
+        if not data.startswith(b"%PDF"):
+            continue  # bo qua file khong phai PDF that
+        doc_id = storage.save_upload(data)
+        files.append({
+            "doc_id": doc_id,
+            "filename": Path(info.filename).name,  # bo thu muc con trong zip
+            "size": len(data),
+        })
+
+    if not files:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ZIP khong chua PDF nao")
+    return {"files": files}
+
+
 @app.get("/api/doc/{doc_id}")
 def get_doc(doc_id: str, user: CurrentUser = Depends(require_admin)):
     if not storage.exists(doc_id):
@@ -347,9 +397,13 @@ def sign(
     )
     db.add(doc)
     db.commit()
+    db.refresh(doc)
     _audit(db, user, "sign", doc.filename, f"loại={dtype or '?'}")
     background.add_task(_bg_nas_sync, doc.id)  # backup len NAS (nen)
-    return SignResponse(doc_id=signed_id, signed=True, download_url=f"/api/download/{signed_id}")
+    return SignResponse(
+        doc_id=signed_id, signed=True, download_url=f"/api/download/{signed_id}",
+        document_id=doc.id,
+    )
 
 
 @app.get("/api/download/{doc_id}")

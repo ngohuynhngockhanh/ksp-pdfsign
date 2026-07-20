@@ -599,6 +599,136 @@ def test_reconcile_bang_ke(client):
 
 
 # ---------------------------------------------------------------------------
+# Cai thien thuat toan nhap HD mua: alias hoc tu, check cheo, suy truong, doan loai
+# ---------------------------------------------------------------------------
+def test_alias_learned_from_manual_match(client):
+    """Ghi so HD voi dong match tay -> HD sau cung NCC + cung ten hang tu dong 'learned'."""
+    hh = _wh(client, "HH")
+    item = _mk_item(client, "ALIAS1", "Mực in Canon 337")
+    mst = "0355566677"
+
+    r = client.post("/api/inv/purchase", json={
+        "so_hd": "1", "mst_ban": mst, "ten_ban": "NCC ABC", "ngay": "2026-03-01",
+        "lines": [{"ten_raw": "Mực in Canon 337 (hàng đẹp)", "so_luong": 1, "don_gia": 500000,
+                   "thanh_tien": 500000, "item_id": item, "warehouse_id": hh}],
+    })
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    assert r.json()["lines"][0]["match_kind"] == "manual"
+    r = client.post(f"/api/inv/purchase/{pid}/post")
+    assert r.status_code == 200, r.text
+
+    # HD moi, cung MST + cung ten hang, KHONG gan item_id tay -> phai tu hoc duoc
+    r2 = client.post("/api/inv/purchase", json={
+        "so_hd": "2", "mst_ban": mst, "ten_ban": "NCC ABC", "ngay": "2026-03-05",
+        "lines": [{"ten_raw": "Mực in Canon 337 (hàng đẹp)", "so_luong": 2, "don_gia": 500000,
+                   "thanh_tien": 1000000}],
+    })
+    assert r2.status_code == 200, r2.text
+    line2 = r2.json()["lines"][0]
+    assert line2["match_kind"] == "learned"
+    assert line2["item_id"] == item
+
+
+def test_lech_tong_cong_warning(client):
+    """Truoc thue + thue lech tong thanh toan tren HD -> canh bao + giam confidence."""
+    from app.db import get_session
+    from app.inv_import import create_purchase_draft
+
+    gen = get_session()
+    db = next(gen)
+    try:
+        inv = create_purchase_draft(db, {
+            "source": "manual", "so_hd": "1", "mst_ban": "0300000009",
+            "ten_ban": "NCC Lech Tong", "ngay": "2026-01-02",
+            "tong_truoc_thue": 1_000_000, "tong_thue": 100_000, "tong_tien": 1_500_000,
+            "items": [{"ten": "Hàng X", "so_luong": 1, "don_gia": 1_000_000, "thanh_tien": 1_000_000}],
+            "confidence": 1.0,
+        })
+        warnings = __import__("json").loads(inv.warnings)
+        assert any(w["code"] == "lech_tong_cong" for w in warnings)
+        assert inv.confidence <= 0.7
+    finally:
+        gen.close()
+
+
+def test_suy_truong_thieu_tung_dong(client):
+    """SL/DG thieu 1 trong 2 nhung TT co san -> suy ra duoc, kem canh bao dong."""
+    from app.db import get_session
+    from app.inv_import import create_purchase_draft
+
+    gen = get_session()
+    db = next(gen)
+    try:
+        inv = create_purchase_draft(db, {
+            "source": "manual", "so_hd": "1", "mst_ban": "0300000010",
+            "ten_ban": "NCC Suy Truong", "ngay": "2026-01-02",
+            "items": [
+                # sl=0, dg>0, tt chia het cho dg -> suy so_luong
+                {"ten": "Hàng A", "so_luong": 0, "don_gia": 100_000, "thanh_tien": 300_000},
+                # sl>0, dg=0, tt co san -> suy don_gia
+                {"ten": "Hàng B", "so_luong": 2, "don_gia": 0, "thanh_tien": 400_000},
+                # sl=0, dg=0, tt co san -> suy dong (SL=1, DG=TT)
+                {"ten": "Hàng C", "so_luong": 0, "don_gia": 0, "thanh_tien": 250_000},
+            ],
+            "confidence": 1.0,
+        })
+        lines = sorted(inv.lines, key=lambda l: l.stt)
+        assert lines[0].so_luong == 3
+        assert "suy_so_luong" in __import__("json").loads(lines[0].warnings)[0]["code"]
+        assert lines[1].don_gia == 200_000
+        assert "suy_don_gia" in __import__("json").loads(lines[1].warnings)[0]["code"]
+        assert lines[2].so_luong == 1 and lines[2].don_gia == 250_000
+        assert "suy_dong" in __import__("json").loads(lines[2].warnings)[0]["code"]
+    finally:
+        gen.close()
+
+
+def test_pdf_fallback_ai_when_table_empty_of_values(client, monkeypatch):
+    """Bang PDF boc duoc dong nhung thanh_tien toan 0 (bang scan hong so) -> fallback AI."""
+    from app import inv_import
+    from app import ai as ai_mod
+
+    def fake_parse_pdf(_content):
+        return {
+            "source": "pdf", "so_hd": "1", "ky_hieu": "", "ngay": "2026-01-05",
+            "ten_ban": "NCC Scan Hong", "mst_ban": "0300000011",
+            "tong_truoc_thue": 1_000_000, "tong_thue": 100_000, "tong_tien": 1_100_000,
+            "items": [{"ten": "Hàng scan hỏng", "dvt": "Cái", "so_luong": 1,
+                       "don_gia": 0, "thanh_tien": 0, "thue_suat": 10}],
+            "confidence": 0.8, "warnings": [],
+        }
+
+    def fake_ai(_settings, _content):
+        return {
+            "source": "scan_ai", "so_hd": "1", "ky_hieu": "", "ngay": "2026-01-05",
+            "ten_ban": "NCC Scan Hong", "mst_ban": "0300000011",
+            "tong_truoc_thue": 1_000_000, "tong_thue": 100_000, "tong_tien": 1_100_000,
+            "items": [{"ten": "Hàng AI đọc lại", "dvt": "Cái", "so_luong": 1,
+                       "don_gia": 1_000_000, "thanh_tien": 1_000_000, "thue_suat": 10,
+                       "confidence": 0.6}],
+            "confidence": 0.6, "warnings": [{"code": "ai", "msg": "AI"}],
+        }
+
+    monkeypatch.setattr(inv_import, "parse_purchase_pdf", fake_parse_pdf)
+    monkeypatch.setattr(inv_import, "extract_purchase_ai", fake_ai)
+    monkeypatch.setattr(ai_mod, "chat", lambda *a, **k: "{}")  # phong khi khong bi monkeypatch dung
+
+    r = client.post(
+        "/api/inv/purchase/upload",
+        files=[("files", ("hd_scan.pdf", b"%PDF-1.4 fake", "application/pdf"))],
+    )
+    assert r.status_code == 200, r.text
+    res = r.json()["results"][0]
+    assert res["ok"], res
+    pid = res["purchase_id"]
+    j = client.get(f"/api/inv/purchase/{pid}").json()
+    # Da chuyen sang du lieu tu AI (ten dong khac voi ban PDF goc)
+    assert j["lines"][0]["ten_raw"] == "Hàng AI đọc lại"
+    assert j["lines"][0]["thanh_tien"] == 1_000_000
+
+
+# ---------------------------------------------------------------------------
 # ZIP hoa don: uu tien XML chinh, bo Bang_Ke/hdcd
 # ---------------------------------------------------------------------------
 def test_expand_zip_prefers_main_xml():

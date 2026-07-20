@@ -625,7 +625,13 @@ export function PurchaseImport({
                         {ln.item_id ? (
                           <span>
                             <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
-                              {ln.match_kind === "exact" ? "✔ khớp" : ln.match_kind === "fuzzy" ? "~ gợi ý" : "✔ đã chọn"}
+                              {ln.match_kind === "exact"
+                                ? "✔ khớp"
+                                : ln.match_kind === "fuzzy"
+                                ? "~ gợi ý"
+                                : ln.match_kind === "learned"
+                                ? "🧠 đã học"
+                                : "✔ đã chọn"}
                             </span>{" "}
                             {ln.item_ma_hang || `#${ln.item_id}`}
                             {cur.status === "draft" && (

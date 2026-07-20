@@ -128,6 +128,14 @@ export const api = {
       body: fd,
     });
   },
+  async uploadZip(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<{ files: { doc_id: string; filename: string; size: number }[] }>(
+      "/api/upload-zip",
+      { method: "POST", body: fd },
+    );
+  },
   docUrl(docId: string) {
     return `/api/doc/${docId}`;
   },
@@ -151,7 +159,12 @@ export const api = {
     doc_type?: string;
     order_id?: number | null;
   }) {
-    return req<{ doc_id: string; signed: boolean; download_url: string }>(
+    return req<{
+      doc_id: string;
+      signed: boolean;
+      download_url: string;
+      document_id: number | null;
+    }>(
       "/api/sign",
       {
         method: "POST",

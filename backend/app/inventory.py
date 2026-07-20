@@ -22,6 +22,7 @@ from .db import (
     InvIssue,
     InvIssueLine,
     InvItem,
+    InvItemAlias,
     InvMove,
     InvProduction,
     InvProductionLine,
@@ -383,6 +384,34 @@ def _delete_ref_moves(db: Session, ref_type: str, ref_id: int) -> set[tuple[int,
     return pairs
 
 
+def _upsert_purchase_aliases(db: Session, inv: InvPurchase) -> None:
+    """Hoc alias tu cac dong da match tay/da hoc: (ten chuan hoa, MST ban) -> mat hang.
+
+    Goi khi ghi so ok, TRUOC commit — de lan import sau tu dong khop, khong phai
+    chon tay lai cung 1 ten hang cua cung 1 NCC.
+    """
+    mst = (inv.mst_ban or "").strip()
+    for ln in inv.lines:
+        if not ln.item_id or ln.match_kind not in ("manual", "learned"):
+            continue
+        ten_norm = normalize_name(ln.ten_raw)
+        if not ten_norm:
+            continue
+        existing = db.scalars(
+            select(InvItemAlias).where(
+                InvItemAlias.ten_norm == ten_norm, InvItemAlias.mst_ban == mst
+            )
+        ).first()
+        if existing is None:
+            db.add(InvItemAlias(
+                ten_norm=ten_norm, mst_ban=mst,
+                item_id=ln.item_id, warehouse_id=ln.warehouse_id,
+            ))
+        else:
+            existing.item_id = ln.item_id
+            existing.warehouse_id = ln.warehouse_id
+
+
 def post_purchase(db: Session, inv: InvPurchase) -> None:
     """Ghi so hoa don mua vao.
 
@@ -442,6 +471,7 @@ def post_purchase(db: Session, inv: InvPurchase) -> None:
         pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
     validate_pairs(db, pairs)
+    _upsert_purchase_aliases(db, inv)
     inv.status = "posted"
     inv.posted_at = _utcnow()
     db.commit()

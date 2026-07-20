@@ -58,6 +58,7 @@ class SignResponse(BaseModel):
     doc_id: str
     signed: bool
     download_url: str
+    document_id: int | None = None  # pk trong bang Document (de mo lai o tab Ho so)
 
 
 class SignatureReport(BaseModel):

@@ -27,6 +27,7 @@ from . import ai, invoice, money
 from .config import Settings
 from .db import (
     InvItem,
+    InvItemAlias,
     InvMove,
     InvPurchase,
     InvPurchaseLine,
@@ -58,6 +59,13 @@ _DICH_VU_KEYWORDS = (
     "nha nghi", "du lich", "lu hanh", "ve may bay", "taxi",
     "van chuyen", "cuoc van chuyen", "phi van chuyen", "phi ship", "phi giao hang",
     "boc xep", "kho bai", "phi dich vu", "phi tu van",
+)
+
+# Dong co dinh dang "so + don vi dong goi" (vd '500 gr', '1 thung', '2 cai') ->
+# gan nhu chac chan la HANG HOA, KHONG phai dich vu — dung de chan doan nham
+# dich_vu khi ten NCC/dong hang trung tu khoa dich vu mot cach tinh co.
+_HANG_HOA_UNIT_RE = re.compile(
+    r"\b\d+\s*(gr|g|kg|ml|lit|l|goi|hop|thung|chai|lon|cai|bo)\b"
 )
 
 
@@ -595,16 +603,32 @@ def extract_purchase_ai(settings: Settings, pdf_bytes: bytes) -> dict:
 # Match ten hang hoa don -> mat hang ton kho
 # ---------------------------------------------------------------------------
 def match_suggestions(
-    all_items: list[InvItem], text: str, limit: int = 3
+    all_items: list[InvItem],
+    text: str,
+    limit: int = 3,
+    aliases: dict[tuple[str, str], tuple[int, int | None]] | None = None,
+    mst_ban: str = "",
 ) -> tuple[InvItem | None, str, list[tuple[InvItem, float]]]:
     """Tra ve (mat hang khop, loai khop, [(goi y, do giong 0..1)]).
 
+    learned: da hoc tu lan gan tay truoc (bang InvItemAlias) — uu tien TRUOC ca
+    exact, vi day la lua chon CHINH XAC nguoi dung da xac nhan cho chinh NCC nay.
     exact: trung ten chuan hoa/ma. fuzzy: giong >=85%. Goi y kem diem de UI
     noi ro LY DO (vd 'giống 92% tên').
+
+    aliases: {(ten_norm, mst_ban): (item_id, warehouse_id)} — tra theo (ten, mst_ban
+    cua HD hien tai) truoc, roi fallback (ten, "") ap dung chung moi NCC.
     """
     norm = normalize_name(text)
     if not norm:
         return None, "none", []
+    if aliases:
+        alias = aliases.get((norm, mst_ban)) or aliases.get((norm, ""))
+        if alias:
+            item_id, _wh_id = alias
+            it = next((i for i in all_items if i.id == item_id), None)
+            if it is not None:
+                return it, "learned", [(it, 1.0)]
     for it in all_items:
         if it.ten_norm == norm or normalize_name(it.ma_hang) == norm:
             return it, "exact", [(it, 1.0)]
@@ -620,6 +644,14 @@ def match_suggestions(
     if top and top[0][1] >= 0.85:
         return top[0][0], "fuzzy", top
     return None, "none", top
+
+
+def load_purchase_aliases(db: Session) -> dict[tuple[str, str], tuple[int, int | None]]:
+    """Tai toan bo alias da hoc 1 lan (dung cho ca request) -> dict cho match_suggestions."""
+    return {
+        (a.ten_norm, a.mst_ban): (a.item_id, a.warehouse_id)
+        for a in db.scalars(select(InvItemAlias))
+    }
 
 
 def create_purchase_draft(
@@ -641,6 +673,19 @@ def create_purchase_draft(
             "msg": (
                 f"Tổng các dòng ({money.vnd(sum_lines)}đ) lệch tổng trước thuế trên "
                 f"hóa đơn ({money.vnd(tong_truoc_thue)}đ) — kiểm tra lại từng dòng"
+            ),
+        })
+        confidence = min(confidence, 0.7)
+    # Doi chieu cheo: truoc thue + thue phai khop tong thanh toan (phat hien loi
+    # OCR/parse nhet nham so, hoac hoa don da bi sua thue suat khong khop)
+    tong_thue = money.parse_num(data.get("tong_thue"))
+    tong_tien = money.parse_num(data.get("tong_tien"))
+    if tong_tien and abs(tong_truoc_thue + tong_thue - tong_tien) > max(1.0, tong_tien * 0.005):
+        warnings.append({
+            "code": "lech_tong_cong",
+            "msg": (
+                f"Trước thuế + thuế ({money.vnd(tong_truoc_thue + tong_thue)}đ) lệch tổng "
+                f"thanh toán ({money.vnd(tong_tien)}đ) — kiểm tra lại"
             ),
         })
         confidence = min(confidence, 0.7)
@@ -668,7 +713,10 @@ def create_purchase_draft(
     all_items_dv = bool(item_names) and all(
         any(kw in nm for kw in _DICH_VU_KEYWORDS) for nm in item_names
     )
-    if all_goi or ten_is_dv or all_items_dv:
+    # Co dong ro rang la hang hoa dong goi (vd '500 gr', '1 thung') -> khong doan
+    # dich_vu du cac tin hieu khac (ten NCC...) co the trung tu khoa mot cach tinh co.
+    has_hang_hoa_unit = any(_HANG_HOA_UNIT_RE.search(nm) for nm in item_names)
+    if (all_goi or ten_is_dv or all_items_dv) and not has_hang_hoa_unit:
         loai = "dich_vu"
         warnings.append({
             "code": "doan_dich_vu",
@@ -699,8 +747,8 @@ def create_purchase_draft(
         ten_ban=str(data.get("ten_ban") or ""),
         ngay=str(data.get("ngay") or ""),
         tong_truoc_thue=tong_truoc_thue,
-        tong_thue=money.parse_num(data.get("tong_thue")),
-        tong_tien=money.parse_num(data.get("tong_tien")),
+        tong_thue=tong_thue,
+        tong_tien=tong_tien,
         source=str(data.get("source") or "manual"),
         doc_id=doc_id,
         doc_suffix=doc_suffix,
@@ -713,6 +761,8 @@ def create_purchase_draft(
 
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
     wh_hh = db.scalars(select(InvWarehouse).where(InvWarehouse.code == "HH")).first()
+    aliases = load_purchase_aliases(db)
+    mst_ban = str(data.get("mst_ban") or "")
     for idx, it in enumerate(data.get("items") or [], start=1):
         ten_raw = str(it.get("ten") or "").strip()
         sl = money.parse_num(it.get("so_luong"))
@@ -720,6 +770,31 @@ def create_purchase_draft(
         tt = money.parse_num(it.get("thanh_tien"))
         line_warn = []
         line_conf = float(it.get("confidence") or confidence)
+        # Suy truong con thieu tu 2 truong con lai — PDF/OCR hay boc thieu 1 cot
+        if sl == 0 and dg > 0 and tt > 0:
+            q = tt / dg
+            if abs(q - round(q)) <= 0.01 * max(q, 1):
+                sl = round(q)
+                line_warn.append({
+                    "code": "suy_so_luong",
+                    "msg": f"Suy ra số lượng = {sl:g} từ thành tiền/đơn giá — kiểm tra lại",
+                })
+                line_conf = min(line_conf, 0.6)
+        elif sl > 0 and dg == 0 and tt > 0:
+            dg = tt / sl
+            line_warn.append({
+                "code": "suy_don_gia",
+                "msg": f"Suy ra đơn giá = {money.vnd(dg)}đ từ thành tiền/số lượng — kiểm tra lại",
+            })
+            line_conf = min(line_conf, 0.6)
+        elif sl == 0 and dg == 0 and tt > 0:
+            sl = 1
+            dg = tt
+            line_warn.append({
+                "code": "suy_dong",
+                "msg": f"Thiếu số lượng và đơn giá — tạm coi SL=1, đơn giá={money.vnd(tt)}đ — PHẢI kiểm tra tay",
+            })
+            line_conf = min(line_conf, 0.6)
         if sl and dg and tt and abs(sl * dg - tt) > max(1.0, tt * 0.01):
             line_warn.append({
                 "code": "lech_dong",
@@ -728,7 +803,9 @@ def create_purchase_draft(
             line_conf = min(line_conf, 0.6)
         if not tt and sl and dg:
             tt = round(sl * dg)
-        matched, kind, _sugg = match_suggestions(all_items, ten_raw)
+        matched, kind, _sugg = match_suggestions(
+            all_items, ten_raw, aliases=aliases, mst_ban=mst_ban
+        )
         db.add(InvPurchaseLine(
             invoice=inv,
             stt=int(money.parse_num(it.get("stt")) or idx),

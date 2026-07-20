@@ -414,11 +414,14 @@ def _purchase_out(db: Session, inv: InvPurchase, with_lines: bool = True) -> Inv
     lines = []
     if with_lines:
         all_items = [i for i in items.values() if i.active]
+        aliases = inv_import.load_purchase_aliases(db)
         for ln in sorted(inv.lines, key=lambda x: (x.stt, x.id)):
             it = items.get(ln.item_id) if ln.item_id else None
             sugg = []
             if not ln.item_id:
-                _m, _k, cands = inv_import.match_suggestions(all_items, ln.ten_raw)
+                _m, _k, cands = inv_import.match_suggestions(
+                    all_items, ln.ten_raw, aliases=aliases, mst_ban=inv.mst_ban
+                )
                 sugg = [
                     {
                         "item_id": c.id, "ma_hang": c.ma_hang, "ten": c.ten, "dvt": c.dvt,
@@ -462,8 +465,14 @@ def _import_one_file(
         elif content.startswith(b"%PDF"):
             data = inv_import.parse_purchase_pdf(content)
             suffix = ".pdf"
-            if not data.get("items"):
-                # PDF khong co bang text -> scan, thu AI
+            _items = data.get("items") or []
+            _rong_gia_tri = (
+                sum(it.get("thanh_tien") or 0 for it in _items) == 0
+                and (data.get("tong_truoc_thue") or 0) > 0
+            )
+            if not _items or _rong_gia_tri:
+                # PDF khong co bang text, HOAC bang bi boc RONG gia tri (bang scan
+                # loi anh -> pdfplumber doc duoc khung nhung khong ra so) -> thu AI
                 try:
                     data = inv_import.extract_purchase_ai(settings, content)
                 except ai.AINotConfigured:
