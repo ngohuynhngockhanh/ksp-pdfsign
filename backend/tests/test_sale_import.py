@@ -181,6 +181,48 @@ def test_bo_lap_dat_assemble(client):
     assert any(rr["id"] == body["recipe_id"] for rr in recs)
 
 
+def test_assemble_scales_consume_by_qty(client):
+    """HĐ bán SL=2 -> LSX tiêu hao = định mức x 2, ra 2 thành phẩm; công thức
+    lưu theo mô hình định mức 1 SP (output_qty=1)."""
+    c1 = client.post("/api/inv/items", json={"ma_hang": "HH200", "ten": "Module SIM", "dvt": "Cai"}).json()
+    c2 = client.post("/api/inv/items", json={"ma_hang": "HH201", "ten": "Cosse", "dvt": "Cai"}).json()
+    whs = client.get("/api/inv/warehouses").json()
+    hh = next(w["id"] for w in whs if w["code"] == "HH")
+    tp = next(w["id"] for w in whs if w["code"] == "TP")
+
+    xml = _hdon_xml("30", "2026-05-01", [
+        {"ten": "Bo iNut Muro v2 lap dat", "dvt": "Bo", "sl": 2, "dg": 2950000, "tt": 5900000, "ts": "8%"},
+    ])
+    res = _upload(client, "ihoadon_4401053694_30_1_01052026_0.xml", xml)
+    sid = res["results"][0]["sale_id"]
+    ln = client.get(f"/api/inv/sale/{sid}").json()["lines"][0]
+    client.patch(f"/api/inv/sale/{sid}", json={"status": "reviewed"})
+    r = client.post(
+        f"/api/inv/sale/{sid}/assemble/{ln['id']}",
+        json={
+            "output_ma_hang": "TP930", "output_warehouse_id": tp,
+            "components": [
+                {"item_id": c1["id"], "warehouse_id": hh, "so_luong": 1},  # 1/bo
+                {"item_id": c2["id"], "warehouse_id": hh, "so_luong": 2},  # 2/bo
+            ],
+            "save_recipe": True, "recipe_name": "Bo iNut Muro v2",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    prods = client.get("/api/inv/productions").json()
+    p = next(x for x in prods if x["id"] == body["production_id"])
+    out = [l for l in p["lines"] if l["chieu"] == "ra"][0]
+    ins = {l["item_id"]: l["so_luong"] for l in p["lines"] if l["chieu"] == "vao"}
+    assert out["so_luong"] == 2  # ra 2 thanh pham
+    assert ins[c1["id"]] == 2  # 1/bo x 2 = 2
+    assert ins[c2["id"]] == 4  # 2/bo x 2 = 4
+    # Cong thuc luu theo dinh muc 1 SP
+    rec = next(rr for rr in client.get("/api/inv/recipes").json() if rr["id"] == body["recipe_id"])
+    assert rec["output_qty"] == 1
+    assert {l["item_id"]: l["so_luong"] for l in rec["lines"]} == {c1["id"]: 1, c2["id"]: 2}
+
+
 def test_assemble_existing_tp_item(client):
     """iNut TP0022 da khop mat hang -> dung output_item_id, KHONG tao ma moi;
     cong thuc luu gan dung mat hang do (de generate lan sau tu ap)."""

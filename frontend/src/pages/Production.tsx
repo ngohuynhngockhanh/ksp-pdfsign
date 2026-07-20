@@ -123,6 +123,13 @@ export function Production() {
   }
 
   function applyRecipe(r: InvRecipe) {
+    // Cong thuc la dinh muc cho r.output_qty SP. Hoi so SP can SX roi nhan
+    // vat tu theo he so (SX N cai -> tieu hao dinh muc x N).
+    const base = r.output_qty || 1;
+    const ans = window.prompt(`Sản xuất bao nhiêu "${r.output_ten}"?`, String(base));
+    if (ans == null) return;
+    const target = Number(ans) || base;
+    const factor = target / base;
     const availMap = new Map(avail.map((a) => [`${a.item_id}-${a.warehouse_id}`, a]));
     const consume: DraftLine[] = r.lines.map((ln) => {
       const a = availMap.get(`${ln.item_id}-${ln.warehouse_id}`);
@@ -133,7 +140,7 @@ export function Production() {
         label: `${ln.ma_hang} · ${ln.ten}`,
         dvt: ln.dvt,
         kha_dung: a?.kha_dung ?? 0,
-        so_luong: ln.so_luong,
+        so_luong: ln.so_luong * factor,
       };
     });
     const out: DraftLine = {
@@ -143,7 +150,7 @@ export function Production() {
       label: r.output_ten,
       dvt: "",
       kha_dung: 0,
-      so_luong: r.output_qty,
+      so_luong: target,
     };
     setLines([...consume, out]);
     setRecipeId(r.id);
@@ -154,14 +161,20 @@ export function Production() {
     if (!out) return;
     const name = window.prompt("Tên công thức:", out.label);
     if (!name) return;
+    // Chuan hoa ve "dinh muc cho 1 san pham": chia vat tu cho SL thanh pham.
+    const perSp = out.so_luong || 1;
     try {
       await api.invRecipeCreate({
         name,
         output_item_id: out.item_id,
-        output_qty: out.so_luong,
+        output_qty: 1,
         lines: lines
           .filter((l) => l.chieu === "vao")
-          .map((l) => ({ item_id: l.item_id, warehouse_id: l.warehouse_id, so_luong: l.so_luong })),
+          .map((l) => ({
+            item_id: l.item_id,
+            warehouse_id: l.warehouse_id,
+            so_luong: l.so_luong / perSp,
+          })),
       });
       setRecipes(await api.invRecipes());
     } catch (e) {

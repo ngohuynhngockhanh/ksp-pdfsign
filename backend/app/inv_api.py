@@ -1267,6 +1267,8 @@ def sale_assemble(
     ln.match_kind = "manual"
     ln.fulfil_kind = "sx"
 
+    # SL thanh pham can SX = SL dong HD. body.components la DINH MUC CHO 1 SP;
+    # tieu hao LSX = dinh muc x qty (SX N cai thi tieu hao N lan dinh muc).
     qty = ln.so_luong or 1.0
     prod = InvProduction(
         ngay=inv.ngay, status="draft", sale_id=inv.id, sale_line_id=ln.id,
@@ -1280,15 +1282,16 @@ def sale_assemble(
     for c in body.components:
         db.add(InvProductionLine(
             production=prod, chieu="vao", item_id=c.item_id,
-            warehouse_id=c.warehouse_id, so_luong=c.so_luong, note=c.note,
+            warehouse_id=c.warehouse_id, so_luong=c.so_luong * qty, note=c.note,
         ))
     db.flush()
 
     recipe_id = None
     if body.save_recipe:
+        # Cong thuc luu theo mo hinh "dinh muc cho 1 san pham" (output_qty=1).
         r = InvRecipe(
             name=(body.recipe_name or ln.ten_raw)[:255], output_item_id=out_item_id,
-            output_qty=qty, note=f"Từ ghép bộ HĐ bán {inv.ky_hieu} {inv.so_hd}",
+            output_qty=1, note=f"Từ ghép bộ HĐ bán {inv.ky_hieu} {inv.so_hd}",
         )
         db.add(r)
         for c in body.components:
