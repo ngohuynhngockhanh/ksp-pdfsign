@@ -866,3 +866,12 @@ def test_vat_helpers():
     assert _line_vat("License Windows Server", 8) == 0
     assert _line_vat("Bản quyền phần mềm ABC", 10) == 0
     assert _line_vat("Camera quan sát", 8) == 8
+
+
+def test_vat_rate_regex_variants():
+    from app.inv_import import _invoice_vat_rate
+
+    # Bien the dinh lien + chen chu (HD88 Trung Nguyen thuc te)
+    assert _invoice_vat_rate("Thuếsuất thuế GTGT (VAT Rate) : 8%", 0, 0) == 8
+    assert _invoice_vat_rate("Thuế suất GTGT (VAT rate): 10 %", 0, 0) == 10
+    assert _invoice_vat_rate("Thuếsuất KCT", 1000, 0) == 0

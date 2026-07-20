@@ -446,11 +446,15 @@ def _snap_vat(pct: float) -> int:
 
 
 def _invoice_vat_rate(raw: str, tong_truoc_thue: float, tong_thue: float) -> int:
-    """Thue suat muc hoa don: regex text > suy tu tong > mac dinh 8%."""
-    m = re.search(r"[Tt]huế suất(?:\s*GTGT)?[^\d%]{0,15}(\d{1,2})\s*%", raw)
+    """Thue suat muc hoa don: regex text > suy tu tong > mac dinh 8%.
+
+    Chiu duoc bien the text PDF: "Thuế suất GTGT: 8%", "Thuếsuất thuế GTGT
+    (VAT Rate) : 8%" (dinh lien, chen nhieu chu giua truoc con so).
+    """
+    m = re.search(r"[Tt]huế\s*[sx]uất[^\d%\n]{0,35}(\d{1,2})\s*%", raw)
     if m:
         return int(m.group(1))
-    if re.search(r"[Tt]huế suất[^\n]{0,20}(KCT|[Kk]hông chịu thuế)", raw):
+    if re.search(r"[Tt]huế\s*[sx]uất[^\n]{0,30}(KCT|[Kk]hông chịu thuế)", raw):
         return 0
     if tong_truoc_thue > 0:
         return _snap_vat(tong_thue / tong_truoc_thue * 100)
