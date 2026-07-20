@@ -19,6 +19,7 @@ interface EditState {
   outputQ: string;
   outputResults: InvItem[];
   output_qty: number;
+  description: string;
   rows: EditRow[];
 }
 
@@ -31,6 +32,7 @@ export function Recipes() {
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [edit, setEdit] = useState<EditState | null>(null);
 
   async function load() {
@@ -49,7 +51,7 @@ export function Recipes() {
     setErr("");
     setEdit({
       id: null, name: "", output_item_id: null, outputLabel: "", outputQ: "", outputResults: [],
-      output_qty: 1, rows: [],
+      output_qty: 1, description: "", rows: [],
     });
   }
   function openEdit(r: InvRecipe) {
@@ -62,6 +64,7 @@ export function Recipes() {
       outputQ: "",
       outputResults: [],
       output_qty: r.output_qty,
+      description: r.description || "",
       rows: r.lines.map((l) => ({ ...l, item_id: l.item_id, q: "", results: [] })),
     });
   }
@@ -117,6 +120,7 @@ export function Recipes() {
         name: edit.name.trim(),
         output_item_id: edit.output_item_id,
         output_qty: edit.output_qty,
+        description: edit.description.trim(),
         lines: edit.rows
           .filter((r) => r.item_id != null)
           .map((r) => ({ item_id: r.item_id, warehouse_id: r.warehouse_id, so_luong: r.so_luong })),
@@ -139,6 +143,31 @@ export function Recipes() {
       load();
     } catch (e) {
       setErr((e as Error).message);
+    }
+  }
+
+  async function aiDescribe() {
+    if (!edit) return;
+    const lines = edit.rows
+      .filter((r) => r.item_id != null && r.ten)
+      .map((r) => ({ ten: r.ten, so_luong: r.so_luong, dvt: r.dvt }));
+    if (!lines.length) {
+      setErr("Cần ít nhất 1 vật tư để AI sinh mô tả.");
+      return;
+    }
+    setAiBusy(true);
+    setErr("");
+    try {
+      const res = await api.invDescribeBom({
+        output_ten: edit.outputLabel.split(" · ").slice(1).join(" · ") || edit.outputLabel,
+        output_qty: edit.output_qty,
+        lines,
+      });
+      setEdit((e) => (e ? { ...e, description: res.description } : e));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -332,6 +361,21 @@ export function Recipes() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div style={{ margin: "10px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <label style={{ margin: 0 }}>Mô tả (giải thích vì sao dùng bộ NVL này)</label>
+                <button className="btn-sm ghost" disabled={aiBusy} onClick={aiDescribe} title="AI nhìn trọn bộ NVL để sinh mô tả">
+                  {aiBusy ? "⏳ Đang sinh…" : "✨ AI sinh mô tả"}
+                </button>
+              </div>
+              <textarea
+                style={{ width: "100%", minHeight: 70, resize: "vertical" }}
+                placeholder="Mô tả công dụng bộ nguyên vật liệu… (có thể bấm ✨ để AI gợi ý)"
+                value={edit.description}
+                onChange={(e) => setEdit({ ...edit, description: e.target.value })}
+              />
             </div>
 
             <div className="modal-actions">

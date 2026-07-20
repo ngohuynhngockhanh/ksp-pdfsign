@@ -215,6 +215,72 @@ def test_production_cost_rollup(client):
     assert r.json()["lines"][0]["gia_von"] == 550_000
 
 
+def test_production_labor_overhead_and_so_ct(client):
+    """Gia thanh = NVL + nhan cong (622) + SX chung (627); co so chung tu."""
+    nvl, tp = _wh(client, "NVL"), _wh(client, "TP")
+    n1 = _mk_item(client, "N010", "Linh kien")
+    out = _mk_item(client, "TP010", "May Y")
+    _purchase(client, "2026-01-05", [(n1, nvl, 10, 100_000)])
+    r = client.post("/api/inv/productions", json={
+        "ngay": "2026-02-10",
+        "cp_nhan_cong": 200_000,
+        "cp_sxc": 100_000,
+        "gia_ban_du_kien": 2_000_000,
+        "lines": [
+            {"chieu": "vao", "item_id": n1, "warehouse_id": nvl, "so_luong": 2},
+            {"chieu": "ra", "item_id": out, "warehouse_id": tp, "so_luong": 1},
+        ],
+    })
+    pid = r.json()["id"]
+    r = client.post(f"/api/inv/productions/{pid}/post")
+    assert r.status_code == 200, r.text
+    # NVL 2x100k=200k + NC 200k + SXC 100k = 500k
+    out_line = [ln for ln in r.json()["lines"] if ln["chieu"] == "ra"][0]
+    assert out_line["gia_tri"] == 500_000
+    assert r.json()["tong_gia_thanh"] == 500_000
+    assert r.json()["so_ct"] == "LSX-2026-%04d" % pid
+
+
+def test_production_gia_tam_tinh(client):
+    """NVL chua co gia von (mua gia 0) -> dung gia tam tinh cho gia thanh."""
+    nvl, tp = _wh(client, "NVL"), _wh(client, "TP")
+    n1 = _mk_item(client, "N011", "NVL treo")
+    out = _mk_item(client, "TP011", "May Z")
+    # Mua 10 gia 0 -> ton 10, gia tri 0 (gia tri treo)
+    _purchase(client, "2026-01-05", [(n1, nvl, 10, 0)])
+    r = client.post("/api/inv/productions", json={
+        "ngay": "2026-01-10",
+        "lines": [
+            {"chieu": "vao", "item_id": n1, "warehouse_id": nvl, "so_luong": 2,
+             "don_gia_tam": 300_000},
+            {"chieu": "ra", "item_id": out, "warehouse_id": tp, "so_luong": 1},
+        ],
+    })
+    pid = r.json()["id"]
+    r = client.post(f"/api/inv/productions/{pid}/post")
+    assert r.status_code == 200, r.text
+    out_line = [ln for ln in r.json()["lines"] if ln["chieu"] == "ra"][0]
+    assert out_line["gia_tri"] == 600_000  # 2 x 300k gia tam
+
+
+def test_issue_muc_dich_dinh_khoan_so_ct(client):
+    """Phieu xuat: dinh khoan tu dong theo muc dich + so chung tu khi post."""
+    hh = _wh(client, "HH")
+    item = _mk_item(client, "T020", "Hang xuat SX")
+    _purchase(client, "2026-01-05", [(item, hh, 10, 50_000)])
+    r = client.post("/api/inv/issues", json={
+        "ngay": "2026-03-05", "muc_dich": "san_xuat",
+        "lines": [{"item_id": item, "warehouse_id": hh, "so_luong": 2}],
+    })
+    iid = r.json()["id"]
+    r = client.post(f"/api/inv/issues/{iid}/post")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["tk_no"] == "621" and body["tk_co"] == "152"
+    assert body["so_ct"] == "PX-2026-%04d" % iid
+    assert body["tong_gia_von"] == 100_000  # 2 x 50k
+
+
 def test_production_insufficient_nvl_blocked(client):
     nvl, tp = _wh(client, "NVL"), _wh(client, "TP")
     n1 = _mk_item(client, "N003", "Linh kien it")

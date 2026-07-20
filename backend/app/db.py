@@ -348,10 +348,20 @@ class InvIssue(Base):
     __tablename__ = "inv_issues"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    so_ct: Mapped[str] = mapped_column(String(20), default="")  # so chung tu (sinh khi post)
     ngay: Mapped[str] = mapped_column(String(10), default="")
     customer_id: Mapped[int | None] = mapped_column(
         ForeignKey("customers.id"), nullable=True
     )
+    # muc dich xuat: ban | san_xuat | noi_bo | dieu_chuyen | huy -> dinh khoan goi y
+    muc_dich: Mapped[str] = mapped_column(String(12), default="ban")
+    ly_do: Mapped[str] = mapped_column(String(255), default="")  # ly do xuat (tach khoi note)
+    nguoi_nhan: Mapped[str] = mapped_column(String(150), default="")
+    bo_phan: Mapped[str] = mapped_column(String(150), default="")
+    tk_no: Mapped[str] = mapped_column(String(10), default="")  # dinh khoan goi y
+    tk_co: Mapped[str] = mapped_column(String(10), default="")
+    tong_gia_von: Mapped[float] = mapped_column(default=0.0)  # luu khi post
+    created_by: Mapped[int | None] = mapped_column(nullable=True)  # nguoi lap phieu
     note: Mapped[str] = mapped_column(String(500), default="")
     status: Mapped[str] = mapped_column(String(10), default="draft", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
@@ -372,6 +382,10 @@ class InvIssueLine(Base):
     warehouse_id: Mapped[int] = mapped_column(ForeignKey("inv_warehouses.id"))
     so_luong: Mapped[float] = mapped_column(default=0.0)
     don_gia_ban: Mapped[float] = mapped_column(default=0.0)  # gia ban (tuy chon)
+    # gia von "dong bang" tai thoi diem post (copy tu InvMove.gia_tri) -> chung tu
+    # khong doi khi replay lai; = 0 khi con draft.
+    gia_von: Mapped[float] = mapped_column(default=0.0)
+    thanh_tien_ban: Mapped[float] = mapped_column(default=0.0)  # so_luong * don_gia_ban
 
     issue: Mapped["InvIssue"] = relationship(back_populates="lines")
     item: Mapped["InvItem"] = relationship()
@@ -383,9 +397,16 @@ class InvProduction(Base):
     __tablename__ = "inv_productions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    so_ct: Mapped[str] = mapped_column(String(20), default="")  # so chung tu (sinh khi post)
     ngay: Mapped[str] = mapped_column(String(10), default="")
     note: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(String(500), default="")  # mo ta (AI sinh)
     status: Mapped[str] = mapped_column(String(10), default="draft", index=True)
+    recipe_id: Mapped[int | None] = mapped_column(nullable=True)  # cong thuc goc (so dinh muc)
+    cp_nhan_cong: Mapped[float] = mapped_column(default=0.0)  # 622 - nhap tay
+    cp_sxc: Mapped[float] = mapped_column(default=0.0)  # 627 - nhap tay
+    tong_gia_thanh: Mapped[float] = mapped_column(default=0.0)  # luu khi post
+    gia_ban_du_kien: Mapped[float] = mapped_column(default=0.0)  # /dvi TP -> tinh ti suat
     # truy vet: LSX nay san xuat cho hoa don ban / dong nao
     sale_id: Mapped[int | None] = mapped_column(
         ForeignKey("inv_sale_invoices.id"), nullable=True
@@ -410,6 +431,8 @@ class InvProductionLine(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("inv_items.id"))
     warehouse_id: Mapped[int] = mapped_column(ForeignKey("inv_warehouses.id"))
     so_luong: Mapped[float] = mapped_column(default=0.0)
+    # gia tam tinh (khi NVL chua co gia von tai ngay SX) - chi dong tieu hao 'vao'
+    don_gia_tam: Mapped[float] = mapped_column(default=0.0)
     # thay mat hang tuong tu: ly do + mat hang goc bi thay (fork cong thuc)
     note: Mapped[str] = mapped_column(String(255), default="")
     orig_item_id: Mapped[int | None] = mapped_column(
@@ -431,6 +454,7 @@ class InvRecipe(Base):
     output_qty: Mapped[float] = mapped_column(default=1.0)
     parent_id: Mapped[int | None] = mapped_column(nullable=True)  # cong thuc goc khi fork
     note: Mapped[str] = mapped_column(String(500), default="")  # ly do fork / ghi chu
+    description: Mapped[str] = mapped_column(String(500), default="")  # mo ta (AI sinh)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     output_item: Mapped["InvItem"] = relationship()
@@ -511,14 +535,38 @@ def _migrate_add_columns() -> None:
         "inv_productions": {
             "sale_id": "INTEGER",
             "sale_line_id": "INTEGER",
+            "so_ct": "VARCHAR(20) DEFAULT ''",
+            "description": "VARCHAR(500) DEFAULT ''",
+            "recipe_id": "INTEGER",
+            "cp_nhan_cong": "FLOAT DEFAULT 0",
+            "cp_sxc": "FLOAT DEFAULT 0",
+            "tong_gia_thanh": "FLOAT DEFAULT 0",
+            "gia_ban_du_kien": "FLOAT DEFAULT 0",
         },
         "inv_production_lines": {
             "note": "VARCHAR(255) DEFAULT ''",
             "orig_item_id": "INTEGER",
+            "don_gia_tam": "FLOAT DEFAULT 0",
         },
         "inv_recipes": {
             "parent_id": "INTEGER",
             "note": "VARCHAR(500) DEFAULT ''",
+            "description": "VARCHAR(500) DEFAULT ''",
+        },
+        "inv_issues": {
+            "so_ct": "VARCHAR(20) DEFAULT ''",
+            "muc_dich": "VARCHAR(12) DEFAULT 'ban'",
+            "ly_do": "VARCHAR(255) DEFAULT ''",
+            "nguoi_nhan": "VARCHAR(150) DEFAULT ''",
+            "bo_phan": "VARCHAR(150) DEFAULT ''",
+            "tk_no": "VARCHAR(10) DEFAULT ''",
+            "tk_co": "VARCHAR(10) DEFAULT ''",
+            "tong_gia_von": "FLOAT DEFAULT 0",
+            "created_by": "INTEGER",
+        },
+        "inv_issue_lines": {
+            "gia_von": "FLOAT DEFAULT 0",
+            "thanh_tien_ban": "FLOAT DEFAULT 0",
         },
     }
     with _engine.begin() as conn:

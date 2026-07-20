@@ -226,3 +226,44 @@ def quote_narrative(
         {"role": "user", "content": user},
     ]
     return chat(settings, messages)
+
+
+def describe_bom(
+    settings: Settings,
+    output_ten: str,
+    lines: list[dict],
+    output_qty: float = 1,
+    output_dvt: str = "",
+) -> str:
+    """Sinh mo ta ngan giai thich vi sao dung tron bo NVL nay cho thanh pham.
+
+    lines: [{ten, so_luong, dvt}] - AI nhin tron bo NVL de suy luan cong dung.
+    """
+    ds = "\n".join(
+        f"- {ln.get('ten','')} (số lượng {ln.get('so_luong','')} {ln.get('dvt','')})"
+        for ln in lines
+        if ln.get("ten")
+    )
+    user = (
+        f"Thành phẩm: {output_ten or '(chưa rõ)'} "
+        f"(sản lượng {output_qty} {output_dvt}).\n"
+        f"Danh sách nguyên vật liệu/linh kiện dùng để tạo ra thành phẩm này:\n"
+        f"{ds or '- (chưa có)'}\n\n"
+        "Yêu cầu: viết đoạn mô tả ngắn (2–3 câu, tối đa 90 từ) bằng tiếng Việt, "
+        "giải thích một cách hợp lý vì sao lại dùng các nguyên vật liệu này cho "
+        "thành phẩm — vai trò/công dụng của từng nhóm linh kiện chính. "
+        "KHÔNG bịa thông số kỹ thuật, KHÔNG dùng markdown, KHÔNG gạch đầu dòng; "
+        "chỉ trả về đúng phần mô tả."
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Bạn là kỹ sư/kế toán vật tư của một công ty công nghệ Việt Nam. "
+                "Viết mô tả kỹ thuật ngắn gọn, chính xác, dễ hiểu. "
+                "Chỉ trả về nội dung mô tả, không lời dẫn."
+            ),
+        },
+        {"role": "user", "content": user},
+    ]
+    return chat(settings, messages, temperature=0.5)

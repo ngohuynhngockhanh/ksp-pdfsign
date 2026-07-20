@@ -33,6 +33,7 @@ from .inventory import NegativeStockError, PostError, normalize_name
 from .schemas import (
     AssembleIn,
     BulkIds,
+    DescribeBomIn,
     InvImportUrlIn,
     InvIssueIn,
     InvIssueLineOut,
@@ -1310,6 +1311,7 @@ def sale_assemble(
 # ---------------------------------------------------------------------------
 def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
     items = {i.id: i for i in db.scalars(select(InvItem))}
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
     moves = {
         m.ref_line_id: m
         for m in db.scalars(
@@ -1320,17 +1322,33 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
     for ln in iss.lines:
         it = items.get(ln.item_id)
         mv = moves.get(ln.id)
+        wh = whs.get(ln.warehouse_id)
+        # Giu mo hinh binh quan di dong: hien gia von SONG tu so kho (tinh lai khi
+        # co HD mua lui ngay). Cot ln.gia_von chi la snapshot luu khi post (in an).
+        gia_von = mv.gia_tri if mv is not None else (ln.gia_von or 0)
         lines.append(InvIssueLineOut(
             id=ln.id, item_id=ln.item_id,
             ma_hang=it.ma_hang if it else "", ten=it.ten if it else "",
             dvt=it.dvt if it else "", warehouse_id=ln.warehouse_id,
+            warehouse_code=wh.code if wh else "",
             so_luong=ln.so_luong, don_gia_ban=ln.don_gia_ban,
-            gia_von=mv.gia_tri if mv else 0,
+            thanh_tien_ban=ln.thanh_tien_ban or round(ln.so_luong * (ln.don_gia_ban or 0)),
+            gia_von=gia_von,
         ))
     cust = db.get(Customer, iss.customer_id) if iss.customer_id else None
+    # Dinh khoan goi y tuc thoi (khi con draft chua luu tk) de FE hien thi
+    tk_no, tk_co = iss.tk_no, iss.tk_co
+    if not tk_no or not tk_co:
+        dn, dc = inventory.dinh_khoan_xuat(iss.muc_dich or "ban")
+        tk_no = tk_no or dn
+        tk_co = tk_co or dc
     return InvIssueOut(
-        id=iss.id, ngay=iss.ngay, customer_id=iss.customer_id,
-        customer_name=cust.name if cust else "", note=iss.note, status=iss.status,
+        id=iss.id, so_ct=iss.so_ct, ngay=iss.ngay, customer_id=iss.customer_id,
+        customer_name=cust.name if cust else "", muc_dich=iss.muc_dich or "ban",
+        ly_do=iss.ly_do, nguoi_nhan=iss.nguoi_nhan, bo_phan=iss.bo_phan,
+        tk_no=tk_no, tk_co=tk_co,
+        tong_gia_von=sum(l.gia_von for l in lines),
+        note=iss.note, status=iss.status,
         created_at=iss.created_at.isoformat() if iss.created_at else "", lines=lines,
     )
 
@@ -1341,7 +1359,12 @@ def issue_create(
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    iss = InvIssue(ngay=body.ngay, customer_id=body.customer_id, note=body.note)
+    iss = InvIssue(
+        ngay=body.ngay, customer_id=body.customer_id, note=body.note,
+        muc_dich=body.muc_dich or "ban", ly_do=body.ly_do,
+        nguoi_nhan=body.nguoi_nhan, bo_phan=body.bo_phan,
+        tk_no=body.tk_no, tk_co=body.tk_co, created_by=user.id,
+    )
     db.add(iss)
     for ln in body.lines:
         db.add(InvIssueLine(
@@ -1383,6 +1406,12 @@ def issue_update(
     iss.ngay = body.ngay
     iss.customer_id = body.customer_id
     iss.note = body.note
+    iss.muc_dich = body.muc_dich or "ban"
+    iss.ly_do = body.ly_do
+    iss.nguoi_nhan = body.nguoi_nhan
+    iss.bo_phan = body.bo_phan
+    iss.tk_no = body.tk_no
+    iss.tk_co = body.tk_co
     for ln in list(iss.lines):
         db.delete(ln)
     for ln in body.lines:
@@ -1461,18 +1490,46 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             )
         )
     }
+    # Dinh muc tu cong thuc (neu gan recipe_id): item_id -> so_luong dinh muc,
+    # da quy doi theo ti le SL thanh pham cua lenh / SL thanh pham cua cong thuc.
+    dinh_muc: dict[int, float] = {}
+    if prod.recipe_id:
+        rec = db.get(InvRecipe, prod.recipe_id)
+        if rec and rec.output_qty:
+            out_qty_prod = sum(l.so_luong for l in prod.lines if l.chieu == "ra")
+            ratio = (out_qty_prod / rec.output_qty) if rec.output_qty else 1.0
+            for rl in rec.lines:
+                dinh_muc[rl.item_id] = dinh_muc.get(rl.item_id, 0.0) + rl.so_luong * ratio
+    # Don gia binh quan hien tai (de tinh gia tri dinh muc khi chua post)
+    snap: dict[int, list[float]] = {}
+    for r in inventory.stock_snapshot(db):
+        a = snap.setdefault(r.item_id, [0.0, 0.0])
+        a[0] += r.ton
+        a[1] += r.gia_tri
     lines = []
     for ln in sorted(prod.lines, key=lambda x: (x.chieu != "vao", x.id)):
         it = items.get(ln.item_id)
         mv = moves.get(ln.id)
+        sl_dm = gt_dm = None
+        if ln.chieu == "vao" and ln.item_id in dinh_muc:
+            sl_dm = round(dinh_muc[ln.item_id], 4)
+            a = snap.get(ln.item_id, [0.0, 0.0])
+            dg = (a[1] / a[0]) if a[0] > inventory.EPS else (ln.don_gia_tam or 0.0)
+            gt_dm = round(sl_dm * dg)
         lines.append(InvProductionLineOut(
             id=ln.id, chieu=ln.chieu, item_id=ln.item_id,
             ma_hang=it.ma_hang if it else "", ten=it.ten if it else "",
             dvt=it.dvt if it else "", warehouse_id=ln.warehouse_id,
-            so_luong=ln.so_luong, gia_tri=mv.gia_tri if mv else 0,
+            so_luong=ln.so_luong, don_gia_tam=ln.don_gia_tam or 0,
+            gia_tri=mv.gia_tri if mv else 0,
+            so_luong_dinh_muc=sl_dm, gia_tri_dinh_muc=gt_dm,
         ))
     return InvProductionOut(
-        id=prod.id, ngay=prod.ngay, note=prod.note, status=prod.status, sale_id=prod.sale_id,
+        id=prod.id, so_ct=prod.so_ct, ngay=prod.ngay, note=prod.note,
+        description=prod.description, status=prod.status, recipe_id=prod.recipe_id,
+        cp_nhan_cong=prod.cp_nhan_cong or 0, cp_sxc=prod.cp_sxc or 0,
+        tong_gia_thanh=prod.tong_gia_thanh or 0, gia_ban_du_kien=prod.gia_ban_du_kien or 0,
+        sale_id=prod.sale_id,
         created_at=prod.created_at.isoformat() if prod.created_at else "", lines=lines,
     )
 
@@ -1483,7 +1540,12 @@ def production_create(
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    prod = InvProduction(ngay=body.ngay, note=body.note)
+    prod = InvProduction(
+        ngay=body.ngay, note=body.note, description=body.description,
+        recipe_id=body.recipe_id,
+        cp_nhan_cong=body.cp_nhan_cong or 0, cp_sxc=body.cp_sxc or 0,
+        gia_ban_du_kien=body.gia_ban_du_kien or 0,
+    )
     db.add(prod)
     for ln in body.lines:
         if ln.chieu not in ("vao", "ra"):
@@ -1491,6 +1553,7 @@ def production_create(
         db.add(InvProductionLine(
             production=prod, chieu=ln.chieu, item_id=ln.item_id,
             warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
+            don_gia_tam=ln.don_gia_tam or 0,
         ))
     db.commit()
     db.refresh(prod)
@@ -1526,12 +1589,18 @@ def production_update(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ sửa được bản nháp")
     prod.ngay = body.ngay
     prod.note = body.note
+    prod.description = body.description
+    prod.recipe_id = body.recipe_id
+    prod.cp_nhan_cong = body.cp_nhan_cong or 0
+    prod.cp_sxc = body.cp_sxc or 0
+    prod.gia_ban_du_kien = body.gia_ban_du_kien or 0
     for ln in list(prod.lines):
         db.delete(ln)
     for ln in body.lines:
         db.add(InvProductionLine(
             production=prod, chieu=ln.chieu, item_id=ln.item_id,
             warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
+            don_gia_tam=ln.don_gia_tam or 0,
         ))
     db.commit()
     db.refresh(prod)
@@ -1600,6 +1669,7 @@ def _recipe_out(db: Session, r: InvRecipe) -> InvRecipeOut:
     return InvRecipeOut(
         id=r.id, name=r.name, output_item_id=r.output_item_id,
         output_ten=out_item.ten if out_item else "", output_qty=r.output_qty,
+        description=r.description or "",
         lines=[
             {
                 "item_id": ln.item_id,
@@ -1627,7 +1697,10 @@ def recipe_create(
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    r = InvRecipe(name=body.name, output_item_id=body.output_item_id, output_qty=body.output_qty)
+    r = InvRecipe(
+        name=body.name, output_item_id=body.output_item_id,
+        output_qty=body.output_qty, description=body.description,
+    )
     db.add(r)
     for ln in body.lines:
         db.add(InvRecipeLine(
@@ -1652,6 +1725,7 @@ def recipe_update(
     r.name = body.name
     r.output_item_id = body.output_item_id
     r.output_qty = body.output_qty
+    r.description = body.description
     for ln in list(r.lines):
         db.delete(ln)
     for ln in body.lines:
@@ -1674,3 +1748,141 @@ def recipe_delete(
     db.delete(r)
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# AI sinh mo ta NVL + tien ich gia von
+# ---------------------------------------------------------------------------
+def _ai_describe(settings: Settings, output_ten, output_dvt, output_qty, lines) -> str:
+    """Goi AI sinh mo ta; chuyen doi loi AI thanh HTTP 400/502."""
+    try:
+        return ai.describe_bom(settings, output_ten, lines, output_qty, output_dvt)
+    except ai.AINotConfigured as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"AI lỗi: {e}")
+
+
+@router.post("/describe-bom")
+def describe_bom_adhoc(
+    body: DescribeBomIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Sinh mo ta tu danh sach NVL truyen truc tiep (form chua luu). Khong luu DB."""
+    lines = [
+        {"ten": ln.ten, "so_luong": ln.so_luong, "dvt": ln.dvt} for ln in body.lines
+    ]
+    text = _ai_describe(settings, body.output_ten, body.output_dvt, body.output_qty, lines)
+    return {"description": text}
+
+
+@router.post("/recipes/{rid}/describe", response_model=InvRecipeOut)
+def recipe_describe(
+    rid: int,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    r = db.get(InvRecipe, rid)
+    if not r:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy công thức")
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    out_item = items.get(r.output_item_id)
+    lines = [
+        {
+            "ten": items[ln.item_id].ten if ln.item_id in items else "",
+            "so_luong": ln.so_luong,
+            "dvt": items[ln.item_id].dvt if ln.item_id in items else "",
+        }
+        for ln in r.lines
+    ]
+    text = _ai_describe(
+        settings, out_item.ten if out_item else "",
+        out_item.dvt if out_item else "", r.output_qty, lines,
+    )
+    r.description = text[:500]
+    db.commit()
+    db.refresh(r)
+    _audit(db, user, "inv_recipe_describe", r.name)
+    return _recipe_out(db, r)
+
+
+@router.post("/productions/{pid}/describe", response_model=InvProductionOut)
+def production_describe(
+    pid: int,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    prod = db.get(InvProduction, pid)
+    if not prod:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lệnh sản xuất")
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    outs = [ln for ln in prod.lines if ln.chieu == "ra"]
+    out_item = items.get(outs[0].item_id) if outs else None
+    out_qty = sum(ln.so_luong for ln in outs) or 1
+    lines = [
+        {
+            "ten": items[ln.item_id].ten if ln.item_id in items else "",
+            "so_luong": ln.so_luong,
+            "dvt": items[ln.item_id].dvt if ln.item_id in items else "",
+        }
+        for ln in prod.lines if ln.chieu == "vao"
+    ]
+    text = _ai_describe(
+        settings, out_item.ten if out_item else "",
+        out_item.dvt if out_item else "", out_qty, lines,
+    )
+    prod.description = text[:500]
+    db.commit()
+    db.refresh(prod)
+    _audit(db, user, "inv_production_describe", f"LSX #{pid}")
+    return _prod_out(db, prod)
+
+
+@router.post("/recalc-cost")
+def recalc_cost(
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Tinh lai gia xuat kho (replay) cho toan bo cap (mat hang, kho).
+
+    Gan lai don_gia/gia_tri cac dong xuat theo binh quan gia quyen hien hanh —
+    khac phuc phieu treo don gia. Bao am kho neu co (rollback + 400).
+    """
+    pairs = {(m.item_id, m.warehouse_id) for m in db.scalars(select(InvMove))}
+    try:
+        inventory.validate_pairs(db, pairs)
+    except NegativeStockError as e:
+        db.rollback()
+        raise _neg(e)
+    db.commit()
+    _audit(db, user, "inv_recalc_cost", f"{len(pairs)} cặp")
+    return {"ok": True, "pairs": len(pairs)}
+
+
+@router.get("/hanging-value")
+def hanging_value(
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Liet ke mat hang co gia tri treo: SL>0 nhung gia tri=0, hoac nguoc lai."""
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    rows = []
+    for r in inventory.stock_snapshot(db):
+        ton, gt = r.ton, r.gia_tri
+        treo = (ton > inventory.EPS and abs(gt) < 1) or (abs(ton) <= inventory.EPS and abs(gt) >= 1)
+        if not treo:
+            continue
+        it = items.get(r.item_id)
+        wh = whs.get(r.warehouse_id)
+        rows.append({
+            "item_id": r.item_id,
+            "ma_hang": it.ma_hang if it else "",
+            "ten": it.ten if it else "",
+            "warehouse_code": wh.code if wh else "",
+            "ton": round(ton, 4),
+            "gia_tri": round(gt, 2),
+        })
+    return {"rows": rows}

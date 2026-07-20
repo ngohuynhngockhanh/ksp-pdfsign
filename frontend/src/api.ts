@@ -840,6 +840,30 @@ export const api = {
   async invRecipeDelete(id: number) {
     return req(`/api/inv/recipes/${id}`, { method: "DELETE" });
   },
+  async invRecipeDescribe(id: number) {
+    return req<InvRecipe>(`/api/inv/recipes/${id}/describe`, { method: "POST" });
+  },
+  async invProductionDescribe(id: number) {
+    return req<InvProduction>(`/api/inv/productions/${id}/describe`, { method: "POST" });
+  },
+  async invDescribeBom(body: {
+    output_ten: string;
+    output_dvt?: string;
+    output_qty?: number;
+    lines: { ten: string; so_luong: number; dvt: string }[];
+  }) {
+    return req<{ description: string }>("/api/inv/describe-bom", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invRecalcCost() {
+    return req<{ ok: boolean; pairs: number }>("/api/inv/recalc-cost", { method: "POST" });
+  },
+  async invHangingValue() {
+    return req<{ rows: HangingValueRow[] }>("/api/inv/hanging-value");
+  },
 };
 
 // --- Kieu du lieu ton kho ---
@@ -1015,16 +1039,36 @@ export interface InvIssueLine {
   ten: string;
   dvt: string;
   warehouse_id: number;
+  warehouse_code: string;
   so_luong: number;
   don_gia_ban: number;
+  thanh_tien_ban: number;
   gia_von: number;
 }
 
+// Muc dich xuat kho -> dinh khoan goi y (dong bo backend inventory.DINH_KHOAN_XUAT)
+export type MucDichXuat = "ban" | "san_xuat" | "noi_bo" | "dieu_chuyen" | "huy";
+export const MUC_DICH_XUAT: Record<MucDichXuat, { label: string; no: string; co: string }> = {
+  ban: { label: "Bán hàng", no: "632", co: "156" },
+  san_xuat: { label: "Xuất cho sản xuất", no: "621", co: "152" },
+  noi_bo: { label: "Sử dụng nội bộ", no: "642", co: "152" },
+  dieu_chuyen: { label: "Điều chuyển kho", no: "156", co: "156" },
+  huy: { label: "Xuất huỷ/thanh lý", no: "811", co: "152" },
+};
+
 export interface InvIssue {
   id: number;
+  so_ct: string;
   ngay: string;
   customer_id: number | null;
   customer_name: string;
+  muc_dich: MucDichXuat;
+  ly_do: string;
+  nguoi_nhan: string;
+  bo_phan: string;
+  tk_no: string;
+  tk_co: string;
+  tong_gia_von: number;
   note: string;
   status: string;
   created_at: string;
@@ -1040,14 +1084,24 @@ export interface InvProductionLine {
   dvt: string;
   warehouse_id: number;
   so_luong: number;
+  don_gia_tam: number;
   gia_tri: number;
+  so_luong_dinh_muc: number | null;
+  gia_tri_dinh_muc: number | null;
 }
 
 export interface InvProduction {
   id: number;
+  so_ct: string;
   ngay: string;
   note: string;
+  description: string;
   status: string;
+  recipe_id: number | null;
+  cp_nhan_cong: number;
+  cp_sxc: number;
+  tong_gia_thanh: number;
+  gia_ban_du_kien: number;
   sale_id: number | null;
   created_at: string;
   lines: InvProductionLine[];
@@ -1059,5 +1113,15 @@ export interface InvRecipe {
   output_item_id: number;
   output_ten: string;
   output_qty: number;
+  description: string;
   lines: { item_id: number; ma_hang: string; ten: string; dvt: string; warehouse_id: number; so_luong: number }[];
+}
+
+export interface HangingValueRow {
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  warehouse_code: string;
+  ton: number;
+  gia_tri: number;
 }

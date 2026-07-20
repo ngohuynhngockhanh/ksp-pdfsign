@@ -17,6 +17,7 @@ interface DraftLine {
   dvt: string;
   kha_dung: number;
   so_luong: number;
+  don_gia_tam?: number; // gia tam tinh cho NVL chua co gia von (dong 'vao')
 }
 
 export function Production() {
@@ -27,6 +28,11 @@ export function Production() {
   const [creating, setCreating] = useState(false);
   const [ngay, setNgay] = useState(today());
   const [note, setNote] = useState("");
+  const [recipeId, setRecipeId] = useState<number | null>(null);
+  const [cpNhanCong, setCpNhanCong] = useState(0);
+  const [cpSxc, setCpSxc] = useState(0);
+  const [giaBanDuKien, setGiaBanDuKien] = useState(0);
+  const [aiBusy, setAiBusy] = useState(false);
   const [avail, setAvail] = useState<StockRow[]>([]);
   const [pickQ, setPickQ] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -140,6 +146,7 @@ export function Production() {
       so_luong: r.output_qty,
     };
     setLines([...consume, out]);
+    setRecipeId(r.id);
   }
 
   async function saveRecipe() {
@@ -168,17 +175,26 @@ export function Production() {
       const prod = await api.invProductionCreate({
         ngay,
         note,
+        recipe_id: recipeId,
+        cp_nhan_cong: cpNhanCong,
+        cp_sxc: cpSxc,
+        gia_ban_du_kien: giaBanDuKien,
         lines: lines.map((l) => ({
           chieu: l.chieu,
           item_id: l.item_id,
           warehouse_id: l.warehouse_id,
           so_luong: l.so_luong,
+          don_gia_tam: l.don_gia_tam || 0,
         })),
       });
       await api.invProductionPost(prod.id);
       setCreating(false);
       setLines([]);
       setNote("");
+      setRecipeId(null);
+      setCpNhanCong(0);
+      setCpSxc(0);
+      setGiaBanDuKien(0);
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -216,9 +232,13 @@ export function Production() {
   async function viewSave(): Promise<InvProduction | null> {
     if (!view) return null;
     return api.invProductionSave(view.id, {
-      ngay: view.ngay, note: view.note,
+      ngay: view.ngay, note: view.note, description: view.description,
+      recipe_id: view.recipe_id,
+      cp_nhan_cong: view.cp_nhan_cong, cp_sxc: view.cp_sxc,
+      gia_ban_du_kien: view.gia_ban_du_kien,
       lines: view.lines.map((l) => ({
-        chieu: l.chieu, item_id: l.item_id, warehouse_id: l.warehouse_id, so_luong: l.so_luong,
+        chieu: l.chieu, item_id: l.item_id, warehouse_id: l.warehouse_id,
+        so_luong: l.so_luong, don_gia_tam: l.don_gia_tam || 0,
       })),
     });
   }
@@ -252,6 +272,20 @@ export function Production() {
     }
   }
 
+  async function aiDescribeView() {
+    if (!view) return;
+    setAiBusy(true);
+    setErr("");
+    try {
+      const updated = await api.invProductionDescribe(view.id);
+      setView(updated);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   const q = pickQ.trim().toLowerCase();
   const pickable = avail.filter(
     (r) =>
@@ -262,6 +296,19 @@ export function Production() {
   const outputs = lines.filter((l) => l.chieu === "ra");
   const over = consumes.filter((l) => l.so_luong > l.kha_dung);
 
+  // Tinh toan gia thanh cho modal xem (LSX)
+  const vConsumes = view ? view.lines.filter((l) => l.chieu === "vao") : [];
+  const vOutputs = view ? view.lines.filter((l) => l.chieu === "ra") : [];
+  const nvlCost = vConsumes.reduce((s, l) => s + l.gia_tri, 0);
+  const tongGiaThanh = nvlCost + (view?.cp_nhan_cong || 0) + (view?.cp_sxc || 0);
+  const outQty = vOutputs.reduce((s, l) => s + l.so_luong, 0);
+  const giaThanhDv = outQty ? tongGiaThanh / outQty : 0;
+  const giaBan = view?.gia_ban_du_kien || 0;
+  const tiSuat = giaBan ? ((giaBan - giaThanhDv) / giaBan) * 100 : null;
+  const hasDinhMuc = vConsumes.some((l) => l.so_luong_dinh_muc != null);
+  const nvlThieuGia =
+    view?.status === "posted" && vConsumes.some((l) => l.gia_tri === 0);
+
   return (
     <div className="docs-page">
       <div className="docs-toolbar">
@@ -269,6 +316,23 @@ export function Production() {
           Sản xuất <span className="count">{list.length}</span>
         </h3>
         <div className="tb-group">
+          <button
+            className="btn-sm ghost"
+            title="Chạy lại bình quân gia quyền, khắc phục phiếu treo giá vốn"
+            onClick={async () => {
+              if (!window.confirm("Tính lại giá xuất kho cho toàn bộ sổ kho?")) return;
+              setErr("");
+              try {
+                const r = await api.invRecalcCost();
+                load();
+                window.alert(`Đã tính lại ${r.pairs} cặp (mặt hàng, kho).`);
+              } catch (e) {
+                setErr((e as Error).message);
+              }
+            }}
+          >
+            🔄 Tính lại giá xuất kho
+          </button>
           <button className="btn-sm" onClick={() => setCreating(true)}>
             ＋ Tạo lệnh sản xuất
           </button>
@@ -284,7 +348,7 @@ export function Production() {
         <table className="dt">
           <thead>
             <tr>
-              <th>#</th>
+              <th>Số CT</th>
               <th>Ngày</th>
               <th>Thành phẩm</th>
               <th>Tiêu hao</th>
@@ -300,8 +364,8 @@ export function Production() {
               const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
               return (
                 <tr key={p.id} style={{ cursor: "pointer" }} title="Xem/sửa lệnh sản xuất" onClick={() => openView(p)}>
-                  <td className="muted">
-                    LSX#{p.id}
+                  <td className="muted nowrap">
+                    {p.so_ct || `LSX#${p.id}`}
                     {p.sale_id != null && (
                       <div className="chip gray sm" style={{ marginTop: 2 }}>
                         🧾 HĐ bán #{p.sale_id}
@@ -365,7 +429,7 @@ export function Production() {
                 <label>
                   Áp công thức
                   <select
-                    value=""
+                    value={recipeId ?? ""}
                     onChange={(e) => {
                       const r = recipes.find((x) => x.id === Number(e.target.value));
                       if (r) applyRecipe(r);
@@ -380,6 +444,38 @@ export function Production() {
                   </select>
                 </label>
               )}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+              <label>
+                CP nhân công (622)
+                <input
+                  style={{ width: 120, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={cpNhanCong}
+                  onChange={(e) => setCpNhanCong(Number(e.target.value) || 0)}
+                />
+              </label>
+              <label>
+                CP SX chung (627)
+                <input
+                  style={{ width: 120, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={cpSxc}
+                  onChange={(e) => setCpSxc(Number(e.target.value) || 0)}
+                />
+              </label>
+              <label>
+                Giá bán dự kiến (/đvị TP)
+                <input
+                  style={{ width: 130, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={giaBanDuKien}
+                  onChange={(e) => setGiaBanDuKien(Number(e.target.value) || 0)}
+                />
+              </label>
             </div>
 
             <h4>Thành phẩm (nhập kho TP)</h4>
@@ -444,6 +540,19 @@ export function Production() {
                             }}
                           />
                           {l.so_luong > l.kha_dung && <span className="chip red sm"> vượt!</span>}
+                        </td>
+                        <td style={{ textAlign: "right" }} title="Giá tạm tính khi NVL chưa có giá vốn">
+                          <input
+                            style={{ width: 100, textAlign: "right" }}
+                            type="number"
+                            min={0}
+                            placeholder="giá tạm"
+                            value={l.don_gia_tam || 0}
+                            onChange={(e) => {
+                              const v = Number(e.target.value) || 0;
+                              setLines(lines.map((x) => (x === l ? { ...x, don_gia_tam: v } : x)));
+                            }}
+                          />
                         </td>
                         <td>
                           <button className="btn-sm ghost" onClick={() => setLines(lines.filter((x) => x !== l))}>
@@ -511,7 +620,7 @@ export function Production() {
         <div className="modal-backdrop" onClick={() => setView(null)}>
           <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
             <h3>
-              Lệnh sản xuất LSX#{view.id}{" "}
+              Lệnh sản xuất {view.so_ct || `LSX#${view.id}`}{" "}
               <span className={`chip sm ${view.status === "posted" ? "green" : "amber"}`}>
                 {view.status === "posted" ? "Đã ghi sổ" : "Nháp"}
               </span>
@@ -523,6 +632,21 @@ export function Production() {
               </p>
             )}
             {view.note && <p className="muted" style={{ margin: "4px 0" }}>{view.note}</p>}
+            <div style={{ margin: "6px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <label style={{ margin: 0 }}>Mô tả</label>
+                <button className="btn-sm ghost" disabled={aiBusy} onClick={aiDescribeView} title="AI nhìn trọn bộ NVL để sinh mô tả">
+                  {aiBusy ? "⏳ Đang sinh…" : "✨ AI sinh mô tả"}
+                </button>
+              </div>
+              <textarea
+                style={{ width: "100%", minHeight: 56, resize: "vertical" }}
+                placeholder="Mô tả lệnh sản xuất / công dụng bộ NVL… (bấm ✨ để AI gợi ý)"
+                value={view.description}
+                disabled={view.status !== "draft"}
+                onChange={(e) => setView({ ...view, description: e.target.value })}
+              />
+            </div>
             {view.status === "posted" && (
               <div className="warn-banner" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <span>🔒 <b>Đã ghi sổ</b> nên số lượng bị khóa. Bấm <b>Hủy ghi sổ</b> để sửa lại.</span>
@@ -551,11 +675,55 @@ export function Production() {
               </label>
             </div>
 
-            <h4>Thành phẩm (ra)</h4>
+            {/* Chi phi che bien: nhan cong (622) + SX chung (627) */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
+              <label>
+                CP nhân công (622)
+                <input
+                  style={{ width: 120, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={view.cp_nhan_cong}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, cp_nhan_cong: Number(e.target.value) || 0 })}
+                />
+              </label>
+              <label>
+                CP SX chung (627)
+                <input
+                  style={{ width: 120, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={view.cp_sxc}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, cp_sxc: Number(e.target.value) || 0 })}
+                />
+              </label>
+              <label>
+                Giá bán dự kiến (/đvị)
+                <input
+                  style={{ width: 130, textAlign: "right" }}
+                  type="number"
+                  min={0}
+                  value={view.gia_ban_du_kien}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, gia_ban_du_kien: Number(e.target.value) || 0 })}
+                />
+              </label>
+            </div>
+
+            <h4>Thành phẩm (nhập kho — TK 155)</h4>
             <div className="table-wrap">
               <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Thành phẩm</th>
+                    <th style={{ textAlign: "right" }}>SL</th>
+                    <th style={{ textAlign: "right" }}>Giá thành</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {view.lines.filter((l) => l.chieu === "ra").map((l) => (
+                  {vOutputs.map((l) => (
                     <tr key={l.id}>
                       <td>{l.ma_hang || l.ten}</td>
                       <td style={{ textAlign: "right" }}>
@@ -579,16 +747,37 @@ export function Production() {
               </table>
             </div>
 
-            <h4>Tiêu hao (vào)</h4>
+            <h4>
+              Nguyên vật liệu tiêu hao (TK 621)
+              {hasDinhMuc && <span className="muted" style={{ fontWeight: 400 }}> — so định mức / thực tế / chênh lệch</span>}
+            </h4>
             <div className="table-wrap">
               <table className="dt">
+                <thead>
+                  <tr>
+                    <th>Vật tư</th>
+                    {hasDinhMuc && <th style={{ textAlign: "right" }}>SL định mức</th>}
+                    <th style={{ textAlign: "right" }}>SL thực xuất</th>
+                    {hasDinhMuc && <th style={{ textAlign: "right" }}>Chênh lệch SL</th>}
+                    {view.status === "draft" && <th style={{ textAlign: "right" }}>Giá tạm</th>}
+                    {hasDinhMuc && <th style={{ textAlign: "right" }}>GT định mức</th>}
+                    <th style={{ textAlign: "right" }}>GT thực tế</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {view.lines.filter((l) => l.chieu === "vao").map((l) => {
+                  {vConsumes.map((l) => {
                     const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
-                    const over = kd !== null && l.so_luong > kd;
+                    const overkd = kd !== null && l.so_luong > kd;
+                    const dmSl = l.so_luong_dinh_muc;
+                    const clSl = dmSl != null ? l.so_luong - dmSl : null;
                     return (
-                      <tr key={l.id} className={over ? "row-treo" : ""}>
+                      <tr key={l.id} className={overkd ? "row-treo" : ""}>
                         <td>{l.ma_hang} · {l.ten}</td>
+                        {hasDinhMuc && (
+                          <td style={{ textAlign: "right" }} className="muted">
+                            {dmSl != null ? dmSl : "—"}
+                          </td>
+                        )}
                         <td style={{ textAlign: "right" }}>
                           {view.status === "draft" ? (
                             <>
@@ -600,21 +789,82 @@ export function Production() {
                               />
                               <div className="muted" style={{ fontSize: 11 }}>
                                 khả dụng {kd}
-                                {over && <span className="chip red sm"> vượt!</span>}
+                                {overkd && <span className="chip red sm"> vượt!</span>}
                               </div>
                             </>
                           ) : (
                             l.so_luong
                           )}
                         </td>
+                        {hasDinhMuc && (
+                          <td style={{ textAlign: "right" }} className={clSl && clSl > 0 ? "" : "muted"}>
+                            {clSl != null ? (clSl > 0 ? `+${vnd(clSl)}` : vnd(clSl)) : "—"}
+                          </td>
+                        )}
+                        {view.status === "draft" && (
+                          <td style={{ textAlign: "right" }}>
+                            <input
+                              style={{ width: 90, textAlign: "right" }}
+                              type="number"
+                              min={0}
+                              placeholder="giá tạm"
+                              value={l.don_gia_tam || 0}
+                              onChange={(e) => patchViewLine(l.id, { don_gia_tam: Number(e.target.value) || 0 })}
+                            />
+                          </td>
+                        )}
+                        {hasDinhMuc && (
+                          <td style={{ textAlign: "right" }} className="muted">
+                            {l.gia_tri_dinh_muc != null ? vnd(l.gia_tri_dinh_muc) : "—"}
+                          </td>
+                        )}
                         <td style={{ textAlign: "right" }} className="muted">
-                          {vnd(l.gia_tri)}
+                          {view.status === "posted" ? vnd(l.gia_tri) : "—"}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Tong hop gia thanh */}
+            <div className="warn-banner" style={{ marginTop: 10 }}>
+              {view.status === "draft" ? (
+                <div className="muted">
+                  Giá thành NVL sẽ được tính khi <b>ghi sổ</b> (bình quân gia quyền tại ngày SX). Nhập
+                  <b> giá tạm tính</b> cho NVL chưa có giá vốn để không bị 0đ.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px" }}>
+                  <span>Chi phí NVL trực tiếp (621):</span>
+                  <b style={{ textAlign: "right" }}>{vnd(nvlCost)} đ</b>
+                  <span>Nhân công trực tiếp (622):</span>
+                  <b style={{ textAlign: "right" }}>{vnd(view.cp_nhan_cong)} đ</b>
+                  <span>Chi phí SX chung (627):</span>
+                  <b style={{ textAlign: "right" }}>{vnd(view.cp_sxc)} đ</b>
+                  <span>Tổng giá thành (→ 154 → 155):</span>
+                  <b style={{ textAlign: "right" }}>{vnd(tongGiaThanh)} đ</b>
+                  <span>Giá thành đơn vị:</span>
+                  <b style={{ textAlign: "right" }}>{vnd(giaThanhDv)} đ</b>
+                  {giaBan > 0 && (
+                    <>
+                      <span>Giá bán dự kiến:</span>
+                      <b style={{ textAlign: "right" }}>{vnd(giaBan)} đ</b>
+                      <span>Tỉ suất lợi nhuận:</span>
+                      <b style={{ textAlign: "right" }} className={tiSuat != null && tiSuat < 0 ? "chip red sm" : ""}>
+                        {tiSuat != null ? `${tiSuat.toFixed(1)}%` : "—"}
+                      </b>
+                    </>
+                  )}
+                </div>
+              )}
+              {nvlThieuGia && (
+                <div className="chip red sm" style={{ marginTop: 6 }}>
+                  ⚠ Có NVL chưa có giá vốn (giá trị = 0) → giá thành có thể thiếu. Dùng giá tạm tính hoặc
+                  bấm "Tính lại giá xuất kho".
+                </div>
+              )}
             </div>
 
             <div className="modal-actions">

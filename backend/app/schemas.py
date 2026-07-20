@@ -584,6 +584,12 @@ class InvIssueIn(BaseModel):
     ngay: str
     customer_id: int | None = None
     note: str = ""
+    muc_dich: str = "ban"  # ban | san_xuat | noi_bo | dieu_chuyen | huy
+    ly_do: str = ""
+    nguoi_nhan: str = ""
+    bo_phan: str = ""
+    tk_no: str = ""  # de trong -> backend tu suy tu muc_dich
+    tk_co: str = ""
     lines: list[InvIssueLineIn] = Field(default_factory=list)
 
 
@@ -594,16 +600,26 @@ class InvIssueLineOut(BaseModel):
     ten: str = ""
     dvt: str = ""
     warehouse_id: int
+    warehouse_code: str = ""
     so_luong: float
     don_gia_ban: float = 0
-    gia_von: float = 0  # tu so kho sau khi post
+    thanh_tien_ban: float = 0
+    gia_von: float = 0  # tu so kho sau khi post (dong bang tren dong)
 
 
 class InvIssueOut(BaseModel):
     id: int
+    so_ct: str = ""
     ngay: str
     customer_id: int | None
     customer_name: str = ""
+    muc_dich: str = "ban"
+    ly_do: str = ""
+    nguoi_nhan: str = ""
+    bo_phan: str = ""
+    tk_no: str = ""
+    tk_co: str = ""
+    tong_gia_von: float = 0
     note: str
     status: str
     created_at: str = ""
@@ -615,11 +631,17 @@ class InvProductionLineIn(BaseModel):
     item_id: int
     warehouse_id: int
     so_luong: float
+    don_gia_tam: float = 0  # gia tam tinh cho NVL chua co gia von (dong 'vao')
 
 
 class InvProductionIn(BaseModel):
     ngay: str
     note: str = ""
+    description: str = ""
+    recipe_id: int | None = None
+    cp_nhan_cong: float = 0
+    cp_sxc: float = 0
+    gia_ban_du_kien: float = 0
     lines: list[InvProductionLineIn] = Field(default_factory=list)
 
 
@@ -632,14 +654,25 @@ class InvProductionLineOut(BaseModel):
     dvt: str = ""
     warehouse_id: int
     so_luong: float
+    don_gia_tam: float = 0
     gia_tri: float = 0  # sau khi post: gia von tieu hao / gia thanh nhap
+    # so dinh muc (tu recipe_id) de so sanh - chi co khi lenh gan cong thuc
+    so_luong_dinh_muc: float | None = None
+    gia_tri_dinh_muc: float | None = None
 
 
 class InvProductionOut(BaseModel):
     id: int
+    so_ct: str = ""
     ngay: str
     note: str
+    description: str = ""
     status: str
+    recipe_id: int | None = None
+    cp_nhan_cong: float = 0
+    cp_sxc: float = 0
+    tong_gia_thanh: float = 0
+    gia_ban_du_kien: float = 0
     sale_id: int | None = None  # truy vet: LSX sinh tu HD ban nao (neu co)
     created_at: str = ""
     lines: list[InvProductionLineOut] = Field(default_factory=list)
@@ -655,6 +688,7 @@ class InvRecipeIn(BaseModel):
     name: str
     output_item_id: int
     output_qty: float = 1
+    description: str = ""
     lines: list[InvRecipeLineIn] = Field(default_factory=list)
 
 
@@ -664,4 +698,20 @@ class InvRecipeOut(BaseModel):
     output_item_id: int
     output_ten: str = ""
     output_qty: float
+    description: str = ""
     lines: list[dict] = Field(default_factory=list)
+
+
+class DescribeNvlLine(BaseModel):
+    ten: str = ""
+    so_luong: float = 0
+    dvt: str = ""
+
+
+class DescribeBomIn(BaseModel):
+    """Sinh mo ta NVL: AI nhin tron bo NVL + thanh pham -> giai thich."""
+
+    output_ten: str = ""
+    output_dvt: str = ""
+    output_qty: float = 1
+    lines: list[DescribeNvlLine] = Field(default_factory=list)

@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, Customer, InvIssue, InvIssueLine, StockRow } from "../api";
+import {
+  api,
+  Customer,
+  InvIssue,
+  InvIssueLine,
+  MUC_DICH_XUAT,
+  MucDichXuat,
+  StockRow,
+} from "../api";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -12,6 +20,7 @@ function today(): string {
 interface DraftLine {
   item_id: number;
   warehouse_id: number;
+  warehouse_code: string;
   label: string;
   dvt: string;
   kha_dung: number;
@@ -32,6 +41,10 @@ export function StockIssue() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerId, setCustomerId] = useState<number | 0>(0);
   const [note, setNote] = useState("");
+  const [mucDich, setMucDich] = useState<MucDichXuat>("ban");
+  const [lyDo, setLyDo] = useState("");
+  const [nguoiNhan, setNguoiNhan] = useState("");
+  const [boPhan, setBoPhan] = useState("");
   const [avail, setAvail] = useState<StockRow[]>([]);
   const [pickQ, setPickQ] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -68,6 +81,7 @@ export function StockIssue() {
       {
         item_id: r.item_id,
         warehouse_id: r.warehouse_id,
+        warehouse_code: r.warehouse_code,
         label: `${r.ma_hang} · ${r.ten}`,
         dvt: r.dvt,
         kha_dung: r.kha_dung ?? 0,
@@ -80,10 +94,17 @@ export function StockIssue() {
   async function save() {
     setErr("");
     try {
+      const dk = MUC_DICH_XUAT[mucDich];
       const iss = await api.invIssueCreate({
         ngay,
         customer_id: customerId || null,
         note,
+        muc_dich: mucDich,
+        ly_do: lyDo,
+        nguoi_nhan: nguoiNhan,
+        bo_phan: boPhan,
+        tk_no: dk.no,
+        tk_co: dk.co,
         lines: lines.map((l) => ({
           item_id: l.item_id,
           warehouse_id: l.warehouse_id,
@@ -95,6 +116,9 @@ export function StockIssue() {
       setCreating(false);
       setLines([]);
       setNote("");
+      setLyDo("");
+      setNguoiNhan("");
+      setBoPhan("");
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -133,6 +157,9 @@ export function StockIssue() {
     if (!view) return null;
     return api.invIssueSave(view.id, {
       ngay: view.ngay, customer_id: view.customer_id, note: view.note,
+      muc_dich: view.muc_dich, ly_do: view.ly_do,
+      nguoi_nhan: view.nguoi_nhan, bo_phan: view.bo_phan,
+      tk_no: view.tk_no, tk_co: view.tk_co,
       lines: view.lines.map((l) => ({
         item_id: l.item_id, warehouse_id: l.warehouse_id,
         so_luong: l.so_luong, don_gia_ban: l.don_gia_ban,
@@ -195,9 +222,11 @@ export function StockIssue() {
         <table className="dt">
           <thead>
             <tr>
-              <th>#</th>
+              <th>Số CT</th>
               <th>Ngày</th>
               <th>Khách hàng</th>
+              <th>Mục đích</th>
+              <th>Định khoản</th>
               <th>Ghi chú</th>
               <th style={{ textAlign: "right" }}>Giá vốn</th>
               <th>Trạng thái</th>
@@ -208,11 +237,17 @@ export function StockIssue() {
             {list.map((i) => {
               const [color, label] = STATUS_CHIP[i.status] ?? ["gray", i.status];
               const giaVon = i.lines.reduce((s, l) => s + l.gia_von, 0);
+              const dk = MUC_DICH_XUAT[i.muc_dich];
               return (
                 <tr key={i.id} style={{ cursor: "pointer" }} title="Xem/sửa phiếu xuất" onClick={() => openView(i)}>
-                  <td className="muted">PX#{i.id}</td>
+                  <td className="muted nowrap">{i.so_ct || `PX#${i.id}`}</td>
                   <td className="nowrap">{i.ngay}</td>
                   <td>{i.customer_name}</td>
+                  <td className="muted nowrap">{dk?.label ?? i.muc_dich}</td>
+                  <td className="nowrap">
+                    <span className="chip gray sm">Nợ {i.tk_no}</span>{" "}
+                    <span className="chip gray sm">Có {i.tk_co}</span>
+                  </td>
                   <td className="muted">
                     {i.lines.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
                     {i.note ? ` — ${i.note}` : ""}
@@ -240,7 +275,7 @@ export function StockIssue() {
             })}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={9}>
                   <div className="empty">
                     <div className="empty-ic">📤</div>
                     <div>Chưa có phiếu xuất nào.</div>
@@ -281,6 +316,35 @@ export function StockIssue() {
                 <input value={note} onChange={(e) => setNote(e.target.value)} />
               </label>
             </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, alignItems: "flex-end" }}>
+              <label>
+                Mục đích xuất
+                <select value={mucDich} onChange={(e) => setMucDich(e.target.value as MucDichXuat)}>
+                  {(Object.keys(MUC_DICH_XUAT) as MucDichXuat[]).map((k) => (
+                    <option key={k} value={k}>
+                      {MUC_DICH_XUAT[k].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Lý do xuất
+                <input value={lyDo} onChange={(e) => setLyDo(e.target.value)} />
+              </label>
+              <label>
+                Người nhận
+                <input style={{ width: 130 }} value={nguoiNhan} onChange={(e) => setNguoiNhan(e.target.value)} />
+              </label>
+              <label>
+                Bộ phận
+                <input style={{ width: 120 }} value={boPhan} onChange={(e) => setBoPhan(e.target.value)} />
+              </label>
+              <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
+                Định khoản gợi ý:{" "}
+                <span className="chip gray sm">Nợ {MUC_DICH_XUAT[mucDich].no}</span>{" "}
+                <span className="chip gray sm">Có {MUC_DICH_XUAT[mucDich].co}</span>
+              </div>
+            </div>
 
             {lines.length > 0 && (
               <div className="table-wrap" style={{ marginTop: 10 }}>
@@ -289,8 +353,11 @@ export function StockIssue() {
                     <tr>
                       <th>Mặt hàng</th>
                       <th>Kho</th>
+                      <th>ĐVT</th>
                       <th style={{ textAlign: "right" }}>Khả dụng</th>
                       <th style={{ textAlign: "right" }}>SL xuất</th>
+                      <th style={{ textAlign: "right" }}>Giá bán</th>
+                      <th style={{ textAlign: "right" }}>Thành tiền</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -298,6 +365,9 @@ export function StockIssue() {
                     {lines.map((l, idx) => (
                       <tr key={`${l.item_id}-${l.warehouse_id}`}>
                         <td>{l.label}</td>
+                        <td>
+                          <span className="chip gray sm">{l.warehouse_code}</span>
+                        </td>
                         <td className="muted">{l.dvt}</td>
                         <td style={{ textAlign: "right" }}>{l.kha_dung}</td>
                         <td style={{ textAlign: "right" }}>
@@ -315,6 +385,21 @@ export function StockIssue() {
                           {l.so_luong > l.kha_dung && (
                             <div className="chip red sm">vượt khả dụng!</div>
                           )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <input
+                            style={{ width: 100, textAlign: "right" }}
+                            type="number"
+                            min={0}
+                            value={l.don_gia_ban}
+                            onChange={(e) => {
+                              const v = Number(e.target.value) || 0;
+                              setLines(lines.map((x, i) => (i === idx ? { ...x, don_gia_ban: v } : x)));
+                            }}
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }} className="muted">
+                          {vnd(l.so_luong * l.don_gia_ban)}
                         </td>
                         <td>
                           <button className="btn-sm ghost" onClick={() => setLines(lines.filter((_, i) => i !== idx))}>
@@ -385,11 +470,19 @@ export function StockIssue() {
         <div className="modal-backdrop" onClick={() => setView(null)}>
           <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
             <h3>
-              Phiếu xuất PX#{view.id}{" "}
+              Phiếu xuất {view.so_ct || `PX#${view.id}`}{" "}
               <span className={`chip sm ${(STATUS_CHIP[view.status] ?? ["gray"])[0]}`}>
                 {(STATUS_CHIP[view.status] ?? ["", view.status])[1]}
               </span>
             </h3>
+            <div className="muted" style={{ fontSize: 13, margin: "2px 0 6px" }}>
+              Mục đích: <b>{MUC_DICH_XUAT[view.muc_dich]?.label ?? view.muc_dich}</b> ·
+              Định khoản <span className="chip gray sm">Nợ {view.tk_no}</span>{" "}
+              <span className="chip gray sm">Có {view.tk_co}</span>
+              {view.nguoi_nhan ? ` · Người nhận: ${view.nguoi_nhan}` : ""}
+              {view.bo_phan ? ` · Bộ phận: ${view.bo_phan}` : ""}
+              {view.ly_do ? ` · Lý do: ${view.ly_do}` : ""}
+            </div>
             {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
             {view.status === "posted" && (
               <div className="warn-banner" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -425,6 +518,7 @@ export function StockIssue() {
                     <th>Mặt hàng</th>
                     <th style={{ textAlign: "right" }}>SL</th>
                     <th style={{ textAlign: "right" }}>Giá bán</th>
+                    <th style={{ textAlign: "right" }}>Thành tiền</th>
                     <th style={{ textAlign: "right" }}>Giá vốn</th>
                   </tr>
                 </thead>
@@ -468,12 +562,28 @@ export function StockIssue() {
                           )}
                         </td>
                         <td style={{ textAlign: "right" }} className="muted">
+                          {vnd(l.so_luong * l.don_gia_ban)}
+                        </td>
+                        <td style={{ textAlign: "right" }} className="muted">
                           {vnd(l.gia_von)}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "right" }}>
+                      <b>Cộng</b>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <b>{vnd(view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0))}</b>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <b>{vnd(view.lines.reduce((s, l) => s + l.gia_von, 0))}</b>
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             <div className="modal-actions">

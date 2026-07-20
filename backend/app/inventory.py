@@ -53,6 +53,22 @@ LOAI_LABELS = {
     "dieu_chinh": "Điều chỉnh",
 }
 
+# Dinh khoan goi y theo muc dich xuat kho (TT200/TT133). (No, Co, nhan).
+# Chi la GOI Y de hien thi tren chung tu — he thong khong sinh but toan so cai.
+DINH_KHOAN_XUAT: dict[str, tuple[str, str, str]] = {
+    "ban": ("632", "156", "Xuất bán (giá vốn hàng bán)"),
+    "san_xuat": ("621", "152", "Xuất nguyên vật liệu cho sản xuất"),
+    "noi_bo": ("642", "152", "Xuất dùng nội bộ"),
+    "dieu_chuyen": ("156", "156", "Điều chuyển kho nội bộ"),
+    "huy": ("811", "152", "Xuất huỷ/thanh lý"),
+}
+
+
+def dinh_khoan_xuat(muc_dich: str) -> tuple[str, str]:
+    """Tra ve (tk_no, tk_co) goi y theo muc dich xuat; mac dinh 'ban'."""
+    no, co, _ = DINH_KHOAN_XUAT.get(muc_dich, DINH_KHOAN_XUAT["ban"])
+    return no, co
+
 
 @dataclass
 class Violation:
@@ -444,17 +460,22 @@ def unpost_purchase(db: Session, inv: InvPurchase) -> None:
 
 
 def post_issue(db: Session, iss: InvIssue) -> None:
-    """Ghi so phieu xuat: moi dong -> 1 move 'xuat' (gia von do replay tinh)."""
+    """Ghi so phieu xuat: moi dong -> 1 move 'xuat' (gia von do replay tinh).
+
+    Sau khi replay tinh gia von: DONG BANG gia_von len tung dong phieu + luu
+    tong_gia_von, sinh so chung tu, dinh khoan goi y (neu chua co).
+    """
     if iss.status != "draft":
         raise PostError(f"Phiếu đang ở trạng thái '{iss.status}'")
     _check_ngay(iss.ngay)
     if not iss.lines:
         raise PostError("Phiếu xuất chưa có dòng hàng nào")
     pairs: set[tuple[int, int]] = set()
+    line_moves: dict[int, InvMove] = {}
     for ln in iss.lines:
         if ln.so_luong <= 0:
             raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
-        db.add(InvMove(
+        m = InvMove(
             item_id=ln.item_id,
             warehouse_id=ln.warehouse_id,
             ngay=iss.ngay,
@@ -463,10 +484,26 @@ def post_issue(db: Session, iss: InvIssue) -> None:
             ref_type="issue",
             ref_id=iss.id,
             ref_line_id=ln.id,
-        ))
+        )
+        db.add(m)
+        line_moves[ln.id] = m
         pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
-    validate_pairs(db, pairs)
+    validate_pairs(db, pairs)  # tinh lai gia von (gan len move objects)
+    # Dong bang gia von + thanh tien ban len tung dong; tong hop
+    tong = 0.0
+    for ln in iss.lines:
+        m = line_moves.get(ln.id)
+        ln.gia_von = m.gia_tri if m else 0.0
+        ln.thanh_tien_ban = round(ln.so_luong * (ln.don_gia_ban or 0.0))
+        tong += ln.gia_von
+    iss.tong_gia_von = tong
+    if not iss.tk_no or not iss.tk_co:
+        no, co = dinh_khoan_xuat(iss.muc_dich or "ban")
+        iss.tk_no = iss.tk_no or no
+        iss.tk_co = iss.tk_co or co
+    if not iss.so_ct:
+        iss.so_ct = f"PX-{(iss.ngay or '')[:4] or '----'}-{iss.id:04d}"
     iss.status = "posted"
     iss.posted_at = _utcnow()
     db.commit()
@@ -505,7 +542,7 @@ def post_production(db: Session, prod: InvProduction) -> None:
 
     # 1) Xuat tieu hao (sx_out) — replay tinh gia von, co the bao am kho
     pairs: set[tuple[int, int]] = set()
-    out_moves: list[InvMove] = []
+    out_moves: list[tuple[InvProductionLine, InvMove]] = []
     for ln in consumes:
         m = InvMove(
             item_id=ln.item_id,
@@ -518,13 +555,22 @@ def post_production(db: Session, prod: InvProduction) -> None:
             ref_line_id=ln.id,
         )
         db.add(m)
-        out_moves.append(m)
+        out_moves.append((ln, m))
         pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
     validate_pairs(db, pairs)
 
-    # 2) Gia thanh = tong gia tri tieu hao (replay vua ghi lai gia_tri)
-    total_cost = sum(m.gia_tri for m in out_moves)
+    # 1b) Gia tam tinh: NVL nao chua co gia von (gia_tri==0) ma co don_gia_tam
+    # -> gan gia tri tam len dong xuat (giu can bang gia tri xuat/nhap TP; se
+    # tu dieu chinh khi NVL co gia von that o lan replay sau).
+    for ln, m in out_moves:
+        if (not m.gia_tri) and (ln.don_gia_tam or 0) > 0:
+            m.gia_tri = round(ln.so_luong * ln.don_gia_tam)
+            m.don_gia = ln.don_gia_tam
+
+    # 2) Gia thanh = tong gia tri NVL tieu hao + nhan cong (622) + SX chung (627)
+    nvl_cost = sum(m.gia_tri for _, m in out_moves)
+    total_cost = nvl_cost + (prod.cp_nhan_cong or 0.0) + (prod.cp_sxc or 0.0)
     total_out_qty = sum(ln.so_luong for ln in outputs)
     don_gia_tp = total_cost / total_out_qty if total_out_qty else 0.0
 
@@ -550,7 +596,12 @@ def post_production(db: Session, prod: InvProduction) -> None:
         ))
         in_pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
-    validate_pairs(db, pairs | in_pairs)
+    # Chi validate cap thanh pham (in_pairs): cap NVL (pairs) da validate o buoc 1;
+    # replay lai chung se ghi de gia_tri tam tinh vua gan (thanh pham luon khac NVL).
+    validate_pairs(db, in_pairs)
+    prod.tong_gia_thanh = total_cost
+    if not prod.so_ct:
+        prod.so_ct = f"LSX-{(prod.ngay or '')[:4] or '----'}-{prod.id:04d}"
     prod.status = "posted"
     prod.posted_at = _utcnow()
     db.commit()
