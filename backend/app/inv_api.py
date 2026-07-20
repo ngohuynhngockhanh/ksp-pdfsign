@@ -954,6 +954,28 @@ def purchase_update(
     return _purchase_out(db, inv)
 
 
+@router.post("/purchase/{pid}/recalc-totals")
+def purchase_recalc_totals(
+    pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Tinh lai TONG hoa don tu cac dong (draft): truoc thue = Σ thanh_tien,
+    thue = Σ(thanh_tien × suat), tong = cong — sua header bi parse sai."""
+    inv = db.get(InvPurchase, pid)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
+    if inv.status != "draft":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ tính lại được bản nháp")
+    tt = sum(ln.thanh_tien or 0 for ln in inv.lines)
+    thue = sum(round((ln.thanh_tien or 0) * (ln.thue_suat or 0) / 100) for ln in inv.lines)
+    inv.tong_truoc_thue = round(tt)
+    inv.tong_thue = thue
+    inv.tong_tien = round(tt + thue)
+    db.commit()
+    db.refresh(inv)
+    _audit(db, user, "inv_purchase_update", f"HĐ mua #{pid}", "tính lại tổng từ dòng")
+    return _purchase_out(db, inv)
+
+
 @router.delete("/purchase/{pid}")
 def purchase_delete(
     pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)

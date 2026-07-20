@@ -843,6 +843,22 @@ export function PurchaseImport({
                   >
                     🔧 Tính lại thành tiền
                   </button>
+                  <button
+                    title="Lưu dòng rồi tính lại TỔNG hóa đơn = Σ thành tiền + Σ thuế (sửa header bị parse sai)"
+                    onClick={async () => {
+                      if (!cur) return;
+                      setErr("");
+                      try {
+                        await saveDraft();
+                        setCur(await api.invPurchaseRecalcTotals(cur.id));
+                        load();
+                      } catch (e) {
+                        setErr((e as Error).message);
+                      }
+                    }}
+                  >
+                    Σ Tính lại tổng
+                  </button>
                   <button onClick={saveDraft}>💾 Lưu nháp</button>
                   <button
                     className="primary"

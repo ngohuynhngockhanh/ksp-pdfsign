@@ -440,6 +440,18 @@ _PHAN_MEM_RE = re.compile(r"phần mềm|phan mem|software|license|bản quyền
 _VAT_LEVELS = (0, 5, 8, 10)  # cac muc thue GTGT hop le
 
 
+def _money_ctx(v) -> float:
+    """Doc SO TIEN tren hoa don: nhu parse_num nhung '439,815' (1 phay + dung 3
+    so cuoi) la phan nghin kieu US (mau Viet Hoang 0316799082), khong phai thap
+    phan — tien hoa don khong co le 3 chu so."""
+    if isinstance(v, str):
+        s = v.strip().replace(" ", "")
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) == 3 and "." not in s and parts[0].isdigit():
+            return money.parse_num(s.replace(",", ""))
+    return money.parse_num(v)
+
+
 def _snap_vat(pct: float) -> int:
     """Lam tron ve muc thue GTGT gan nhat (0/5/8/10) — tong OCR hay lech nhe."""
     return min(_VAT_LEVELS, key=lambda v: abs(v - pct))
@@ -509,15 +521,28 @@ def parse_purchase_pdf(pdf_bytes: bytes) -> dict:
     items = base.get("items", [])
     tong_truoc_thue = tong_thue = tong = 0.0
 
+    # 0) Uu tien nhat: mau in TUNG NHAN rieng dong (vd Viet Hoang 0316799082):
+    #    "Tổng tiền chưa thuế: 439,815" / "Tiền thuế GTGT: 35,185" /
+    #    "Tổng tiền thanh toán: 475,000" (so kieu US-phay).
+    m_tt = re.search(r"Tổng tiền chưa thuế[:\s]*([\d.,]+)", raw)
+    m_th = re.search(r"Tiền thuế GTGT[:\s]*([\d.,]+)", raw)
+    m_tc = re.search(r"Tổng tiền thanh toán[:\s]*([\d.,]+)", raw)
+    if m_tt and m_tc:
+        a = _money_ctx(m_tt.group(1))
+        b = _money_ctx(m_th.group(1)) if m_th else 0.0
+        cc = _money_ctx(m_tc.group(1))
+        if cc >= a > 0 and 0 <= b <= a:
+            tong_truoc_thue, tong_thue, tong = a, b, cc
+
     # 1) Chinh xac nhat: dong tong hop cuoi hoa don co 3 so lien tiep
     #    (truoc thue, tien thue, tong thanh toan). Thu nhieu mau, KHONG phan biet
     #    hoa/thuong ('Tổng cộng(Total):', 'TỔNG CỘNG (Grand total):', 'Tổng chịu thuế 8%').
     _TRIPLE = r"[^\d]*?([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s*$"
-    for pat in (
+    for pat in (() if tong_truoc_thue else (
         r"tổng cộng\s*\(total\)" + _TRIPLE,
         r"tổng chịu thuế\s*\d{1,2}\s*%[^\n]*?" + _TRIPLE,
         r"(?:tổng cộng|grand total)" + _TRIPLE,
-    ):
+    )):
         m = re.search(pat, raw, re.IGNORECASE | re.MULTILINE)
         if m:
             a, b, c = (money.parse_num(x) for x in m.groups())
@@ -542,6 +567,13 @@ def parse_purchase_pdf(pdf_bytes: bytes) -> dict:
     inv_rate = _invoice_vat_rate(raw, tong_truoc_thue, tong_thue)
     for it in items:
         it["thue_suat"] = _line_vat(str(it.get("ten") or ""), inv_rate)
+        # Chuan hoa so tren dong ngay tai parser (chiu ca '439,815' kieu US-phay)
+        for k in ("so_luong", "don_gia", "thanh_tien"):
+            it[k] = _money_ctx(it.get(k))
+    # Header thieu tien thue (mau khong in dong thue): suy tu thue suat
+    if inv_rate > 0 and not tong_thue and tong_truoc_thue > 0 and abs(tong - tong_truoc_thue) <= 1:
+        tong_thue = round(tong_truoc_thue * inv_rate / 100)
+        tong = round(tong_truoc_thue + tong_thue)
     return {
         "source": "pdf",
         "so_hd": so_hd,

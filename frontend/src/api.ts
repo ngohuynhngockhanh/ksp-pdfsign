@@ -665,6 +665,9 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async invPurchaseRecalcTotals(id: number) {
+    return req<InvPurchase>(`/api/inv/purchase/${id}/recalc-totals`, { method: "POST" });
+  },
   async invPurchaseCreate(body: unknown) {
     return req<InvPurchase>("/api/inv/purchase", {
       method: "POST",
