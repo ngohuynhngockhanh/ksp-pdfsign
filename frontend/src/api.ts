@@ -1118,6 +1118,8 @@ export interface InvSale {
   created_at: string;
   doc_url: string;
   lines: InvSaleLine[];
+  fulfil_status: string; // du | mot_phan | chua | na
+  fulfil_note: string[];
 }
 
 export interface InvIssueLine {

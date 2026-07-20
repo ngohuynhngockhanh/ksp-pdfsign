@@ -391,6 +391,10 @@ class InvIssue(Base):
     customer_id: Mapped[int | None] = mapped_column(
         ForeignKey("customers.id"), nullable=True
     )
+    # truy vet: PX nay xuat cho hoa don ban nao (sinh tu generate_from_sale)
+    sale_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inv_sale_invoices.id"), nullable=True, index=True
+    )
     # muc dich xuat: ban | san_xuat | noi_bo | dieu_chuyen | huy -> dinh khoan goi y
     muc_dich: Mapped[str] = mapped_column(String(12), default="ban")
     ly_do: Mapped[str] = mapped_column(String(255), default="")  # ly do xuat (tach khoi note)
@@ -601,6 +605,7 @@ def _migrate_add_columns() -> None:
             "tk_co": "VARCHAR(10) DEFAULT ''",
             "tong_gia_von": "FLOAT DEFAULT 0",
             "created_by": "INTEGER",
+            "sale_id": "INTEGER",
         },
         "inv_issue_lines": {
             "gia_von": "FLOAT DEFAULT 0",

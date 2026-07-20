@@ -348,6 +348,62 @@ def test_lech_dong_blocks_review(client):
     assert r2.json()["status"] == "reviewed"
 
 
+def test_fulfil_status_on_sale_list(client):
+    """Trang thai XUAT KHO tren list HD ban: chua -> du sau khi ghi so PX; HD
+    chi co dong phan mem (doanh_thu) -> 'na' (khong can xuat)."""
+    it = client.post(
+        "/api/inv/items", json={"ma_hang": "HH400", "ten": "Camera fulfil test", "dvt": "Cai"}
+    ).json()
+    whs = client.get("/api/inv/warehouses").json()
+    hh = next(w["id"] for w in whs if w["code"] == "HH")
+
+    # nhap kho truoc de co ton
+    p = client.post("/api/inv/purchase", json={
+        "so_hd": "P9", "ky_hieu": "K9", "mst_ban": "0000000009", "ten_ban": "NCC test",
+        "ngay": "2026-06-01",
+        "lines": [{"ten_raw": "Camera fulfil test", "dvt": "Cai", "so_luong": 5,
+                   "don_gia": 100000, "item_id": it["id"], "warehouse_id": hh,
+                   "match_kind": "manual"}],
+    }).json()
+    assert client.post(f"/api/inv/purchase/{p['id']}/post").status_code == 200
+
+    xml = _hdon_xml("60", "2026-06-10", [
+        {"ten": "Camera fulfil test", "dvt": "Cai", "sl": 2, "dg": 150000, "tt": 300000, "ts": "8%"},
+    ])
+    res = _upload(client, "ihoadon_4401053694_60_1_10062026_0.xml", xml)
+    sid = res["results"][0]["sale_id"]
+    ln = client.get(f"/api/inv/sale/{sid}").json()["lines"][0]
+    assert ln["item_id"] == it["id"]  # khop exact ten trung
+
+    client.patch(f"/api/inv/sale/{sid}", json={"status": "reviewed"})
+    gen = client.post(f"/api/inv/sale/{sid}/generate")
+    assert gen.status_code == 200, gen.text
+    issue_id = gen.json()["issues"][0]
+
+    lst = client.get("/api/inv/sale").json()
+    row = next(r for r in lst if r["id"] == sid)
+    assert row["fulfil_status"] == "chua"
+    assert any("còn NHÁP" in n for n in row["fulfil_note"])
+
+    r = client.post(f"/api/inv/issues/{issue_id}/post")
+    assert r.status_code == 200, r.text
+
+    lst2 = client.get("/api/inv/sale").json()
+    row2 = next(r for r in lst2 if r["id"] == sid)
+    assert row2["fulfil_status"] == "du"
+    assert row2["fulfil_note"] == []
+
+    # HD chi co dong phan mem (doanh_thu) -> khong can xuat kho
+    xml_pm = _hdon_xml("61", "2026-06-11", [
+        {"ten": "iNut Manager Prime v2: License Phan mem", "dvt": "Goi", "ts": "KCT"},
+    ])
+    res_pm = _upload(client, "ihoadon_4401053694_61_1_11062026_0.xml", xml_pm)
+    sid_pm = res_pm["results"][0]["sale_id"]
+    lst3 = client.get("/api/inv/sale").json()
+    row3 = next(r for r in lst3 if r["id"] == sid_pm)
+    assert row3["fulfil_status"] == "na"
+
+
 def test_auto_assign_customer_on_import(client):
     """MST ben mua trung tax_code khach hang co san -> tu gan customer_id,
     KHONG tao khach hang moi tu luong import HD ban."""

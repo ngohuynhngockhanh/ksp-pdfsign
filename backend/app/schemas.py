@@ -551,6 +551,9 @@ class InvSaleOut(BaseModel):
     created_at: str = ""
     doc_url: str = ""
     lines: list[InvSaleLineOut] = Field(default_factory=list)
+    # trang thai XUAT KHO (tong hop tu InvIssue/InvProduction lien ket sale_id)
+    fulfil_status: str = "na"  # du | mot_phan | chua | na
+    fulfil_note: list[str] = Field(default_factory=list)
 
 
 # --- Ghep bo (assembly / BOM) tu 1 dong ban ---

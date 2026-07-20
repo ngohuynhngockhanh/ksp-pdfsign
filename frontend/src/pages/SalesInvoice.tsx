@@ -24,6 +24,12 @@ const CLASS_CHIP: Record<string, [string, string]> = {
   phan_mem: ["gray", "Phần mềm"],
   other: ["gray", "Khác"],
 };
+const FULFIL_CHIP: Record<string, [string, string]> = {
+  du: ["green", "✅ Đã xuất đủ"],
+  mot_phan: ["amber", "🟡 Một phần"],
+  chua: ["red", "⛔ Chưa xuất"],
+  na: ["gray", "— DV/PM"],
+};
 
 type BomRow = {
   item_id: number | null;
@@ -541,11 +547,14 @@ export function SalesInvoice() {
               <th>Nguồn</th>
               <th style={{ textAlign: "right" }}>Tổng tiền</th>
               <th>Trạng thái</th>
+              <th>Xuất kho</th>
             </tr>
           </thead>
           <tbody>
             {list.map((p) => {
               const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
+              const [fColor, fLabel] = FULFIL_CHIP[p.fulfil_status] ?? ["gray", p.fulfil_status];
+              const fNotes = p.fulfil_note ?? [];
               return (
                 <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => open(p.id)}>
                   <td onClick={(e) => e.stopPropagation()}>
@@ -568,12 +577,21 @@ export function SalesInvoice() {
                   <td>
                     <span className={`chip sm ${color}`}>{label}</span>
                   </td>
+                  <td title={fNotes.join("\n")}>
+                    <span className={`chip sm ${fColor}`}>{fLabel}</span>
+                    {fNotes.length > 0 && (
+                      <div className="muted" style={{ fontSize: 11, marginTop: 2, maxWidth: 220 }}>
+                        {fNotes[0]}
+                        {fNotes.length > 1 && ` (+${fNotes.length - 1})`}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="empty">
                     <div className="empty-ic">🧾</div>
                     <div>

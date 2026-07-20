@@ -1051,7 +1051,98 @@ def _sale_line_lech(so_luong: float, don_gia_ban: float, thanh_tien: float, is_d
     return abs(so_luong * don_gia_ban - thanh_tien) > max(1.0, thanh_tien * 0.01)
 
 
-def _sale_out(db: Session, inv: InvSale, with_lines: bool = True) -> InvSaleOut:
+def _sale_fulfil_batch(db: Session, sales: list[InvSale]) -> dict[int, tuple[str, list[str]]]:
+    """Tinh trang thai XUAT KHO cho danh sach HD ban — batch 1 lan, tranh N+1.
+
+    Tra ve {sale_id: (fulfil_status, [ghi chu])}. fulfil_status: du|mot_phan|chua|na.
+    """
+    ids = [s.id for s in sales]
+    if not ids:
+        return {}
+
+    issues = list(db.scalars(select(InvIssue).where(InvIssue.sale_id.in_(ids))))
+    issue_ids = [i.id for i in issues]
+    issue_lines = (
+        list(db.scalars(select(InvIssueLine).where(InvIssueLine.issue_id.in_(issue_ids))))
+        if issue_ids else []
+    )
+    lines_by_issue: dict[int, list[InvIssueLine]] = {}
+    for il in issue_lines:
+        lines_by_issue.setdefault(il.issue_id, []).append(il)
+    issues_by_sale: dict[int, list[InvIssue]] = {}
+    for iss in issues:
+        issues_by_sale.setdefault(iss.sale_id, []).append(iss)
+
+    prods = list(db.scalars(select(InvProduction).where(InvProduction.sale_id.in_(ids))))
+    prods_by_sale: dict[int, list[InvProduction]] = {}
+    for p in prods:
+        prods_by_sale.setdefault(p.sale_id, []).append(p)
+
+    out: dict[int, tuple[str, list[str]]] = {}
+    for s in sales:
+        need_lines = [
+            ln for ln in s.lines
+            if ln.item_id and ln.so_luong > 0 and ln.fulfil_kind != "doanh_thu"
+        ]
+        if not need_lines:
+            out[s.id] = ("na", [])
+            continue
+
+        s_issues = issues_by_sale.get(s.id, [])
+        notes: list[str] = []
+        any_posted = False
+        all_du = True
+        for ln in need_lines:
+            posted = draft = 0.0
+            for iss in s_issues:
+                for il in lines_by_issue.get(iss.id, []):
+                    if il.item_id != ln.item_id:
+                        continue
+                    if iss.status == "posted":
+                        posted += il.so_luong
+                    elif iss.status == "draft":
+                        draft += il.so_luong
+            if posted >= ln.so_luong - inventory.EPS:
+                any_posted = True
+                continue
+            all_du = False
+            if posted > inventory.EPS:
+                any_posted = True
+            if draft <= inventory.EPS and posted <= inventory.EPS:
+                notes.append(
+                    f"Dòng '{ln.ten_raw[:30]}' thiếu {_fmt(ln.so_luong - posted)} sp chưa có phiếu xuất"
+                )
+
+        # dong chua khop ma kho (khong nam trong need_lines vi thieu item_id)
+        for ln in s.lines:
+            if not ln.item_id and ln.fulfil_kind != "doanh_thu" and ln.line_class != "phan_mem":
+                notes.append(f"Dòng '{ln.ten_raw[:30]}' chưa khớp mã kho")
+
+        for iss in s_issues:
+            if iss.status == "draft":
+                giu = sum(il.so_luong for il in lines_by_issue.get(iss.id, []))
+                notes.append(f"PX#{iss.id} còn NHÁP (giữ {_fmt(giu)} sp) — vào Xuất kho ghi sổ")
+
+        for p in prods_by_sale.get(s.id, []):
+            if p.status == "draft":
+                nhan = p.so_ct or f"#{p.id}"
+                notes.append(f"LSX {nhan} còn NHÁP — vào Sản xuất ghi sổ")
+
+        if all_du:
+            status_out = "du"
+        elif any_posted:
+            status_out = "mot_phan"
+        else:
+            status_out = "chua"
+        out[s.id] = (status_out, [] if status_out == "du" else notes)
+
+    return out
+
+
+def _sale_out(
+    db: Session, inv: InvSale, with_lines: bool = True,
+    fulfil_pre: tuple[str, list[str]] | None = None,
+) -> InvSaleOut:
     lines_out: list[InvSaleLineOut] = []
     if with_lines:
         items = {i.id: i for i in db.scalars(select(InvItem))}
@@ -1116,6 +1207,9 @@ def _sale_out(db: Session, inv: InvSale, with_lines: bool = True) -> InvSaleOut:
                 lech_dong=_sale_line_lech(ln.so_luong, ln.don_gia_ban, ln.thanh_tien, inv.is_dieu_chinh),
             ))
     cust = db.get(Customer, inv.customer_id) if inv.customer_id else None
+    if fulfil_pre is None:
+        fulfil_pre = _sale_fulfil_batch(db, [inv]).get(inv.id, ("na", []))
+    fulfil_status, fulfil_note = fulfil_pre
     return InvSaleOut(
         id=inv.id, so_hd=inv.so_hd, ky_hieu=inv.ky_hieu, mst_mua=inv.mst_mua,
         ten_mua=inv.ten_mua, customer_id=inv.customer_id or (cust.id if cust else None),
@@ -1126,6 +1220,7 @@ def _sale_out(db: Session, inv: InvSale, with_lines: bool = True) -> InvSaleOut:
         created_at=inv.created_at.isoformat() if inv.created_at else "",
         doc_url=f"/api/inv/sale/{inv.id}/file" if inv.doc_id else "",
         lines=lines_out,
+        fulfil_status=fulfil_status, fulfil_note=fulfil_note,
     )
 
 
@@ -1216,7 +1311,12 @@ def sale_list(
     if den:
         stmt = stmt.where(InvSale.ngay <= den)
     stmt = stmt.order_by(InvSale.id.desc()).limit(min(limit, 500))
-    return [_sale_out(db, s, with_lines=False) for s in db.scalars(stmt)]
+    sales = list(db.scalars(stmt))
+    fulfil_map = _sale_fulfil_batch(db, sales)
+    return [
+        _sale_out(db, s, with_lines=False, fulfil_pre=fulfil_map.get(s.id, ("na", [])))
+        for s in sales
+    ]
 
 
 @router.get("/sale/export-zip")

@@ -738,6 +738,7 @@ def generate_from_sale(db: Session, sale) -> dict:
     if issue_lines:
         iss = InvIssue(
             ngay=sale.ngay, customer_id=sale.customer_id, status="draft",
+            sale_id=sale.id,
             note=f"Xuất bán theo HĐ {sale.ky_hieu} {sale.so_hd}",
         )
         db.add(iss)
