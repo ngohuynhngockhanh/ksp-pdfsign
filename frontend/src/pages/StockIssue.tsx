@@ -33,6 +33,9 @@ const STATUS_CHIP: Record<string, [string, string]> = {
   posted: ["green", "Đã ghi sổ"],
 };
 
+// Dinh muc nhan cong trung binh de uoc luong loi nhuan (dong / 1 san pham)
+const NHAN_CONG_PER_SP = 300_000;
+
 export function StockIssue() {
   const [list, setList] = useState<InvIssue[]>([]);
   const [err, setErr] = useState("");
@@ -602,6 +605,50 @@ export function StockIssue() {
                 </tfoot>
               </table>
             </div>
+
+            {/* Loi nhuan tam tinh (chua/da gom nhan cong ~300k/SP) */}
+            {(() => {
+              const posted = view.status === "posted";
+              const tongBan = view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0);
+              const tongVon = posted
+                ? view.lines.reduce((s, l) => s + l.gia_von, 0)
+                : view.lines.reduce((s, l) => s + l.gia_von_uoc, 0);
+              const tongSl = view.lines.reduce((s, l) => s + l.so_luong, 0);
+              const nhanCong = NHAN_CONG_PER_SP * tongSl;
+              const lnChuaNc = tongBan - tongVon;
+              const lnGomNc = lnChuaNc - nhanCong;
+              const p = posted ? "" : "~";
+              if (tongBan <= 0) {
+                return (
+                  <p className="muted" style={{ fontSize: 12, margin: "6px 0" }}>
+                    Nhập <b>giá bán</b> cho các dòng để xem lợi nhuận tạm tính.
+                  </p>
+                );
+              }
+              return (
+                <div className="warn-banner" style={{ marginTop: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 16px" }}>
+                    <span>Lợi nhuận tạm tính (chưa gồm nhân công):</span>
+                    <b style={{ textAlign: "right" }} className={lnChuaNc < 0 ? "chip red sm" : ""}>
+                      {p}{vnd(lnChuaNc)} đ{tongBan > 0 ? ` (${((lnChuaNc / tongBan) * 100).toFixed(1)}%)` : ""}
+                    </b>
+                    <span>
+                      Nhân công tạm tính ({vnd(NHAN_CONG_PER_SP)} đ × {tongSl} SP):
+                    </span>
+                    <b style={{ textAlign: "right" }}>{vnd(nhanCong)} đ</b>
+                    <span>Lợi nhuận tạm tính (đã gồm nhân công):</span>
+                    <b style={{ textAlign: "right" }} className={lnGomNc < 0 ? "chip red sm" : ""}>
+                      {p}{vnd(lnGomNc)} đ{tongBan > 0 ? ` (${((lnGomNc / tongBan) * 100).toFixed(1)}%)` : ""}
+                    </b>
+                  </div>
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                    Giá vốn {posted ? "theo sổ kho" : "ước tính theo giá BQ hiện tại"}; nhân công ước
+                    lượng bình quân {vnd(NHAN_CONG_PER_SP)}đ/sản phẩm.
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="modal-actions">
               <button onClick={() => setView(null)}>Đóng</button>
               {view.status === "draft" && (
