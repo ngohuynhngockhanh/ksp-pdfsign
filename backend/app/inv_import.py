@@ -435,6 +435,35 @@ def _pdf_sign_date(pdf_bytes: bytes) -> str:
     return ""
 
 
+# Dong phan mem/license -> KCT (khong chiu thue GTGT)
+_PHAN_MEM_RE = re.compile(r"phần mềm|phan mem|software|license|bản quyền|ban quyen", re.IGNORECASE)
+_VAT_LEVELS = (0, 5, 8, 10)  # cac muc thue GTGT hop le
+
+
+def _snap_vat(pct: float) -> int:
+    """Lam tron ve muc thue GTGT gan nhat (0/5/8/10) — tong OCR hay lech nhe."""
+    return min(_VAT_LEVELS, key=lambda v: abs(v - pct))
+
+
+def _invoice_vat_rate(raw: str, tong_truoc_thue: float, tong_thue: float) -> int:
+    """Thue suat muc hoa don: regex text > suy tu tong > mac dinh 8%."""
+    m = re.search(r"[Tt]huế suất(?:\s*GTGT)?[^\d%]{0,15}(\d{1,2})\s*%", raw)
+    if m:
+        return int(m.group(1))
+    if re.search(r"[Tt]huế suất[^\n]{0,20}(KCT|[Kk]hông chịu thuế)", raw):
+        return 0
+    if tong_truoc_thue > 0:
+        return _snap_vat(tong_thue / tong_truoc_thue * 100)
+    return 8  # khong suy duoc gi -> mac dinh 8% (quy uoc cong ty)
+
+
+def _line_vat(ten: str, invoice_rate: int) -> int:
+    """VAT cho 1 dong: phan mem/license -> KCT (0), con lai theo muc hoa don."""
+    if _PHAN_MEM_RE.search(ten):
+        return 0
+    return invoice_rate
+
+
 def parse_purchase_pdf(pdf_bytes: bytes) -> dict:
     """Parse hoa don PDF (co lop text): items tu bang + ben ban tu text tho."""
     base = invoice.parse_invoice(pdf_bytes)
@@ -505,6 +534,10 @@ def parse_purchase_pdf(pdf_bytes: bytes) -> dict:
         tong_thue = round(tong_truoc_thue * rate / 100)
         tong = round(tong_truoc_thue + tong_thue)
     ngay = _extract_ngay(raw, base.get("ngay")) or ngay_ky  # thieu ngay -> lay ngay ky
+    # Thue suat muc HOA DON -> gan cho tung dong (bang PDF khong co cot thue suat).
+    inv_rate = _invoice_vat_rate(raw, tong_truoc_thue, tong_thue)
+    for it in items:
+        it["thue_suat"] = _line_vat(str(it.get("ten") or ""), inv_rate)
     return {
         "source": "pdf",
         "so_hd": so_hd,

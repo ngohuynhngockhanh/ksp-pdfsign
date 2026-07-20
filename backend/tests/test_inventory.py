@@ -838,3 +838,31 @@ def test_purchase_export_zip(client):
     # Xoa file goc chua bi xoa -> loc theo ids ma khong co file goc nao -> 404
     r2 = client.get("/api/inv/purchase/export-zip", params={"ids": "999999"})
     assert r2.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# VAT dong hoa don (parser PDF khong co cot thue suat -> suy muc hoa don)
+# ---------------------------------------------------------------------------
+def test_vat_helpers():
+    from app.inv_import import _invoice_vat_rate, _line_vat, _snap_vat
+
+    # Snap ve muc thue hop le gan nhat (tong OCR lech nhe)
+    assert _snap_vat(8.6) == 8
+    assert _snap_vat(10.2) == 10
+    assert _snap_vat(0.3) == 0
+    assert _snap_vat(4.9) == 5
+
+    # Uu tien 1: regex tren text (ke ca "Thuế suất GTGT")
+    assert _invoice_vat_rate("... Thuế suất GTGT: 8% ...", 0, 0) == 8
+    assert _invoice_vat_rate("Thuế suất 10 %", 1000, 0) == 10
+    # Uu tien 2: suy tu tong
+    assert _invoice_vat_rate("khong co chu thue", 1_000_000, 80_000) == 8
+    assert _invoice_vat_rate("khong co", 1_000_000, 0) == 0  # tong_thue=0 -> KCT
+    # Uu tien 3: khong suy duoc gi -> mac dinh 8
+    assert _invoice_vat_rate("khong co", 0, 0) == 8
+
+    # Dong phan mem/license -> KCT bat ke muc hoa don
+    assert _line_vat("Phần mềm quản lý kho", 8) == 0
+    assert _line_vat("License Windows Server", 8) == 0
+    assert _line_vat("Bản quyền phần mềm ABC", 10) == 0
+    assert _line_vat("Camera quan sát", 8) == 8
