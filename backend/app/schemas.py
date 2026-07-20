@@ -699,6 +699,9 @@ class InvRecipeOut(BaseModel):
     output_ten: str = ""
     output_qty: float
     description: str = ""
+    tong_gia_tri: float = 0  # gia thanh uoc tinh (theo gia von BQ hien tai)
+    gia_thanh_dv: float = 0  # /don vi thanh pham
+    thieu_gia: bool = False  # co NVL chua co gia von -> uoc tinh thieu
     lines: list[dict] = Field(default_factory=list)
 
 

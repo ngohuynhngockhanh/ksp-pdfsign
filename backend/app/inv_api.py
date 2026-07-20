@@ -1663,24 +1663,46 @@ def production_void(
 # ---------------------------------------------------------------------------
 # Cong thuc san xuat
 # ---------------------------------------------------------------------------
-def _recipe_out(db: Session, r: InvRecipe) -> InvRecipeOut:
+def _recipe_out(
+    db: Session, r: InvRecipe, snap: dict[int, list[float]] | None = None
+) -> InvRecipeOut:
     items = {i.id: i for i in db.scalars(select(InvItem))}
     out_item = items.get(r.output_item_id)
+    # Don gia binh quan hien tai (giong _prod_out) de uoc tinh gia thanh cong thuc
+    if snap is None:
+        snap = {}
+        for row in inventory.stock_snapshot(db):
+            a = snap.setdefault(row.item_id, [0.0, 0.0])
+            a[0] += row.ton
+            a[1] += row.gia_tri
+    lines = []
+    tong_gia_tri = 0.0
+    thieu_gia = False
+    for ln in r.lines:
+        a = snap.get(ln.item_id, [0.0, 0.0])
+        don_gia_bq = (a[1] / a[0]) if a[0] > inventory.EPS else 0.0
+        gia_tri = round(ln.so_luong * don_gia_bq)
+        tong_gia_tri += gia_tri
+        if don_gia_bq == 0:
+            thieu_gia = True
+        lines.append({
+            "item_id": ln.item_id,
+            "ma_hang": items[ln.item_id].ma_hang if ln.item_id in items else "",
+            "ten": items[ln.item_id].ten if ln.item_id in items else "",
+            "dvt": items[ln.item_id].dvt if ln.item_id in items else "",
+            "warehouse_id": ln.warehouse_id,
+            "so_luong": ln.so_luong,
+            "don_gia_bq": round(don_gia_bq, 2),
+            "gia_tri": gia_tri,
+        })
     return InvRecipeOut(
         id=r.id, name=r.name, output_item_id=r.output_item_id,
         output_ten=out_item.ten if out_item else "", output_qty=r.output_qty,
         description=r.description or "",
-        lines=[
-            {
-                "item_id": ln.item_id,
-                "ma_hang": items[ln.item_id].ma_hang if ln.item_id in items else "",
-                "ten": items[ln.item_id].ten if ln.item_id in items else "",
-                "dvt": items[ln.item_id].dvt if ln.item_id in items else "",
-                "warehouse_id": ln.warehouse_id,
-                "so_luong": ln.so_luong,
-            }
-            for ln in r.lines
-        ],
+        tong_gia_tri=tong_gia_tri,
+        gia_thanh_dv=round(tong_gia_tri / r.output_qty) if r.output_qty else 0,
+        thieu_gia=thieu_gia,
+        lines=lines,
     )
 
 
@@ -1688,7 +1710,16 @@ def _recipe_out(db: Session, r: InvRecipe) -> InvRecipeOut:
 def recipe_list(
     user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
 ):
-    return [_recipe_out(db, r) for r in db.scalars(select(InvRecipe).order_by(InvRecipe.name))]
+    # Tinh snapshot ton kho 1 lan roi tai dung cho moi cong thuc (tranh O(N x snapshot))
+    snap: dict[int, list[float]] = {}
+    for row in inventory.stock_snapshot(db):
+        a = snap.setdefault(row.item_id, [0.0, 0.0])
+        a[0] += row.ton
+        a[1] += row.gia_tri
+    return [
+        _recipe_out(db, r, snap)
+        for r in db.scalars(select(InvRecipe).order_by(InvRecipe.name))
+    ]
 
 
 @router.post("/recipes", response_model=InvRecipeOut)

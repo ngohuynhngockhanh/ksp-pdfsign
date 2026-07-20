@@ -1114,7 +1114,19 @@ export interface InvRecipe {
   output_ten: string;
   output_qty: number;
   description: string;
-  lines: { item_id: number; ma_hang: string; ten: string; dvt: string; warehouse_id: number; so_luong: number }[];
+  tong_gia_tri: number;
+  gia_thanh_dv: number;
+  thieu_gia: boolean;
+  lines: {
+    item_id: number;
+    ma_hang: string;
+    ten: string;
+    dvt: string;
+    warehouse_id: number;
+    so_luong: number;
+    don_gia_bq?: number;
+    gia_tri?: number;
+  }[];
 }
 
 export interface HangingValueRow {

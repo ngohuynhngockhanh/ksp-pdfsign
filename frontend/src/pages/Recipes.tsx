@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, InvItem, InvRecipe, InvWarehouse } from "../api";
 
+function vnd(n: number): string {
+  return Math.round(n).toLocaleString("vi-VN");
+}
+
 interface EditRow {
   item_id: number | null;
   ma_hang: string;
@@ -8,6 +12,7 @@ interface EditRow {
   dvt: string;
   warehouse_id: number;
   so_luong: number;
+  don_gia_bq?: number; // gia von BQ hien tai (tu server)
   q: string;
   results: InvItem[];
 }
@@ -196,6 +201,7 @@ export function Recipes() {
               <th>Tên công thức</th>
               <th>Thành phẩm</th>
               <th>Vật tư định mức</th>
+              <th style={{ textAlign: "right" }}>Giá SX (ước tính)</th>
               <th></th>
             </tr>
           </thead>
@@ -207,6 +213,13 @@ export function Recipes() {
                   {r.output_ten} × {r.output_qty}
                 </td>
                 <td className="muted">{r.lines.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
+                <td style={{ textAlign: "right" }} className="nowrap">
+                  <b>{vnd(r.tong_gia_tri)}</b>
+                  {r.output_qty > 1 && (
+                    <div className="muted" style={{ fontSize: 11 }}>{vnd(r.gia_thanh_dv)}/đv</div>
+                  )}
+                  {r.thieu_gia && <div className="chip amber sm" title="Có NVL chưa có giá vốn — ước tính thiếu">⚠ thiếu giá</div>}
+                </td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <button className="btn-sm ghost" onClick={() => removeRecipe(r.id)}>
                     🗑
@@ -216,7 +229,7 @@ export function Recipes() {
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={4}>
+                <td colSpan={5}>
                   <div className="empty">
                     <div className="empty-ic">🧩</div>
                     <div>Chưa có công thức nào.</div>
@@ -290,6 +303,8 @@ export function Recipes() {
                     <th>ĐVT</th>
                     <th>Kho</th>
                     <th style={{ textAlign: "right" }}>SL</th>
+                    <th style={{ textAlign: "right" }}>Đơn giá BQ</th>
+                    <th style={{ textAlign: "right" }}>Giá trị</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -343,6 +358,12 @@ export function Recipes() {
                           onChange={(e) => setRow(i, { so_luong: Number(e.target.value) })}
                         />
                       </td>
+                      <td style={{ textAlign: "right" }} className="muted">
+                        {r.don_gia_bq != null ? vnd(r.don_gia_bq) : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="muted">
+                        {r.don_gia_bq != null ? vnd(r.don_gia_bq * r.so_luong) : "—"}
+                      </td>
                       <td>
                         <button className="btn-sm ghost" onClick={() => delRow(i)}>
                           🗑️
@@ -352,7 +373,7 @@ export function Recipes() {
                   ))}
                   {!edit.rows.length && (
                     <tr>
-                      <td colSpan={5}>
+                      <td colSpan={7}>
                         <div className="muted" style={{ padding: 12 }}>
                           Chưa có vật tư — bấm + Thêm dòng.
                         </div>
@@ -360,8 +381,30 @@ export function Recipes() {
                     </tr>
                   )}
                 </tbody>
+                {edit.rows.some((r) => r.don_gia_bq != null) && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: "right" }}>
+                        <b>Giá thành ước tính</b>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <b>{vnd(edit.rows.reduce((s, r) => s + (r.don_gia_bq ?? 0) * r.so_luong, 0))}</b>
+                        {edit.output_qty > 1 && (
+                          <div className="muted" style={{ fontSize: 11 }}>
+                            {vnd(edit.rows.reduce((s, r) => s + (r.don_gia_bq ?? 0) * r.so_luong, 0) / (edit.output_qty || 1))}/đv
+                          </div>
+                        )}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0" }}>
+              Giá thành ước tính theo <b>giá vốn bình quân hiện tại</b> của NVL — khác giá thành thực tế khi
+              ghi sổ Lệnh sản xuất (tính bình quân tại ngày SX). Số liệu cập nhật sau khi Lưu &amp; tải lại.
+            </p>
 
             <div style={{ margin: "10px 0" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
