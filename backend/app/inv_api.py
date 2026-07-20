@@ -7,16 +7,19 @@ import threading as _threading
 import time as _time
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, inv_export, inv_import, inventory, storage
+from . import ai, audit, customs, inv_export, inv_import, inventory, storage
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
     Customer,
+    InvCustomsCost,
+    InvCustomsDecl,
+    InvCustomsLine,
     InvIssue,
     InvIssueLine,
     InvItem,
@@ -37,6 +40,10 @@ from .schemas import (
     AssembleIn,
     BulkIds,
     DescribeBomIn,
+    InvCustomsCostOut,
+    InvCustomsDeclOut,
+    InvCustomsLineOut,
+    InvCustomsUpdate,
     InvImportUrlIn,
     InvIssueIn,
     InvIssueLineOut,
@@ -421,6 +428,7 @@ def item_flow(
     purchase_ids = {m.ref_id for m in moves if m.ref_type == "purchase" and m.ref_id}
     issue_ids = {m.ref_id for m in moves if m.ref_type == "issue" and m.ref_id}
     prod_ids = {m.ref_id for m in moves if m.ref_type == "production" and m.ref_id}
+    customs_ids = {m.ref_id for m in moves if m.ref_type == "customs" and m.ref_id}
 
     purchases = {
         p.id: p for p in db.scalars(select(InvPurchase).where(InvPurchase.id.in_(purchase_ids)))
@@ -431,6 +439,9 @@ def item_flow(
     prods = {
         p.id: p for p in db.scalars(select(InvProduction).where(InvProduction.id.in_(prod_ids)))
     } if prod_ids else {}
+    customs_decls = {
+        d.id: d for d in db.scalars(select(InvCustomsDecl).where(InvCustomsDecl.id.in_(customs_ids)))
+    } if customs_ids else {}
     cust_ids = {i.customer_id for i in issues.values() if i.customer_id}
     customers = {
         c.id: c for c in db.scalars(select(Customer).where(Customer.id.in_(cust_ids)))
@@ -471,6 +482,9 @@ def item_flow(
             prod = prods[m.ref_id]
             label = prod.so_ct or f"LSX nháp #{prod.id}"
             return {"kind": "production", "id": prod.id, "label": label, "status": prod.status}
+        if m.ref_type == "customs" and m.ref_id in customs_decls:
+            d = customs_decls[m.ref_id]
+            return {"kind": "customs", "id": d.id, "label": f"TKNK {d.so_to_khai}", "status": d.status}
         if m.ref_type == "opening":
             return {"kind": "opening", "id": None, "label": "Tồn đầu kỳ", "status": "posted"}
         if m.ref_type:
@@ -2628,3 +2642,356 @@ def hanging_value(
             "gia_tri": round(gt, 2),
         })
     return {"rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# To khai nhap khau (customs): parse Excel VNACCS 7N + PDF giay nop thue -> gia von
+# ---------------------------------------------------------------------------
+def _customs_default_wh(ma_loai_hinh: str, wh_map: dict[str, InvWarehouse]) -> InvWarehouse | None:
+    """A12 (nhap gia cong/SXXK NVL) -> kho NVL; con lai (A11 kinh doanh...) -> kho HH."""
+    code = "NVL" if ma_loai_hinh == "A12" else "HH"
+    return wh_map.get(code)
+
+
+def _customs_out(db: Session, decl: InvCustomsDecl) -> InvCustomsDeclOut:
+    items = {i.id: i for i in db.scalars(select(InvItem))}
+    whs = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    all_items = [i for i in items.values() if i.active]
+
+    lines = []
+    for ln in sorted(decl.lines, key=lambda x: (x.stt, x.id)):
+        it = items.get(ln.item_id) if ln.item_id else None
+        wh = whs.get(ln.warehouse_id) if ln.warehouse_id else None
+        sugg = []
+        if not ln.item_id:
+            _m, _k, cands = inv_import.match_suggestions(all_items, ln.mo_ta)
+            sugg = [
+                {
+                    "item_id": c.id, "ma_hang": c.ma_hang, "ten": c.ten, "dvt": c.dvt,
+                    "score": round(r, 2),
+                    "reason": "Trùng 100%" if r >= 0.99 else f"Giống {round(r * 100)}%",
+                }
+                for c, r in cands
+            ]
+        lines.append(InvCustomsLineOut(
+            id=ln.id, stt=ln.stt, ma_hs=ln.ma_hs, mo_ta=ln.mo_ta,
+            so_luong=ln.so_luong, dvt=ln.dvt, don_gia_nt=ln.don_gia_nt,
+            tri_gia_nt=ln.tri_gia_nt, tri_gia_tinh_thue=ln.tri_gia_tinh_thue,
+            thue_suat_nk=ln.thue_suat_nk, tien_thue_nk=ln.tien_thue_nk,
+            thue_suat_vat=ln.thue_suat_vat, tien_thue_vat=ln.tien_thue_vat,
+            item_id=ln.item_id, item_ma_hang=it.ma_hang if it else "",
+            item_ten=it.ten if it else "", warehouse_id=ln.warehouse_id,
+            warehouse_code=wh.code if wh else "", match_kind=ln.match_kind,
+            gia_von=ln.gia_von, suggestions=sugg,
+        ))
+    costs = [
+        InvCustomsCostOut(
+            id=c.id, loai=c.loai, ten=c.ten, so_tien=c.so_tien, ghi_chu=c.ghi_chu,
+            doc_url=f"/api/inv/customs/costs/{c.id}/file" if c.doc_id else "",
+        )
+        for c in sorted(decl.costs, key=lambda x: x.id)
+    ]
+    return InvCustomsDeclOut(
+        id=decl.id, so_to_khai=decl.so_to_khai, ngay_dang_ky=decl.ngay_dang_ky,
+        ma_loai_hinh=decl.ma_loai_hinh, phan_luong=decl.phan_luong,
+        co_quan_hq=decl.co_quan_hq, nguoi_xk=decl.nguoi_xk, nuoc_xk=decl.nuoc_xk,
+        so_van_don=decl.so_van_don, so_hoa_don=decl.so_hoa_don,
+        ngay_hoa_don=decl.ngay_hoa_don, phuong_thuc_tt=decl.phuong_thuc_tt,
+        incoterm=decl.incoterm, nguyen_te=decl.nguyen_te,
+        tri_gia_nt=decl.tri_gia_nt, phi_ship_nt=decl.phi_ship_nt, ti_gia=decl.ti_gia,
+        tri_gia_tinh_thue=decl.tri_gia_tinh_thue, tong_thue_nk=decl.tong_thue_nk,
+        tong_thue_vat=decl.tong_thue_vat, status=decl.status, note=decl.note,
+        created_at=decl.created_at.isoformat() if decl.created_at else "",
+        doc_url=f"/api/inv/customs/{decl.id}/file" if decl.doc_id else "",
+        tong_costs=sum(c.so_tien for c in decl.costs),
+        lines=lines, costs=costs,
+    )
+
+
+def _import_one_customs_file(db: Session, user: CurrentUser, name: str, content: bytes) -> dict:
+    """Parse 1 file Excel to khai VNACCS 7N -> tao draft (chong trung theo so to khai)."""
+    try:
+        data = customs.parse_customs_xlsx(content)
+    except ValueError as e:
+        return {"filename": name, "ok": False, "error": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"filename": name, "ok": False, "error": f"Không đọc được file: {e}"}
+
+    existing = db.scalars(
+        select(InvCustomsDecl).where(InvCustomsDecl.so_to_khai == data["so_to_khai"])
+    ).first()
+    if existing is not None:
+        return {
+            "filename": name, "ok": False,
+            "error": f"Tờ khai {data['so_to_khai']} đã tồn tại (#{existing.id}) — coi chừng import trùng",
+        }
+
+    doc_id = storage.save_upload(content, suffix=".xlsx")
+    decl = InvCustomsDecl(
+        so_to_khai=data["so_to_khai"], ngay_dang_ky=data["ngay_dang_ky"],
+        ma_loai_hinh=data["ma_loai_hinh"], phan_luong=data["phan_luong"],
+        co_quan_hq=data["co_quan_hq"], nguoi_xk=data["nguoi_xk"], nuoc_xk=data["nuoc_xk"],
+        so_van_don=data["so_van_don"], so_hoa_don=data["so_hoa_don"],
+        ngay_hoa_don=data["ngay_hoa_don"], phuong_thuc_tt=data["phuong_thuc_tt"],
+        incoterm=data["incoterm"], nguyen_te=data["nguyen_te"],
+        tri_gia_nt=data["tri_gia_nt"], phi_ship_nt=data["phi_ship_nt"], ti_gia=data["ti_gia"],
+        tri_gia_tinh_thue=data["tri_gia_tinh_thue"], tong_thue_nk=data["tong_thue_nk"],
+        tong_thue_vat=data["tong_thue_vat"], doc_id=doc_id, doc_suffix=".xlsx",
+    )
+    db.add(decl)
+
+    all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
+    wh_map = inventory.get_warehouse_map(db)
+    wh = _customs_default_wh(decl.ma_loai_hinh, wh_map)
+    for ln in data["lines"]:
+        matched, kind, _sugg = inv_import.match_suggestions(all_items, ln["mo_ta"])
+        db.add(InvCustomsLine(
+            decl=decl, stt=ln["stt"], ma_hs=ln["ma_hs"], mo_ta=ln["mo_ta"],
+            so_luong=ln["so_luong"], dvt=ln["dvt"], don_gia_nt=ln["don_gia_nt"],
+            tri_gia_nt=ln["tri_gia_nt"], tri_gia_tinh_thue=ln["tri_gia_tinh_thue"],
+            thue_suat_nk=ln["thue_suat_nk"], tien_thue_nk=ln["tien_thue_nk"],
+            thue_suat_vat=ln["thue_suat_vat"], tien_thue_vat=ln["tien_thue_vat"],
+            item_id=matched.id if matched else None,
+            warehouse_id=wh.id if wh else None, match_kind=kind,
+        ))
+    db.commit()
+    db.refresh(decl)
+    _audit(db, user, "inv_customs_upload", name, f"TK #{decl.id} · {decl.so_to_khai}")
+    return {"filename": name, "ok": True, "customs_id": decl.id, "so_to_khai": decl.so_to_khai}
+
+
+@router.post("/customs/upload")
+async def customs_upload(
+    files: list[UploadFile] = File(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Upload nhieu file Excel to khai VNACCS 7N. Moi file -> 1 draft (hoac loi rieng)."""
+    results = []
+    for f in files:
+        name = f.filename or "file"
+        content = await f.read()
+        results.append(_import_one_customs_file(db, user, name, content))
+    return {"results": results}
+
+
+@router.get("/customs", response_model=list[InvCustomsDeclOut])
+def customs_list(
+    status_f: str = "",
+    tu: str = "",
+    den: str = "",
+    limit: int = 100,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    stmt = select(InvCustomsDecl)
+    if status_f:
+        stmt = stmt.where(InvCustomsDecl.status == status_f)
+    if tu:
+        stmt = stmt.where(InvCustomsDecl.ngay_dang_ky >= tu)
+    if den:
+        stmt = stmt.where(InvCustomsDecl.ngay_dang_ky <= den)
+    stmt = stmt.order_by(InvCustomsDecl.id.desc()).limit(min(limit, 500))
+    return [_customs_out(db, d) for d in db.scalars(stmt)]
+
+
+@router.get("/customs/{cid}", response_model=InvCustomsDeclOut)
+def customs_get(
+    cid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    return _customs_out(db, decl)
+
+
+@router.get("/customs/{cid}/file")
+def customs_file(
+    cid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl or not decl.doc_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tờ khai không có file gốc")
+    data = storage.read_doc(decl.doc_id, suffix=decl.doc_suffix or ".xlsx")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@router.patch("/customs/{cid}", response_model=InvCustomsDeclOut)
+def customs_update(
+    cid: int,
+    body: InvCustomsUpdate,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Sua ban nhap: note + tung dong (item/kho/SL) + thay toan bo chi phi THU CONG
+    (khong file — chi phi co file dinh kem qua /attach van giu nguyen)."""
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    if decl.status != "draft":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ sửa được bản nháp (hủy ghi sổ trước)")
+    if body.note is not None:
+        decl.note = body.note
+    if body.lines is not None:
+        by_id = {ln.id: ln for ln in decl.lines}
+        for src in body.lines:
+            ln = by_id.get(src.id)
+            if ln is None:
+                continue
+            if src.item_id is not None:
+                ln.item_id = src.item_id
+                ln.match_kind = "manual"
+            if src.warehouse_id is not None:
+                ln.warehouse_id = src.warehouse_id
+            if src.so_luong is not None:
+                ln.so_luong = src.so_luong
+    if body.costs is not None:
+        for c in list(decl.costs):
+            if not c.doc_id:  # chi phi co file (tu /attach) khong bi dong nay dung toi
+                db.delete(c)
+        for c in body.costs:
+            db.add(InvCustomsCost(
+                decl=decl, loai=c.loai, ten=c.ten, so_tien=c.so_tien, ghi_chu=c.ghi_chu,
+            ))
+    db.commit()
+    db.refresh(decl)
+    return _customs_out(db, decl)
+
+
+@router.delete("/customs/{cid}")
+def customs_delete(
+    cid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    if decl.status == "posted":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tờ khai đã ghi sổ — hủy ghi sổ trước khi xóa")
+    db.delete(decl)
+    db.commit()
+    _audit(db, user, "inv_customs_delete", f"TK #{cid}")
+    return {"ok": True}
+
+
+@router.post("/customs/{cid}/post", response_model=InvCustomsDeclOut)
+def customs_post(
+    cid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    try:
+        inventory.post_customs(db, decl)
+    except PostError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except NegativeStockError as e:
+        db.rollback()
+        raise _neg(e)
+    _audit(db, user, "inv_customs_post", f"TK #{cid}", f"{decl.so_to_khai} · {decl.ngay_dang_ky}")
+    return _customs_out(db, decl)
+
+
+@router.post("/customs/{cid}/void", response_model=InvCustomsDeclOut)
+def customs_void(
+    cid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    try:
+        inventory.unpost_customs(db, decl)
+    except PostError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except NegativeStockError as e:
+        db.rollback()
+        raise _neg(e)
+    _audit(db, user, "inv_customs_void", f"TK #{cid}")
+    return _customs_out(db, decl)
+
+
+@router.post("/customs/{cid}/attach")
+async def customs_attach(
+    cid: int,
+    file: UploadFile = File(...),
+    loai_goi_y: str = Form(""),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Dinh kem giay nop tien thue (C1-02/NS) hoac dien MT103 vao to khai.
+
+    Giay nop tien: tu nhan dien khoan VAT (chi ghi nhan, KHONG tao cost — da nam
+    trong tri_gia_tinh_thue tren to khai) vs khoan khac (le phi/TTDB -> tao
+    InvCustomsCost, se duoc PHAN BO vao gia von khi ghi so).
+    Khong phai giay nop tien -> thu doc nhu dien MT103 (chuyen tien quoc te) ->
+    tra ve goi y + tao san 1 dong chi phi phi ngan hang (so_tien=0, sua tay).
+    Khong khop ca 2 dinh dang -> 400.
+    """
+    decl = db.get(InvCustomsDecl, cid)
+    if not decl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    content = await file.read()
+
+    try:
+        parsed = customs.parse_giay_nop_tien(content)
+    except ValueError:
+        parsed = None
+
+    if parsed is not None:
+        prefix = parsed["so_to_khai_prefix"]
+        if prefix and not decl.so_to_khai.startswith(prefix):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Số tờ khai trên giấy nộp tiền ({prefix}) không khớp tờ khai này ({decl.so_to_khai})",
+            )
+        doc_id = storage.save_upload(content, suffix=".pdf")
+        vat_paid = []
+        for kn in parsed["khoan_nop"]:
+            if kn["phan_loai"] == "vat":
+                vat_paid.append(kn)
+                continue
+            loai = loai_goi_y or ("le_phi_hq" if kn["phan_loai"] == "le_phi" else kn["phan_loai"])
+            db.add(InvCustomsCost(
+                decl=decl, loai=loai, ten=kn["noi_dung"][:255] or "Khoản nộp hải quan",
+                so_tien=kn["so_tien"], doc_id=doc_id, doc_suffix=".pdf",
+                ghi_chu=f"Mã NDKT {kn['ma_ndkt']}",
+            ))
+        db.commit()
+        db.refresh(decl)
+        _audit(db, user, "inv_customs_attach", file.filename or "", f"TK #{cid} · giấy nộp tiền")
+        return {
+            "decl": _customs_out(db, decl),
+            "parse_info": {"kind": "giay_nop_tien", "khoan_nop": parsed["khoan_nop"], "vat_paid": vat_paid},
+        }
+
+    try:
+        mt = customs.parse_mt103(content)
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Không nhận diện được file — chỉ nhận giấy nộp tiền NSNN (C1-02/NS) hoặc điện MT103",
+        )
+    doc_id = storage.save_upload(content, suffix=".pdf")
+    db.add(InvCustomsCost(
+        decl=decl, loai=loai_goi_y or "phi_ngan_hang", ten="Phí ngân hàng (chuyển tiền quốc tế)",
+        so_tien=0.0, doc_id=doc_id, doc_suffix=".pdf", ghi_chu=mt.get("remittance", ""),
+    ))
+    db.commit()
+    db.refresh(decl)
+    _audit(db, user, "inv_customs_attach", file.filename or "", f"TK #{cid} · MT103")
+    return {"decl": _customs_out(db, decl), "parse_info": {"kind": "mt103", "mt103": mt}}
+
+
+@router.get("/customs/costs/{cost_id}/file")
+def customs_cost_file(
+    cost_id: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    cost = db.get(InvCustomsCost, cost_id)
+    if not cost or not cost.doc_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chi phí không có file gốc")
+    data = storage.read_doc(cost.doc_id, suffix=cost.doc_suffix or ".pdf")
+    return Response(content=data, media_type="application/pdf")

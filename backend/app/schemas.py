@@ -727,6 +727,90 @@ class InvRecipeOut(BaseModel):
     lines: list[dict] = Field(default_factory=list)
 
 
+# --- To khai nhap khau (customs) ---
+class InvCustomsLineIn(BaseModel):
+    id: int
+    item_id: int | None = None
+    warehouse_id: int | None = None
+    so_luong: float | None = None
+
+
+class InvCustomsCostIn(BaseModel):
+    loai: str = ""
+    ten: str = ""
+    so_tien: float = 0
+    ghi_chu: str = ""
+
+
+class InvCustomsUpdate(BaseModel):
+    note: str | None = None
+    lines: list[InvCustomsLineIn] | None = None
+    costs: list[InvCustomsCostIn] | None = None
+
+
+class InvCustomsLineOut(BaseModel):
+    id: int
+    stt: int
+    ma_hs: str = ""
+    mo_ta: str = ""
+    so_luong: float = 0
+    dvt: str = ""
+    don_gia_nt: float = 0
+    tri_gia_nt: float = 0
+    tri_gia_tinh_thue: float = 0
+    thue_suat_nk: float = 0
+    tien_thue_nk: float = 0
+    thue_suat_vat: float = 0
+    tien_thue_vat: float = 0
+    item_id: int | None = None
+    item_ma_hang: str = ""
+    item_ten: str = ""
+    warehouse_id: int | None = None
+    warehouse_code: str = ""
+    match_kind: str = "none"
+    gia_von: float = 0
+    suggestions: list[dict] = Field(default_factory=list)
+
+
+class InvCustomsCostOut(BaseModel):
+    id: int
+    loai: str = ""
+    ten: str = ""
+    so_tien: float = 0
+    ghi_chu: str = ""
+    doc_url: str = ""
+
+
+class InvCustomsDeclOut(BaseModel):
+    id: int
+    so_to_khai: str
+    ngay_dang_ky: str = ""
+    ma_loai_hinh: str = ""
+    phan_luong: str = ""
+    co_quan_hq: str = ""
+    nguoi_xk: str = ""
+    nuoc_xk: str = ""
+    so_van_don: str = ""
+    so_hoa_don: str = ""
+    ngay_hoa_don: str = ""
+    phuong_thuc_tt: str = ""
+    incoterm: str = ""
+    nguyen_te: str = ""
+    tri_gia_nt: float = 0
+    phi_ship_nt: float = 0
+    ti_gia: float = 0
+    tri_gia_tinh_thue: float = 0
+    tong_thue_nk: float = 0
+    tong_thue_vat: float = 0
+    status: str = "draft"
+    note: str = ""
+    created_at: str = ""
+    doc_url: str = ""
+    tong_costs: float = 0
+    lines: list[InvCustomsLineOut] = Field(default_factory=list)
+    costs: list[InvCustomsCostOut] = Field(default_factory=list)
+
+
 class DescribeNvlLine(BaseModel):
     ten: str = ""
     so_luong: float = 0

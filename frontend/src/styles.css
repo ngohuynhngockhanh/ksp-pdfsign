@@ -768,6 +768,14 @@ label.link-btn.file-inline {
   background: #e0e7ff;
   color: #3730a3;
 }
+.chip.blue {
+  background: #dbeafe;
+  color: #075985;
+}
+.chip.purple {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
 .badge.tb-bbbg {
   background: #f3e8ff;
   color: #6b21a8;

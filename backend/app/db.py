@@ -518,6 +518,91 @@ class InvRecipeLine(Base):
     item: Mapped["InvItem"] = relationship()
 
 
+class InvCustomsDecl(Base):
+    """To khai nhap khau (VNACCS 7N) da parse tu Excel — draft -> posted (nhap kho)."""
+
+    __tablename__ = "inv_customs_decls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    so_to_khai: Mapped[str] = mapped_column(String(15), unique=True, index=True)
+    ngay_dang_ky: Mapped[str] = mapped_column(String(10), default="")
+    ma_loai_hinh: Mapped[str] = mapped_column(String(5), default="")
+    phan_luong: Mapped[str] = mapped_column(String(1), default="")
+    co_quan_hq: Mapped[str] = mapped_column(String(20), default="")
+    nguoi_xk: Mapped[str] = mapped_column(String(255), default="")
+    nuoc_xk: Mapped[str] = mapped_column(String(5), default="")
+    so_van_don: Mapped[str] = mapped_column(String(50), default="")
+    so_hoa_don: Mapped[str] = mapped_column(String(50), default="")
+    ngay_hoa_don: Mapped[str] = mapped_column(String(10), default="")
+    phuong_thuc_tt: Mapped[str] = mapped_column(String(10), default="")
+    incoterm: Mapped[str] = mapped_column(String(5), default="")
+    nguyen_te: Mapped[str] = mapped_column(String(3), default="")
+    tri_gia_nt: Mapped[float] = mapped_column(default=0.0)
+    phi_ship_nt: Mapped[float] = mapped_column(default=0.0)
+    ti_gia: Mapped[float] = mapped_column(default=0.0)
+    tri_gia_tinh_thue: Mapped[float] = mapped_column(default=0.0)
+    tong_thue_nk: Mapped[float] = mapped_column(default=0.0)
+    tong_thue_vat: Mapped[float] = mapped_column(default=0.0)
+    status: Mapped[str] = mapped_column(String(10), default="draft", index=True)
+    doc_id: Mapped[str] = mapped_column(String(64), default="")
+    doc_suffix: Mapped[str] = mapped_column(String(10), default=".xlsx")
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    lines: Mapped[list["InvCustomsLine"]] = relationship(
+        back_populates="decl", cascade="all, delete-orphan"
+    )
+    costs: Mapped[list["InvCustomsCost"]] = relationship(
+        back_populates="decl", cascade="all, delete-orphan"
+    )
+
+
+class InvCustomsLine(Base):
+    __tablename__ = "inv_customs_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    decl_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_decls.id"), index=True)
+    stt: Mapped[int] = mapped_column(default=0)
+    ma_hs: Mapped[str] = mapped_column(String(12), default="")
+    mo_ta: Mapped[str] = mapped_column(String(500), default="")
+    so_luong: Mapped[float] = mapped_column(default=0.0)
+    dvt: Mapped[str] = mapped_column(String(20), default="")
+    don_gia_nt: Mapped[float] = mapped_column(default=0.0)
+    tri_gia_nt: Mapped[float] = mapped_column(default=0.0)
+    tri_gia_tinh_thue: Mapped[float] = mapped_column(default=0.0)
+    thue_suat_nk: Mapped[float] = mapped_column(default=0.0)
+    tien_thue_nk: Mapped[float] = mapped_column(default=0.0)
+    thue_suat_vat: Mapped[float] = mapped_column(default=0.0)
+    tien_thue_vat: Mapped[float] = mapped_column(default=0.0)
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("inv_items.id"), nullable=True)
+    warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inv_warehouses.id"), nullable=True
+    )
+    match_kind: Mapped[str] = mapped_column(String(10), default="none")
+    gia_von: Mapped[float] = mapped_column(default=0.0)
+
+    decl: Mapped["InvCustomsDecl"] = relationship(back_populates="lines")
+    item: Mapped["InvItem | None"] = relationship()
+
+
+class InvCustomsCost(Base):
+    """Chi phi phat sinh theo to khai: le phi HQ, TTDB, phi ngan hang... (phan bo vao gia von)."""
+
+    __tablename__ = "inv_customs_costs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    decl_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_decls.id"), index=True)
+    loai: Mapped[str] = mapped_column(String(20), default="")
+    ten: Mapped[str] = mapped_column(String(255), default="")
+    so_tien: Mapped[float] = mapped_column(default=0.0)
+    doc_id: Mapped[str] = mapped_column(String(64), default="")
+    doc_suffix: Mapped[str] = mapped_column(String(10), default=".pdf")
+    ghi_chu: Mapped[str] = mapped_column(String(255), default="")
+
+    decl: Mapped["InvCustomsDecl"] = relationship(back_populates="costs")
+
+
 _engine = None
 _SessionLocal = None
 

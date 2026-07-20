@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import (
+    InvCustomsDecl,
     InvIssue,
     InvIssueLine,
     InvItem,
@@ -650,6 +651,76 @@ def unpost_production(db: Session, prod: InvProduction) -> None:
     validate_pairs(db, pairs)
     prod.status = "draft"
     prod.posted_at = None
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# To khai nhap khau (customs): nhap kho theo gia von = tri gia tinh thue + thue
+# NK + chi phi phat sinh (le phi HQ/TTDB/ngan hang...) phan bo theo ti trong.
+# ---------------------------------------------------------------------------
+def post_customs(db: Session, decl: InvCustomsDecl) -> None:
+    """Ghi so to khai nhap khau: moi dong -> 1 move 'nhap'.
+
+    gia_von dong = tri_gia_tinh_thue (VND, da gom phi ship khai tren to khai)
+    + tien_thue_nk + PHAN BO chi phi tu InvCustomsCost theo ti trong tri_gia_tinh_thue
+    cua tung dong (dong cuoi nhan phan du lam tron — pattern giong post_production).
+    """
+    if decl.status != "draft":
+        raise PostError(f"Tờ khai đang ở trạng thái '{decl.status}', chỉ ghi sổ được bản nháp")
+    _check_ngay(decl.ngay_dang_ky)
+    if not decl.lines:
+        raise PostError("Tờ khai chưa có dòng hàng nào")
+    for ln in decl.lines:
+        if not ln.item_id or not ln.warehouse_id:
+            raise PostError(
+                f"Dòng {ln.stt} ({ln.mo_ta[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
+            )
+        if ln.so_luong <= 0:
+            raise PostError(f"Dòng {ln.stt} ({ln.mo_ta[:40]}): số lượng phải > 0")
+
+    tong_costs = sum(c.so_tien for c in decl.costs)
+    tong_thue_co_so = sum(ln.tri_gia_tinh_thue for ln in decl.lines)
+    lines_sorted = sorted(decl.lines, key=lambda x: (x.stt, x.id))
+
+    pairs: set[tuple[int, int]] = set()
+    allocated = 0.0
+    for i, ln in enumerate(lines_sorted):
+        if i < len(lines_sorted) - 1:
+            phan_bo = round(tong_costs * (ln.tri_gia_tinh_thue / tong_thue_co_so)) if tong_thue_co_so > EPS else 0.0
+            allocated += phan_bo
+        else:
+            phan_bo = round(tong_costs - allocated)  # dong cuoi nhan phan du lam tron
+        gia_von = round(ln.tri_gia_tinh_thue + ln.tien_thue_nk + phan_bo)
+        ln.gia_von = gia_von
+        db.add(InvMove(
+            item_id=ln.item_id,
+            warehouse_id=ln.warehouse_id,
+            ngay=decl.ngay_dang_ky,
+            loai="nhap",
+            so_luong=ln.so_luong,
+            don_gia=gia_von / ln.so_luong if ln.so_luong else 0.0,
+            gia_tri=gia_von,
+            ref_type="customs",
+            ref_id=decl.id,
+            ref_line_id=ln.id,
+        ))
+        pairs.add((ln.item_id, ln.warehouse_id))
+    db.flush()
+    validate_pairs(db, pairs)
+    decl.status = "posted"
+    decl.posted_at = _utcnow()
+    db.commit()
+
+
+def unpost_customs(db: Session, decl: InvCustomsDecl) -> None:
+    """Huy ghi so (ve nhap): xoa moves; chan neu lam am kho phieu xuat sau do."""
+    if decl.status != "posted":
+        raise PostError("Tờ khai chưa ghi sổ")
+    pairs = _delete_ref_moves(db, "customs", decl.id)
+    db.flush()
+    validate_pairs(db, pairs)
+    decl.status = "draft"
+    decl.posted_at = None
     db.commit()
 
 

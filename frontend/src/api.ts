@@ -890,6 +890,54 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  // --- To khai nhap khau (customs) ---
+  async invCustomsList(filters: { statusF?: string; tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams();
+    if (filters.statusF) p.set("status_f", filters.statusF);
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvCustomsDecl[]>(`/api/inv/customs?${p.toString()}`);
+  },
+  async invCustomsGet(id: number) {
+    return req<InvCustomsDecl>(`/api/inv/customs/${id}`);
+  },
+  async invCustomsUpload(files: File[]) {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return req<{
+      results: { filename: string; ok: boolean; customs_id?: number; so_to_khai?: string; error?: string }[];
+    }>("/api/inv/customs/upload", { method: "POST", body: fd });
+  },
+  async invCustomsSave(id: number, body: unknown) {
+    return req<InvCustomsDecl>(`/api/inv/customs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async invCustomsPost(id: number) {
+    return req<InvCustomsDecl>(`/api/inv/customs/${id}/post`, { method: "POST" });
+  },
+  async invCustomsVoid(id: number) {
+    return req<InvCustomsDecl>(`/api/inv/customs/${id}/void`, { method: "POST" });
+  },
+  async invCustomsDelete(id: number) {
+    return req(`/api/inv/customs/${id}`, { method: "DELETE" });
+  },
+  async invCustomsAttach(id: number, file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<{ decl: InvCustomsDecl; parse_info: CustomsParseInfo }>(
+      `/api/inv/customs/${id}/attach`,
+      { method: "POST", body: fd },
+    );
+  },
+  invCustomsFileUrl(id: number) {
+    return `/api/inv/customs/${id}/file`;
+  },
+  invCustomsCostFileUrl(costId: number) {
+    return `/api/inv/customs/costs/${costId}/file`;
+  },
   async invRecalcCost() {
     return req<{ ok: boolean; pairs: number }>("/api/inv/recalc-cost", { method: "POST" });
   },
@@ -927,6 +975,90 @@ export interface InvItem {
   active: boolean;
   product_id: number | null;
 }
+
+// --- To khai nhap khau (customs) ---
+export interface InvCustomsLine {
+  id: number;
+  stt: number;
+  ma_hs: string;
+  mo_ta: string;
+  so_luong: number;
+  dvt: string;
+  don_gia_nt: number;
+  tri_gia_nt: number;
+  tri_gia_tinh_thue: number;
+  thue_suat_nk: number;
+  tien_thue_nk: number;
+  thue_suat_vat: number;
+  tien_thue_vat: number;
+  item_id: number | null;
+  item_ma_hang: string;
+  item_ten: string;
+  warehouse_id: number | null;
+  warehouse_code: string;
+  match_kind: string;
+  gia_von: number;
+  suggestions: { item_id: number; ma_hang: string; ten: string; dvt: string; score?: number; reason?: string }[];
+}
+
+export interface InvCustomsCost {
+  id: number;
+  loai: string;
+  ten: string;
+  so_tien: number;
+  ghi_chu: string;
+  doc_url: string;
+}
+
+export interface InvCustomsDecl {
+  id: number;
+  so_to_khai: string;
+  ngay_dang_ky: string;
+  ma_loai_hinh: string;
+  phan_luong: string;
+  co_quan_hq: string;
+  nguoi_xk: string;
+  nuoc_xk: string;
+  so_van_don: string;
+  so_hoa_don: string;
+  ngay_hoa_don: string;
+  phuong_thuc_tt: string;
+  incoterm: string;
+  nguyen_te: string;
+  tri_gia_nt: number;
+  phi_ship_nt: number;
+  ti_gia: number;
+  tri_gia_tinh_thue: number;
+  tong_thue_nk: number;
+  tong_thue_vat: number;
+  status: string;
+  note: string;
+  created_at: string;
+  doc_url: string;
+  tong_costs: number;
+  lines: InvCustomsLine[];
+  costs: InvCustomsCost[];
+}
+
+export interface CustomsKhoanNop {
+  noi_dung: string;
+  so_tien: number;
+  ma_chuong: string;
+  ma_ndkt: string;
+  phan_loai: string;
+}
+
+export interface CustomsMt103 {
+  ngay: string;
+  nguyen_te: string;
+  so_tien_nt: number;
+  remittance: string;
+  beneficiary: string;
+}
+
+export type CustomsParseInfo =
+  | { kind: "giay_nop_tien"; khoan_nop: CustomsKhoanNop[]; vat_paid: CustomsKhoanNop[] }
+  | { kind: "mt103"; mt103: CustomsMt103 };
 
 export interface StockRow {
   item_id: number;

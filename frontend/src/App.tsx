@@ -12,6 +12,7 @@ import { CreateQuote } from "./pages/CreateQuote";
 import { AuditLog } from "./pages/AuditLog";
 import { Inventory } from "./pages/Inventory";
 import { PurchaseImport } from "./pages/PurchaseImport";
+import { CustomsDecl } from "./pages/CustomsDecl";
 import { SalesInvoice } from "./pages/SalesInvoice";
 import { StockIssue } from "./pages/StockIssue";
 import { Production } from "./pages/Production";
@@ -23,6 +24,7 @@ type Tab =
   | "quote"
   | "tonkho"
   | "nhaphang"
+  | "tokhai"
   | "banra"
   | "xuatkho"
   | "sanxuat"
@@ -40,6 +42,7 @@ const ROUTES: Record<Tab, string> = {
   quote: "/bao-gia",
   tonkho: "/ton-kho",
   nhaphang: "/nhap-hang",
+  tokhai: "/to-khai-nk",
   banra: "/ban-ra",
   xuatkho: "/xuat-kho",
   sanxuat: "/san-xuat",
@@ -126,7 +129,7 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "sign", "bbbg", "quote", "tonkho", "nhaphang", "banra", "xuatkho", "sanxuat", "congthuc",
+              "sign", "bbbg", "quote", "tonkho", "nhaphang", "tokhai", "banra", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
@@ -167,6 +170,7 @@ export function App() {
       [
         ["tonkho", "Tồn kho", "📦"],
         ["nhaphang", "Nhập hàng", "🧾"],
+        ["tokhai", "Tờ khai NK", "🛃"],
         ["banra", "Bán ra", "🧾"],
         ["xuatkho", "Xuất kho", "📤"],
         ["sanxuat", "Sản xuất", "🏭"],
@@ -285,6 +289,7 @@ export function App() {
         {tab === "nhaphang" && isAdmin && (
           <PurchaseImport openId={openPurchaseId} onConsumed={() => setOpenPurchaseId(null)} />
         )}
+        {tab === "tokhai" && isAdmin && <CustomsDecl />}
         {tab === "banra" && isAdmin && <SalesInvoice />}
         {tab === "xuatkho" && isAdmin && <StockIssue />}
         {tab === "sanxuat" && isAdmin && <Production />}
