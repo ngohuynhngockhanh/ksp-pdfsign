@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, InvProduction, InvProductionLine, InvRecipe, InvWarehouse, StockRow } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -43,6 +44,8 @@ export function Production() {
   const [view, setView] = useState<InvProduction | null>(null);
   const [viewAvail, setViewAvail] = useState<StockRow[]>([]);
   const [viewBusy, setViewBusy] = useState(false);
+  const [listLoaded, setListLoaded] = useState(false);
+  const autoLsxRef = useRef(false);
 
   async function load() {
     try {
@@ -50,6 +53,8 @@ export function Production() {
       setRecipes(await api.invRecipes());
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setListLoaded(true);
     }
   }
   useEffect(() => {
@@ -59,6 +64,17 @@ export function Production() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.tu, dateRange.den]);
+  // F5 giu context: sau khi list load lan dau, tu mo lai lenh theo ?lsx=<production_id>
+  useEffect(() => {
+    if (!listLoaded || autoLsxRef.current) return;
+    autoLsxRef.current = true;
+    const lsx = getParam("lsx");
+    if (lsx) {
+      const prod = list.find((p) => p.id === Number(lsx));
+      if (prod) openView(prod);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoaded]);
   useEffect(() => {
     if (!creating) return;
     api
@@ -222,9 +238,14 @@ export function Production() {
   function openView(prod: InvProduction) {
     setErr("");
     setView(prod);
+    setParam("lsx", String(prod.id));
     if (prod.status === "draft") {
       api.invAvailability(prod.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
     }
+  }
+  function closeView() {
+    setView(null);
+    setParam("lsx", null);
   }
   function patchViewLine(lineId: number, patch: Partial<InvProductionLine>) {
     setView((v) => (v ? { ...v, lines: v.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) } : v));
@@ -658,7 +679,7 @@ export function Production() {
       )}
 
       {view && (
-        <div className="modal-backdrop" onClick={() => setView(null)}>
+        <div className="modal-backdrop" onClick={closeView}>
           <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
             <h3>
               Lệnh sản xuất {view.so_ct || `LSX#${view.id}`}{" "}
@@ -923,7 +944,7 @@ export function Production() {
             </div>
 
             <div className="modal-actions">
-              <button onClick={() => setView(null)}>Đóng</button>
+              <button onClick={closeView}>Đóng</button>
               {view.status === "draft" && (
                 <>
                   <button disabled={viewBusy} onClick={doViewSave}>

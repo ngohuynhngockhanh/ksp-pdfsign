@@ -300,6 +300,44 @@ def test_ai_only_gets_items_with_stock(client, monkeypatch):
     assert no_stock["ma_hang"] not in names
 
 
+def test_suggest_bom_clamps_qty_to_available_stock(client, monkeypatch):
+    """AI co the de xuat SL vuot qua ton kha dung — phai tu dong ha xuong dung
+    kha dung va ghi ro trong ly_do, tranh de xuat vuot qua so thuc te co the xuat."""
+    it = client.post("/api/inv/items", json={"ma_hang": "HH302", "ten": "Linh kien it hang", "dvt": "Cai"}).json()
+    whs = client.get("/api/inv/warehouses").json()
+    hh = next(w["id"] for w in whs if w["code"] == "HH")
+
+    p = client.post("/api/inv/purchase", json={
+        "so_hd": "P2", "ky_hieu": "K1", "mst_ban": "0000000001", "ten_ban": "NCC test", "ngay": "2026-01-01",
+        "lines": [{"ten_raw": "Linh kien it hang", "dvt": "Cai", "so_luong": 10, "don_gia": 50000,
+                   "item_id": it["id"], "warehouse_id": hh, "match_kind": "manual"}],
+    }).json()
+    assert client.post(f"/api/inv/purchase/{p['id']}/post").status_code == 200
+
+    xml = _hdon_xml("31", "2026-04-11", [{"ten": "Bo thiet bi lap dat test clamp", "dvt": "Bo", "ts": "8%"}])
+    res = _upload(client, "ihoadon_4401053694_31_1_11042026_0.xml", xml)
+    sid = res["results"][0]["sale_id"]
+    client.patch(f"/api/inv/sale/{sid}", json={"status": "reviewed"})
+    ln = client.get(f"/api/inv/sale/{sid}").json()["lines"][0]
+
+    def fake_suggest_bom(settings, ten_bo, gia_ban, stock_items, context="", existing=None):
+        return {
+            "components": [{"ten": "Linh kien it hang", "so_luong": 100, "ly_do": "can 100 cai"}],
+            "cost_est": 0, "margin_est": 0, "note": "",
+        }
+
+    from app import ai as ai_module
+
+    monkeypatch.setattr(ai_module, "suggest_bom", fake_suggest_bom)
+    r = client.post(f"/api/inv/sale/{sid}/suggest-bom/{ln['id']}", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    comp = body["components"][0]
+    assert comp["so_luong"] == 10
+    assert "đã hạ" in comp["ly_do"]
+    assert "1 linh kiện" in body["note"]
+
+
 def test_item_cost_endpoint(client):
     it = client.post("/api/inv/items", json={"ma_hang": "HH200", "ten": "Switch PoE 8 cong", "dvt": "Cai"}).json()
     r = client.get(f"/api/inv/items/{it['id']}/cost")

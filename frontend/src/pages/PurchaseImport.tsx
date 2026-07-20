@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -61,6 +62,8 @@ export function PurchaseImport({
   const [bangKeBusy, setBangKeBusy] = useState(false);
   const [bangKe, setBangKe] = useState<BangKeResult | null>(null);
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [listLoaded, setListLoaded] = useState(false);
+  const autoHdRef = useRef(false);
 
   function toggleSel(id: number) {
     setSel((s) => {
@@ -124,6 +127,8 @@ export function PurchaseImport({
       setList(await api.invPurchases(statusF, { ...dateRange, vat: vatF }));
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setListLoaded(true);
     }
   }
   useEffect(() => {
@@ -141,6 +146,14 @@ export function PurchaseImport({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
+  // F5 giu context: sau khi list load lan dau, tu mo lai modal chi tiet theo ?hd=
+  useEffect(() => {
+    if (!listLoaded || autoHdRef.current) return;
+    autoHdRef.current = true;
+    const hd = getParam("hd");
+    if (hd) open(Number(hd));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoaded]);
 
   async function upload(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -205,9 +218,14 @@ export function PurchaseImport({
     try {
       setCur(await api.invPurchase(id));
       setItemQuery(null);
+      setParam("hd", String(id));
     } catch (e) {
       setErr((e as Error).message);
     }
+  }
+  function closeCur() {
+    setCur(null);
+    setParam("hd", null);
   }
 
   function setLine(idx: number, patch: Partial<InvPurchaseLine>) {
@@ -487,7 +505,7 @@ export function PurchaseImport({
       </div>
 
       {cur && (
-        <div className="modal-backdrop" onClick={() => setCur(null)}>
+        <div className="modal-backdrop" onClick={closeCur}>
           <div className="modal" style={{ maxWidth: 1360 }} onClick={(e) => e.stopPropagation()}>
             <h3>
               Hóa đơn mua #{cur.id}{" "}
@@ -808,7 +826,7 @@ export function PurchaseImport({
                   <button className="btn-sm danger" onClick={async () => {
                     if (!window.confirm("Xóa bản nháp này?")) return;
                     await api.invPurchaseDelete(cur.id);
-                    setCur(null);
+                    closeCur();
                     load();
                   }}>
                     Xóa nháp
@@ -852,7 +870,7 @@ export function PurchaseImport({
                   ↩️ Hủy ghi sổ
                 </button>
               )}
-              <button onClick={() => setCur(null)}>Đóng</button>
+              <button onClick={closeCur}>Đóng</button>
             </div>
           </div>
         </div>

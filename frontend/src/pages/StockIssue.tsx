@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   Customer,
@@ -9,6 +9,7 @@ import {
   StockRow,
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -56,12 +57,16 @@ export function StockIssue() {
   const [view, setView] = useState<InvIssue | null>(null);
   const [viewAvail, setViewAvail] = useState<StockRow[]>([]);
   const [viewBusy, setViewBusy] = useState(false);
+  const [listLoaded, setListLoaded] = useState(false);
+  const autoPxRef = useRef(false);
 
   async function load() {
     try {
       setList(await api.invIssues("", dateRange));
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setListLoaded(true);
     }
   }
   useEffect(() => {
@@ -71,6 +76,17 @@ export function StockIssue() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.tu, dateRange.den]);
+  // F5 giu context: sau khi list load lan dau, tu mo lai phieu theo ?px=<issue_id>
+  useEffect(() => {
+    if (!listLoaded || autoPxRef.current) return;
+    autoPxRef.current = true;
+    const px = getParam("px");
+    if (px) {
+      const iss = list.find((i) => i.id === Number(px));
+      if (iss) openView(iss);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoaded]);
 
   // Doi ngay -> tai lai kha dung (chi hien thu co the xuat tai ngay do)
   useEffect(() => {
@@ -136,9 +152,14 @@ export function StockIssue() {
   function openView(iss: InvIssue) {
     setErr("");
     setView(iss);
+    setParam("px", String(iss.id));
     if (iss.status === "draft") {
       api.invAvailability(iss.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
     }
+  }
+  function closeView() {
+    setView(null);
+    setParam("px", null);
   }
   function patchViewLine(lineId: number, patch: Partial<InvIssueLine>) {
     setView((v) => (v ? { ...v, lines: v.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) } : v));
@@ -492,7 +513,7 @@ export function StockIssue() {
       )}
 
       {view && (
-        <div className="modal-backdrop" onClick={() => setView(null)}>
+        <div className="modal-backdrop" onClick={closeView}>
           <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
             <h3>
               Phiếu xuất {view.so_ct || `PX#${view.id}`}{" "}
@@ -687,7 +708,7 @@ export function StockIssue() {
             })()}
 
             <div className="modal-actions">
-              <button onClick={() => setView(null)}>Đóng</button>
+              <button onClick={closeView}>Đóng</button>
               {view.status === "draft" && (
                 <>
                   <button disabled={viewBusy} onClick={doViewSave}>

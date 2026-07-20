@@ -89,3 +89,14 @@ export async function quickCreateCustomer(
     return null;
   }
 }
+
+// Doc/ghi query param tren URL hien tai (giu context modal khi F5).
+export function getParam(name: string): string | null {
+  return new URLSearchParams(location.search).get(name);
+}
+export function setParam(name: string, value: string | null) {
+  const u = new URL(location.href);
+  if (value == null) u.searchParams.delete(name);
+  else u.searchParams.set(name, value);
+  history.replaceState(history.state, "", u.pathname + u.search);
+}

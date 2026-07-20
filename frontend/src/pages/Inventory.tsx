@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, InvItem, InvWarehouse, ItemFlow, OpeningImportResult, StockCardRow, StockRow } from "../api";
 import { PurchaseFixModal } from "./PurchaseFixModal";
+import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -46,6 +47,8 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
   const [mSrc, setMSrc] = useState<InvItem | null>(null);
   const [mTgt, setMTgt] = useState<InvItem | null>(null);
   const [mQuery, setMQuery] = useState<{ which: "src" | "tgt"; q: string; results: InvItem[] } | null>(null);
+  const [listLoaded, setListLoaded] = useState(false);
+  const autoFlowRef = useRef(false);
 
   async function searchMerge(which: "src" | "tgt", q: string) {
     setMQuery({ which, q, results: mQuery?.which === which ? mQuery.results : [] });
@@ -85,6 +88,8 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
       setReviewItems(items.filter((i) => i.note.startsWith("⚠️")));
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setListLoaded(true);
     }
   }
 
@@ -95,6 +100,17 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whId]);
+  // F5 giu context: sau khi danh sach ton load lan dau, tu mo lai luong theo ?flow=<item_id>
+  useEffect(() => {
+    if (!listLoaded || autoFlowRef.current) return;
+    autoFlowRef.current = true;
+    const fl = getParam("flow");
+    if (fl) {
+      const row = rows.find((r) => r.item_id === Number(fl));
+      if (row) openFlow(row);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoaded]);
 
   async function openCard(row: StockRow) {
     try {
@@ -108,9 +124,14 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
   async function openFlow(row: StockRow) {
     try {
       setFlow(await api.invItemFlow(row.item_id));
+      setParam("flow", String(row.item_id));
     } catch (e) {
       setErr((e as Error).message);
     }
+  }
+  function closeFlow() {
+    setFlow(null);
+    setParam("flow", null);
   }
 
   async function pickFile(f: File | null) {
@@ -530,7 +551,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
       )}
 
       {flow && (
-        <div className="modal-backdrop" onClick={() => setFlow(null)}>
+        <div className="modal-backdrop" onClick={closeFlow}>
           <div className="modal" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
             <h3>
               🌊 Dòng chảy — {flow.item.ma_hang} · {flow.item.ten}
@@ -645,7 +666,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
             )}
 
             <div className="modal-actions">
-              <button onClick={() => setFlow(null)}>Đóng</button>
+              <button onClick={closeFlow}>Đóng</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, InvItem, InvSale, InvSaleLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -60,7 +61,23 @@ type BomState = {
   aiBusy: boolean;
   context: string; // ngu canh/huong dan them cho AI cua tung keo
   test: { level: "ok" | "warn" | "error"; messages: string[] } | null;
+  draftSavedAt: number | null; // != null neu dang hien thi ban nhap khoi phuc tu localStorage
 };
+
+// Cac field cua BomState duoc luu nhap (bo qua ket qua search "results"/"q" moi dong).
+type BomDraft = {
+  rows: Array<Omit<BomRow, "results" | "q">>;
+  outputItemId: number | null;
+  outputLabel: string;
+  outputMaHang: string;
+  saveRecipe: boolean;
+  recipeName: string;
+  context: string;
+  savedAt: number;
+};
+function bomDraftKey(saleId: number, lineId: number): string {
+  return `ghepbo:${saleId}:${lineId}`;
+}
 
 const NEW_BOM_ROW: Omit<BomRow, "warehouse_id"> = {
   item_id: null, ma_hang: "", ten: "", dvt: "", so_luong: 1,
@@ -123,7 +140,10 @@ export function SalesInvoice() {
   // tim mat hang cho 1 dong
   const [lineSearch, setLineSearch] = useState<{ lineId: number; q: string; results: InvItem[] } | null>(null);
   const [bom, setBom] = useState<BomState | null>(null);
+  const [listLoaded, setListLoaded] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const autoHdRef = useRef(false);
+  const autoGhepboRef = useRef(false);
   const whByCode = (code: string) => whs.find((w) => w.code === code)?.id ?? whs[0]?.id ?? 0;
 
   async function load() {
@@ -132,6 +152,8 @@ export function SalesInvoice() {
       setList(await api.invSales(statusF, dateRange));
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setListLoaded(true);
     }
   }
   useEffect(() => {
@@ -141,6 +163,56 @@ export function SalesInvoice() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusF, dateRange.tu, dateRange.den]);
+
+  // F5 giu context: sau khi list load lan dau, tu mo lai modal chi tiet theo ?hd=
+  useEffect(() => {
+    if (!listLoaded || autoHdRef.current) return;
+    autoHdRef.current = true;
+    const hd = getParam("hd");
+    if (hd) open(Number(hd));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoaded]);
+
+  // Sau khi cur (chi tiet HD) load xong, tu mo modal ghep bo theo ?ghepbo=<line_id>
+  useEffect(() => {
+    if (!cur || autoGhepboRef.current) return;
+    const gb = getParam("ghepbo");
+    if (!gb) {
+      autoGhepboRef.current = true;
+      return;
+    }
+    const line = cur.lines.find((l) => l.id === Number(gb));
+    if (line) {
+      autoGhepboRef.current = true;
+      openBom(line);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur]);
+
+  // Auto-save nhap ghep bo vao localStorage (debounce ~500ms) — khoi phuc lai
+  // neu tab/trinh duyet bi dong dot ngot truoc khi bam Tao lenh.
+  useEffect(() => {
+    if (!bom || !cur) return;
+    const key = bomDraftKey(cur.id, bom.lineId);
+    const t = setTimeout(() => {
+      const draft: BomDraft = {
+        rows: bom.rows.map(({ results: _results, q: _q, ...rest }) => rest),
+        outputItemId: bom.outputItemId,
+        outputLabel: bom.outputLabel,
+        outputMaHang: bom.outputMaHang,
+        saveRecipe: bom.saveRecipe,
+        recipeName: bom.recipeName,
+        context: bom.context,
+        savedAt: Date.now(),
+      };
+      try {
+        localStorage.setItem(key, JSON.stringify(draft));
+      } catch {
+        /* ignore quota/loi luu tam */
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [bom, cur]);
 
   // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
   function exportParams() {
@@ -187,9 +259,14 @@ export function SalesInvoice() {
     try {
       setCur(await api.invSale(id));
       setLineSearch(null);
+      setParam("hd", String(id));
     } catch (e) {
       setErr((e as Error).message);
     }
+  }
+  function closeCur() {
+    setCur(null);
+    setParam("hd", null);
   }
 
   function patchLine(lineId: number, patch: Partial<InvSaleLine>) {
@@ -263,24 +340,61 @@ export function SalesInvoice() {
   async function openBom(l: InvSaleLine) {
     if (!cur) return;
     setErr("");
+    // Co ban nhap tu lan truoc (dong tab dot ngot...) -> khoi phuc thay vi mo moi.
+    let draft: BomDraft | null = null;
+    try {
+      const raw = localStorage.getItem(bomDraftKey(cur.id, l.id));
+      if (raw) draft = JSON.parse(raw) as BomDraft;
+    } catch {
+      /* ban nhap loi/hong -> bo qua, mo moi binh thuong */
+    }
     // Da khop mat hang thanh pham (vd iNut TP0022) -> dung luon ma do lam dau ra,
     // KHONG tao ma moi. Chua khop (bo lap dat bespoke) -> goi y ma moi.
     let ma = "";
-    if (!l.item_id) {
+    if (!draft && !l.item_id) {
       try {
         ma = (await api.invSuggestItemCode()).code;
       } catch {
         /* ignore */
       }
     }
-    setBom({
-      lineId: l.id, lineName: l.ten_raw, ngay: cur.ngay,
-      giaBan: l.don_gia_ban || (l.so_luong ? l.thanh_tien / l.so_luong : 0),
-      outputItemId: l.item_id ?? null,
-      outputLabel: l.item_id ? `${l.item_ma_hang} · ${l.item_ten}` : "",
-      outputMaHang: ma, saveRecipe: true, recipeName: l.ten_raw,
-      rows: [], aiNote: "", aiBusy: false, context: "", test: null,
-    });
+    setBom(
+      draft
+        ? {
+            lineId: l.id, lineName: l.ten_raw, ngay: cur.ngay,
+            giaBan: l.don_gia_ban || (l.so_luong ? l.thanh_tien / l.so_luong : 0),
+            outputItemId: draft.outputItemId, outputLabel: draft.outputLabel,
+            outputMaHang: draft.outputMaHang, saveRecipe: draft.saveRecipe,
+            recipeName: draft.recipeName,
+            rows: draft.rows.map((r) => ({ ...r, q: "", results: [] })),
+            aiNote: "", aiBusy: false, context: draft.context, test: null,
+            draftSavedAt: draft.savedAt,
+          }
+        : {
+            lineId: l.id, lineName: l.ten_raw, ngay: cur.ngay,
+            giaBan: l.don_gia_ban || (l.so_luong ? l.thanh_tien / l.so_luong : 0),
+            outputItemId: l.item_id ?? null,
+            outputLabel: l.item_id ? `${l.item_ma_hang} · ${l.item_ten}` : "",
+            outputMaHang: ma, saveRecipe: true, recipeName: l.ten_raw,
+            rows: [], aiNote: "", aiBusy: false, context: "", test: null,
+            draftSavedAt: null,
+          },
+    );
+    setParam("ghepbo", String(l.id));
+  }
+  function closeBom() {
+    setBom(null);
+    setParam("ghepbo", null);
+  }
+  function discardDraft() {
+    if (!cur || !bom) return;
+    try {
+      localStorage.removeItem(bomDraftKey(cur.id, bom.lineId));
+    } catch {
+      /* ignore */
+    }
+    const l = cur.lines.find((x) => x.id === bom.lineId);
+    if (l) openBom(l); // mo lai — khong con key nen se ra trang thai mo moi
   }
   function setRow(i: number, patch: Partial<BomRow>) {
     setBom((b) => (b ? { ...b, rows: b.rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)), test: null } : b));
@@ -461,7 +575,12 @@ export function SalesInvoice() {
           (r.recipe_id ? ` + lưu mẫu #${r.recipe_id}` : "") +
           `.\nVào tab Sản xuất kiểm tra & ghi sổ (hệ thống chặn âm kho).` + warnMsg,
       );
-      setBom(null);
+      try {
+        localStorage.removeItem(bomDraftKey(cur.id, bom.lineId));
+      } catch {
+        /* ignore */
+      }
+      closeBom();
       open(cur.id);
     } catch (e) {
       setErr((e as Error).message);
@@ -639,7 +758,7 @@ export function SalesInvoice() {
       )}
 
       {cur && (
-        <div className="modal-backdrop" onClick={() => setCur(null)}>
+        <div className="modal-backdrop" onClick={closeCur}>
           <div className="modal review-2col" style={{ maxWidth: 1180 }} onClick={(e) => e.stopPropagation()}>
             <div className="review-form">
               <h3>
@@ -808,7 +927,7 @@ export function SalesInvoice() {
               </div>
 
               <div className="modal-actions">
-                <button onClick={() => setCur(null)}>Đóng</button>
+                <button onClick={closeCur}>Đóng</button>
                 <button disabled={busy} onClick={() => saveDraft(false)}>
                   💾 Lưu
                 </button>
@@ -910,7 +1029,7 @@ export function SalesInvoice() {
       )}
 
       {bom && (
-        <div className="modal-backdrop" onClick={() => setBom(null)}>
+        <div className="modal-backdrop" onClick={closeBom}>
           <div className="modal" style={{ maxWidth: 1280 }} onClick={(e) => e.stopPropagation()}>
             <h3>🧩 Ghép bộ: {bom.lineName}</h3>
             {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
@@ -919,6 +1038,15 @@ export function SalesInvoice() {
               tổng giá vốn linh kiện thật (không ép theo biên). Ngày HĐ: <b>{bom.ngay || "?"}</b> · Giá bán dòng
               (chưa thuế): <b>{vnd(bom.giaBan)}đ</b>.
             </p>
+            {bom.draftSavedAt != null && (
+              <p className="muted" style={{ fontSize: 12 }}>
+                Đã khôi phục bản nháp lúc{" "}
+                {new Date(bom.draftSavedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} ·{" "}
+                <button className="btn-sm ghost" onClick={discardDraft}>
+                  🗑 bỏ nháp
+                </button>
+              </p>
+            )}
 
             <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
               <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
@@ -1139,7 +1267,7 @@ export function SalesInvoice() {
               )}
             </label>
             <div className="modal-actions">
-              <button onClick={() => setBom(null)}>Hủy</button>
+              <button onClick={closeBom}>Hủy</button>
               <button className="primary" disabled={busy} onClick={submitBom}>
                 🏭 Tạo lệnh ghép bộ (nháp)
               </button>

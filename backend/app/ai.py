@@ -95,7 +95,7 @@ def suggest_bom(
     context: str = "",
     existing: list[dict] | None = None,
 ) -> dict:
-    """AI boc tach 1 'bo thiet bi camera' thanh danh sach LINH KIEN cau thanh.
+    """AI boc tach 1 'bo thiet bi' (bat ky linh vuc) thanh danh sach LINH KIEN cau thanh.
 
     stock_items: [{ma_hang, ten, dvt, don_gia_bq}] de AI uu tien dung ten co san trong kho.
     context: huong dan tu do cua user cho TUNG KEO cu the (vd doi hang, dieu kien lap dat...).
@@ -112,20 +112,24 @@ def suggest_bom(
         if i.get("ten")
     )
     sys = (
-        "Bạn là kỹ sư hệ thống camera giám sát của công ty iNut. Nhiệm vụ: bóc tách một "
-        "'bộ thiết bị camera' bán cho khách thành danh sách LINH KIỆN cấu thành (camera, "
-        "đầu ghi NVR/DVR, ổ cứng, nguồn, switch PoE, dây mạng, phụ kiện, công lắp đặt...).\n"
-        "QUY TẮC SỐ LƯỢNG BẮT BUỘC: mọi thiết bị có GIỚI HẠN số kênh/cổng (đầu ghi NVR/DVR chỉ "
-        "nối được đúng số kênh của nó — vd loại '8 kênh' chỉ nối 8 camera; switch PoE tương tự chỉ "
-        "cấp nguồn được đúng số cổng). Nếu hệ thống có N camera, số đầu ghi cần = ceil(N / số kênh "
-        "mỗi đầu ghi), số switch PoE cần = ceil(N / số cổng mỗi switch). KHÔNG BAO GIỜ để 1 đầu ghi "
-        "8 kênh phục vụ hệ thống có hơn 8 camera. Trước khi trả lời, tự kiểm tra lại phép tính này "
-        "cho TỪNG thiết bị có giới hạn kênh/cổng.\n"
+        "Bạn là kỹ sư giải pháp thiết bị (IoT, điện tử, giám sát, mạng, năng lượng...) của công ty "
+        "iNut. Nhiệm vụ: bóc tách MỘT bộ thiết bị bán cho khách thành danh sách LINH KIỆN cấu thành. "
+        "Thành phần phải suy ra từ TÊN BỘ, danh sách kho có sẵn và hướng dẫn của người dùng — KHÔNG "
+        "suy diễn theo khuôn mẫu sản phẩm nào có sẵn (không mặc định đây là bộ camera trừ khi tên bộ "
+        "hoặc hướng dẫn nói rõ như vậy).\n"
+        "QUY TẮC SỐ LƯỢNG BẮT BUỘC: nếu trong bộ có thiết bị bị GIỚI HẠN số kênh/cổng (đầu ghi, "
+        "switch, gateway, bộ điều khiển trung tâm...) thì số lượng thiết bị đó = ceil(số thiết bị "
+        "đấu vào / số kênh hoặc cổng mỗi cái). KHÔNG BAO GIỜ để 1 thiết bị giới hạn kênh/cổng phục vụ "
+        "số lượng thiết bị đấu vào vượt quá giới hạn của nó. Trước khi trả lời, tự kiểm tra lại phép "
+        "tính này cho TỪNG thiết bị có giới hạn kênh/cổng.\n"
         "QUY TẮC KHÔNG TRÙNG LẶP BẮT BUỘC: mỗi LOẠI linh kiện chỉ được xuất hiện ĐÚNG 1 LẦN trong "
         "mảng 'components' — nếu cần nhiều hơn 1 đơn vị, gộp vào MỘT dòng duy nhất với so_luong "
         "tương ứng, TUYỆT ĐỐI không tách 2 dòng riêng cho cùng một loại thiết bị (dù diễn đạt tên "
         "khác đi). Trước khi trả lời, tự rà lại 'components' xem có 2 dòng nào cùng bản chất thiết "
-        "bị không — nếu có, gộp lại thành 1. Chỉ trả về JSON thuần, không markdown, không lời dẫn."
+        "bị không — nếu có, gộp lại thành 1.\n"
+        "QUY TẮC LOẠI TRỪ BẮT BUỘC: nếu hướng dẫn của người dùng LOẠI TRỪ loại thiết bị nào (ví dụ "
+        "'không có camera') thì TUYỆT ĐỐI KHÔNG đưa loại đó vào 'components'. "
+        "Chỉ trả về JSON thuần, không markdown, không lời dẫn."
     )
     parts = [
         f'Bộ cần bóc tách: "{ten_bo}"',

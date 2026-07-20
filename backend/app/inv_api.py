@@ -1598,6 +1598,7 @@ def sale_suggest_bom(
     out = []
     cost_pretax = 0.0
     unmatched = 0
+    clamped = 0
     for c in res["components"]:
         m, kind, cands = inv_import.match_suggestions(all_items, c["ten"])
         best = m or (cands[0][0] if cands else None)
@@ -1618,6 +1619,16 @@ def sale_suggest_bom(
             # thuc chat nam o kho NVL/TP.
             best_wh = avail_wh.get(best.id) or agg_wh.get(best.id)
             warehouse_id = best_wh[0] if best_wh else None
+            # Clamp SL AI de xuat theo ton kha dung — tranh de xuat vuot qua
+            # so thuc te co the xuat/ghep bo, dan den am kho sau nay.
+            if (c["so_luong"] or 0.0) > kha_dung > inventory.EPS:
+                sl_cu = c["so_luong"]
+                sl_moi = round(kha_dung, 4)
+                c["so_luong"] = sl_moi
+                c["ly_do"] = (c.get("ly_do") or "") + (
+                    f" (đã hạ từ {sl_cu:g} xuống {sl_moi:g} theo tồn khả dụng)"
+                )
+                clamped += 1
         else:
             unmatched += 1
         cost_pretax += (c["so_luong"] or 0.0) * don_gia_bq
@@ -1639,10 +1650,15 @@ def sale_suggest_bom(
         for o in out
     )
     actual_margin = ((gia_ban - cost_pretax) / gia_ban * 100) if gia_ban else None
+    note = res["note"] or ""
+    if clamped:
+        note = (note + " " if note else "") + (
+            f"Đã tự động hạ số lượng {clamped} linh kiện theo tồn khả dụng."
+        )
     _audit(db, user, "inv_bom_suggest", f"HĐ bán #{sid}", ln.ten_raw[:80])
     return {
         "components": out, "cost_est": res["cost_est"],
-        "margin_est": res["margin_est"], "note": res["note"],
+        "margin_est": res["margin_est"], "note": note,
         "totals": {
             "cost_pretax": round(cost_pretax, 2),
             "cost_with_tax": round(cost_with_tax, 2),
