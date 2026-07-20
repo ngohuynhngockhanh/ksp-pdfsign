@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, inv_export, inv_import, inventory, storage
+from . import ai, audit, customs, inv_export, inv_import, inventory, money, storage
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -663,9 +663,10 @@ def _import_one_file(
             data = inv_import.parse_purchase_pdf(content)
             suffix = ".pdf"
             _items = data.get("items") or []
+            # thanh_tien tu bang PDF con la CHUOI ('1.975.001') -> phai parse_num
             _rong_gia_tri = (
-                sum(it.get("thanh_tien") or 0 for it in _items) == 0
-                and (data.get("tong_truoc_thue") or 0) > 0
+                sum(money.parse_num(it.get("thanh_tien")) for it in _items) == 0
+                and money.parse_num(data.get("tong_truoc_thue")) > 0
             )
             if not _items or _rong_gia_tri:
                 # PDF khong co bang text, HOAC bang bi boc RONG gia tri (bang scan

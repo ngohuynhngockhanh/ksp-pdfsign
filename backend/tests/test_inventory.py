@@ -934,3 +934,22 @@ def test_vat_rate_regex_variants():
     assert _invoice_vat_rate("Thuếsuất thuế GTGT (VAT Rate) : 8%", 0, 0) == 8
     assert _invoice_vat_rate("Thuế suất GTGT (VAT rate): 10 %", 0, 0) == 10
     assert _invoice_vat_rate("Thuếsuất KCT", 1000, 0) == 0
+
+
+def test_pdf_fallback_string_amounts_no_crash(client, monkeypatch):
+    """Regression: items tu bang PDF mang CHUOI '1.975.001' — dieu kien fallback
+    AI phai parse_num, khong duoc cong int+str (bug lam 30 HD Q2 fail)."""
+    from app import inv_import as im
+
+    monkeypatch.setattr(im, "parse_purchase_pdf", lambda b: {
+        "source": "pdf", "so_hd": "777", "ky_hieu": "K26", "ngay": "2026-06-01",
+        "ten_ban": "NCC Chuoi", "mst_ban": "999", "tong_truoc_thue": "1.975.001",
+        "tong_thue": "158.000", "tong_tien": "2.133.001",
+        "items": [{"stt": 1, "ten": "Hang chuoi", "dvt": "Cai",
+                   "so_luong": "1", "don_gia": "1.975.001", "thanh_tien": "1.975.001"}],
+        "confidence": 0.8, "warnings": [],
+    })
+    r = client.post("/api/inv/purchase/upload", files=[("files", ("x.pdf", b"%PDF-1.4 fake", "application/pdf"))])
+    assert r.status_code == 200, r.text
+    res = r.json()["results"][0]
+    assert res["ok"], res
