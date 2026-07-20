@@ -327,13 +327,23 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                     {r.ma_hang}{" "}
                     <button
                       className="btn-sm ghost"
-                      title="Dòng chảy"
+                      title="Thẻ kho (lịch sử nhập/xuất)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCard(r);
+                      }}
+                    >
+                      📒
+                    </button>
+                    <button
+                      className="btn-sm ghost"
+                      title="Dòng chảy (vào từ đâu → chảy vào gì → kẹt ở đâu)"
                       onClick={(e) => {
                         e.stopPropagation();
                         openFlow(r);
                       }}
                     >
-                      🔀
+                      🌊
                     </button>
                   </td>
                   <td>
@@ -523,7 +533,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
         <div className="modal-backdrop" onClick={() => setFlow(null)}>
           <div className="modal" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
             <h3>
-              🔀 Dòng chảy — {flow.item.ma_hang} · {flow.item.ten}
+              🌊 Dòng chảy — {flow.item.ma_hang} · {flow.item.ten}
             </h3>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
               {flow.ton.length === 0 ? (
