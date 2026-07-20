@@ -303,6 +303,22 @@ export function SalesInvoice() {
       }
     }
   }
+  // Khop ma cho DONG hoa don: set item + TU CHON KHO dang co ton that
+  // (tranh mac dinh sai kho — vd camera nam NVL nhung dong tro HH).
+  async function pickLineItem(
+    lineId: number,
+    it: { id: number; ma_hang: string; ten: string },
+  ) {
+    patchLine(lineId, {
+      item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual",
+    });
+    try {
+      const c = await api.invItemCost(it.id, cur?.ngay ?? "");
+      if (c.warehouse_id != null) patchLine(lineId, { warehouse_id: c.warehouse_id });
+    } catch {
+      /* ignore — van sua tay duoc */
+    }
+  }
   async function pickRow(i: number, it: InvItem) {
     setRow(i, { item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt, results: [], q: "" });
     try {
@@ -747,10 +763,7 @@ export function SalesInvoice() {
                                     className="btn-sm ghost"
                                     title={s.reason}
                                     onClick={() =>
-                                      patchLine(l.id, {
-                                        item_id: s.item_id, item_ma_hang: s.ma_hang,
-                                        item_ten: s.ten, match_kind: "manual",
-                                      })
+                                      pickLineItem(l.id, { id: s.item_id, ma_hang: s.ma_hang, ten: s.ten })
                                     }
                                   >
                                     {s.ma_hang} · {(s.reason ?? "").replace("Giống ", "")}
@@ -768,10 +781,7 @@ export function SalesInvoice() {
                                       <button
                                         className="btn-sm ghost"
                                         onClick={() => {
-                                          patchLine(l.id, {
-                                            item_id: it.id, item_ma_hang: it.ma_hang,
-                                            item_ten: it.ten, match_kind: "manual",
-                                          });
+                                          pickLineItem(l.id, it);
                                           setLineSearch(null);
                                         }}
                                       >

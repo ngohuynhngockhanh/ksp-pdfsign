@@ -1074,6 +1074,16 @@ def create_sale_draft(
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
     wh_tp = db.scalars(select(InvWarehouse).where(InvWarehouse.code == "TP")).first()
     wh_hh = db.scalars(select(InvWarehouse).where(InvWarehouse.code == "HH")).first()
+    # Kho dang giu ton nhieu nhat cua tung item — dong match duoc thi tro dung
+    # kho co hang (tranh gan cung HH/TP trong khi hang nam kho khac, vd NVL).
+    from .inventory import EPS as _EPS, stock_snapshot as _snap
+
+    best_wh: dict[int, int] = {}
+    _best_ton: dict[int, float] = {}
+    for r in _snap(db):
+        if r.ton > _EPS and r.ton > _best_ton.get(r.item_id, 0.0):
+            _best_ton[r.item_id] = r.ton
+            best_wh[r.item_id] = r.warehouse_id
     for idx, it in enumerate(data.get("items") or [], start=1):
         ten_raw = str(it.get("ten") or "").strip()
         sl = money.parse_num(it.get("so_luong"))
@@ -1091,6 +1101,9 @@ def create_sale_draft(
         if not is_dc and fulfil != "doanh_thu":
             matched, kind, _sugg = match_suggestions(all_items, ten_raw)
         wh = wh_tp if line_class == "inut" else wh_hh
+        wh_id = (wh.id if wh else None)
+        if matched and matched.id in best_wh:
+            wh_id = best_wh[matched.id]  # uu tien kho dang co ton that
         db.add(InvSaleLine(
             invoice=inv,
             stt=int(money.parse_num(it.get("stt")) or idx),
@@ -1102,7 +1115,7 @@ def create_sale_draft(
             thue_suat=money.parse_num(ts_raw),
             thue_kct=kct,
             item_id=matched.id if matched else None,
-            warehouse_id=(wh.id if wh else None),
+            warehouse_id=wh_id,
             match_kind=kind,
             line_class=line_class,
             fulfil_kind=fulfil,
