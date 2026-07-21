@@ -65,45 +65,52 @@ def authenticate(mst: str, password: str, ckey: str, cvalue: str) -> str:
     raise TaxError(msg or f"Đăng nhập thất bại ({r.status_code})")
 
 
-def _query_range(token: str, url: str, tu: str, den: str) -> list[dict]:
-    """Query 1 endpoint theo khoang [tu, den] (ISO yyyy-mm-dd), tu chia theo THANG
-    (cong gioi han 1 thang/lan) + phan trang bang 'state'."""
-    out: list[dict] = []
-    y0, m0 = int(tu[:4]), int(tu[5:7])
-    y1, m1 = int(den[:4]), int(den[5:7])
+def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -> list[dict]:
+    """Query 1 endpoint theo khoang [tu, den] (ISO yyyy-mm-dd).
+
+    Chia nho theo TUAN (chunk_days ngay/lan) — cong thue rat cham, khoang nho thi
+    nhanh + it timeout. Tuan nao loi -> BO QUA tuan do (fallback), khong mat ca nam.
+    Phan trang bang 'state'. Dedup theo (khhdon, khmshdon, shdon) phong cua so chong lan.
+    """
+    import time as _t
+    from datetime import date, timedelta
+
     headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
+    d0 = date(int(tu[:4]), int(tu[5:7]), int(tu[8:10]))
+    d1 = date(int(den[:4]), int(den[5:7]), int(den[8:10]))
+    seen: set = set()
+    out: list[dict] = []
     with _client() as c:
-        y, m = y0, m0
-        while (y, m) <= (y1, m1):
-            last = calendar.monthrange(y, m)[1]
-            d_lo = f"01/{m:02d}/{y}" if (y, m) != (y0, m0) else f"{int(tu[8:10]):02d}/{m:02d}/{y}"
-            d_hi = f"{last}/{m:02d}/{y}" if (y, m) != (y1, m1) else f"{int(den[8:10]):02d}/{m:02d}/{y}"
-            srch = f"tdlap=ge={d_lo}T00:00:00;tdlap=le={d_hi}T23:59:59"
+        cur = d0
+        while cur <= d1:
+            hi = min(cur + timedelta(days=chunk_days - 1), d1)
+            srch = (f"tdlap=ge={cur.strftime('%d/%m/%Y')}T00:00:00;"
+                    f"tdlap=le={hi.strftime('%d/%m/%Y')}T23:59:59")
             state = None
-            for _ in range(40):  # backstop phan trang
+            for _ in range(30):  # backstop phan trang trong tuan
                 params = {"sort": "tdlap:desc", "size": "50", "search": srch}
                 if state:
                     params["state"] = state
                 r = None
-                for _try in range(4):  # cong cham -> retry moi request
+                for _try in range(5):  # retry moi request
                     try:
                         r = c.get(url, params=params, headers=headers)
                         break
                     except Exception:  # noqa: BLE001
-                        import time as _t
                         _t.sleep(2)
                 if r is None or r.status_code != 200:
-                    break
+                    break  # tuan loi -> bo qua, sang tuan sau (fallback)
                 j = r.json()
                 d = j.get("datas") or []
-                out += d
+                for h in d:
+                    k = ((h.get("khhdon") or ""), h.get("khmshdon"), h.get("shdon"))
+                    if k not in seen:
+                        seen.add(k)
+                        out.append(h)
                 state = j.get("state")
                 if not state or len(d) < 50:
                     break
-            m += 1
-            if m > 12:
-                m = 1
-                y += 1
+            cur = hi + timedelta(days=1)
     return out
 
 
@@ -206,7 +213,7 @@ def download_invoice_html(token: str, h: dict) -> bytes | None:
     zc = None
     with _client() as c:
         for path in ("/sco-query/invoices/export-xml", "/query/invoices/export-xml"):
-            for _ in range(3):
+            for _ in range(5):
                 try:
                     r = c.get(f"{BASE}{path}", params=qp, headers=headers)
                 except Exception:  # noqa: BLE001
@@ -455,20 +462,28 @@ def reconcile(db, tax: dict, tu: str, den: str) -> dict:
                 "tong_tien": h.get("tgtttbso", 0),
             })
 
-    # HD MO COI: co trong he thong nhung KHONG co tren co quan thue -> NGHI LOI
-    # (parse sai so HD/MST, nhap tay sai, trung...). Co quan thue la chuan -> alarm.
+    # HD MO COI: co trong he thong nhung KHONG co tren co quan thue -> NGHI LOI.
+    # AN TOAN: chi xet trong khoang NGAY ma cong THUC SU tra ve (cong cham hay
+    # timeout thang sau -> neu xet ngoai khoang se BAO NHAM HD that thanh mo coi).
+    def _span(rows, key):
+        ds = [d for d in ((r.get(key) or "")[:10] for r in rows) if d]
+        return (min(ds), max(ds)) if ds else (None, None)
+
     cong_mua_keys = {(_norm(h.get("shdon")), _base_mst(h.get("nbmst"))) for h in tax.get("mua", [])}
+    mua_lo, mua_hi = _span(tax.get("mua", []), "tdlap")
     orphan_mua = [
         {"ngay": p.ngay, "so_hd": p.so_hd, "ten_ban": p.ten_ban, "mst_ban": p.mst_ban,
          "tong_tien": p.tong_tien or 0, "source": p.source, "status": p.status}
         for p in sys_mua
-        if p.mst_ban and (_norm(p.so_hd), _base_mst(p.mst_ban)) not in cong_mua_keys
+        if p.mst_ban and mua_lo and mua_lo <= (p.ngay or "") <= mua_hi
+        and (_norm(p.so_hd), _base_mst(p.mst_ban)) not in cong_mua_keys
     ]
+    ban_lo, ban_hi = _span(tax.get("ban", []), "tdlap")
     orphan_ban = [
         {"ngay": s.ngay, "so_hd": s.so_hd, "ky_hieu": s.ky_hieu, "ten_mua": s.ten_mua,
          "tong_tien": s.tong_tien or 0, "status": s.status, "is_dieu_chinh": s.is_dieu_chinh}
         for s in sys_ban
-        if not s.is_dieu_chinh
+        if not s.is_dieu_chinh and ban_lo and ban_lo <= (s.ngay or "") <= ban_hi
         and ((s.ky_hieu or "").strip().upper(), _norm(s.so_hd)) not in cong_ban_keys
     ]
 
