@@ -147,14 +147,21 @@ def invoice_detail(token: str, h: dict) -> dict | None:
         "nbmst": h.get("nbmst"), "khhdon": h.get("khhdon"),
         "khmshdon": h.get("khmshdon"), "shdon": h.get("shdon"), "tdlap": h.get("tdlap"),
     }
+    import time as _t
+
     with _client() as c:
         for path in ("/query/invoices/detail", "/sco-query/invoices/detail"):
-            try:
-                r = c.get(f"{BASE}{path}", params=qp, headers=headers)
+            for _ in range(5):  # cong cham -> retry 5 lan
+                try:
+                    r = c.get(f"{BASE}{path}", params=qp, headers=headers)
+                except Exception:  # noqa: BLE001
+                    _t.sleep(2)
+                    continue
                 if r.status_code == 200:
                     return r.json()
-            except Exception:  # noqa: BLE001
-                continue
+                if r.status_code == 404:
+                    break  # sai dataset -> thu endpoint kia
+                _t.sleep(2)
     return None
 
 
@@ -175,7 +182,7 @@ def download_invoice_xml(token: str, h: dict) -> bytes | None:
     }
     with _client() as c:
         for path in ("/sco-query/invoices/export-xml", "/query/invoices/export-xml"):
-            for _ in range(3):  # cong cham -> retry
+            for _ in range(5):  # cong cham -> retry
                 try:
                     r = c.get(f"{BASE}{path}", params=qp, headers=headers)
                 except Exception:  # noqa: BLE001
