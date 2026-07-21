@@ -288,6 +288,10 @@ def detail_to_purchase(d: dict) -> dict:
     """Map chi tiet HD cong thue -> data cho inv_import.create_purchase_draft."""
     items = []
     for i, ln in enumerate(d.get("hdhhdvu") or [], start=1):
+        # thue suat: cong tra 'tsuat'=0.08 (so) + 'ltsuat'='8%' (chuoi). parse_num('8%')
+        # =0 (dau % hong) -> PHAI dung so tsuat*100. KCT/khong chiu thue -> tsuat None -> 0.
+        tsuat = ln.get("tsuat")
+        ts_num = round(float(tsuat) * 100, 2) if isinstance(tsuat, (int, float)) else 0
         items.append({
             "stt": ln.get("stt") or i,
             "ten": ln.get("ten") or "",
@@ -295,7 +299,7 @@ def detail_to_purchase(d: dict) -> dict:
             "so_luong": ln.get("sluong") or 0,
             "don_gia": ln.get("dgia") or 0,
             "thanh_tien": ln.get("thtien") or 0,
-            "thue_suat": ln.get("ltsuat") or "",  # '8%','10%','KCT'...
+            "thue_suat": ts_num,  # SO (vd 8), khong phai '8%' (parse_num hong dau %)
         })
     return {
         "source": "tax_gdt",
