@@ -191,6 +191,67 @@ def suggest_bom(
     }
 
 
+def suggest_invoice_lines(
+    settings: Settings,
+    mo_ta: str,
+    stock_items: list[dict],
+    context: str = "",
+) -> dict:
+    """AI goi y cac DONG HANG cho hoa don nhap tu 1 mo ta (giong suggest_bom nhung
+    cho hoa don ban: uu tien lay TEN CHINH XAC tu kho de khop ma khi xuat).
+
+    stock_items: [{ma_hang, ten, dvt, don_gia_bq}] — chi ma con ton.
+    Tra ve {"lines":[{ten, so_luong, dvt, don_gia, ly_do}], "note"}.
+    """
+    from .money import parse_num, vnd
+
+    kho = "\n".join(
+        f"- {i.get('ten','')} | ĐVT {i.get('dvt','')} | giá vốn {vnd(i.get('don_gia_bq') or 0)}đ"
+        for i in stock_items[:200]
+        if i.get("ten")
+    )
+    sys = (
+        "Bạn là nhân viên lập hóa đơn của công ty iNut. Nhiệm vụ: từ MÔ TẢ nội dung cần bán, "
+        "đề xuất danh sách DÒNG HÀNG cho hóa đơn. QUY TẮC BẮT BUỘC: ưu tiên đặt 'ten' TRÙNG "
+        "CHÍNH XÁC với tên mặt hàng đang có trong kho (để khớp mã kho khi xuất) — chỉ tự đặt tên "
+        "mới khi kho không có mặt hàng phù hợp. Mỗi loại hàng chỉ 1 dòng (gộp số lượng). Đơn giá "
+        "'don_gia' là giá BÁN gợi ý (cao hơn giá vốn) — nếu không chắc để 0. Chỉ trả JSON thuần, "
+        "không markdown."
+    )
+    parts = [
+        f'Nội dung cần bán / mô tả: "{mo_ta}"',
+        f"Mặt hàng ĐANG CÓ trong kho (ưu tiên dùng đúng tên này):\n{kho or '(kho trống)'}",
+    ]
+    if context.strip():
+        parts.append(f"Hướng dẫn thêm của người dùng (ưu tiên tuân theo):\n{context.strip()}")
+    parts.append(
+        'Trả về JSON: {"lines":[{"ten":"...","so_luong":số,"dvt":"...","don_gia":số,"ly_do":"..."}],'
+        '"note":"..."}. Không bịa mã. Không chắc số lượng thì để 1.'
+    )
+    content = chat(
+        settings,
+        [{"role": "system", "content": sys}, {"role": "user", "content": "\n\n".join(parts)}],
+        temperature=0.2,
+    )
+    try:
+        data = _json_from_content(content)
+    except (json.JSONDecodeError, ValueError):
+        raise AIError(f"AI không trả JSON hợp lệ: {content[:200]}")
+    lines = []
+    for c in data.get("lines") or []:
+        ten = str(c.get("ten") or "").strip()
+        if not ten:
+            continue
+        lines.append({
+            "ten": ten,
+            "so_luong": parse_num(c.get("so_luong")) or 1.0,
+            "dvt": str(c.get("dvt") or "").strip(),
+            "don_gia": parse_num(c.get("don_gia")),
+            "ly_do": str(c.get("ly_do") or "")[:200],
+        })
+    return {"lines": lines, "note": str(data.get("note") or "")[:400]}
+
+
 def quote_narrative(
     settings: Settings,
     items: list[dict],

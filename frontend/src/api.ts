@@ -84,15 +84,63 @@ export interface SignatureReport {
   problems: string[];
 }
 
+function _detailToMessage(detail: unknown): string | null {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    // Loi validate 422 cua FastAPI: [{loc, msg, type}, ...]
+    return detail
+      .map((d) => (d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : JSON.stringify(d)))
+      .join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    const d = detail as { message?: string; violations?: { ma_hang?: string; ten?: string; ngay?: string; thieu?: number }[] };
+    if (d.message) {
+      const vs = Array.isArray(d.violations)
+        ? d.violations
+            .map((v) => `${v.ma_hang || v.ten || "?"} tại ${v.ngay ?? "?"} (thiếu ${v.thieu ?? "?"})`)
+            .join("; ")
+        : "";
+      return vs ? `${d.message} — ${vs}` : d.message;
+    }
+    return JSON.stringify(d);
+  }
+  return null;
+}
+
+export interface NegStockViolation {
+  item_id?: number;
+  ma_hang?: string;
+  ten?: string;
+  warehouse_id?: number;
+  ngay?: string;
+  thieu?: number;
+}
+
+// Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
+export class NegStockError extends Error {
+  violations: NegStockViolation[];
+  constructor(message: string, violations: NegStockViolation[]) {
+    super(message);
+    this.name = "NegStockError";
+    this.violations = violations;
+  }
+}
+
 async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(url, { credentials: "include", ...options });
   if (!res.ok) {
     let msg = `Lỗi ${res.status}`;
+    let detail: unknown = null;
     try {
       const j = await res.json();
-      msg = j.detail || msg;
+      detail = j.detail;
+      msg = _detailToMessage(detail) ?? msg;
     } catch {
       /* ignore */
+    }
+    // Loi am kho tra ve object {message, violations} -> nem NegStockError rieng
+    if (detail && typeof detail === "object" && Array.isArray((detail as { violations?: unknown }).violations)) {
+      throw new NegStockError(msg, (detail as { violations: NegStockViolation[] }).violations);
     }
     throw new Error(msg);
   }
@@ -334,6 +382,57 @@ export const api = {
   },
   async nasTest() {
     return req<{ ok: boolean; message: string }>("/api/nas/test", { method: "POST" });
+  },
+  async nasDisk() {
+    return req<{
+      ok: boolean;
+      message?: string;
+      total_gb?: number;
+      used_gb?: number;
+      free_gb?: number;
+      percent_used?: number;
+    }>("/api/nas/disk");
+  },
+  async getAppSettings() {
+    return req<AppSettings>("/api/settings");
+  },
+  async saveAppSettings(body: Record<string, unknown>) {
+    return req<{ ok: boolean }>("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async aiTest() {
+    return req<{ ok: boolean; message: string }>("/api/ai/test", { method: "POST" });
+  },
+  async taxCaptcha() {
+    return req<{ key: string; svg: string }>("/api/tax/captcha");
+  },
+  async taxGetCredentials() {
+    return req<{ mst: string; has_password: boolean }>("/api/tax/credentials");
+  },
+  async taxSaveCredentials(body: { mst: string; password: string }) {
+    return req<{ ok: boolean }>("/api/tax/save-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async taxSync(body: {
+    mst: string;
+    password: string;
+    ckey: string;
+    cvalue: string;
+    tu: string;
+    den: string;
+    do_import?: boolean;
+  }) {
+    return req<TaxSyncResult>("/api/tax/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   },
   async nasSyncAll() {
     return req<{ ok: boolean; synced: number; failed: number }>("/api/nas/sync-all", {
@@ -658,6 +757,12 @@ export const api = {
   async invPurchase(id: number) {
     return req<InvPurchase>(`/api/inv/purchase/${id}`);
   },
+  async invPurchaseSyncNas() {
+    return req<{ ok: boolean; synced: number; skipped: number; failed: number }>(
+      "/api/inv/purchase/sync-nas",
+      { method: "POST" },
+    );
+  },
   async invPurchaseSave(id: number, body: unknown) {
     return req<InvPurchase>(`/api/inv/purchase/${id}`, {
       method: "PATCH",
@@ -718,6 +823,53 @@ export const api = {
     if (filters.den) p.set("den", filters.den);
     return req<InvSale[]>(`/api/inv/sale?${p.toString()}`);
   },
+  async invSaleSummary(statusF = "", filters: { tu?: string; den?: string } = {}) {
+    const p = new URLSearchParams({ status_f: statusF });
+    if (filters.tu) p.set("tu", filters.tu);
+    if (filters.den) p.set("den", filters.den);
+    return req<InvSaleSummary>(`/api/inv/sale/summary?${p.toString()}`);
+  },
+  // Xuat Excel bang ke iHoadon tu danh sach dong da soan (tai file ve may)
+  async invSaleDraftExportXlsx(lines: SaleDraftLine[]) {
+    const res = await fetch("/api/inv/sale-draft/export-xlsx", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines }),
+    });
+    if (!res.ok) {
+      let msg = `Lỗi ${res.status}`;
+      try {
+        msg = _detailToMessage((await res.json()).detail) ?? msg;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bang-ke-hoa-don.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  async invSaleDraftSuggestStart(mo_ta: string, context = "") {
+    return req<{ job_id: string }>("/api/inv/sale-draft/suggest-lines/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mo_ta, context }),
+    });
+  },
+  async invSaleDraftSuggestJob(jobId: string) {
+    return req<{
+      status: string;
+      result?: { lines: SuggestedInvoiceLine[]; note: string };
+      error?: string;
+    }>(`/api/inv/sale-draft/suggest-lines-job/${jobId}`);
+  },
   async invSale(id: number) {
     return req<InvSale>(`/api/inv/sale/${id}`);
   },
@@ -743,6 +895,17 @@ export const api = {
       `/api/inv/sale/${id}/generate`,
       { method: "POST" },
     );
+  },
+  async invSaleRematch(sid: number, lineId: number) {
+    return req<{
+      changed: boolean;
+      item_id: number | null;
+      ma_hang?: string;
+      ten?: string;
+      match_kind: string;
+      warehouse_id?: number | null;
+      suggestions?: { item_id: number; ma_hang: string; ten: string; score: number }[];
+    }>(`/api/inv/sale/${sid}/rematch/${lineId}`, { method: "POST" });
   },
   async invSaleSuggestBom(
     sid: number,
@@ -817,8 +980,12 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  async invIssuePost(id: number) {
-    return req<InvIssue>(`/api/inv/issues/${id}/post`, { method: "POST" });
+  async invIssuePost(id: number, overrideReason?: string) {
+    return req<InvIssue>(`/api/inv/issues/${id}/post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ override_reason: overrideReason ?? null }),
+    });
   },
   async invIssueVoid(id: number) {
     return req<InvIssue>(`/api/inv/issues/${id}/void`, { method: "POST" });
@@ -846,8 +1013,12 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  async invProductionPost(id: number) {
-    return req<InvProduction>(`/api/inv/productions/${id}/post`, { method: "POST" });
+  async invProductionPost(id: number, overrideReason?: string) {
+    return req<InvProduction>(`/api/inv/productions/${id}/post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ override_reason: overrideReason ?? null }),
+    });
   },
   async invProductionVoid(id: number) {
     return req<InvProduction>(`/api/inv/productions/${id}/void`, { method: "POST" });
@@ -1253,6 +1424,105 @@ export interface InvSale {
   ln_uoc: boolean;
 }
 
+export interface TaxSyncResult {
+  mua_cong: number;
+  mua_he_thong: number;
+  ban_cong: number;
+  ban_he_thong: number;
+  missing_mua: {
+    ngay: string;
+    so_hd: number | string;
+    ky_hieu: string;
+    ten_ban: string;
+    mst_ban: string;
+    tong_tien: number;
+    co_ma: boolean;
+  }[];
+  missing_ban: {
+    ngay: string;
+    so_hd: number | string;
+    ky_hieu: string;
+    ten_mua: string;
+    tong_tien: number;
+  }[];
+  mismatch_mua?: {
+    ngay: string;
+    so_hd: number | string;
+    ky_hieu: string;
+    ten_ban: string;
+    mst_ban: string;
+    tien_he_thong: number;
+    tien_cong_thue: number;
+    lech: number;
+  }[];
+  orphan_mua?: {
+    ngay: string;
+    so_hd: number | string;
+    ten_ban: string;
+    mst_ban: string;
+    tong_tien: number;
+    source: string;
+    status: string;
+  }[];
+  orphan_ban?: {
+    ngay: string;
+    so_hd: number | string;
+    ky_hieu: string;
+    ten_mua: string;
+    tong_tien: number;
+    status: string;
+  }[];
+  import?: { imported: number; skipped: number; errors: number };
+}
+
+export interface AppSettings {
+  ai_enabled: boolean;
+  ai_base_url: string;
+  ai_api_key_set: boolean;
+  ai_model: string;
+  ai_max_tokens: number;
+  ai_timeout: number;
+  nas_enabled: boolean;
+  nas_host: string;
+  nas_share: string;
+  nas_user: string;
+  nas_password_set: boolean;
+  nas_base_path: string;
+  nas_timeout: number;
+}
+
+export interface SaleDraftLine {
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  so_luong: number;
+  don_gia: number;
+  thanh_tien: number;
+  vat_name: string;
+  tien_thue?: number | null;
+  is_dich_vu: boolean;
+}
+
+export interface SuggestedInvoiceLine {
+  ten: string;
+  so_luong: number;
+  dvt: string;
+  don_gia: number;
+  ly_do: string;
+  match?: { item_id: number; ma_hang: string; ten: string; dvt: string; kind: string };
+}
+
+export interface InvSaleSummary {
+  so_hd_count: number;
+  dt_phan_mem: number;
+  dt_hang_hoa: number;
+  doanh_thu_truoc_thue: number;
+  ln_truoc_nc: number;
+  ln_sau_nc: number;
+  ti_suat_ln: number;
+  co_uoc_tinh: boolean;
+}
+
 export interface InvIssueLine {
   id: number;
   item_id: number;
@@ -1313,6 +1583,8 @@ export interface InvProductionLine {
   gia_tri_uoc: number;
   so_luong_dinh_muc: number | null;
   gia_tri_dinh_muc: number | null;
+  note: string;
+  orig_item_id: number | null;
 }
 
 export interface InvProduction {

@@ -17,6 +17,9 @@ import { SalesInvoice } from "./pages/SalesInvoice";
 import { StockIssue } from "./pages/StockIssue";
 import { Production } from "./pages/Production";
 import { Recipes } from "./pages/Recipes";
+import { SaleDraft } from "./pages/SaleDraft";
+import { Settings } from "./pages/Settings";
+import { TaxSync } from "./pages/TaxSync";
 
 type Tab =
   | "sign"
@@ -29,10 +32,13 @@ type Tab =
   | "xuatkho"
   | "sanxuat"
   | "congthuc"
+  | "hoadonnhap"
+  | "thuesync"
   | "documents"
   | "customers"
   | "nas"
   | "audit"
+  | "settings"
   | "verify"
   | "mine";
 
@@ -47,10 +53,13 @@ const ROUTES: Record<Tab, string> = {
   xuatkho: "/xuat-kho",
   sanxuat: "/san-xuat",
   congthuc: "/cong-thuc",
+  hoadonnhap: "/tao-hoa-don-nhap",
+  thuesync: "/dong-bo-thue",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
   audit: "/nhat-ky",
+  settings: "/cai-dat",
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
 };
@@ -105,6 +114,15 @@ export function App() {
     setTabState(t);
   }
 
+  // Ctrl/Cmd/Shift+click (hoac click giua) tren menu -> de trinh duyet tu mo tab/cua
+  // so moi theo href that (khong preventDefault); click thuong moi dieu huong kieu SPA.
+  function navClick(e: React.MouseEvent, t: Tab) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    navigate(t);
+    setMenuOpen(false);
+  }
+
   function goVerify(docPk: number) {
     setVerifyDocPk(docPk);
     navigate("verify");
@@ -129,8 +147,8 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "sign", "bbbg", "quote", "tonkho", "nhaphang", "tokhai", "banra", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "verify",
+              "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
+              "documents", "customers", "nas", "audit", "settings", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
@@ -170,11 +188,13 @@ export function App() {
       [
         ["tonkho", "Tồn kho", "📦"],
         ["nhaphang", "Nhập hàng", "🧾"],
+        ["thuesync", "Đồng bộ thuế", "🏛️"],
         ["tokhai", "Tờ khai NK", "🛃"],
         ["banra", "Bán ra", "🧾"],
         ["xuatkho", "Xuất kho", "📤"],
         ["sanxuat", "Sản xuất", "🏭"],
         ["congthuc", "Công thức SX", "🧩"],
+        ["hoadonnhap", "Tạo HĐ nháp", "🧾"],
       ],
     ],
     [
@@ -184,6 +204,7 @@ export function App() {
         ["customers", "Khách hàng", "👥"],
         ["nas", "NAS", "💾"],
         ["audit", "Nhật ký", "📜"],
+        ["settings", "Cài đặt", "⚙️"],
       ],
     ],
   ];
@@ -245,16 +266,14 @@ export function App() {
             <div className="nav-group" key={title}>
               <div className="nav-title">{title}</div>
               {items.map(([t, label, icon]) => (
-                <button
+                <a
                   key={t}
+                  href={ROUTES[t]}
                   className={tab === t ? "active" : ""}
-                  onClick={() => {
-                    navigate(t);
-                    setMenuOpen(false);
-                  }}
+                  onClick={(e) => navClick(e, t)}
                 >
                   <span className="nav-ic">{icon}</span> {label}
-                </button>
+                </a>
               ))}
             </div>
           ))}
@@ -294,6 +313,8 @@ export function App() {
         {tab === "xuatkho" && isAdmin && <StockIssue />}
         {tab === "sanxuat" && isAdmin && <Production />}
         {tab === "congthuc" && isAdmin && <Recipes />}
+        {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
+        {tab === "thuesync" && isAdmin && <TaxSync />}
         {tab === "documents" && isAdmin && (
           <Documents
             onVerify={goVerify}
@@ -304,6 +325,7 @@ export function App() {
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}
         {tab === "audit" && isAdmin && <AuditLog />}
+        {tab === "settings" && isAdmin && <Settings />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />

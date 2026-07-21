@@ -495,11 +495,15 @@ def unpost_purchase(db: Session, inv: InvPurchase) -> None:
     db.commit()
 
 
-def post_issue(db: Session, iss: InvIssue) -> None:
+def post_issue(db: Session, iss: InvIssue, override_reason: str | None = None) -> None:
     """Ghi so phieu xuat: moi dong -> 1 move 'xuat' (gia von do replay tinh).
 
     Sau khi replay tinh gia von: DONG BANG gia_von len tung dong phieu + luu
     tong_gia_von, sinh so chung tu, dinh khoan goi y (neu chua co).
+
+    override_reason: neu co -> CHAP NHAN am kho (user thua nhan sai, se nhap bu).
+    Van chay replay de tinh gia von (replay gan gia_tri truoc khi validate raise),
+    chi KHONG chan. Danh dau iss.am_kho_override=True + luu ly do vao iss.ly_do.
     """
     if iss.status != "draft":
         raise PostError(f"Phiếu đang ở trạng thái '{iss.status}'")
@@ -525,7 +529,16 @@ def post_issue(db: Session, iss: InvIssue) -> None:
         line_moves[ln.id] = m
         pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
-    validate_pairs(db, pairs)  # tinh lai gia von (gan len move objects)
+    if override_reason:
+        # Chap nhan am kho: replay van gan gia_von len move, chi bo qua chan.
+        try:
+            validate_pairs(db, pairs)
+        except NegativeStockError:
+            pass
+        iss.am_kho_override = True
+        iss.ly_do = (override_reason or "")[:255]
+    else:
+        validate_pairs(db, pairs)  # tinh lai gia von (gan len move objects)
     # Dong bang gia von + thanh tien ban len tung dong; tong hop
     tong = 0.0
     for ln in iss.lines:
@@ -556,11 +569,15 @@ def unpost_issue(db: Session, iss: InvIssue) -> None:
     db.commit()
 
 
-def post_production(db: Session, prod: InvProduction) -> None:
+def post_production(db: Session, prod: InvProduction, override_reason: str | None = None) -> None:
     """Ghi so lenh san xuat: xuat tieu hao truoc -> gia thanh -> nhap thanh pham.
 
     Gia nhap TP = tong gia tri tieu hao / tong SL dau ra (phan bo dong cuoi nhan
     phan du lam tron de tong khop tuyet doi).
+
+    override_reason: neu co -> CHAP NHAN am kho NVL tieu hao (user thua nhan sai,
+    se nhap bu). Chi bo qua chan o buoc xuat NVL; buoc nhap TP van validate binh
+    thuong (TP nhap vao khong am). Danh dau prod.am_kho_override + luu ly do note.
     """
     if prod.status != "draft":
         raise PostError(f"Lệnh đang ở trạng thái '{prod.status}'")
@@ -594,7 +611,15 @@ def post_production(db: Session, prod: InvProduction) -> None:
         out_moves.append((ln, m))
         pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()
-    validate_pairs(db, pairs)
+    if override_reason:
+        try:
+            validate_pairs(db, pairs)  # van chay replay de tinh gia von NVL
+        except NegativeStockError:
+            pass
+        prod.am_kho_override = True
+        prod.note = (f"[ÂM KHO ĐÃ DUYỆT] {override_reason} · " + (prod.note or ""))[:500]
+    else:
+        validate_pairs(db, pairs)
 
     # 1b) Gia tam tinh: NVL nao chua co gia von (gia_tri==0) ma co don_gia_tam
     # -> gan gia tri tam len dong xuat (giu can bang gia tri xuat/nhap TP; se
@@ -742,6 +767,8 @@ def generate_from_sale(db: Session, sale) -> dict:
       (scale theo thieu hut), gan truy vet (sale_id/sale_line_id), roi xuat luon.
     - Kiem thoi gian: NVL phai kha dung tai ngay HD, khong thi CANH BAO do.
     - Thieu cong thuc -> canh bao (tao cong thuc o tab San xuat truoc).
+    - Dong DA duoc sinh chung tu tu lan goi truoc (con phieu xuat lien ket sale_id,
+      du draft hay posted) -> KHONG sinh lai phan da co, tranh xuat trung 2 lan.
     """
     if sale.is_dieu_chinh:
         raise PostError("Hóa đơn điều chỉnh — không sinh chứng từ kho")
@@ -752,6 +779,14 @@ def generate_from_sale(db: Session, sale) -> dict:
         (r.item_id, r.warehouse_id): (r.kha_dung or 0.0)
         for r in availability(db, sale.ngay)
     }
+    # SL da xuat cho HD nay o cac phieu xuat truoc (draft hoac posted deu tinh, vi
+    # draft cung the hien y dinh da xu ly roi) -> tru bot khoi nhu cau dong nay.
+    already_pool: dict[tuple[int, int], float] = {}
+    for iss in db.scalars(select(InvIssue).where(InvIssue.sale_id == sale.id)):
+        for il in iss.lines:
+            k = (il.item_id, il.warehouse_id)
+            already_pool[k] = already_pool.get(k, 0.0) + il.so_luong
+
     created_issues: list[int] = []
     created_prods: list[int] = []
     warnings: list[str] = []
@@ -763,22 +798,47 @@ def generate_from_sale(db: Session, sale) -> dict:
         if not ln.warehouse_id:
             warnings.append(f"Dòng '{ln.ten_raw[:40]}': chưa chọn kho — bỏ qua")
             continue
-        kd = avail.get((ln.item_id, ln.warehouse_id), 0.0)
-        if kd >= ln.so_luong - EPS:
-            issue_lines.append((ln.item_id, ln.warehouse_id, ln.so_luong, ln.don_gia_ban))
+        key = (ln.item_id, ln.warehouse_id)
+        already = min(already_pool.get(key, 0.0), ln.so_luong)
+        already_pool[key] = already_pool.get(key, 0.0) - already
+        need = round(ln.so_luong - already, 6)
+        if need <= EPS:
+            continue  # da xuat du roi (phieu truoc) -> khong sinh lai
+
+        # LSX rieng cho DUNG dong nay da co san nhung CON NHAP (vd qua Ghep bo thu
+        # cong, chua kip ghi so nen chua cong vao ton) -> cong vao kha dung "hieu
+        # qua" de KHONG sinh THEM 1 LSX trung (LSX da posted thi da nam trong avail
+        # roi qua move that, khong can cong lai o day — chi bu cho phan CON NHAP).
+        prior_draft_prod = sum(
+            pl.so_luong
+            for prod in db.scalars(
+                select(InvProduction).where(
+                    InvProduction.sale_line_id == ln.id, InvProduction.status == "draft"
+                )
+            )
+            for pl in prod.lines
+            if pl.chieu == "ra" and pl.item_id == ln.item_id and pl.warehouse_id == ln.warehouse_id
+        )
+        kd = avail.get(key, 0.0) + prior_draft_prod
+        if kd >= need - EPS:
+            issue_lines.append((ln.item_id, ln.warehouse_id, need, ln.don_gia_ban))
             continue
 
         # Thieu ton -> can san xuat
-        shortfall = round(ln.so_luong - max(0.0, kd), 4)
+        shortfall = round(need - max(0.0, kd), 4)
         recipe = db.scalars(
             select(InvRecipe)
             .where(InvRecipe.output_item_id == ln.item_id)
             .order_by(InvRecipe.id.desc())
         ).first()
         if recipe is None:
+            # Hang hoa thuong (khong san xuat duoc) ma thieu ton: VAN dua ca 'need' vao
+            # phieu xuat LIEN KET sale de trang Ban ra thay day; khi ghi so se thieu
+            # -> hien modal duyet am kho (nhap ly do). Khong bo qua nua.
+            issue_lines.append((ln.item_id, ln.warehouse_id, need, ln.don_gia_ban))
             warnings.append(
-                f"Dòng '{ln.ten_raw[:40]}': thiếu {_fmt_qty(shortfall)} nhưng CHƯA có công thức "
-                f"sản xuất — tạo công thức ở tab Sản xuất rồi sinh lại"
+                f"Dòng '{ln.ten_raw[:40]}': thiếu {_fmt_qty(shortfall)} — đã đưa vào phiếu xuất, "
+                f"khi ghi sổ sẽ hỏi lý do duyệt âm kho (hoặc nhập bù trước ngày HĐ)"
             )
             continue
 
@@ -793,23 +853,24 @@ def generate_from_sale(db: Session, sale) -> dict:
             warehouse_id=ln.warehouse_id, so_luong=shortfall,
         ))
         for rl in recipe.lines:
-            need = round(rl.so_luong * scale, 4)
+            nvl_need = round(rl.so_luong * scale, 4)
             db.add(InvProductionLine(
                 production=prod, chieu="vao", item_id=rl.item_id,
-                warehouse_id=rl.warehouse_id, so_luong=need,
+                warehouse_id=rl.warehouse_id, so_luong=nvl_need,
             ))
             nvl_kd = avail.get((rl.item_id, rl.warehouse_id), 0.0)
-            if nvl_kd < need - EPS:
+            if nvl_kd < nvl_need - EPS:
                 it = db.get(InvItem, rl.item_id)
                 warnings.append(
                     f"⚠️ NVL '{(it.ten[:40] if it else rl.item_id)}' thiếu tại ngày HĐ "
-                    f"(cần {_fmt_qty(need)}, khả dụng {_fmt_qty(nvl_kd)}) — phải NHẬP trước "
+                    f"(cần {_fmt_qty(nvl_need)}, khả dụng {_fmt_qty(nvl_kd)}) — phải NHẬP trước "
                     f"ngày {sale.ngay} hoặc thay hàng tương tự (ghi lý do) trước khi ghi sổ"
                 )
         db.flush()
         created_prods.append(prod.id)
-        # SX xong co thanh pham -> xuat luon (draft)
-        issue_lines.append((ln.item_id, ln.warehouse_id, ln.so_luong, ln.don_gia_ban))
+        # SX xong co thanh pham -> xuat luon (draft) — chi phan CON THIEU (need),
+        # khong phai ln.so_luong (tranh xuat lai phan da xuat o phieu truoc).
+        issue_lines.append((ln.item_id, ln.warehouse_id, need, ln.don_gia_ban))
 
     if issue_lines:
         iss = InvIssue(

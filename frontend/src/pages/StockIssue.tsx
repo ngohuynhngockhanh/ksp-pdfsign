@@ -6,9 +6,12 @@ import {
   InvIssueLine,
   MUC_DICH_XUAT,
   MucDichXuat,
+  NegStockError,
+  NegStockViolation,
   StockRow,
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { NegStockModal } from "../components/NegStockModal";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -57,6 +60,12 @@ export function StockIssue() {
   const [view, setView] = useState<InvIssue | null>(null);
   const [viewAvail, setViewAvail] = useState<StockRow[]>([]);
   const [viewBusy, setViewBusy] = useState(false);
+  // duyet am kho: khi ghi so bi am -> mo modal nhap ly do (thay confirm mac dinh)
+  const [negModal, setNegModal] = useState<{
+    violations: NegStockViolation[];
+    issueId: number;
+    fromCreate?: boolean;
+  } | null>(null);
   const [listLoaded, setListLoaded] = useState(false);
   const autoPxRef = useRef(false);
 
@@ -115,8 +124,17 @@ export function StockIssue() {
     ]);
   }
 
+  function resetCreate() {
+    setCreating(false);
+    setLines([]);
+    setNote("");
+    setLyDo("");
+    setNguoiNhan("");
+    setBoPhan("");
+  }
   async function save() {
     setErr("");
+    let issId: number | null = null;
     try {
       const dk = MUC_DICH_XUAT[mucDich];
       const iss = await api.invIssueCreate({
@@ -136,16 +154,17 @@ export function StockIssue() {
           don_gia_ban: l.don_gia_ban,
         })),
       });
+      issId = iss.id;
       await api.invIssuePost(iss.id);
-      setCreating(false);
-      setLines([]);
-      setNote("");
-      setLyDo("");
-      setNguoiNhan("");
-      setBoPhan("");
+      resetCreate();
       load();
     } catch (e) {
-      setErr((e as Error).message);
+      // Am kho -> mo modal nhap ly do (phieu da tao dang draft, ghi so lai kem ly do)
+      if (e instanceof NegStockError && issId != null) {
+        setNegModal({ violations: e.violations, issueId: issId, fromCreate: true });
+      } else {
+        setErr((e as Error).message);
+      }
     }
   }
 
@@ -218,6 +237,31 @@ export function StockIssue() {
         setView(posted);
         load();
       }
+    } catch (e) {
+      // Am kho -> mo modal nhap ly do thay vi bao loi thang ra banner
+      if (e instanceof NegStockError && view) {
+        setNegModal({ violations: e.violations, issueId: view.id });
+      } else {
+        setErr((e as Error).message);
+      }
+    } finally {
+      setViewBusy(false);
+    }
+  }
+  // User da nhap ly do -> ghi so kem override_reason (chap nhan am kho)
+  async function confirmNegPost(reason: string) {
+    if (!negModal) return;
+    setViewBusy(true);
+    setErr("");
+    try {
+      const posted = await api.invIssuePost(negModal.issueId, reason);
+      if (negModal.fromCreate) {
+        resetCreate();
+      } else {
+        setView(posted);
+      }
+      setNegModal(null);
+      load();
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -502,7 +546,12 @@ export function StockIssue() {
               <button onClick={() => setCreating(false)}>Hủy</button>
               <button
                 className="primary"
-                disabled={lines.length === 0 || over.length > 0 || lines.some((l) => l.so_luong <= 0)}
+                disabled={lines.length === 0 || lines.some((l) => l.so_luong <= 0)}
+                title={
+                  over.length > 0
+                    ? "Có dòng vượt khả dụng — khi ghi sổ sẽ hỏi lý do duyệt âm kho"
+                    : ""
+                }
                 onClick={save}
               >
                 ✅ Ghi sổ phiếu xuất ({lines.length} dòng)
@@ -716,7 +765,12 @@ export function StockIssue() {
                   </button>
                   <button
                     className="primary"
-                    disabled={viewBusy || view.lines.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))}
+                    disabled={viewBusy}
+                    title={
+                      view.lines.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                        ? "Có dòng vượt khả dụng — nếu ghi sổ sẽ hỏi lý do duyệt âm kho"
+                        : ""
+                    }
                     onClick={doViewPost}
                   >
                     ✅ Ghi sổ lại
@@ -726,6 +780,14 @@ export function StockIssue() {
             </div>
           </div>
         </div>
+      )}
+      {negModal && (
+        <NegStockModal
+          violations={negModal.violations}
+          busy={viewBusy}
+          onConfirm={confirmNegPost}
+          onCancel={() => setNegModal(null)}
+        />
       )}
     </div>
   );

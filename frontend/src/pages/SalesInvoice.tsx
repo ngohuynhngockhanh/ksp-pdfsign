@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, InvItem, InvSale, InvSaleLine, InvWarehouse } from "../api";
+import { api, InvItem, InvSale, InvSaleLine, InvSaleSummary, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { getParam, setParam } from "../util";
 
@@ -126,10 +126,17 @@ function bomTotals(rows: BomRow[], giaBan: number) {
   return { costPretax, costWithTax, priceLow, priceHigh, marginPct };
 }
 
+const _thisYear = new Date().getFullYear();
+
 export function SalesInvoice() {
   const [list, setList] = useState<InvSale[]>([]);
   const [statusF, setStatusF] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
+  // Mac dinh loc NAM HIEN TAI (khop preset "Năm nay" cua DateFilter)
+  const [dateRange, setDateRange] = useState<DateRange>({
+    tu: `${_thisYear}-01-01`,
+    den: `${_thisYear}-12-31`,
+  });
+  const [summary, setSummary] = useState<InvSaleSummary | null>(null);
   const [cur, setCur] = useState<InvSale | null>(null);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -150,6 +157,7 @@ export function SalesInvoice() {
     setErr("");
     try {
       setList(await api.invSales(statusF, dateRange));
+      api.invSaleSummary(statusF, dateRange).then(setSummary).catch(() => setSummary(null));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -433,6 +441,29 @@ export function SalesInvoice() {
       /* ignore — van sua tay duoc */
     }
   }
+  // Khop lai ma hang cho dong con draft, dung danh muc MOI NHAT — sua truong hop
+  // dong duoc khop LUC TAO DRAFT nhung ma dich chua kip ghi so (roi xuong fuzzy chon nham).
+  async function rematchLine(l: InvSaleLine) {
+    if (!cur) return;
+    setBusy(true);
+    try {
+      const r = await api.invSaleRematch(cur.id, l.id);
+      if (r.item_id) {
+        window.alert(
+          r.changed
+            ? `Đã khớp lại: ${l.item_ma_hang || "(chưa có mã)"} → ${r.ma_hang} · ${r.ten}`
+            : `Khớp lại vẫn ra mã hiện tại (${r.ma_hang}) — không đổi.`,
+        );
+      } else {
+        window.alert("Vẫn không tìm được mã khớp trong danh mục — kiểm tra hoặc chọn tay.");
+      }
+      setCur(await api.invSale(cur.id));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function pickRow(i: number, it: InvItem) {
     setRow(i, { item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt, results: [], q: "" });
     try {
@@ -652,17 +683,17 @@ export function SalesInvoice() {
             <option value="reviewed">Đã duyệt</option>
             <option value="void">Hủy</option>
           </select>
-          <DateFilter value={dateRange} onChange={setDateRange} />
+          <DateFilter value={dateRange} onChange={setDateRange} initialMode="year" />
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.xml,.zip"
+            accept=".pdf,.xml,.zip,.xlsx"
             multiple
             style={{ display: "none" }}
             onChange={(e) => upload(e.target.files)}
           />
           <button className="btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-            {busy ? "Đang xử lý…" : "📥 Nạp hóa đơn (XML/PDF/ZIP)"}
+            {busy ? "Đang xử lý…" : "📥 Nạp hóa đơn (XML/PDF/ZIP/Excel)"}
           </button>
           <button className="btn-sm" onClick={() => setUrlOpen(true)}>
             🔗 Từ link
@@ -687,6 +718,46 @@ export function SalesInvoice() {
         </div>
       </div>
       {err && <div className="error">{err}</div>}
+
+      {summary && (
+        <div
+          className="warn-banner"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 18,
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <span>
+            📊 <b>{summary.so_hd_count}</b> HĐ (bỏ HĐ hủy/điều chỉnh)
+          </span>
+          <span>
+            💻 Phần mềm: <b>{vnd(summary.dt_phan_mem)}</b> đ
+          </span>
+          <span>
+            📦 Hàng hóa: <b>{vnd(summary.dt_hang_hoa)}</b> đ
+          </span>
+          <span>
+            Doanh thu: <b>{vnd(summary.doanh_thu_truoc_thue)}</b> đ (trước thuế)
+          </span>
+          <span>
+            Lợi nhuận: <b>{summary.co_uoc_tinh ? "~" : ""}{vnd(summary.ln_sau_nc)}</b> đ
+          </span>
+          <span
+            className={`chip sm ${summary.ti_suat_ln < 0 ? "red" : summary.ti_suat_ln < 10 ? "amber" : "green"}`}
+          >
+            Tỉ suất LN: {summary.co_uoc_tinh ? "~" : ""}
+            {summary.ti_suat_ln.toFixed(1)}%
+          </span>
+          {summary.co_uoc_tinh && (
+            <span className="muted" style={{ fontSize: 11 }}>
+              (~ = còn HĐ chưa xuất hết, giá vốn ước tính)
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="dt">
@@ -953,6 +1024,17 @@ export function SalesInvoice() {
                           </td>
                           <td style={{ minWidth: 190 }}>
                             <div className={l.warn_am_kho ? "" : "muted"}>{l.de_xuat}</div>
+                            {isDraft && l.warn_am_kho && (
+                              <button
+                                className="btn-sm ghost"
+                                style={{ marginTop: 4 }}
+                                disabled={busy}
+                                title="Khớp lại mã hàng theo danh mục mới nhất — dùng khi mã đúng được nhập kho SAU khi hóa đơn bán này đã tạo draft"
+                                onClick={() => rematchLine(l)}
+                              >
+                                🔄 Khớp lại
+                              </button>
+                            )}
                             {!skipKho && l.fulfil_kind === "sx" && (
                               <button className="btn-sm" style={{ marginTop: 4 }} onClick={() => openBom(l)}>
                                 🧩 Tạo BOM / công thức

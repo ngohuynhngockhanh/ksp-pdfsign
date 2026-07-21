@@ -921,6 +921,31 @@ def _is_kct(thue_suat_raw) -> bool:
     return s in ("", "kct", "khong chiu thue") or "kct" in s
 
 
+def parse_vat_rate(raw) -> tuple[float, bool]:
+    """Chuan hoa thue suat (ke ca dang iHoadon 'NN%xMM%') -> (ts_hieu_luc, kct).
+
+    - "10%x70%" -> (7.0, False)   (giam 30% thue -> 10*0.7)
+    - "5%x70%"  -> (3.5, False)
+    - "8%"/"10%"/"5%"/"0%"/"10" -> (so, False)
+    - "Khong chiu thue"/"KCT"/rong/"Vat" -> (0.0, True)
+    """
+    s = str(raw or "").strip()
+    if _is_kct(s) or normalize_name(s) in ("vat", "khong chiu thue"):
+        return 0.0, True
+    low = s.lower().replace(" ", "")
+    # dang "10%x70%" hoac "10x70"
+    m = re.match(r"^(\d+(?:[.,]\d+)?)%?x(\d+(?:[.,]\d+)?)%?$", low)
+    if m:
+        base = float(m.group(1).replace(",", "."))
+        factor = float(m.group(2).replace(",", ".")) / 100.0
+        return round(base * factor, 4), False
+    # dang "10%" / "8" / "0%"
+    m = re.match(r"^(\d+(?:[.,]\d+)?)%?$", low)
+    if m:
+        return float(m.group(1).replace(",", ".")), False
+    return 0.0, True  # khong doc duoc -> coi nhu KCT (an toan, khong bia thue)
+
+
 def classify_sale_line(ten: str, thue_kct: bool) -> tuple[str, str]:
     """-> (line_class, fulfil_kind so bo). fulfil se duoc tinh lai o _sale_out theo ton thuc te.
 
@@ -1161,6 +1186,92 @@ def create_sale_draft(
 # ---------------------------------------------------------------------------
 # Doi chieu bang ke hoa don mua vao (Excel ke khai thue, sheet "Bảng kê mua vào")
 # ---------------------------------------------------------------------------
+def parse_sale_bang_ke_xlsx(data: bytes) -> dict:
+    """Doc file 'Bảng kê hàng hóa dịch vụ' (khuon iHoadon) da dien -> data cho create_sale_draft.
+
+    Nhan dien cot theo HANG FIELD KY THUAT (product_code/product_name/quantity/price/
+    amount/vat_name/unit_name...). So HD/ky hieu de rong (dien tay tren iHoadon). Thue
+    suat dang '10%x70%' -> parse_vat_rate.
+    """
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    ws = None
+    for name in wb.sheetnames:
+        n = normalize_name(name)
+        if "bang" in n and "ke" in n and "hang" in n:
+            ws = wb[name]
+            break
+    if ws is None:
+        ws = wb[wb.sheetnames[0]]
+
+    rows = list(ws.iter_rows(values_only=True))
+    # Tim hang chua ten field ky thuat
+    field_row_idx = None
+    for i, row in enumerate(rows):
+        cells = [str(c or "").strip().lower() for c in row]
+        if "product_name" in cells and "quantity" in cells:
+            field_row_idx = i
+            break
+    if field_row_idx is None:
+        raise ValueError("Không nhận ra khuôn 'Bảng kê hàng hóa dịch vụ' (thiếu dòng field kỹ thuật)")
+    field_row = [str(c or "").strip().lower() for c in rows[field_row_idx]]
+
+    def col(name: str) -> int | None:
+        return field_row.index(name) if name in field_row else None
+
+    ci = {
+        k: col(k)
+        for k in (
+            "product_code", "product_name", "unit_name", "quantity", "price",
+            "amount", "amount_without_discount", "vat_name", "amount_vat", "is_money_service",
+        )
+    }
+    items: list[dict] = []
+    for row in rows[field_row_idx + 1:]:
+        def g(key):
+            idx = ci.get(key)
+            return row[idx] if idx is not None and idx < len(row) else None
+
+        ten = str(g("product_name") or "").strip()
+        if not ten:
+            continue
+        sl = money.parse_num(g("quantity"))
+        if sl <= 0:
+            continue
+        tt = money.parse_num(g("amount")) or money.parse_num(g("amount_without_discount"))
+        vat_name = g("vat_name")
+        ts, kct = parse_vat_rate(vat_name)
+        # create_sale_draft doc thue_suat qua money.parse_num + _is_kct: dua SO hieu luc
+        # (vd '10%x70%' -> '7') hoac '' cho KCT de khong mat thue.
+        thue_suat_out = "" if kct else str(ts)
+        items.append({
+            "stt": len(items) + 1,
+            "ma_hang": str(g("product_code") or "").strip(),
+            "ten": ten,
+            "dvt": str(g("unit_name") or "").strip(),
+            "so_luong": sl,
+            "don_gia": money.parse_num(g("price")),
+            "thanh_tien": tt,
+            "thue_suat": thue_suat_out,
+        })
+    if not items:
+        raise ValueError("Không đọc được dòng hàng nào trong bảng kê (kiểm tra lại file đã điền)")
+    tong_truoc = sum(it["thanh_tien"] for it in items)
+    return {
+        "source": "xlsx",
+        "so_hd": "", "ky_hieu": "", "ngay": "",
+        "mst_mua": "", "ten_mua": "",
+        "tong_truoc_thue": tong_truoc, "tong_thue": 0.0, "tong_tien": tong_truoc,
+        "items": items,
+        "confidence": 0.85,
+        "warnings": [{
+            "code": "xlsx",
+            "msg": "Nạp từ Excel bảng kê — số HĐ/ký hiệu để trống, tự điền tay; kiểm tra khớp mã kho",
+        }],
+    }
+
+
 def parse_bang_ke_xlsx(data: bytes) -> list[dict]:
     """Doc sheet 'Bảng kê mua vào' (phu luc to khai thue GTGT) -> danh sach dong HD.
 

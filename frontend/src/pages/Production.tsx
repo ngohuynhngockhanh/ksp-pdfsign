@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { api, InvProduction, InvProductionLine, InvRecipe, InvWarehouse, StockRow } from "../api";
+import {
+  api,
+  InvProduction,
+  InvProductionLine,
+  InvRecipe,
+  InvWarehouse,
+  NegStockError,
+  NegStockViolation,
+  StockRow,
+} from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { NegStockModal } from "../components/NegStockModal";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -44,6 +54,19 @@ export function Production() {
   const [view, setView] = useState<InvProduction | null>(null);
   const [viewAvail, setViewAvail] = useState<StockRow[]>([]);
   const [viewBusy, setViewBusy] = useState(false);
+  const [negModal, setNegModal] = useState<{
+    violations: NegStockViolation[];
+    prodId: number;
+  } | null>(null);
+  const [swapSearch, setSwapSearch] = useState<{
+    lineId: number;
+    q: string;
+    results: { id: number; ma_hang: string; ten: string; dvt: string }[];
+  } | null>(null);
+  const [addNvlQ, setAddNvlQ] = useState("");
+  const [addNvlResults, setAddNvlResults] = useState<
+    { id: number; ma_hang: string; ten: string; dvt: string }[]
+  >([]);
   const [listLoaded, setListLoaded] = useState(false);
   const autoLsxRef = useRef(false);
 
@@ -278,6 +301,7 @@ export function Production() {
       lines: view.lines.map((l) => ({
         chieu: l.chieu, item_id: l.item_id, warehouse_id: l.warehouse_id,
         so_luong: l.so_luong, don_gia_tam: l.don_gia_tam || 0,
+        note: l.note || "", orig_item_id: l.orig_item_id,
       })),
     });
   }
@@ -305,9 +329,170 @@ export function Production() {
         load();
       }
     } catch (e) {
+      if (e instanceof NegStockError && view) {
+        setNegModal({ violations: e.violations, prodId: view.id });
+      } else {
+        setErr((e as Error).message);
+      }
+    } finally {
+      setViewBusy(false);
+    }
+  }
+  // User da nhap ly do -> ghi so LSX kem override_reason (chap nhan am kho NVL)
+  async function confirmNegPost(reason: string) {
+    if (!negModal) return;
+    setViewBusy(true);
+    setErr("");
+    try {
+      const posted = await api.invProductionPost(negModal.prodId, reason);
+      setView(posted);
+      setNegModal(null);
+      load();
+    } catch (e) {
       setErr((e as Error).message);
     } finally {
       setViewBusy(false);
+    }
+  }
+
+  // Doi mot dong NVL cu (vd het thẻ nhớ model cu) sang mot ma khac — giu nguyen SL.
+  async function searchSwap(lineId: number, q: string) {
+    setSwapSearch({ lineId, q, results: swapSearch?.lineId === lineId ? swapSearch.results : [] });
+    if (q.trim().length >= 2) {
+      try {
+        setSwapSearch({ lineId, q, results: await api.invItems(q) });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  function swapViewLine(lineId: number, it: { id: number; ma_hang: string; ten: string; dvt: string }) {
+    setView((v) =>
+      v
+        ? {
+            ...v,
+            lines: v.lines.map((l) =>
+              l.id === lineId
+                ? {
+                    ...l,
+                    item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt,
+                    orig_item_id: l.orig_item_id ?? l.item_id,
+                    note: `Thay hàng do hết mã gốc — đổi sang ${it.ma_hang}`,
+                  }
+                : l,
+            ),
+          }
+        : v,
+    );
+    setSwapSearch(null);
+  }
+  // Them 1 dong NVL MOI vao LSX dang nhap (vd BOM thieu "hop nhom" chua co san).
+  async function searchAddNvl(q: string) {
+    setAddNvlQ(q);
+    if (q.trim().length >= 2) {
+      try {
+        setAddNvlResults(await api.invItems(q));
+      } catch {
+        /* ignore */
+      }
+    } else setAddNvlResults([]);
+  }
+  async function addViewConsume(it: { id: number; ma_hang: string; ten: string; dvt: string }) {
+    if (!view) return;
+    if (view.lines.some((l) => l.chieu === "vao" && l.item_id === it.id)) {
+      setAddNvlQ("");
+      setAddNvlResults([]);
+      return; // da co dong nay roi, khong them trung
+    }
+    let warehouseId = whs.find((w) => w.code === "HH")?.id ?? 1;
+    try {
+      const c = await api.invItemCost(it.id, view.ngay);
+      if (c.warehouse_id != null) warehouseId = c.warehouse_id;
+    } catch {
+      /* ignore — mac dinh kho HH, sua tay duoc sau */
+    }
+    setView((v) =>
+      v
+        ? {
+            ...v,
+            lines: [
+              ...v.lines,
+              {
+                id: -2000 - v.lines.length,
+                chieu: "vao",
+                item_id: it.id,
+                ma_hang: it.ma_hang,
+                ten: it.ten,
+                dvt: it.dvt,
+                warehouse_id: warehouseId,
+                so_luong: 1,
+                don_gia_tam: 0,
+                gia_tri: 0,
+                gia_tri_uoc: 0,
+                so_luong_dinh_muc: null,
+                gia_tri_dinh_muc: null,
+                note: "",
+                orig_item_id: null,
+              },
+            ],
+          }
+        : v,
+    );
+    setAddNvlQ("");
+    setAddNvlResults([]);
+  }
+  function removeViewLine(lineId: number) {
+    setView((v) => (v ? { ...v, lines: v.lines.filter((l) => l.id !== lineId) } : v));
+  }
+  // Ap 1 cong thuc (BOM) KHAC len LSX dang nhap co san — giu nguyen SL thanh pham,
+  // thay toan bo dong tieu hao theo cong thuc moi (dung khi BOM cu het NVL).
+  function applyRecipeToView(r: InvRecipe) {
+    if (!view) return;
+    const out = vOutputs[0];
+    const target = out?.so_luong || r.output_qty || 1;
+    const base = r.output_qty || 1;
+    const factor = target / base;
+    const consume: InvProductionLine[] = r.lines.map((ln, i) => ({
+      id: -1000 - i,
+      chieu: "vao",
+      item_id: ln.item_id,
+      ma_hang: ln.ma_hang,
+      ten: ln.ten,
+      dvt: ln.dvt,
+      warehouse_id: ln.warehouse_id,
+      so_luong: ln.so_luong * factor,
+      don_gia_tam: 0,
+      gia_tri: 0,
+      gia_tri_uoc: 0,
+      so_luong_dinh_muc: null,
+      gia_tri_dinh_muc: null,
+      note: "",
+      orig_item_id: null,
+    }));
+    setView((v) =>
+      v ? { ...v, recipe_id: r.id, lines: [...consume, ...v.lines.filter((l) => l.chieu === "ra")] } : v,
+    );
+  }
+  async function saveRecipeFromView() {
+    if (!view) return;
+    const out = vOutputs[0];
+    if (!out) return;
+    const name = window.prompt("Tên công thức (BOM) mới:", `${out.ma_hang || out.ten} (thay thế)`);
+    if (!name) return;
+    const perSp = out.so_luong || 1;
+    try {
+      await api.invRecipeCreate({
+        name,
+        output_item_id: out.item_id,
+        output_qty: 1,
+        lines: vConsumes.map((l) => ({
+          item_id: l.item_id, warehouse_id: l.warehouse_id, so_luong: l.so_luong / perSp,
+        })),
+      });
+      setRecipes(await api.invRecipes());
+      window.alert(`Đã lưu công thức "${name}" — lần sau chọn được ở "Đổi sang công thức khác".`);
+    } catch (e) {
+      setErr((e as Error).message);
     }
   }
 
@@ -347,6 +532,9 @@ export function Production() {
   const hasDinhMuc = vConsumes.some((l) => l.so_luong_dinh_muc != null);
   const nvlThieuGia =
     view?.status === "posted" && vConsumes.some((l) => l.gia_tri === 0);
+  // BOM khac cho CUNG thanh pham (uu tien), fallback toan bo neu chua co BOM nao khac gan the.
+  const sameItemRecipes = recipes.filter((r) => r.output_item_id === vOutputs[0]?.item_id);
+  const viewRecipeOptions = sameItemRecipes.length > 0 ? sameItemRecipes : recipes;
 
   return (
     <div className="docs-page">
@@ -809,6 +997,34 @@ export function Production() {
               </table>
             </div>
 
+            {view.status === "draft" && recipes.length > 0 && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
+                <label>
+                  🔁 Đổi sang công thức khác (BOM thay thế)
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const r = viewRecipeOptions.find((x) => x.id === Number(e.target.value));
+                      if (r) applyRecipeToView(r);
+                    }}
+                  >
+                    <option value="">— chọn —</option>
+                    {viewRecipeOptions.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="btn-sm ghost" onClick={saveRecipeFromView}>
+                  💾 Lưu thành công thức mới
+                </button>
+                <span className="muted" style={{ fontSize: 11 }}>
+                  Dùng khi BOM cũ hết NVL (vd đổi thẻ nhớ khác) — chọn BOM đã lưu sẵn, hoặc đổi tay từng
+                  dòng bên dưới rồi lưu thành BOM mới để tái sử dụng.
+                </span>
+              </div>
+            )}
             <h4>
               Nguyên vật liệu tiêu hao (TK 621)
               {hasDinhMuc && <span className="muted" style={{ fontWeight: 400 }}> — so định mức / thực tế / chênh lệch</span>}
@@ -834,7 +1050,60 @@ export function Production() {
                     const clSl = dmSl != null ? l.so_luong - dmSl : null;
                     return (
                       <tr key={l.id} className={overkd ? "row-treo" : ""}>
-                        <td>{l.ma_hang} · {l.ten}</td>
+                        <td>
+                          {l.ma_hang} · {l.ten}
+                          {l.note && (
+                            <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                              💬 {l.note}
+                            </div>
+                          )}
+                          {view.status === "draft" && (
+                            <div>
+                              <button
+                                className="btn-sm ghost"
+                                style={{ fontSize: 11 }}
+                                title="Đổi mã vật tư này (vd hết hàng, thay model khác)"
+                                onClick={() =>
+                                  setSwapSearch(
+                                    swapSearch?.lineId === l.id ? null : { lineId: l.id, q: "", results: [] },
+                                  )
+                                }
+                              >
+                                🔄 đổi mã
+                              </button>
+                              <button
+                                className="btn-sm ghost"
+                                style={{ fontSize: 11 }}
+                                title="Xoá dòng vật tư này khỏi LSX"
+                                onClick={() => {
+                                  if (window.confirm(`Xoá dòng "${l.ma_hang} · ${l.ten}" khỏi LSX?`)) {
+                                    removeViewLine(l.id);
+                                  }
+                                }}
+                              >
+                                ✕ xoá
+                              </button>
+                              {swapSearch?.lineId === l.id && (
+                                <div>
+                                  <input
+                                    autoFocus
+                                    style={{ width: 160, marginTop: 2 }}
+                                    placeholder="tìm mã/tên thay thế…"
+                                    value={swapSearch.q}
+                                    onChange={(e) => searchSwap(l.id, e.target.value)}
+                                  />
+                                  {swapSearch.results.slice(0, 6).map((it) => (
+                                    <div key={it.id}>
+                                      <button className="btn-sm ghost" onClick={() => swapViewLine(l.id, it)}>
+                                        <b>{it.ma_hang}</b> · {it.ten}
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
                         {hasDinhMuc && (
                           <td style={{ textAlign: "right" }} className="muted">
                             {dmSl != null ? dmSl : "—"}
@@ -889,6 +1158,30 @@ export function Production() {
                 </tbody>
               </table>
             </div>
+            {view.status === "draft" && (
+              <div style={{ margin: "6px 0" }}>
+                <label>
+                  ➕ Thêm vật tư vào LSX (vd thiếu "hộp nhôm" chưa có trong BOM)
+                  <input
+                    style={{ width: 220, marginLeft: 6 }}
+                    placeholder="tìm mã/tên vật tư…"
+                    value={addNvlQ}
+                    onChange={(e) => searchAddNvl(e.target.value)}
+                  />
+                </label>
+                {addNvlResults.length > 0 && (
+                  <div>
+                    {addNvlResults.slice(0, 8).map((it) => (
+                      <div key={it.id}>
+                        <button className="btn-sm ghost" onClick={() => addViewConsume(it)}>
+                          <b>{it.ma_hang}</b> · {it.ten}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Tong hop gia thanh */}
             <div className="warn-banner" style={{ marginTop: 10 }}>
@@ -952,11 +1245,13 @@ export function Production() {
                   </button>
                   <button
                     className="primary"
-                    disabled={
-                      viewBusy ||
+                    disabled={viewBusy}
+                    title={
                       view.lines
                         .filter((l) => l.chieu === "vao")
                         .some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                        ? "Có dòng vượt khả dụng — nếu ghi sổ sẽ hỏi lý do duyệt âm kho"
+                        : ""
                     }
                     onClick={doViewPost}
                   >
@@ -967,6 +1262,14 @@ export function Production() {
             </div>
           </div>
         </div>
+      )}
+      {negModal && (
+        <NegStockModal
+          violations={negModal.violations}
+          busy={viewBusy}
+          onConfirm={confirmNegPost}
+          onCancel={() => setNegModal(null)}
+        />
       )}
     </div>
   );

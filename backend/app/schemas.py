@@ -202,6 +202,11 @@ class BulkIds(BaseModel):
     ids: list[int]
 
 
+class PostOverrideIn(BaseModel):
+    # ly do chap nhan am kho khi ghi so (user thua nhan sai, se nhap bu)
+    override_reason: str | None = None
+
+
 # --- BBBG (sinh tu hoa don) ---
 class BBBGDate(BaseModel):
     day: int
@@ -561,6 +566,41 @@ class InvSaleOut(BaseModel):
     ln_uoc: bool = False  # True = con uoc tinh (phieu nhap/chua xuat het)
 
 
+class InvSaleSummaryOut(BaseModel):
+    """Thong ke ban ra trong khoang loc: doanh thu PM vs hang hoa + loi nhuan."""
+
+    so_hd_count: int = 0
+    dt_phan_mem: float = 0  # doanh thu dong phan mem (line_class=='phan_mem')
+    dt_hang_hoa: float = 0  # doanh thu dong hang hoa/dich vu con lai
+    doanh_thu_truoc_thue: float = 0  # tong truoc thue (= PM + HH)
+    ln_truoc_nc: float = 0  # loi nhuan truoc nhan cong
+    ln_sau_nc: float = 0  # loi nhuan sau nhan cong
+    ti_suat_ln: float = 0  # % = ln_sau_nc / doanh_thu * 100
+    co_uoc_tinh: bool = False  # con HD chua xuat het -> gia von uoc tinh
+
+
+# --- Tao hoa don nhap (soan dong -> xuat Excel bang ke iHoadon) ---
+class SaleDraftLineIn(BaseModel):
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    so_luong: float = 0
+    don_gia: float = 0
+    thanh_tien: float = 0
+    vat_name: str = ""  # nhan thue theo Danh_muc: '8%','10%x70%','Không chịu thuế'...
+    tien_thue: float | None = None
+    is_dich_vu: bool = False  # danh 'x' cot phi dich vu
+
+
+class SaleDraftExportIn(BaseModel):
+    lines: list[SaleDraftLineIn] = Field(default_factory=list)
+
+
+class SuggestInvoiceLinesIn(BaseModel):
+    mo_ta: str = ""  # mo ta noi dung can ban
+    context: str = ""  # huong dan them cho AI
+
+
 # --- Ghep bo (assembly / BOM) tu 1 dong ban ---
 class BomExistingIn(BaseModel):
     ten: str
@@ -641,6 +681,7 @@ class InvIssueOut(BaseModel):
     tong_gia_von_uoc: float = 0  # uoc tinh (draft chua ghi so)
     note: str
     status: str
+    am_kho_override: bool = False  # ghi so du am kho (co ly do)
     created_at: str = ""
     lines: list[InvIssueLineOut] = Field(default_factory=list)
 
@@ -651,6 +692,8 @@ class InvProductionLineIn(BaseModel):
     warehouse_id: int
     so_luong: float
     don_gia_tam: float = 0  # gia tam tinh cho NVL chua co gia von (dong 'vao')
+    note: str = ""
+    orig_item_id: int | None = None
 
 
 class InvProductionIn(BaseModel):
@@ -679,6 +722,8 @@ class InvProductionLineOut(BaseModel):
     # so dinh muc (tu recipe_id) de so sanh - chi co khi lenh gan cong thuc
     so_luong_dinh_muc: float | None = None
     gia_tri_dinh_muc: float | None = None
+    note: str = ""  # ly do thay hang / ghi chu dong (vd "thay hang do het mã goc")
+    orig_item_id: int | None = None  # ma goc bi thay (khi fork/doi hang)
 
 
 class InvProductionOut(BaseModel):
@@ -696,6 +741,7 @@ class InvProductionOut(BaseModel):
     gia_thanh_dv_uoc: float = 0  # uoc tinh / don vi thanh pham
     gia_ban_du_kien: float = 0
     sale_id: int | None = None  # truy vet: LSX sinh tu HD ban nao (neu co)
+    am_kho_override: bool = False  # ghi so du am kho (co ly do)
     created_at: str = ""
     lines: list[InvProductionLineOut] = Field(default_factory=list)
 
@@ -718,6 +764,7 @@ class InvRecipeOut(BaseModel):
     id: int
     name: str
     output_item_id: int
+    output_ma_hang: str = ""
     output_ten: str = ""
     output_qty: float
     description: str = ""

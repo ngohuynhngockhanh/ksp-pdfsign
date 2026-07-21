@@ -990,6 +990,14 @@ label.link-btn.file-inline {
 .dt tbody tr.row-treo:hover td {
   background: #fdf1cf;
 }
+/* Ton AM (< 0): to do dam canh bao manh — ban/xuat thu chua co dau vao */
+.dt tbody tr.row-neg td {
+  background: #fdecea;
+  color: #a5281c;
+}
+.dt tbody tr.row-neg:hover td {
+  background: #fbd9d4;
+}
 .dt .chk {
   width: 34px;
   text-align: center;
@@ -1477,12 +1485,16 @@ label.link-btn.file-inline {
   color: var(--muted);
   padding: 0 10px 5px;
 }
-.sidebar button {
+.sidebar button,
+.sidebar a {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
+  box-sizing: border-box;
   text-align: left;
+  text-decoration: none;
+  cursor: pointer;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -1491,11 +1503,13 @@ label.link-btn.file-inline {
   font-weight: 500;
   font-size: 0.9rem;
 }
-.sidebar button:hover {
+.sidebar button:hover,
+.sidebar a:hover {
   background: #eef1f5;
   color: var(--text);
 }
-.sidebar button.active {
+.sidebar button.active,
+.sidebar a.active {
   background: var(--primary-soft);
   color: var(--primary);
   font-weight: 600;

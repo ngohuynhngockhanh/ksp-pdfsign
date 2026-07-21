@@ -259,6 +259,10 @@ class InvPurchase(Base):
     confidence: Mapped[float] = mapped_column(default=1.0)
     warnings: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
     dup_of: Mapped[int | None] = mapped_column(nullable=True)
+    # dong bo file goc len NAS (checksum de biet file da co chua)
+    nas_path: Mapped[str] = mapped_column(String(500), default="")
+    nas_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    nas_sha256: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -405,6 +409,8 @@ class InvIssue(Base):
     tong_gia_von: Mapped[float] = mapped_column(default=0.0)  # luu khi post
     created_by: Mapped[int | None] = mapped_column(nullable=True)  # nguoi lap phieu
     note: Mapped[str] = mapped_column(String(500), default="")
+    # ghi so du am kho (user thua nhan sai, se nhap bu) — ly do luu o ly_do
+    am_kho_override: Mapped[bool] = mapped_column(default=False)
     status: Mapped[str] = mapped_column(String(10), default="draft", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -454,6 +460,8 @@ class InvProduction(Base):
         ForeignKey("inv_sale_invoices.id"), nullable=True
     )
     sale_line_id: Mapped[int | None] = mapped_column(nullable=True)
+    # ghi so du am kho NVL (user thua nhan sai, se nhap bu) — ly do luu o note
+    am_kho_override: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -603,6 +611,20 @@ class InvCustomsCost(Base):
     decl: Mapped["InvCustomsDecl"] = relationship(back_populates="costs")
 
 
+class AppSetting(Base):
+    """Cau hinh dong (key-value) sua duoc tu web — override len Settings tu .env.
+
+    Dung cho AI endpoint (ai_*) va NAS (nas_*). Secret (password/api_key) luu thang
+    (khong ma hoa trong pham vi hien tai) — chi admin sua/xem.
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 _engine = None
 _SessionLocal = None
 
@@ -658,6 +680,9 @@ def _migrate_add_columns() -> None:
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",
+            "nas_path": "VARCHAR(500) DEFAULT ''",
+            "nas_synced_at": "DATETIME",
+            "nas_sha256": "VARCHAR(64) DEFAULT ''",
         },
         "inv_productions": {
             "sale_id": "INTEGER",
@@ -669,6 +694,7 @@ def _migrate_add_columns() -> None:
             "cp_sxc": "FLOAT DEFAULT 0",
             "tong_gia_thanh": "FLOAT DEFAULT 0",
             "gia_ban_du_kien": "FLOAT DEFAULT 0",
+            "am_kho_override": "BOOLEAN DEFAULT 0",
         },
         "inv_production_lines": {
             "note": "VARCHAR(255) DEFAULT ''",
@@ -691,6 +717,7 @@ def _migrate_add_columns() -> None:
             "tong_gia_von": "FLOAT DEFAULT 0",
             "created_by": "INTEGER",
             "sale_id": "INTEGER",
+            "am_kho_override": "BOOLEAN DEFAULT 0",
         },
         "inv_issue_lines": {
             "gia_von": "FLOAT DEFAULT 0",

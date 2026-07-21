@@ -148,4 +148,13 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    # Ap override cau hinh dong (AI/NAS) tu DB len tren gia tri .env.
+    # Import tre de tranh vong lap (settings_store -> db -> config).
+    try:
+        from . import settings_store
+
+        settings_store.apply_overrides(s)
+    except Exception:
+        pass
+    return s

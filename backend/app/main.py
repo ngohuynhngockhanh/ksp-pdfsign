@@ -40,7 +40,9 @@ from . import (
     invoice,
     money,
     nas,
+    settings_store,
     signing,
+    tax,
     storage,
     token_backend,
     verify,
@@ -1505,6 +1507,194 @@ def nas_status(user: CurrentUser = Depends(require_admin), settings: Settings = 
 def nas_test(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
     ok, msg = nas.test_connection(settings)
     return {"ok": ok, "message": msg}
+
+
+@app.get("/api/nas/disk")
+def nas_disk(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
+    """Dung luong share NAS (GB): tong / da dung / con trong / % da dung."""
+    try:
+        return {"ok": True, **nas.disk_usage(settings)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "message": f"{type(e).__name__}: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Cau hinh dong (AI + NAS) — sua tu web, luu DB (app_settings), khong can restart
+# ---------------------------------------------------------------------------
+@app.get("/api/settings")
+def get_app_settings(
+    user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)
+):
+    """Tra cau hinh AI/NAS hien tai. Secret (api_key/password) chi bao DA-DAT hay chua."""
+    return {
+        "ai_enabled": settings.ai_enabled,
+        "ai_base_url": settings.ai_base_url,
+        "ai_api_key_set": bool(settings.ai_api_key and settings.ai_api_key != "public"),
+        "ai_model": settings.ai_model,
+        "ai_max_tokens": settings.ai_max_tokens,
+        "ai_timeout": settings.ai_timeout,
+        "nas_enabled": settings.nas_enabled,
+        "nas_host": settings.nas_host,
+        "nas_share": settings.nas_share,
+        "nas_user": settings.nas_user,
+        "nas_password_set": bool(settings.nas_password),
+        "nas_base_path": settings.nas_base_path,
+        "nas_timeout": settings.nas_timeout,
+    }
+
+
+@app.post("/api/settings")
+def save_app_settings(
+    body: dict,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Ghi cau hinh AI/NAS vao DB + reload (cache_clear) -> co hieu luc ngay.
+
+    Secret de trong -> giu gia tri cu (khong bat nhap lai). Chi nhan cac key hop le.
+    """
+    values = {k: v for k, v in (body or {}).items() if k in settings_store.ALLOWED_KEYS}
+    settings_store.set_overrides(values)
+    settings_store.reload_settings()
+    _audit(db, user, "settings_update", "AI/NAS", ", ".join(sorted(values.keys()))[:180])
+    return {"ok": True}
+
+
+@app.post("/api/ai/test")
+def ai_test(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
+    """Goi thu AI 1 cau ngan de kiem tra endpoint/cau hinh (test tu web)."""
+    if not settings.ai_enabled:
+        return {"ok": False, "message": "AI đang tắt (bật 'ai_enabled' trước)"}
+    try:
+        reply = ai.chat(
+            settings,
+            [{"role": "user", "content": "Trả lời đúng một từ: OK"}],
+            temperature=0,
+        )
+        return {"ok": True, "message": f"Model {settings.ai_model} phản hồi: {reply[:120]}"}
+    except ai.AINotConfigured as e:
+        return {"ok": False, "message": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "message": f"{type(e).__name__}: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Đồng bộ hóa đơn từ cổng Tổng cục Thuế (hoadondientu.gdt.gov.vn)
+# ---------------------------------------------------------------------------
+@app.get("/api/tax/captcha")
+def tax_captcha(user: CurrentUser = Depends(require_admin)):
+    """Lấy 1 captcha mới từ cổng thuế (FE hiển thị SVG cho user gõ)."""
+    try:
+        return tax.get_captcha()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"{type(e).__name__}: {e}")
+
+
+@app.get("/api/tax/credentials")
+def tax_get_credentials(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    """Tra MST da luu + co mat khau chua (KHONG tra mat khau ra ngoai)."""
+    from .db import AppSetting
+
+    mst = db.get(AppSetting, "tax_mst")
+    pw = db.get(AppSetting, "tax_password_enc")
+    return {"mst": mst.value if mst else "", "has_password": bool(pw and pw.value)}
+
+
+@app.post("/api/tax/save-credentials")
+def tax_save_credentials(
+    body: dict, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Luu MST + mat khau cong thue (mat khau MA HOA Fernet, giai ma duoc de auto-login)."""
+    from . import crypto
+    from .db import AppSetting
+
+    mst = str(body.get("mst") or "").strip()
+    pw = str(body.get("password") or "")
+    if mst:
+        row = db.get(AppSetting, "tax_mst") or AppSetting(key="tax_mst", value="")
+        row.value = mst
+        db.merge(row)
+    if pw:  # de trong = giu nguyen mat khau cu
+        row = db.get(AppSetting, "tax_password_enc") or AppSetting(key="tax_password_enc", value="")
+        row.value = crypto.encrypt(pw)
+        db.merge(row)
+    db.commit()
+    _audit(db, user, "tax_save_credentials", mst, "đã lưu (mật khẩu mã hóa)")
+    return {"ok": True}
+
+
+def _tax_stored_password(db) -> str:
+    from . import crypto
+    from .db import AppSetting
+
+    pw = db.get(AppSetting, "tax_password_enc")
+    return crypto.decrypt(pw.value) if pw else ""
+
+
+@app.post("/api/tax/sync")
+def tax_sync(
+    body: dict,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Đăng nhập cổng thuế + tải HĐ mua/bán trong khoảng + đối chiếu hệ thống.
+
+    body: {mst, password, ckey, cvalue, tu (yyyy-mm-dd), den}. KHÔNG lưu mật khẩu;
+    token chỉ dùng trong request này rồi bỏ.
+    """
+    mst = str(body.get("mst") or "").strip()
+    password = str(body.get("password") or "")
+    if not password:  # dung mat khau da luu (ma hoa) neu de trong
+        password = _tax_stored_password(db)
+    ckey = str(body.get("ckey") or "")
+    cvalue = str(body.get("cvalue") or "").strip()
+    tu = str(body.get("tu") or "").strip()
+    den = str(body.get("den") or "").strip()
+    if not (tu and den):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu khoảng ngày")
+
+    from . import crypto
+    from .db import AppSetting
+
+    def _save_token(tok: str) -> None:
+        row = db.get(AppSetting, "tax_token_enc") or AppSetting(key="tax_token_enc", value="")
+        row.value = crypto.encrypt(tok)
+        db.merge(row)
+        db.commit()
+
+    token = ""
+    if ckey and cvalue:
+        # Dang nhap moi bang captcha -> lay token va LUU lai de lan sau khoi captcha
+        if not (mst and password):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu MST/mật khẩu")
+        try:
+            token = tax.authenticate(mst, password, ckey, cvalue)
+        except tax.TaxError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+        _save_token(token)
+    else:
+        # Khong co captcha -> dung TOKEN da luu (con han thi khoi dang nhap lai)
+        row = db.get(AppSetting, "tax_token_enc")
+        token = crypto.decrypt(row.value) if row else ""
+        if not tax.check_token(token):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Phiên đăng nhập cổng thuế đã hết hạn — nhập captcha để đăng nhập lại",
+            )
+    try:
+        inv = tax.fetch_invoices(token, tu, den)
+        result = tax.reconcile(db, inv, tu, den)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Lỗi tải hóa đơn: {type(e).__name__}: {e}")
+    # do_import=True -> nap luon cac HD mua thieu vao he thong dang draft (dung
+    # cung token, khong can captcha lai). create_purchase_draft tu chong trung.
+    if bool(body.get("do_import")):
+        imp = tax.import_missing_purchases(db, token, result["missing_mua"])
+        result["import"] = imp
+        _audit(db, user, "tax_import", mst, f"nạp {imp['imported']} HĐ mua (bỏ qua {imp['skipped']}, lỗi {imp['errors']})")
+    else:
+        _audit(db, user, "tax_sync", mst, f"{tu}→{den}: thiếu {len(result['missing_mua'])} mua, {len(result['missing_ban'])} bán")
+    return result
 
 
 @app.get("/api/nas/browse")

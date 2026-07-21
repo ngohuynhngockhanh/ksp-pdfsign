@@ -5,6 +5,8 @@ phan loai vao thu muc _chua-phan-loai. Loi NAS KHONG lam hong viec ky (best-effo
 """
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timezone
 
 import smbclient
@@ -159,6 +161,68 @@ def sync_extra_file(settings: Settings, customer_name: str, subfolder: str, file
         return True, target
     except Exception as e:  # noqa: BLE001
         _last_error = f"NAS extra: {type(e).__name__}: {e}"
+        return False, _last_error
+
+
+def disk_usage(settings: Settings) -> dict:
+    """Dung luong share NAS: {total_gb, used_gb, free_gb, percent_used}.
+
+    Dung smbclient.stat_volume (FileFsFullSizeInformation). Mot so server SMB co
+    the khong ho tro -> raise NasError de caller bao loi than thien.
+    """
+    _ensure_session(settings)
+    try:
+        v = smbclient.stat_volume(_base(settings))
+    except Exception as e:  # noqa: BLE001
+        raise NasError(f"Không lấy được dung lượng NAS: {type(e).__name__}: {e}")
+    gb = 1024 ** 3
+    total = float(getattr(v, "total_size", 0) or 0)
+    free = float(getattr(v, "actual_available_size", 0) or 0)
+    used = max(0.0, total - free)
+    return {
+        "total_gb": round(total / gb, 2),
+        "used_gb": round(used / gb, 2),
+        "free_gb": round(free / gb, 2),
+        "percent_used": round(used / total * 100, 1) if total else 0.0,
+    }
+
+
+def _purchase_remote_path(settings: Settings, purchase) -> str:
+    """Cay luu file HD mua: {base}\\hoa-don-mua\\{YYYY-MM}\\{so_hd}{suffix}."""
+    thang = (purchase.ngay or "")[:7] or "khong-ngay"
+    so = re.sub(r'[\\/:*?"<>|]', "_", (purchase.so_hd or f"id{purchase.id}")).strip() or f"id{purchase.id}"
+    suffix = purchase.doc_suffix or ".pdf"
+    fname = f"{so}{suffix}"
+    return rf"{_base(settings)}\{settings.nas_base_path}\hoa-don-mua\{_sanitize(thang)}\{_sanitize(fname)}"
+
+
+def sync_purchase_file(settings: Settings, db_session, purchase) -> tuple[bool, str]:
+    """Dong bo file goc HD mua len NAS theo CHECKSUM: neu sha256 chua doi va da co
+    nas_path -> bo qua (da sync). Nguoc lai upload + luu nas_path/synced_at/sha256.
+
+    Tra ve (changed, msg): changed=True neu vua upload, False neu bo qua/loi.
+    """
+    global _last_error
+    if not purchase.doc_id:
+        return False, "khong co file goc"
+    try:
+        data = storage.read_doc(purchase.doc_id, suffix=purchase.doc_suffix or ".pdf")
+    except Exception as e:  # noqa: BLE001
+        _last_error = f"HD mua {purchase.id}: khong doc duoc file ({e})"
+        return False, _last_error
+    sha = hashlib.sha256(data).hexdigest()
+    if purchase.nas_sha256 == sha and purchase.nas_path:
+        return False, "đã đồng bộ (checksum khớp)"  # bo qua — khong sync lai
+    target = _purchase_remote_path(settings, purchase)
+    try:
+        _upload(settings, target, data)
+        purchase.nas_path = target
+        purchase.nas_synced_at = datetime.now(timezone.utc)
+        purchase.nas_sha256 = sha
+        db_session.commit()
+        return True, target
+    except Exception as e:  # noqa: BLE001
+        _last_error = f"HD mua {purchase.id}: {type(e).__name__}: {e}"
         return False, _last_error
 
 

@@ -31,23 +31,31 @@ function rangeForQuarter(year: number, q: number): DateRange {
   };
 }
 
-// "all" | "m1".."m12" | "q1".."q4" | "custom"
-type Mode = "all" | `m${number}` | `q${number}` | "custom";
+export function rangeForYear(year: number): DateRange {
+  return { tu: `${year}-01-01`, den: `${year}-12-31` };
+}
+
+// "all" | "year" | "m1".."m12" | "q1".."q4" | "custom"
+type Mode = "all" | "year" | `m${number}` | `q${number}` | "custom";
 
 export function DateFilter({
   value,
   onChange,
+  initialMode = "all",
 }: {
   value: DateRange;
   onChange: (v: DateRange) => void;
+  initialMode?: Mode;
 }) {
-  const [mode, setMode] = useState<Mode>("all");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const year = new Date().getFullYear();
 
   function pick(m: Mode) {
     setMode(m);
     if (m === "all") {
       onChange({ tu: "", den: "" });
+    } else if (m === "year") {
+      onChange(rangeForYear(year));
     } else if (m.startsWith("m")) {
       onChange(rangeForMonth(year, Number(m.slice(1))));
     } else if (m.startsWith("q")) {
@@ -60,6 +68,7 @@ export function DateFilter({
     <span className="tb-group" style={{ gap: 6 }}>
       <select className="tb-select" value={mode} onChange={(e) => pick(e.target.value as Mode)}>
         <option value="all">⏱ Tất cả</option>
+        <option value="year">📅 Năm nay ({year})</option>
         {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
           <option key={m} value={`m${m}`}>
             Tháng {m}

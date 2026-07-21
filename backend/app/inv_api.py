@@ -7,12 +7,12 @@ import threading as _threading
 import time as _time
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, inv_export, inv_import, inventory, money, storage
+from . import ai, audit, customs, inv_export, inv_import, inventory, money, nas, storage, tax
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -39,6 +39,7 @@ from .inventory import NegativeStockError, PostError, normalize_name
 from .schemas import (
     AssembleIn,
     BulkIds,
+    PostOverrideIn,
     DescribeBomIn,
     InvCustomsCostOut,
     InvCustomsDeclOut,
@@ -62,11 +63,14 @@ from .schemas import (
     InvSaleLineOut,
     SuggestBomIn,
     InvSaleOut,
+    InvSaleSummaryOut,
     InvSaleUpdate,
     InvWarehouseOut,
     OpeningImportResult,
+    SaleDraftExportIn,
     StockCardRow,
     StockReport,
+    SuggestInvoiceLinesIn,
     StockRowOut,
 )
 
@@ -794,6 +798,32 @@ def purchase_create_manual(
     return _purchase_out(db, inv)
 
 
+@router.post("/purchase/sync-nas")
+def purchase_sync_nas(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Dong bo file goc HD mua len NAS theo checksum: chi upload file moi/da doi.
+
+    Duyet moi HD mua co file goc; sync_purchase_file tu bo qua file da co (sha256 khop).
+    """
+    if not settings.nas_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS đang tắt (bật trong Cài đặt)")
+    synced = skipped = failed = 0
+    for p in db.scalars(select(InvPurchase).where(InvPurchase.doc_id != "")):
+        try:
+            changed, _msg = nas.sync_purchase_file(settings, db, p)
+            if changed:
+                synced += 1
+            else:
+                skipped += 1
+        except Exception:  # noqa: BLE001
+            failed += 1
+    _audit(db, user, "inv_purchase_sync_nas", "HĐ mua", f"{synced} sync, {skipped} bỏ qua, {failed} lỗi")
+    return {"ok": True, "synced": synced, "skipped": skipped, "failed": failed}
+
+
 @router.get("/purchase", response_model=list[InvPurchaseOut])
 def purchase_list(
     status_f: str = "",
@@ -915,6 +945,35 @@ def purchase_file(
     data = storage.read_doc(inv.doc_id, suffix=inv.doc_suffix or ".pdf")
     media = "application/pdf" if (inv.doc_suffix or ".pdf") == ".pdf" else "application/xml"
     return Response(content=data, media_type=media)
+
+
+@router.get("/purchase/{pid}/html")
+def purchase_html(
+    pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Ban the hien HTML tu chua (tu cong thue) — xem/luu tru. File {doc_id}.html."""
+    inv = db.get(InvPurchase, pid)
+    if not inv or not inv.doc_id or not storage.exists(inv.doc_id, ".html"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chưa có bản thể hiện HTML")
+    return Response(content=storage.read_doc(inv.doc_id, ".html"), media_type="text/html; charset=utf-8")
+
+
+@router.get("/purchase/{pid}/pdf")
+def purchase_pdf(
+    pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+):
+    """Convert PDF (de share): render tu HTML luu tru sang PDF theo yeu cau."""
+    inv = db.get(InvPurchase, pid)
+    if not inv or not inv.doc_id or not storage.exists(inv.doc_id, ".html"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chưa có bản thể hiện HTML để chuyển PDF")
+    pdf = tax.html_to_pdf(storage.read_doc(inv.doc_id, ".html"))
+    if not pdf:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không chuyển được PDF")
+    name = inv_export.sanitize_arcname(f"HD_{inv.so_hd}_{inv.ten_ban[:30]}")
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'},
+    )
 
 
 @router.patch("/purchase/{pid}", response_model=InvPurchaseOut)
@@ -1246,6 +1305,14 @@ def _sale_out(
                 avail[(r.item_id, r.warehouse_id)] = r.kha_dung or 0.0
             for r in inventory.stock_snapshot(db, as_of=inv.ngay):
                 snap[(r.item_id, r.warehouse_id)] = r.ton
+        # SL da co trong phieu xuat lien ket (draft hoac posted) cua CHINH HD nay —
+        # tru bot khoi nhu cau moi dong de khong bao "chua co ton" nham khi thuc ra
+        # da xuat roi (kho bi tru dung boi phieu xuat cua chinh minh).
+        already_pool: dict[tuple[int, int], float] = {}
+        for iss in db.scalars(select(InvIssue).where(InvIssue.sale_id == inv.id)):
+            for il in iss.lines:
+                k = (il.item_id, il.warehouse_id)
+                already_pool[k] = already_pool.get(k, 0.0) + il.so_luong
 
         for ln in sorted(inv.lines, key=lambda x: (x.stt, x.id)):
             it = items.get(ln.item_id) if ln.item_id else None
@@ -1263,24 +1330,55 @@ def _sale_out(
             key = (ln.item_id, ln.warehouse_id)
             kd = avail.get(key, 0.0) if ln.item_id else 0.0
             ton = snap.get(key, 0.0) if ln.item_id else 0.0
+            already = 0.0
+            if ln.item_id and key in already_pool:
+                already = min(already_pool[key], ln.so_luong)
+                already_pool[key] -= already
+            need = max(0.0, round(ln.so_luong - already, 6))
+            # LSX rieng cho dong nay con NHAP (vd Ghep bo thu cong, chua ghi so nen
+            # chua vao avail) -> cong vao kd de khong bao nham "thieu kho"/"chua co ton".
+            if ln.item_id and need > inventory.EPS:
+                prior_draft_prod = sum(
+                    pl.so_luong for pl in db.scalars(
+                        select(InvProductionLine)
+                        .join(InvProduction, InvProductionLine.production_id == InvProduction.id)
+                        .where(
+                            InvProduction.sale_line_id == ln.id, InvProduction.status == "draft",
+                            InvProductionLine.chieu == "ra", InvProductionLine.item_id == ln.item_id,
+                            InvProductionLine.warehouse_id == ln.warehouse_id,
+                        )
+                    )
+                )
+                kd += prior_draft_prod
             fulfil = ln.fulfil_kind
             de_xuat, warn = "", False
             if inv.is_dieu_chinh:
                 de_xuat = "↩︎ HĐ điều chỉnh — bỏ qua đối chiếu kho"
             elif ln.fulfil_kind == "doanh_thu":
                 de_xuat = "Phần mềm — ghi doanh thu, không trừ kho" + (" (KCT)" if ln.thue_kct else "")
-            elif ln.item_id and kd >= ln.so_luong - inventory.EPS:
+            elif ln.item_id and need <= inventory.EPS and already > inventory.EPS:
                 fulfil = "ton"
-                de_xuat = f"✅ Xuất từ kho (khả dụng {_fmt(kd)})"
+                de_xuat = f"✅ Đã xuất đủ theo phiếu xuất kho (SL {_fmt(already)})"
+            elif ln.item_id and kd >= need - inventory.EPS:
+                fulfil = "ton"
+                de_xuat = (
+                    f"✅ Xuất từ kho (khả dụng {_fmt(kd)})"
+                    if already <= inventory.EPS
+                    else f"✅ Đã xuất {_fmt(already)} theo phiếu trước, còn lại xuất từ kho (khả dụng {_fmt(kd)})"
+                )
             elif ln.item_id and ton > inventory.EPS:
                 fulfil, warn = "ton", True
-                de_xuat = f"⚠️ Thiếu kho tại ngày HĐ (khả dụng {_fmt(kd)} < {_fmt(ln.so_luong)}) — cần SX/nhập trước"
+                da_xuat = f", đã xuất {_fmt(already)}" if already > inventory.EPS else ""
+                de_xuat = f"⚠️ Thiếu kho tại ngày HĐ (khả dụng {_fmt(kd)} < {_fmt(need)}{da_xuat}) — cần SX/nhập trước"
             elif ln.line_class == "bo":
                 fulfil = "sx"
                 de_xuat = "🧩 Cần ghép bộ — khai báo linh kiện (bấm Ghép bộ, AI gợi ý)"
             elif ln.line_class == "inut":
                 fulfil = "sx"
                 de_xuat = "🏭 Cần sản xuất (chưa có thành phẩm tồn)"
+            elif ln.item_id and already > inventory.EPS:
+                fulfil, warn = "ton", True
+                de_xuat = f"⚠️ Đã xuất {_fmt(already)}/{_fmt(ln.so_luong)}, còn thiếu {_fmt(need)} — cần nhập/mua thêm trước"
             elif ln.item_id:
                 fulfil, warn = "ton", True
                 de_xuat = "⚠️ Chưa có tồn tại ngày HĐ — cần nhập/mua trước"
@@ -1330,8 +1428,13 @@ def _import_one_sale(db: Session, user: CurrentUser, name: str, content: bytes) 
             data = inv_import.parse_sale_pdf(content, filename=name)
             doc_id = storage.save_upload(content, suffix=".pdf")
             suffix = ".pdf"
+        elif name.lower().endswith(".xlsx") or content[:4] == b"PK\x03\x04":
+            # Excel bang ke iHoadon da dien -> tao draft (so HD/ky hieu de trong)
+            data = inv_import.parse_sale_bang_ke_xlsx(content)
+            doc_id = storage.save_upload(content, suffix=".xlsx")
+            suffix = ".xlsx"
         else:
-            raise ValueError("Chỉ nhận file PDF hoặc XML hóa đơn")
+            raise ValueError("Chỉ nhận file PDF, XML, hoặc Excel bảng kê hóa đơn")
         inv = inv_import.create_sale_draft(db, data, doc_id=doc_id, doc_suffix=suffix)
         _audit(db, user, "inv_sale_upload", name, f"HĐ bán #{inv.id} · {inv.ten_mua[:80]}")
         return {"filename": name, "ok": True, "sale_id": inv.id,
@@ -1413,6 +1516,56 @@ def sale_list(
         _sale_out(db, s, with_lines=False, fulfil_pre=fulfil_map.get(s.id, ("na", [], None)))
         for s in sales
     ]
+
+
+@router.get("/sale/summary", response_model=InvSaleSummaryOut)
+def sale_summary(
+    status_f: str = "",
+    tu: str = "",
+    den: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Thong ke ban ra trong khoang loc: doanh thu phan mem vs hang hoa + ti suat LN.
+
+    Bo qua HD huy (void) va HD dieu chinh (khong tinh doanh thu moi). Doanh thu chia
+    theo dong: line_class=='phan_mem' -> PM (doanh thu, KCT), con lai -> hang hoa.
+    Loi nhuan lay tu _sale_fulfil_batch (gia von phieu xuat lien ket).
+    """
+    stmt = select(InvSale).where(InvSale.status != "void", InvSale.is_dieu_chinh.is_(False))
+    if status_f:
+        stmt = stmt.where(InvSale.status == status_f)
+    if tu:
+        stmt = stmt.where(InvSale.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvSale.ngay <= den)
+    sales = list(db.scalars(stmt))
+    dt_pm = dt_hh = 0.0
+    for s in sales:
+        for ln in s.lines:
+            if ln.line_class == "phan_mem":
+                dt_pm += ln.thanh_tien or 0.0
+            else:
+                dt_hh += ln.thanh_tien or 0.0
+    fulfil_map = _sale_fulfil_batch(db, sales)
+    ln_truoc = ln_sau = 0.0
+    co_uoc = False
+    for s in sales:
+        _st, _notes, profit = fulfil_map.get(s.id, ("na", [], None))
+        if profit:
+            ln_truoc += profit.get("ln_truoc_nc") or 0.0
+            ln_sau += profit.get("ln_sau_nc") or 0.0
+            if profit.get("uoc"):
+                co_uoc = True
+    doanh_thu = dt_pm + dt_hh
+    return InvSaleSummaryOut(
+        so_hd_count=len(sales),
+        dt_phan_mem=round(dt_pm), dt_hang_hoa=round(dt_hh),
+        doanh_thu_truoc_thue=round(doanh_thu),
+        ln_truoc_nc=round(ln_truoc), ln_sau_nc=round(ln_sau),
+        ti_suat_ln=round(ln_sau / doanh_thu * 100, 1) if doanh_thu else 0.0,
+        co_uoc_tinh=co_uoc,
+    )
 
 
 @router.get("/sale/export-zip")
@@ -1625,6 +1778,53 @@ def _sale_line(db: Session, sid: int, line_id: int):
     return inv, ln
 
 
+@router.post("/sale/{sid}/rematch/{line_id}")
+def sale_line_rematch(
+    sid: int, line_id: int,
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    """Khop lai ma hang cho 1 dong HD ban con draft, dung danh muc MOI NHAT.
+
+    Sua truong hop dong duoc khop LUC TAO DRAFT nhung ma hang dich chua kip
+    tao/ghi so (phieu mua duyet sau) -> luc do roi xuong fuzzy chon nham ma
+    gan giong nhung thieu tu phan biet. Bam lai sau khi ma dung da co trong
+    danh muc se tim thay exact match dung.
+    """
+    inv, ln = _sale_line(db, sid, line_id)
+    if inv.status != "draft":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ khớp lại được khi hóa đơn còn ở trạng thái Nháp")
+    all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
+    matched, kind, sugg = inv_import.match_suggestions(all_items, ln.ten_raw)
+    if not matched:
+        return {
+            "changed": False, "item_id": None, "match_kind": "none",
+            "suggestions": [
+                {"item_id": it.id, "ma_hang": it.ma_hang, "ten": it.ten, "score": round(sc, 3)}
+                for it, sc in sugg
+            ],
+        }
+    old_item_id = ln.item_id
+    best_wh, best_ton = None, 0.0
+    for r in inventory.stock_snapshot(db):
+        if r.item_id == matched.id and r.ton > inventory.EPS and r.ton > best_ton:
+            best_ton = r.ton
+            best_wh = r.warehouse_id
+    ln.item_id = matched.id
+    ln.match_kind = kind
+    if best_wh:
+        ln.warehouse_id = best_wh
+    db.commit()
+    _audit(
+        db, user, "inv_sale_rematch", f"HĐ bán #{sid}",
+        f"Dòng #{line_id}: item {old_item_id}→{matched.id} ({kind})",
+    )
+    return {
+        "changed": old_item_id != matched.id, "item_id": matched.id,
+        "ma_hang": matched.ma_hang, "ten": matched.ten,
+        "match_kind": kind, "warehouse_id": ln.warehouse_id,
+    }
+
+
 def _suggest_bom_core(
     db: Session,
     settings: Settings,
@@ -1834,6 +2034,104 @@ def sale_suggest_bom_job(
     return {k: v for k, v in job.items() if k != "ts"}
 
 
+# ---------------------------------------------------------------------------
+# Tao hoa don nhap: soan dong (lay ten tu kho) -> xuat Excel bang ke iHoadon
+# + AI goi y dong hang (job nen, giong BOM)
+# ---------------------------------------------------------------------------
+@router.post("/sale-draft/export-xlsx")
+def sale_draft_export_xlsx(
+    body: SaleDraftExportIn, user: CurrentUser = Depends(require_admin)
+):
+    """Xuat danh sach dong da soan ra file Excel 'Bảng kê hàng hóa dịch vụ' iHoadon."""
+    if not body.lines:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có dòng hàng nào để xuất")
+    lines = [ln.model_dump() for ln in body.lines]
+    return inv_export.ihoadon_response(lines, "bang-ke-hoa-don.xlsx")
+
+
+def _stock_items_for_ai(db: Session, ngay: str = "") -> list[dict]:
+    """Danh muc mat hang CON TON (uu tien kha dung tai ngay neu co) cho AI goi y."""
+    agg: dict[int, list[float]] = {}
+    for r in inventory.stock_snapshot(db):
+        a = agg.setdefault(r.item_id, [0.0, 0.0])
+        a[0] += r.ton
+        a[1] += r.gia_tri
+    items = {i.id: i for i in db.scalars(select(InvItem).where(InvItem.active.is_(True)))}
+    out: list[dict] = []
+    for iid, (ton, gt) in agg.items():
+        if ton <= inventory.EPS:
+            continue
+        it = items.get(iid)
+        if not it:
+            continue
+        out.append({
+            "ma_hang": it.ma_hang, "ten": it.ten, "dvt": it.dvt,
+            "don_gia_bq": round(gt / ton) if ton else 0,
+        })
+    return out
+
+
+_INVLINE_JOBS: dict[str, dict] = {}
+_INVLINE_JOBS_LOCK = _threading.Lock()
+
+
+def _invline_jobs_prune() -> None:
+    cutoff = _time.time() - 1800
+    with _INVLINE_JOBS_LOCK:
+        for k in [k for k, v in _INVLINE_JOBS.items() if v.get("ts", 0) < cutoff]:
+            _INVLINE_JOBS.pop(k, None)
+
+
+@router.post("/sale-draft/suggest-lines/start")
+def sale_draft_suggest_lines_start(
+    body: SuggestInvoiceLinesIn = SuggestInvoiceLinesIn(),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """AI goi y dong hoa don o thread nen -> tra job_id de FE tham do (tranh 504)."""
+    if not settings.ai_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "AI đang tắt (bật trong Cài đặt)")
+    if not body.mo_ta.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập mô tả nội dung cần bán")
+    _invline_jobs_prune()
+    job_id = _uuid.uuid4().hex
+    with _INVLINE_JOBS_LOCK:
+        _INVLINE_JOBS[job_id] = {"status": "running", "ts": _time.time()}
+
+    def _work() -> None:
+        gen = get_session()
+        db2 = next(gen)
+        try:
+            stock = _stock_items_for_ai(db2)
+            res = ai.suggest_invoice_lines(settings, body.mo_ta, stock, context=body.context)
+            # khop moi dong voi ma kho de FE dien san
+            all_items = list(db2.scalars(select(InvItem).where(InvItem.active.is_(True))))
+            for ln in res.get("lines", []):
+                m, kind, _ = inv_import.match_suggestions(all_items, ln.get("ten", ""))
+                if m:
+                    ln["match"] = {"item_id": m.id, "ma_hang": m.ma_hang, "ten": m.ten,
+                                   "dvt": m.dvt, "kind": kind}
+            with _INVLINE_JOBS_LOCK:
+                _INVLINE_JOBS[job_id] = {"status": "done", "result": res, "ts": _time.time()}
+        except Exception as e:  # noqa: BLE001
+            with _INVLINE_JOBS_LOCK:
+                _INVLINE_JOBS[job_id] = {"status": "error", "error": str(e), "ts": _time.time()}
+        finally:
+            gen.close()
+
+    _threading.Thread(target=_work, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@router.get("/sale-draft/suggest-lines-job/{job_id}")
+def sale_draft_suggest_lines_job(job_id: str, user: CurrentUser = Depends(require_admin)):
+    with _INVLINE_JOBS_LOCK:
+        job = _INVLINE_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy job (đã hết hạn?)")
+    return {k: v for k, v in job.items() if k != "ts"}
+
+
 @router.post("/sale/{sid}/assemble/{line_id}")
 def sale_assemble(
     sid: int,
@@ -1986,6 +2284,7 @@ def _issue_out(db: Session, iss: InvIssue) -> InvIssueOut:
         tong_gia_von=sum(l.gia_von for l in lines),
         tong_gia_von_uoc=sum(l.gia_von_uoc for l in lines),
         note=iss.note, status=iss.status,
+        am_kho_override=bool(getattr(iss, "am_kho_override", False)),
         created_at=iss.created_at.isoformat() if iss.created_at else "", lines=lines,
     )
 
@@ -2123,20 +2422,27 @@ def issue_delete(
 
 @router.post("/issues/{iid}/post", response_model=InvIssueOut)
 def issue_post(
-    iid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+    iid: int,
+    body: PostOverrideIn | None = Body(default=None),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
 ):
     iss = db.get(InvIssue, iid)
     if not iss:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy phiếu xuất")
+    override = (body.override_reason or "").strip() if body else ""
     try:
-        inventory.post_issue(db, iss)
+        inventory.post_issue(db, iss, override_reason=override or None)
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except NegativeStockError as e:
         db.rollback()
         raise _neg(e)
-    _audit(db, user, "inv_issue_post", f"PX #{iid}", iss.ngay)
+    if override:
+        _audit(db, user, "inv_issue_post_override", f"PX #{iid}", f"ÂM KHO: {override[:180]}")
+    else:
+        _audit(db, user, "inv_issue_post", f"PX #{iid}", iss.ngay)
     return _issue_out(db, iss)
 
 
@@ -2217,6 +2523,7 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             so_luong=ln.so_luong, don_gia_tam=ln.don_gia_tam or 0,
             gia_tri=mv.gia_tri if mv else 0, gia_tri_uoc=gia_tri_uoc,
             so_luong_dinh_muc=sl_dm, gia_tri_dinh_muc=gt_dm,
+            note=ln.note or "", orig_item_id=ln.orig_item_id,
         ))
     out_qty = sum(l.so_luong for l in prod.lines if l.chieu == "ra")
     tong_uoc = nvl_uoc + (prod.cp_nhan_cong or 0) + (prod.cp_sxc or 0)
@@ -2229,6 +2536,7 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
         gia_thanh_dv_uoc=round(tong_uoc / out_qty) if out_qty else 0,
         gia_ban_du_kien=prod.gia_ban_du_kien or 0,
         sale_id=prod.sale_id,
+        am_kho_override=bool(getattr(prod, "am_kho_override", False)),
         created_at=prod.created_at.isoformat() if prod.created_at else "", lines=lines,
     )
 
@@ -2252,7 +2560,7 @@ def production_create(
         db.add(InvProductionLine(
             production=prod, chieu=ln.chieu, item_id=ln.item_id,
             warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
-            don_gia_tam=ln.don_gia_tam or 0,
+            don_gia_tam=ln.don_gia_tam or 0, note=ln.note or "", orig_item_id=ln.orig_item_id,
         ))
     db.commit()
     db.refresh(prod)
@@ -2348,7 +2656,7 @@ def production_update(
         db.add(InvProductionLine(
             production=prod, chieu=ln.chieu, item_id=ln.item_id,
             warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
-            don_gia_tam=ln.don_gia_tam or 0,
+            don_gia_tam=ln.don_gia_tam or 0, note=ln.note or "", orig_item_id=ln.orig_item_id,
         ))
     db.commit()
     db.refresh(prod)
@@ -2372,20 +2680,27 @@ def production_delete(
 
 @router.post("/productions/{pid}/post", response_model=InvProductionOut)
 def production_post(
-    pid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
+    pid: int,
+    body: PostOverrideIn | None = Body(default=None),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
 ):
     prod = db.get(InvProduction, pid)
     if not prod:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lệnh sản xuất")
+    override = (body.override_reason or "").strip() if body else ""
     try:
-        inventory.post_production(db, prod)
+        inventory.post_production(db, prod, override_reason=override or None)
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except NegativeStockError as e:
         db.rollback()
         raise _neg(e)
-    _audit(db, user, "inv_production_post", f"LSX #{pid}", prod.ngay)
+    if override:
+        _audit(db, user, "inv_production_post_override", f"LSX #{pid}", f"ÂM KHO: {override[:180]}")
+    else:
+        _audit(db, user, "inv_production_post", f"LSX #{pid}", prod.ngay)
     return _prod_out(db, prod)
 
 
@@ -2445,6 +2760,7 @@ def _recipe_out(
         })
     return InvRecipeOut(
         id=r.id, name=r.name, output_item_id=r.output_item_id,
+        output_ma_hang=out_item.ma_hang if out_item else "",
         output_ten=out_item.ten if out_item else "", output_qty=r.output_qty,
         description=r.description or "",
         tong_gia_tri=tong_gia_tri,

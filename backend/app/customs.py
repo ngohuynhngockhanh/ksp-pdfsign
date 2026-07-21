@@ -21,6 +21,13 @@ def _s(v) -> str:
     return str(v).strip() if v is not None else ""
 
 
+_DVT_VNACCS = {"PCE": "Cái"}  # ma don vi VNACCS -> nhan tieng Viet quen dung
+
+
+def _norm_dvt(v: str) -> str:
+    return _DVT_VNACCS.get(v.strip().upper(), v)
+
+
 def _pct(v) -> float:
     """'8%' -> 8.0 ; '0%' -> 0.0."""
     return money.parse_num(_s(v).replace("%", ""))
@@ -123,7 +130,7 @@ def parse_customs_xlsx(data: bytes) -> dict:
 
         res = _find_row(window, "Số lượng (1)")
         so_luong = money.parse_num(res[1].get("V")) if res else 0.0
-        dvt = _s(res[1].get("AE")) if res else ""
+        dvt = _norm_dvt(_s(res[1].get("AE"))) if res else ""
 
         res = _find_row(window, "Trị giá hóa đơn")
         tri_gia_nt = money.parse_num(res[1].get("I")) if res else 0.0

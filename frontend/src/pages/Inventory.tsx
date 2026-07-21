@@ -212,6 +212,11 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
           <span className="muted" style={{ marginLeft: 12, fontWeight: 400 }}>
             Tổng giá trị: <b>{vnd(tong)} đ</b>
           </span>
+          {shown.filter((r) => r.ton < -1e-6).length > 0 && (
+            <span className="chip red sm" style={{ marginLeft: 12 }}>
+              🔴 {shown.filter((r) => r.ton < -1e-6).length} mã ÂM KHO
+            </span>
+          )}
         </h3>
         <div className="tb-group">
           <input
@@ -333,15 +338,22 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
           </thead>
           <tbody>
             {shown.map((r) => {
+              const amKho = r.ton < -1e-6; // ton am -> ban/xuat thu chua co dau vao
               const zeroTon = Math.abs(r.ton) < 1e-6;
               const treo = zeroTon && Math.abs(r.gia_tri) >= 0.5;
-              const rowCls = treo ? "row-treo" : zeroTon ? "row-zero" : "";
+              const rowCls = amKho ? "row-neg" : treo ? "row-treo" : zeroTon ? "row-zero" : "";
               return (
                 <tr
                   key={`${r.item_id}-${r.warehouse_id}`}
                   className={rowCls}
                   style={{ cursor: "pointer" }}
-                  title={treo ? "⚠️ Tồn = 0 nhưng còn treo giá trị — cần soát" : "Xem thẻ kho"}
+                  title={
+                    amKho
+                      ? "🔴 ÂM KHO — đã xuất/bán vượt tồn, cần nhập bù chứng từ trước ngày này"
+                      : treo
+                        ? "⚠️ Tồn = 0 nhưng còn treo giá trị — cần soát"
+                        : "Xem thẻ kho"
+                  }
                   onClick={() => openCard(r)}
                 >
                   <td className="nowrap">
@@ -369,6 +381,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                   </td>
                   <td>
                     {r.ten}
+                    {amKho && <span className="chip red sm" style={{ marginLeft: 6 }}>🔴 ÂM KHO</span>}
                     {treo && <span className="chip amber sm" style={{ marginLeft: 6 }}>treo giá trị</span>}
                   </td>
                   <td className="muted">{r.dvt}</td>

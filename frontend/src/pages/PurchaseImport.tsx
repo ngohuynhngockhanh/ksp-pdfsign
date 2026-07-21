@@ -360,6 +360,20 @@ export function PurchaseImport({
           <button className="btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
             {busy ? "Đang xử lý…" : "📤 Tải hóa đơn (PDF/XML/ZIP)"}
           </button>
+          <button
+            className="btn-sm ghost"
+            title="Đồng bộ file gốc HĐ mua lên NAS (chỉ file mới/đã đổi — theo checksum)"
+            onClick={async () => {
+              try {
+                const r = await api.invPurchaseSyncNas();
+                window.alert(`NAS: ${r.synced} đồng bộ mới, ${r.skipped} bỏ qua (đã có), ${r.failed} lỗi.`);
+              } catch (e) {
+                window.alert((e as Error).message);
+              }
+            }}
+          >
+            💾 Sync NAS
+          </button>
           <input
             className="tb-select"
             placeholder="🔗 Dán link (Drive/PDF/XML/ZIP)…"
@@ -807,7 +821,24 @@ export function PurchaseImport({
 
               </div>
               <div className="review-file">
-                {cur.doc_url ? (
+                {cur.source === "tax_gdt" ? (
+                  <>
+                    <div className="tb-group" style={{ marginBottom: 6 }}>
+                      <a
+                        className="btn-sm ghost"
+                        href={`/api/inv/purchase/${cur.id}/html`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        🔍 Mở HTML
+                      </a>
+                      <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noreferrer">
+                        ⬇️ Tải PDF (để share)
+                      </a>
+                    </div>
+                    <iframe src={`/api/inv/purchase/${cur.id}/html`} title="Bản thể hiện hóa đơn (cổng thuế)" />
+                  </>
+                ) : cur.doc_url ? (
                   <iframe
                     src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
                     title="Hóa đơn gốc"
