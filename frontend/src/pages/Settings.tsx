@@ -113,7 +113,7 @@ export function Settings() {
 
   return (
     <div className="docs-page" style={{ maxWidth: 720 }}>
-      <h2>⚙️ Cài đặt</h2>
+      <h2>Cài đặt hệ thống</h2>
       {err && <div className="error">{err}</div>}
       {msg && <div className="warn-banner">{msg}</div>}
 
@@ -181,7 +181,7 @@ export function Settings() {
 
       {/* ---- NAS ---- */}
       <div className="panel" style={{ marginTop: 12 }}>
-        <h3>💾 NAS (SMB — lưu trữ hồ sơ, hóa đơn)</h3>
+        <h3>NAS · Lưu trữ hồ sơ và hóa đơn</h3>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             type="checkbox"
@@ -278,7 +278,7 @@ export function Settings() {
 
       {/* ---- iHOADON ---- */}
       <div className="panel" style={{ marginTop: 12 }}>
-        <h3>🧾 iHOADON (đồng bộ hóa đơn bán ra)</h3>
+        <h3>iHOADON · Đồng bộ hóa đơn bán ra</h3>
         <p className="muted">
           CRM chỉ xem và tạo hóa đơn <b>GHI_TAM</b>; không ký, giữ số hoặc phát hành.
         </p>
@@ -322,7 +322,7 @@ export function Settings() {
       </div>
 
       <div className="panel" style={{ marginTop: 12 }}>
-        <h3>✉️ Email cảnh báo đồng bộ thuế</h3>
+        <h3>Email cảnh báo đồng bộ thuế</h3>
         <p className="muted">Gửi email khi phiên cổng thuế hết hạn hoặc job 02:00 thất bại.</p>
         <div className="form-grid-2">
           <label>SMTP host<input value={s.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.gmail.com" /></label>

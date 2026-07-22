@@ -85,7 +85,7 @@ export function TaxSync() {
 
   return (
     <div className="docs-page" style={{ maxWidth: 900 }}>
-      <h2>🏛️ Đồng bộ hóa đơn từ cơ quan thuế</h2>
+      <h2>Đồng bộ hóa đơn từ cơ quan thuế</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         Đăng nhập cổng <b>hoadondientu.gdt.gov.vn</b> bằng tài khoản MST của công ty, tải hóa đơn
         mua/bán rồi <b>đối chiếu</b> xem hệ thống thiếu hóa đơn nào. Mật khẩu không được lưu.

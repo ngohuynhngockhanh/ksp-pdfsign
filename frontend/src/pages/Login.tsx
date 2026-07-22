@@ -24,7 +24,8 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="center">
       <form className="card login" onSubmit={submit}>
-        <h1>🖊️ KSP PDF Signer</h1>
+        <span className="login-kicker">INUT · SECURE WORKSPACE</span>
+        <h1>KSP Operations Suite</h1>
         <p className="muted">Đăng nhập để ký số và kiểm tra chữ ký PDF</p>
         <label>
           Tài khoản

@@ -53,7 +53,7 @@ export function NasBrowser() {
 
   return (
     <div className="page-1col">
-      <h3>🗄️ Duyệt NAS</h3>
+      <h3>Duyệt kho lưu trữ NAS</h3>
       <div className="crumbs">
         <button className="link-btn" onClick={() => load("")}>
           🗄️ ho-so

@@ -193,7 +193,7 @@ export function SaleDraft() {
 
   return (
     <div className="docs-page">
-      <h2>🧾 Xuất hóa đơn · iHOADON</h2>
+      <h2>Xuất hóa đơn · iHOADON</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         Soạn dòng hàng rồi đẩy thẳng sang iHOADON ở trạng thái <b>GHI_TAM</b>. CRM không ký hoặc phát hành hóa đơn.
       </p>

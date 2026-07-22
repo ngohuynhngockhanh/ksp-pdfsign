@@ -238,10 +238,11 @@ export function App() {
           aria-label="Menu"
           onClick={() => setMenuOpen((o) => !o)}
         >
-          ☰
+          <span aria-hidden="true">☰</span>
         </button>
         <div className="brand">
-          <span className="mark">🖊️</span> KSP PDF Signer
+          <span className="mark" aria-hidden="true">K</span>
+          <span className="brand-copy"><strong>KSP</strong><small>Operations Suite</small></span>
         </div>
         <div className="topbar-user">
           <span className="who">
@@ -295,7 +296,7 @@ export function App() {
           ))}
         </aside>
 
-        <main>
+        <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "sign" && isAdmin && (
           <Signer
