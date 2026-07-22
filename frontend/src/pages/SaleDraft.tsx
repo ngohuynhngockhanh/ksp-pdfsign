@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, IhoadonDashboard, IhoadonDraft, InvItem, SaleDraftLine, TaxPolicy } from "../api";
+import { SmartPartyPaste } from "../components/SmartPartyPaste";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -8,6 +9,10 @@ function parseNum(s: string | number): number {
   if (typeof s === "number") return s;
   return Number(String(s).replace(/[^\d.-]/g, "")) || 0;
 }
+function norm(s: string): string {
+  return s.trim().toLowerCase().replace(/đ/g, "d").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+}
+type StockInfo = { ma_hang: string; ten: string; dvt: string; qty: number; cost: number };
 
 // Thue suat theo sheet Danh_muc cua khuon iHoadon
 const VAT_OPTIONS = ["10%", "8%", "5%", "0%", "10%x70%", "5%x70%", "Không chịu thuế"];
@@ -45,6 +50,9 @@ export function SaleDraft() {
   const [drafts, setDrafts] = useState<IhoadonDraft[]>([]);
   const [ihdErr, setIhdErr] = useState("");
   const [stockByCode, setStockByCode] = useState<Record<string, number>>({});
+  const [stockCatalog, setStockCatalog] = useState<StockInfo[]>([]);
+  const [stockBusy, setStockBusy] = useState(false);
+  const [stockCheckedAt, setStockCheckedAt] = useState("");
   const [policy, setPolicy] = useState<TaxPolicy | null>(null);
   const [customer, setCustomer] = useState({
     customer_name: "", buyer_tax_code: "", buyer_name: "", buyer_email: "",
@@ -88,6 +96,7 @@ export function SaleDraft() {
 
   useEffect(() => {
     syncIhoadon();
+    loadStock().catch(() => undefined);
     api.taxPolicy().then(setPolicy).catch(() => undefined);
   }, []);
 
@@ -122,6 +131,61 @@ export function SaleDraft() {
       if (c.don_gia_bq) setLine(i, { don_gia: Math.round(c.don_gia_bq) });
     } catch {
       /* ignore — van sua tay duoc */
+    }
+  }
+
+  async function loadStock(): Promise<StockInfo[]> {
+    setStockBusy(true);
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const report = await api.invAvailability(date);
+      const byCode = new Map<string, StockInfo>();
+      for (const row of report.rows) {
+        const current = byCode.get(row.ma_hang);
+        const qty = row.kha_dung ?? row.ton;
+        byCode.set(row.ma_hang, {
+          ma_hang: row.ma_hang,
+          ten: current?.ten || row.ten,
+          dvt: current?.dvt || row.dvt,
+          qty: (current?.qty || 0) + qty,
+          cost: row.don_gia_bq || current?.cost || 0,
+        });
+      }
+      const catalog = [...byCode.values()];
+      setStockCatalog(catalog);
+      setStockByCode(Object.fromEntries(catalog.map((item) => [item.ma_hang, item.qty])));
+      setStockCheckedAt(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
+      return catalog;
+    } finally {
+      setStockBusy(false);
+    }
+  }
+
+  async function syncLinesFromStock() {
+    try {
+      const catalog = stockCatalog.length ? stockCatalog : await loadStock();
+      let matched = 0;
+      setLines((current) => current.map((line) => {
+        if (line.is_dich_vu || !line.ten.trim()) return line;
+        const hit = catalog.find((item) => item.ma_hang === line.ma_hang)
+          || catalog.find((item) => norm(item.ten) === norm(line.ten));
+        if (!hit) return line;
+        matched += 1;
+        const donGia = line.don_gia || Math.round(hit.cost);
+        return { ...line, ma_hang: hit.ma_hang, ten: hit.ten, dvt: hit.dvt || line.dvt, don_gia: donGia, thanh_tien: Math.round(line.so_luong * donGia) };
+      }));
+      setAiNote(`Đã đồng bộ ${matched} dòng từ kho. Số lượng bán được giữ nguyên; giá chỉ bổ sung cho dòng đang bằng 0.`);
+    } catch (e) {
+      setErr(`Không đọc được tồn kho: ${(e as Error).message}`);
+    }
+  }
+
+  async function checkStock() {
+    try {
+      await loadStock();
+      setAiNote("Đã cập nhật tồn khả dụng mới nhất từ kho CRM.");
+    } catch (e) {
+      setErr(`Không kiểm tra được kho: ${(e as Error).message}`);
     }
   }
 
@@ -192,11 +256,11 @@ export function SaleDraft() {
   });
 
   return (
-    <div className="docs-page">
-      <h2>Xuất hóa đơn · iHOADON</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Soạn dòng hàng rồi đẩy thẳng sang iHOADON ở trạng thái <b>GHI_TAM</b>. CRM không ký hoặc phát hành hóa đơn.
-      </p>
+    <div className="docs-page sale-draft-studio">
+      <header className="sale-draft-hero">
+        <div><span className="eyebrow">INVOICE WORKBENCH</span><h1>Tạo hóa đơn nháp</h1><p>Soạn, kiểm tra kho và đồng bộ sang iHOADON ở trạng thái GHI_TAM.</p></div>
+        <div className="sale-draft-hero-actions"><button onClick={syncIhoadon}>Đồng bộ iHOADON</button>{ihd && <a href={ihd.web_url} target="_blank" rel="noreferrer">Mở iHOADON ↗</a>}</div>
+      </header>
       {policy && <div className="tax-policy-checkpoint">
         <b>Checkpoint thuế theo ngày {new Date(policy.date).toLocaleDateString("vi-VN")}</b>
         <span>Nhóm vốn chịu 10% và đủ điều kiện giảm: <strong>{policy.standard_eligible_rate}%</strong> đến {new Date(policy.reduction_to).toLocaleDateString("vi-VN")}.</span>
@@ -206,17 +270,9 @@ export function SaleDraft() {
       {err && <div className="error">{err}</div>}
       {aiNote && <div className="warn-banner">🤖 {aiNote}</div>}
 
-      <div className="ihd-head">
-        <div>
-          <h3>Đồng bộ iHOADON</h3>
-          <span className="muted">{ihd?.account_name || "Chưa tải trạng thái"}</span>
-        </div>
-        <button className="btn-sm" onClick={syncIhoadon}>↻ Đồng bộ</button>
-        {ihd && <a className="btn-sm primary" href={ihd.web_url} target="_blank" rel="noreferrer">Mở iHOADON ↗</a>}
-      </div>
       {ihdErr && <div className="error">{ihdErr} — kiểm tra cấu hình trong Cài đặt.</div>}
       {ihd && (
-        <div className="ihd-stats">
+        <div className="ihd-stats sale-draft-stats">
           <div><strong>{ihd.issued}</strong><span>Đã xuất</span></div>
           <div><strong>{ihd.draft}</strong><span>Ghi tạm</span></div>
           <div><strong>{ihd.waiting}</strong><span>Chờ xử lý</span></div>
@@ -234,8 +290,16 @@ export function SaleDraft() {
         </details>
       )}
 
-      <div className="panel ihd-customer">
-        <h3>Thông tin người mua</h3>
+      <div className="panel ihd-customer sale-customer-card">
+        <div className="sale-section-head"><div><span>01 · NGƯỜI MUA</span><h3>Thông tin xuất hóa đơn</h3></div><small>Các trường này sẽ đi thẳng sang bản nháp iHOADON</small></div>
+        <SmartPartyPaste onApply={(data) => setCustomer((current) => ({
+          ...current,
+          customer_name: data.name || current.customer_name,
+          buyer_tax_code: data.mst || current.buyer_tax_code,
+          buyer_name: data.nguoi_nhan || data.dai_dien || current.buyer_name,
+          buyer_email: data.email || current.buyer_email,
+          buyer_address: data.address || current.buyer_address,
+        }))} />
         <div className="form-grid">
           <label className="span-2">Tên khách hàng<input value={customer.customer_name} onChange={(e) => setCustomer({ ...customer, customer_name: e.target.value })} /></label>
           <label>Mã số thuế<input value={customer.buyer_tax_code} onChange={(e) => setCustomer({ ...customer, buyer_tax_code: e.target.value })} /></label>
@@ -247,16 +311,19 @@ export function SaleDraft() {
         </div>
       </div>
 
-      <div className="tb-group" style={{ marginBottom: 8 }}>
+      <div className="draft-command-bar">
         <button className="btn-sm" onClick={() => setAiOpen((o) => !o)}>
-          🤖 AI gợi ý dòng hàng
+          AI gợi ý dòng hàng
         </button>
+        <button className="btn-sm stock-command" disabled={stockBusy} onClick={checkStock}>{stockBusy ? "Đang kiểm tra…" : "Check kho"}</button>
+        <button className="btn-sm stock-command" disabled={stockBusy} onClick={syncLinesFromStock}>Sync từ kho</button>
         <button className="btn-sm primary" disabled={busy} onClick={exportXlsx}>
-          {busy ? "Đang xuất…" : "⬇️ Xuất Excel bảng kê"}
+          {busy ? "Đang xuất…" : "Xuất Excel"}
         </button>
         <button className="btn-sm primary" disabled={busy} onClick={pushDraft}>
-          {busy ? "Đang gửi…" : "Đẩy bản ghi tạm sang iHOADON"}
+          {busy ? "Đang gửi…" : "Tạo nháp trên iHOADON"}
         </button>
+        <span className="stock-check-time">{stockCheckedAt ? `Kho kiểm tra lúc ${stockCheckedAt}` : "Kho chưa được kiểm tra"}</span>
       </div>
       {stockWarnings.length > 0 && <div className="stock-warning-strip">
         <strong>Kiểm tra tồn kho trước khi tạo nháp</strong>
@@ -289,7 +356,8 @@ export function SaleDraft() {
         </div>
       )}
 
-      <div className="table-wrap">
+      <div className="sale-section-head sale-lines-head"><div><span>02 · NỘI DUNG HÓA ĐƠN</span><h3>Dòng hàng và dịch vụ</h3></div><small>Sync kho không thay đổi số lượng anh đã nhập</small></div>
+      <div className="table-wrap sale-lines-table">
         <table className="doc-table">
           <thead>
             <tr>
@@ -317,6 +385,7 @@ export function SaleDraft() {
                     }}
                   />
                   {l.ma_hang && <span className="chip green sm">{l.ma_hang}</span>}
+                  {l.ma_hang && stockByCode[l.ma_hang] != null && <span className={`chip sm ${stockByCode[l.ma_hang] + 1e-6 >= l.so_luong ? "green" : "red"}`}>Kho: {vnd(stockByCode[l.ma_hang])} {l.dvt}</span>}
                   {l.is_dich_vu && <span className="chip gray sm">dịch vụ</span>}
                   {search?.row === i &&
                     search.results.slice(0, 6).map((it) => (
@@ -328,7 +397,7 @@ export function SaleDraft() {
                     ))}
                 </td>
                 <td>
-                  <input style={{ width: 60 }} value={l.dvt} onChange={(e) => setLine(i, { dvt: e.target.value })} />
+                  <input className={l.ten.trim() && !l.is_dich_vu && !l.dvt.trim() ? "field-missing" : ""} style={{ width: 60 }} value={l.dvt} placeholder={!l.is_dich_vu ? "Thiếu" : ""} onChange={(e) => setLine(i, { dvt: e.target.value })} />
                 </td>
                 <td>
                   <input
@@ -380,7 +449,7 @@ export function SaleDraft() {
         + Thêm dòng
       </button>
 
-      <div className="warn-banner" style={{ marginTop: 10, display: "flex", gap: 24, flexWrap: "wrap" }}>
+      <div className="sale-draft-totals">
         <span>
           Tổng trước thuế: <b>{vnd(tongTruoc)}</b> đ
         </span>
