@@ -222,6 +222,7 @@ def item_cost(
         "dvt": it.dvt,
         "don_gia_bq": round(don_gia_bq, 2),
         "thue_suat_est": _last_thue_suat(db, item_id),
+        "ton_hien_tai": round(ton, 4),
         "kha_dung_tai_ngay": round(kha_dung, 4),
         "warehouse_id": warehouse_id,
     }
@@ -965,11 +966,15 @@ def purchase_pdf(
 ):
     """Convert PDF (de share): render tu HTML luu tru sang PDF theo yeu cau."""
     inv = db.get(InvPurchase, pid)
-    if not inv or not inv.doc_id or not storage.exists(inv.doc_id, ".html"):
+    if inv and inv.doc_id and storage.exists(inv.doc_id, ".pdf"):
+        pdf = storage.read_doc(inv.doc_id, ".pdf")
+    elif not inv or not inv.doc_id or not storage.exists(inv.doc_id, ".html"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Chưa có bản thể hiện HTML để chuyển PDF")
-    pdf = tax.html_to_pdf(storage.read_doc(inv.doc_id, ".html"))
-    if not pdf:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không chuyển được PDF")
+    else:
+        pdf = tax.html_to_pdf(storage.read_doc(inv.doc_id, ".html"))
+        if not pdf:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không chuyển được PDF")
+        storage.path_for(inv.doc_id, ".pdf").write_bytes(pdf)
     name = inv_export.sanitize_arcname(f"HD_{inv.so_hd}_{inv.ten_ban[:30]}")
     return Response(
         content=pdf, media_type="application/pdf",
@@ -2103,6 +2108,13 @@ def ihoadon_create_draft(
     if not body.customer_name.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập tên khách hàng")
     products = []
+    stock_warnings = []
+    item_codes = {x.id: x.ma_hang for x in db.scalars(select(InvItem))}
+    stock_by_code = {}
+    for row in inventory.stock_snapshot(db):
+        code = item_codes.get(row.item_id, "")
+        if code:
+            stock_by_code[code] = stock_by_code.get(code, 0.0) + row.ton
     amount = total_vat = 0.0
     for pos, ln in enumerate(lines, 1):
         base = ln.thanh_tien or (ln.so_luong * ln.don_gia)
@@ -2124,6 +2136,15 @@ def ihoadon_create_draft(
             "is_promotion_new": False,
             "commercial_discount": False,
         })
+        if not ln.is_dich_vu:
+            if not ln.ma_hang:
+                stock_warnings.append(f"Dòng {pos} chưa map mã kho")
+            elif ln.ma_hang not in stock_by_code:
+                stock_warnings.append(f"{ln.ma_hang}: không tìm thấy trong kho")
+            elif stock_by_code[ln.ma_hang] + inventory.EPS < ln.so_luong:
+                stock_warnings.append(
+                    f"{ln.ma_hang}: cần {ln.so_luong:g}, tồn {stock_by_code[ln.ma_hang]:g}"
+                )
     other_id = f"ksp-{_uuid.uuid4().hex}"
     invoice = {
         "other_id": other_id,
@@ -2148,7 +2169,9 @@ def ihoadon_create_draft(
             result = client.create_draft(invoice)
     except ihoadon.IhoadonError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {e}")
-    _audit(db, user, "ihoadon_create_draft", body.customer_name, other_id)
+    if isinstance(result, dict):
+        result["stock_warnings"] = stock_warnings
+    _audit(db, user, "ihoadon_create_draft", body.customer_name, f"{other_id}; cảnh báo kho={len(stock_warnings)}")
     return result
 
 

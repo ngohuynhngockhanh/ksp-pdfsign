@@ -838,7 +838,8 @@ def generate_from_sale(db: Session, sale) -> dict:
             issue_lines.append((ln.item_id, ln.warehouse_id, need, ln.don_gia_ban))
             warnings.append(
                 f"Dòng '{ln.ten_raw[:40]}': thiếu {_fmt_qty(shortfall)} — đã đưa vào phiếu xuất, "
-                f"khi ghi sổ sẽ hỏi lý do duyệt âm kho (hoặc nhập bù trước ngày HĐ)"
+                f"chưa có công thức sản xuất; khi ghi sổ sẽ hỏi lý do duyệt âm kho "
+                f"(hoặc tạo công thức/nhập bù trước ngày HĐ)"
             )
             continue
 

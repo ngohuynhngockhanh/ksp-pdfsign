@@ -14,10 +14,12 @@ export function slugUsername(name: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-// Mật khẩu mặc định = "inut12345", hoặc "{MST}inut12345" nếu có MST.
+// Chỉ dùng cho form cũ; backend luôn tự sinh mật khẩu tạm ngẫu nhiên.
 export function defaultPassword(mst?: string): string {
-  const m = (mst || "").trim();
-  return (m ? m : "") + "inut12345";
+  void mst;
+  const bytes = new Uint8Array(15);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$"[b % 62]).join("");
 }
 
 // Trích Common Name (tên) và MST từ chuỗi subject/issuer của chứng thư.
@@ -58,7 +60,10 @@ export async function shareDocument(docPk: number): Promise<string | null> {
     const origin = new URL(s.url).origin;
     text +=
       `\n\nHoặc đăng nhập để xem tất cả hồ sơ tại ${origin}` +
-      `\nTài khoản: ${s.account.username}\nMật khẩu: ${s.account.password}`;
+      `\nTài khoản: ${s.account.username}` +
+      (s.account.password
+        ? `\nMật khẩu tạm: ${s.account.password} (bắt buộc đổi khi đăng nhập)`
+        : "\nMật khẩu: giữ nguyên mật khẩu hiện tại");
   }
   await copyText(text);
   return text;
@@ -81,7 +86,7 @@ export async function quickCreateCustomer(
       account_password: password,
     });
     window.alert(
-      `Đã tạo khách hàng "${name.trim()}".\n\nTài khoản đăng nhập: ${username}\nMật khẩu: ${password}\n\n(Ghi lại để gửi cho khách hàng.)`,
+      `Đã tạo khách hàng "${name.trim()}".\n\nTài khoản đăng nhập: ${username}\nMật khẩu tạm: ${password}\n\nKhách hàng cần đổi mật khẩu sau khi đăng nhập.`,
     );
     return { id: c.id, username, password, name: name.trim() };
   } catch (e) {

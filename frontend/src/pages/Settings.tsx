@@ -14,6 +14,7 @@ export function Settings() {
   const [aiKey, setAiKey] = useState("");
   const [nasPass, setNasPass] = useState("");
   const [ihoadonPass, setIhoadonPass] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
   const [aiTestMsg, setAiTestMsg] = useState("");
   const [nasTestMsg, setNasTestMsg] = useState("");
   const [disk, setDisk] = useState<Awaited<ReturnType<typeof api.nasDisk>> | null>(null);
@@ -57,15 +58,22 @@ export function Settings() {
         ihoadon_tax_code: s.ihoadon_tax_code,
         ihoadon_username: s.ihoadon_username,
         ihoadon_timeout: s.ihoadon_timeout,
+        smtp_host: s.smtp_host,
+        smtp_port: s.smtp_port,
+        smtp_username: s.smtp_username,
+        smtp_from: s.smtp_from,
+        smtp_to: s.smtp_to,
       };
       if (aiKey.trim()) body.ai_api_key = aiKey.trim();
       if (nasPass.trim()) body.nas_password = nasPass.trim();
       if (ihoadonPass.trim()) body.ihoadon_password = ihoadonPass.trim();
+      if (smtpPass.trim()) body.smtp_password = smtpPass.trim();
       await api.saveAppSettings(body);
       setMsg("✅ Đã lưu cấu hình (có hiệu lực ngay, không cần khởi động lại).");
       setAiKey("");
       setNasPass("");
       setIhoadonPass("");
+      setSmtpPass("");
       await load();
     } catch (e) {
       setErr((e as Error).message);
@@ -310,6 +318,19 @@ export function Settings() {
             Timeout (s)
             <input type="number" style={{ width: 90 }} value={s.ihoadon_timeout} onChange={(e) => set("ihoadon_timeout", Number(e.target.value) || 30)} />
           </label>
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 12 }}>
+        <h3>✉️ Email cảnh báo đồng bộ thuế</h3>
+        <p className="muted">Gửi email khi phiên cổng thuế hết hạn hoặc job 02:00 thất bại.</p>
+        <div className="form-grid-2">
+          <label>SMTP host<input value={s.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.gmail.com" /></label>
+          <label>Port<input type="number" value={s.smtp_port} onChange={(e) => set("smtp_port", Number(e.target.value) || 587)} /></label>
+          <label>Tài khoản<input value={s.smtp_username} onChange={(e) => set("smtp_username", e.target.value)} /></label>
+          <label>Mật khẩu {s.smtp_password_set && <span className="chip green sm">đã đặt</span>}<input type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="để trống = giữ nguyên" /></label>
+          <label>Email gửi<input value={s.smtp_from} onChange={(e) => set("smtp_from", e.target.value)} /></label>
+          <label>Email nhận<input value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
         </div>
       </div>
 

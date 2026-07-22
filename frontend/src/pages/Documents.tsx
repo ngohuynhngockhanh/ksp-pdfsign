@@ -221,7 +221,7 @@ export function Documents({
       const s = await api.createShare(id, 7, includeAccount);
       const exp = new Date(s.expires_at).toLocaleString("vi-VN");
       let t = `• ${s.filename}: ${s.url} (hết hạn ${exp})`;
-      if (s.account) t += ` — TK: ${s.account.username} / MK: ${s.account.password}`;
+      if (s.account) t += ` — TK: ${s.account.username}${s.account.password ? ` / MK tạm: ${s.account.password}` : " / giữ MK hiện tại"}`;
       lines.push(t);
     }
     await copyText(lines.join("\n"));

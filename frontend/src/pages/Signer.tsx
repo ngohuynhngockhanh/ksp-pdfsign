@@ -41,7 +41,7 @@ export function Signer({
 
   const [ip, setIp] = useState(defaultIp);
   const [pin, setPin] = useState("");
-  const [adminPassword, setAdminPassword] = useState("NhapHang123");
+  const [adminPassword, setAdminPassword] = useState("");
   const [certId, setCertId] = useState("");
   const [reason, setReason] = useState("");
   const [location, setLocation] = useState(defaultLocation || "");

@@ -1,0 +1,14 @@
+[Unit]
+Description=KSP CRM daily tax invoice synchronization
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ksp/ksp-pdfsign/backend
+ExecStart=/usr/bin/flock -n /tmp/ksp-tax-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/tax_daily.py
+TimeoutStartSec=25min
+UMask=0077
+
+[Install]
+WantedBy=default.target

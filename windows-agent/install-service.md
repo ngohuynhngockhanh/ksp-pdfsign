@@ -53,7 +53,7 @@ curl -k https://192.168.1.4:8443/health
 ## Bảo mật
 
 - Chỉ mở cổng 8443 cho **IP của máy backend** (Windows Firewall → Inbound Rule → Scope → Remote IP).
-- Đổi mật khẩu Administrator mặc định `NhapHang123`.
+- Đặt mật khẩu Administrator riêng, mạnh và không ghi vào repository.
 - Không ghi log PIN / mật khẩu.
 
 ## Ghi chú về PIN token

@@ -21,8 +21,10 @@ import { SaleDraft } from "./pages/SaleDraft";
 import { Settings } from "./pages/Settings";
 import { TaxSync } from "./pages/TaxSync";
 import { TaxReview } from "./pages/TaxReview";
+import { Operations } from "./pages/Operations";
 
 type Tab =
+  | "home"
   | "sign"
   | "bbbg"
   | "quote"
@@ -45,6 +47,7 @@ type Tab =
   | "mine";
 
 const ROUTES: Record<Tab, string> = {
+  home: "/",
   sign: "/ky-so",
   bbbg: "/tao-bbbg",
   quote: "/bao-gia",
@@ -77,6 +80,7 @@ interface Me {
   agent_default_ip: string;
   default_location: string;
   using_default_secrets: boolean;
+  must_change_password: boolean;
 }
 
 async function changePassword() {
@@ -86,7 +90,8 @@ async function changePassword() {
   if (!newp) return;
   try {
     await api.changeMyPassword(oldp, newp);
-    window.alert("Đã đổi mật khẩu.");
+    window.alert("Đã đổi mật khẩu. Các phiên cũ đã được thu hồi; vui lòng đăng nhập lại.");
+    location.reload();
   } catch (e) {
     window.alert((e as Error).message);
   }
@@ -95,7 +100,7 @@ async function changePassword() {
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTabState] = useState<Tab>("sign");
+  const [tab, setTabState] = useState<Tab>("home");
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
   const [openPurchaseId, setOpenPurchaseId] = useState<number | null>(null);
   const [highlightDocPk, setHighlightDocPk] = useState<number | null>(null);
@@ -150,7 +155,7 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
+              "home", "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
@@ -158,7 +163,7 @@ export function App() {
         const initial = fromPath && allowed.includes(fromPath)
           ? fromPath
           : isAdmin
-            ? "sign"
+            ? "home"
             : "mine";
         navigate(initial, true);
       })
@@ -177,34 +182,36 @@ export function App() {
   const isAdmin = me.role === "admin";
   // Menu gom nhom, hien o sidebar trai
   const adminGroups: [string, [Tab, string, string][]][] = [
+    ["Tổng quan", [["home", "Trung tâm vận hành", "◉"]]],
     [
-      "Chữ ký số",
+      "Hóa đơn & Thuế",
       [
-        ["sign", "Ký số", "🖊️"],
-        ["bbbg", "Tạo BBBG", "📋"],
-        ["quote", "Báo giá", "🧮"],
-        ["verify", "Kiểm tra chữ ký", "🔎"],
+        ["thuesync", "Đồng bộ thuế", "↻"],
+        ["thuebct", "Review tờ khai", "▤"],
+        ["nhaphang", "Hóa đơn mua", "↓"],
+        ["banra", "Hóa đơn bán", "↑"],
+        ["hoadonnhap", "Tạo HĐ nháp", "+"],
       ],
     ],
     [
-      "Kho hàng",
+      "Kho & Sản xuất",
       [
-        ["tonkho", "Tồn kho", "📦"],
-        ["nhaphang", "Nhập hàng", "🧾"],
-        ["thuesync", "Đồng bộ thuế", "🏛️"],
-        ["thuebct", "Review tờ khai", "🧾"],
-        ["tokhai", "Tờ khai NK", "🛃"],
-        ["banra", "Bán ra", "🧾"],
-        ["xuatkho", "Xuất kho", "📤"],
-        ["sanxuat", "Sản xuất", "🏭"],
-        ["congthuc", "Công thức SX", "🧩"],
-        ["hoadonnhap", "Tạo HĐ nháp", "🧾"],
+        ["tonkho", "Tồn kho", "□"], ["tokhai", "Tờ khai nhập khẩu", "◇"],
+        ["xuatkho", "Xuất kho", "→"], ["sanxuat", "Sản xuất", "⚙"],
+        ["congthuc", "Công thức", "⌘"],
+      ],
+    ],
+    [
+      "Hồ sơ",
+      [
+        ["sign", "Ký số", "✎"], ["bbbg", "Tạo BBBG", "▣"],
+        ["quote", "Báo giá", "₫"], ["documents", "Kho hồ sơ", "▱"],
+        ["verify", "Kiểm tra chữ ký", "⌕"],
       ],
     ],
     [
       "Quản lý",
       [
-        ["documents", "Hồ sơ", "🗂️"],
         ["customers", "Khách hàng", "👥"],
         ["nas", "NAS", "💾"],
         ["audit", "Nhật ký", "📜"],
@@ -262,6 +269,11 @@ export function App() {
           chạy thật.
         </div>
       )}
+      {me.must_change_password && (
+        <div className="warn-banner security-action">
+          Tài khoản đang dùng mật khẩu tạm. <button className="link-btn" onClick={changePassword}>Đổi mật khẩu ngay</button>
+        </div>
+      )}
 
       <div className="body-row">
         {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
@@ -284,6 +296,7 @@ export function App() {
         </aside>
 
         <main>
+        {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}

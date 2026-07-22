@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Dang nhap trang web
     app_admin_username: str = "admin"
-    app_admin_password: str = "NhapHang123@"
+    app_admin_password: str = ""
 
     # JWT
     jwt_secret: str = "change-me-to-a-long-random-string"
@@ -77,11 +77,19 @@ class Settings(BaseSettings):
     ihoadon_password: str = ""
     ihoadon_timeout: float = 30.0
 
+    # Email canh bao job thue
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_to: str = ""
+
     # Windows agent (may cam token)
     agent_default_ip: str = "192.168.1.4"
     agent_port: int = 8443
     agent_scheme: str = "https"
-    agent_admin_password: str = "NhapHang123"
+    agent_admin_password: str = ""
     agent_verify_tls: bool = False
 
     # Che do ky: "ssh" (SSH + PowerShell + kho chung thu Windows, KHONG can cai
@@ -111,6 +119,10 @@ class Settings(BaseSettings):
         if not p.is_absolute():
             p = REPO_ROOT / p
         p.mkdir(parents=True, exist_ok=True)
+        try:
+            p.chmod(0o700)
+        except OSError:
+            pass
         return p
 
     @property
@@ -149,7 +161,9 @@ class Settings(BaseSettings):
         """True neu con dung mat khau/bi mat mac dinh (de canh bao tren UI)."""
         # JWT secret duoc tu sinh (effective_jwt_secret) nen khong tinh vao day.
         return (
-            self.app_admin_password == "NhapHang123@"
+            not self.app_admin_password
+            or not self.agent_admin_password
+            or self.app_admin_password == "NhapHang123@"
             or self.agent_admin_password == "NhapHang123"
         )
 

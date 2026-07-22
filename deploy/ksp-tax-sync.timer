@@ -1,0 +1,11 @@
+[Unit]
+Description=Run KSP tax synchronization every day at 02:00
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 Asia/Ho_Chi_Minh
+Persistent=true
+RandomizedDelaySec=60
+Unit=ksp-tax-sync.service
+
+[Install]
+WantedBy=timers.target

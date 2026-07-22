@@ -28,10 +28,17 @@ ALLOWED_KEYS: dict[str, str] = {
     "ihoadon_username": "str",
     "ihoadon_password": "str",
     "ihoadon_timeout": "float",
+    "smtp_host": "str",
+    "smtp_port": "int",
+    "smtp_username": "str",
+    "smtp_password": "str",
+    "smtp_from": "str",
+    "smtp_to": "str",
 }
 
 # Key bi mat — che khi tra ra web (GET /settings)
-SECRET_KEYS = {"ai_api_key", "nas_password", "ihoadon_password"}
+SECRET_KEYS = {"ai_api_key", "nas_password", "ihoadon_password", "smtp_password"}
+_ENC_PREFIX = "enc:"
 
 
 def _coerce(kind: str, raw: str) -> Any:
@@ -58,7 +65,16 @@ def get_overrides() -> dict[str, str]:
         dbmod._init_engine()
         with dbmod._SessionLocal() as s:
             rows = s.query(dbmod.AppSetting).all()
-            return {r.key: r.value for r in rows if r.key in ALLOWED_KEYS}
+            out = {}
+            for r in rows:
+                if r.key not in ALLOWED_KEYS:
+                    continue
+                value = r.value
+                if r.key in SECRET_KEYS and value.startswith(_ENC_PREFIX):
+                    from . import crypto
+                    value = crypto.decrypt(value[len(_ENC_PREFIX):])
+                out[r.key] = value
+            return out
     except Exception:
         return {}
 
@@ -91,12 +107,31 @@ def set_overrides(values: dict[str, Any]) -> None:
             sval = "" if val is None else str(val).strip() if isinstance(val, str) else (
                 "true" if val is True else "false" if val is False else str(val)
             )
+            if key in SECRET_KEYS:
+                from . import crypto
+                sval = _ENC_PREFIX + crypto.encrypt(sval)
             row = s.get(dbmod.AppSetting, key)
             if row:
                 row.value = sval
             else:
                 s.add(dbmod.AppSetting(key=key, value=sval))
         s.commit()
+
+
+def migrate_plaintext_secrets() -> None:
+    """Ma hoa tai cho cac secret duoc luu boi phien ban cu."""
+    from . import crypto, db as dbmod
+
+    dbmod._init_engine()
+    with dbmod._SessionLocal() as s:
+        changed = False
+        for key in SECRET_KEYS:
+            row = s.get(dbmod.AppSetting, key)
+            if row and row.value and not row.value.startswith(_ENC_PREFIX):
+                row.value = _ENC_PREFIX + crypto.encrypt(row.value)
+                changed = True
+        if changed:
+            s.commit()
 
 
 def reload_settings() -> None:

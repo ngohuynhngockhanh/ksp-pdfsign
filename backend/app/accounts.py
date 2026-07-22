@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 import unicodedata
 
 from sqlalchemy import select
@@ -21,27 +22,27 @@ def slug_username(name: str) -> str:
 
 
 def default_password(tax_code: str) -> str:
-    m = (tax_code or "").strip()
-    return (m if m else "") + "inut12345"
+    """Mat khau tam ngau nhien; tham so giu lai de tuong thich call-site cu."""
+    del tax_code
+    return secrets.token_urlsafe(15)
 
 
 def ensure_account(db: Session, customer: Customer) -> tuple[str, str]:
-    """Bao dam khach hang co tai khoan; reset ve mat khau mac dinh.
+    """Bao dam khach hang co tai khoan ma khong reset tai khoan dang su dung.
 
     Tra ve (username, password) de gui cho khach.
     """
     password = default_password(customer.tax_code)
     u = db.scalar(select(User).where(User.customer_id == customer.id))
     if u:
-        username = u.username
-        u.password_hash = hash_password(password)
+        return u.username, ""
     else:
         username = slug_username(customer.name) or f"kh{customer.id}"
         if db.scalar(select(User).where(User.username == username)):
             username = f"{username}_{customer.id}"
         db.add(User(
             username=username, password_hash=hash_password(password),
-            role="customer", customer_id=customer.id,
+            role="customer", customer_id=customer.id, must_change_password=True,
         ))
     db.commit()
     return username, password

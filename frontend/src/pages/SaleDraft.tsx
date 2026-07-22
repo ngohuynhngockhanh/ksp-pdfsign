@@ -42,6 +42,7 @@ export function SaleDraft() {
   const [ihd, setIhd] = useState<IhoadonDashboard | null>(null);
   const [drafts, setDrafts] = useState<IhoadonDraft[]>([]);
   const [ihdErr, setIhdErr] = useState("");
+  const [stockByCode, setStockByCode] = useState<Record<string, number>>({});
   const [customer, setCustomer] = useState({
     customer_name: "", buyer_tax_code: "", buyer_name: "", buyer_email: "",
     buyer_address: "", payment_method_name: "TM/CK", note: "",
@@ -64,6 +65,11 @@ export function SaleDraft() {
     const valid = lines.filter((l) => l.ten.trim()).map((l) => ({ ...l, tien_thue: tienThue(l) }));
     if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
+    const stockProblems = valid.filter((l) => !l.is_dich_vu && (!l.ma_hang || stockByCode[l.ma_hang] == null || stockByCode[l.ma_hang] < l.so_luong));
+    if (stockProblems.length && !window.confirm(
+      `${stockProblems.length} dòng chưa map kho hoặc không đủ tồn. Vẫn tạo bản GHI_TẠM trên iHOADON?\n\n` +
+      stockProblems.map((l) => `• ${l.ma_hang || "Chưa có mã"} · cần ${l.so_luong}, tồn ${l.ma_hang && stockByCode[l.ma_hang] != null ? stockByCode[l.ma_hang] : "chưa rõ"}`).join("\n")
+    )) return;
     setBusy(true);
     setErr("");
     try {
@@ -108,6 +114,7 @@ export function SaleDraft() {
     setSearch(null);
     try {
       const c = await api.invItemCost(it.id, "");
+      setStockByCode((old) => ({ ...old, [it.ma_hang]: c.ton_hien_tai }));
       if (c.don_gia_bq) setLine(i, { don_gia: Math.round(c.don_gia_bq) });
     } catch {
       /* ignore — van sua tay duoc */
@@ -172,6 +179,13 @@ export function SaleDraft() {
 
   const tongTruoc = lines.reduce((s, l) => s + (l.thanh_tien || Math.round(l.so_luong * l.don_gia)), 0);
   const tongThue = lines.reduce((s, l) => s + tienThue(l), 0);
+  const stockWarnings = lines.filter((l) => l.ten.trim() && !l.is_dich_vu).map((l) => {
+    if (!l.ma_hang || stockByCode[l.ma_hang] == null) return { line: l, level: "unknown", text: "Chưa map mã kho" };
+    const ton = stockByCode[l.ma_hang];
+    return ton + 1e-6 < l.so_luong
+      ? { line: l, level: "short", text: `Thiếu ${vnd(l.so_luong - ton)} (tồn ${vnd(ton)})` }
+      : { line: l, level: "ok", text: `Đủ tồn: ${vnd(ton)}` };
+  });
 
   return (
     <div className="docs-page">
@@ -234,6 +248,10 @@ export function SaleDraft() {
           {busy ? "Đang gửi…" : "Đẩy bản ghi tạm sang iHOADON"}
         </button>
       </div>
+      {stockWarnings.length > 0 && <div className="stock-warning-strip">
+        <strong>Kiểm tra tồn kho trước khi tạo nháp</strong>
+        <div>{stockWarnings.map((w, i) => <span key={i} className={`stock-check ${w.level}`}>{w.line.ma_hang || w.line.ten}: {w.text}</span>)}</div>
+      </div>}
 
       {aiOpen && (
         <div className="panel" style={{ marginBottom: 10 }}>

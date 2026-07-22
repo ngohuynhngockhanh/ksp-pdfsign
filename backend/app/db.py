@@ -74,6 +74,8 @@ class User(Base):
         ForeignKey("customers.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    session_version: Mapped[int] = mapped_column(default=1)
+    must_change_password: Mapped[bool] = mapped_column(default=False)
 
     customer: Mapped["Customer | None"] = relationship(back_populates="users")
 
@@ -632,6 +634,44 @@ class TaxReviewUpload(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class JobRun(Base):
+    """Lich su job nen de dashboard co the bao loi thay vi nuot exception."""
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    period_from: Mapped[str] = mapped_column(String(10), default="")
+    period_to: Mapped[str] = mapped_column(String(10), default="")
+    stats: Mapped[str] = mapped_column(Text, default="{}")
+    error: Mapped[str] = mapped_column(Text, default="")
+    needs_action: Mapped[bool] = mapped_column(default=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TaxReport(Base):
+    """Ban to khai noi bo theo quy; draft duoc cap nhat den khi khoa."""
+
+    __tablename__ = "tax_reports"
+    __table_args__ = (UniqueConstraint("ky", "version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ky: Mapped[str] = mapped_column(String(20), index=True)
+    tu: Mapped[str] = mapped_column(String(10))
+    den: Mapped[str] = mapped_column(String(10))
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String(12), default="draft", index=True)
+    snapshot: Mapped[str] = mapped_column(Text, default="{}")
+    warnings: Mapped[str] = mapped_column(Text, default="[]")
+    doc_id: Mapped[str] = mapped_column(String(64), default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class AppSetting(Base):
     """Cau hinh dong (key-value) sua duoc tu web — override len Settings tu .env.
 
@@ -698,6 +738,10 @@ def _migrate_add_columns() -> None:
         "customers": {
             "address": "VARCHAR(500) DEFAULT ''",
             "email": "VARCHAR(255) DEFAULT ''",
+        },
+        "users": {
+            "session_version": "INTEGER DEFAULT 1",
+            "must_change_password": "BOOLEAN DEFAULT 0",
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",

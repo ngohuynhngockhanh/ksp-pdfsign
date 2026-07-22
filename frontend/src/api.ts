@@ -206,6 +206,7 @@ export const api = {
       agent_default_ip: string;
       default_location: string;
       using_default_secrets: boolean;
+      must_change_password: boolean;
     }>("/api/me");
   },
   async upload(file: File) {
@@ -501,6 +502,32 @@ export const api = {
   },
   async taxReviewDelete(id: number) {
     return req<{ ok: boolean }>(`/api/tax/review/${id}`, { method: "DELETE" });
+  },
+  async operationsDashboard() {
+    return req<OperationsDashboard>("/api/operations/dashboard");
+  },
+  async taxSyncRuns() {
+    return req<JobRun[]>("/api/jobs/tax-sync");
+  },
+  async runTaxSyncJob() {
+    return req<JobRun>("/api/jobs/tax-sync/run", { method: "POST" });
+  },
+  async taxReports() {
+    return req<TaxReport[]>("/api/tax/reports");
+  },
+  async generateTaxReport(ky: string) {
+    return req<TaxReport>(`/api/tax/reports/${encodeURIComponent(ky)}/generate`, { method: "POST" });
+  },
+  async lockTaxReport(id: number) {
+    return req<TaxReport>(`/api/tax/reports/${id}/lock`, { method: "POST" });
+  },
+  taxReportFileUrl(id: number) {
+    return `/api/tax/reports/${id}/xlsx`;
+  },
+  async compareTaxReport(reportId: number, reviewId: number) {
+    return req<{ differences: { indicator: string; crm: number; accountant: number; difference: number; match: boolean }[] }>(
+      `/api/tax/reports/${reportId}/compare/${reviewId}`,
+    );
   },
   async nasSyncAll() {
     return req<{ ok: boolean; synced: number; failed: number }>("/api/nas/sync-all", {
@@ -1019,7 +1046,7 @@ export const api = {
   },
   async invItemCost(itemId: number, ngay = "") {
     return req<{
-      dvt: string; don_gia_bq: number; thue_suat_est: number; kha_dung_tai_ngay: number;
+      dvt: string; don_gia_bq: number; thue_suat_est: number; ton_hien_tai: number; kha_dung_tai_ngay: number;
       warehouse_id: number | null;
     }>(`/api/inv/items/${itemId}/cost?ngay=${encodeURIComponent(ngay)}`);
   },
@@ -1575,6 +1602,57 @@ export interface AppSettings {
   ihoadon_username: string;
   ihoadon_password_set: boolean;
   ihoadon_timeout: number;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password_set: boolean;
+  smtp_from: string;
+  smtp_to: string;
+}
+
+export interface JobRun {
+  id: number;
+  kind: string;
+  status: "running" | "success" | "failed" | "needs_action";
+  period_from: string;
+  period_to: string;
+  stats: Record<string, unknown>;
+  error: string;
+  needs_action: boolean;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface TaxReport {
+  id: number;
+  ky: string;
+  tu: string;
+  den: string;
+  version: number;
+  status: "draft" | "locked";
+  snapshot: Record<string, number>;
+  warnings: { level: string; message: string; invoice_id?: number }[];
+  created_by: string;
+  updated_at: string;
+}
+
+export interface OperationsDashboard {
+  purchases: number;
+  purchase_drafts: number;
+  sales: number;
+  sale_drafts: number;
+  documents: { missing: number; renderable: number; source_only: number; ready: number };
+  document_queue: {
+    kind: "purchase" | "sale";
+    id: number;
+    state: "missing" | "renderable" | "source_only";
+    ngay: string;
+    so_hd: string;
+    partner: string;
+    status: string;
+  }[];
+  latest_sync: JobRun | null;
+  latest_report: TaxReport | null;
 }
 
 export interface IhoadonDashboard {

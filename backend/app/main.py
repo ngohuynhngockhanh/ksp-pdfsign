@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import io as _io
+import html
 import json
 import secrets
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import (
     BackgroundTasks,
@@ -44,6 +45,7 @@ from . import (
     settings_store,
     signing,
     tax,
+    tax_ops,
     tax_review,
     storage,
     token_backend,
@@ -70,6 +72,7 @@ from .db import (
     Product,
     Share,
     TaxReviewUpload,
+    TaxReport,
     User,
     get_session,
     init_db,
@@ -117,6 +120,31 @@ app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
 
 
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    """Chan CSRF theo Origin va gan header bao mat cho API/frontend."""
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin", "")
+        if origin:
+            settings = get_settings()
+            parsed = urlsplit(settings.public_base_url)
+            public_origin = f"{parsed.scheme}://{parsed.netloc}"
+            allowed = {public_origin, "http://localhost:5173", "http://127.0.0.1:5173"}
+            if origin not in allowed:
+                return JSONResponse({"detail": "Nguon yeu cau khong hop le"}, status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; connect-src 'self' http://localhost:5173 ws://localhost:5173; "
+        "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+    )
+    return response
+
+
 def _content_disposition(filename: str) -> str:
     """Content-Disposition an toan cho ten file tieng Viet (RFC 5987)."""
     ascii_name = filename.encode("ascii", "ignore").decode() or "document.pdf"
@@ -155,7 +183,14 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup():
     init_db()
+    settings_store.migrate_plaintext_secrets()
     settings = get_settings()
+    db_file = settings.data_path / "ksp.db"
+    if db_file.exists():
+        try:
+            db_file.chmod(0o600)
+        except OSError:
+            pass
     # Seed admin
     gen = get_session()
     db = next(gen)
@@ -257,6 +292,7 @@ def login(
     resp = JSONResponse({"ok": True, "username": user.username, "role": user.role})
     resp.set_cookie(
         COOKIE_NAME, token, httponly=True, samesite="lax",
+        secure=(request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"),
         max_age=settings.jwt_ttl_minutes * 60,
     )
     return resp
@@ -276,6 +312,7 @@ def me(
     db: Session = Depends(get_session),
 ):
     customer_name = None
+    db_user = db.get(User, user.id)
     if user.customer_id:
         c = db.get(Customer, user.customer_id)
         customer_name = c.name if c else None
@@ -287,6 +324,7 @@ def me(
         "agent_default_ip": settings.agent_default_ip,
         "default_location": settings.default_location,
         "using_default_secrets": settings.using_default_secrets,
+        "must_change_password": bool(db_user and db_user.must_change_password),
     }
 
 
@@ -481,7 +519,7 @@ def create_customer(
         db.add(User(
             username=body.account_username,
             password_hash=hash_password(body.account_password),
-            role="customer", customer_id=c.id,
+            role="customer", customer_id=c.id, must_change_password=True,
         ))
     db.commit()
     db.refresh(c)
@@ -547,10 +585,12 @@ def create_account(
         if existing.customer_id != cid:
             raise HTTPException(status.HTTP_409_CONFLICT, "Ten tai khoan da ton tai")
         existing.password_hash = hash_password(body.password)  # doi mat khau
+        existing.session_version += 1
+        existing.must_change_password = True
     else:
         db.add(User(
             username=body.username, password_hash=hash_password(body.password),
-            role="customer", customer_id=cid,
+            role="customer", customer_id=cid, must_change_password=True,
         ))
     db.commit()
     _audit(db, user, "account_set", c.name, body.username)
@@ -1053,6 +1093,10 @@ def share_page(token: str, db: Session = Depends(get_session)):
 
 
 def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "") -> str:
+    error = html.escape(error or "", quote=True) if error else None
+    filename = html.escape(filename or "", quote=True) if filename else None
+    token = quote(token or "", safe="") if token else None
+    exp = html.escape(exp, quote=True)
     if error:
         inner = (
             f'<div class="card"><div class="brand">🖊️ KSP PDF Signer</div>'
@@ -1112,9 +1156,11 @@ def change_my_password(
     u = db.get(User, user.id)
     if not u or not verify_password(body.old_password, u.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau cu khong dung")
-    if len(body.new_password) < 4:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau moi qua ngan")
+    if len(body.new_password) < 10:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau moi phai co it nhat 10 ky tu")
     u.password_hash = hash_password(body.new_password)
+    u.session_version += 1
+    u.must_change_password = False
     db.commit()
     _audit(db, user, "password_change", user.username)
     return {"ok": True}
@@ -1140,9 +1186,11 @@ def admin_reset_password(
     u = db.get(User, uid)
     if not u:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay user")
-    if len(body.new_password) < 4:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau qua ngan")
+    if len(body.new_password) < 10:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mat khau phai co it nhat 10 ky tu")
     u.password_hash = hash_password(body.new_password)
+    u.session_version += 1
+    u.must_change_password = True
     db.commit()
     _audit(db, user, "password_reset", u.username)
     return {"ok": True, "username": u.username}
@@ -1549,6 +1597,12 @@ def get_app_settings(
         "ihoadon_username": settings.ihoadon_username,
         "ihoadon_password_set": bool(settings.ihoadon_password),
         "ihoadon_timeout": settings.ihoadon_timeout,
+        "smtp_host": settings.smtp_host,
+        "smtp_port": settings.smtp_port,
+        "smtp_username": settings.smtp_username,
+        "smtp_password_set": bool(settings.smtp_password),
+        "smtp_from": settings.smtp_from,
+        "smtp_to": settings.smtp_to,
     }
 
 
@@ -1910,6 +1964,79 @@ def reset_logo(user: CurrentUser = Depends(require_admin), settings: Settings = 
     if p.exists():
         p.unlink()
     return {"ok": True, "message": "Da khoi phuc logo mac dinh"}
+
+
+# ---------------------------------------------------------------------------
+# Trung tam van han hoa don / thue
+# ---------------------------------------------------------------------------
+@app.get("/api/operations/dashboard")
+def operations_dashboard(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    return tax_ops.dashboard(db)
+
+
+@app.get("/api/jobs/tax-sync")
+def tax_sync_runs(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    from .db import JobRun
+    rows = db.scalars(select(JobRun).where(JobRun.kind == "tax_sync").order_by(JobRun.id.desc()).limit(30))
+    return [tax_ops.serialize_run(x) for x in rows]
+
+
+@app.post("/api/jobs/tax-sync/run")
+def tax_sync_run_now(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    run = tax_ops.run_tax_sync(db)
+    _audit(db, user, "tax_sync_job", str(run.id), run.status)
+    return tax_ops.serialize_run(run)
+
+
+@app.get("/api/tax/reports")
+def tax_reports(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    rows = db.scalars(select(TaxReport).order_by(TaxReport.ky.desc(), TaxReport.version.desc()))
+    return [tax_ops.serialize_report(x) for x in rows]
+
+
+@app.post("/api/tax/reports/{ky}/generate")
+def tax_report_generate(ky: str, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    try:
+        rec = tax_ops.generate_report(db, ky.upper(), user.username)
+    except (ValueError, TypeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kỳ phải có dạng YYYY-Q1..Q4")
+    _audit(db, user, "tax_report_generate", ky, f"v{rec.version}")
+    return tax_ops.serialize_report(rec)
+
+
+@app.post("/api/tax/reports/{rid}/lock")
+def tax_report_lock(rid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    rec = db.get(TaxReport, rid)
+    if not rec:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
+    rec.status = "locked"; rec.locked_at = datetime.now(timezone.utc); db.commit()
+    _audit(db, user, "tax_report_lock", rec.ky, f"v{rec.version}")
+    return tax_ops.serialize_report(rec)
+
+
+@app.get("/api/tax/reports/{rid}/xlsx")
+def tax_report_file(rid: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    rec = db.get(TaxReport, rid)
+    if not rec or not rec.doc_id or not storage.exists(rec.doc_id, ".xlsx"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy file tờ khai")
+    return Response(
+        storage.read_doc(rec.doc_id, ".xlsx"),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": _content_disposition(f"BCT_{rec.ky}_v{rec.version}.xlsx")},
+    )
+
+
+@app.get("/api/tax/reports/{rid}/compare/{review_id}")
+def tax_report_compare(rid: int, review_id: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    rec, review = db.get(TaxReport, rid), db.get(TaxReviewUpload, review_id)
+    if not rec or not review:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy dữ liệu đối chiếu")
+    ours, accountant = json.loads(rec.snapshot or "{}"), json.loads(review.ct_snapshot or "{}")
+    diffs = []
+    for key in ("22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "40", "41", "43"):
+        a = float(ours.get(key, 0) or 0); b = float(accountant.get(key, accountant.get(f"ct_{key}", 0)) or 0)
+        diffs.append({"indicator": key, "crm": a, "accountant": b, "difference": a - b, "match": abs(a - b) <= 1})
+    return {"ky": rec.ky, "report_id": rid, "review_id": review_id, "differences": diffs}
 
 
 # ---------------------------------------------------------------------------

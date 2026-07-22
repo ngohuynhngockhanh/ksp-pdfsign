@@ -37,7 +37,7 @@ _cfg.read(CONFIG_PATH if CONFIG_PATH.exists() else Path(__file__).with_name("con
 
 PKCS11_LIB = _cfg.get("token", "pkcs11_lib", fallback=r"C:\Windows\System32\WDPKCS.dll")
 TOKEN_LABEL = _cfg.get("token", "token_label", fallback="")
-ADMIN_PASSWORD_FALLBACK = _cfg.get("auth", "admin_password", fallback="NhapHang123")
+ADMIN_PASSWORD_FALLBACK = _cfg.get("auth", "admin_password", fallback="")
 USE_WINDOWS_LOGON = _cfg.getboolean("auth", "use_windows_logon", fallback=True)
 
 app = FastAPI(title="ksp-pdfsign windows-agent", version="1.0.0")

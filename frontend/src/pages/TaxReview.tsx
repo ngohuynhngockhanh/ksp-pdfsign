@@ -5,6 +5,7 @@ import {
   TaxGrid,
   TaxReviewItem,
   TaxReviewSummary,
+  TaxReport,
 } from "../api";
 
 function vnd(n: number | null | undefined): string {
@@ -150,11 +151,14 @@ export function TaxReview() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [err, setErr] = useState("");
+  const [reports, setReports] = useState<TaxReport[]>([]);
+  const [diffs, setDiffs] = useState<{ indicator: string; crm: number; accountant: number; difference: number; match: boolean }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
     try {
-      setList(await api.taxReviewList(kyFilter));
+      const [uploads, reportRows] = await Promise.all([api.taxReviewList(kyFilter), api.taxReports()]);
+      setList(uploads); setReports(reportRows);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -206,6 +210,16 @@ export function TaxReview() {
     () => (sel ? flaggedCodes(sel.findings) : new Set<string>()),
     [sel],
   );
+  const matchingReport = sel ? reports.find((r) => r.ky === sel.ky) : undefined;
+  async function compare() {
+    if (!sel || !matchingReport) return;
+    try { setDiffs((await api.compareTaxReport(matchingReport.id, sel.id)).differences); }
+    catch (e) { setErr((e as Error).message); }
+  }
+  async function lockReport() {
+    if (!matchingReport || !confirm(`Khóa bản đối chiếu ${matchingReport.ky}? Job tự động sẽ không sửa bản này.`)) return;
+    await api.lockTaxReport(matchingReport.id); await reload();
+  }
 
   return (
     <div className="docs-page">
@@ -219,6 +233,14 @@ export function TaxReview() {
         <strong>Quy tắc thuế suất:</strong> hệ thống lấy 10% làm mức thuế GTGT phổ thông và
         vẫn nhận diện 8% cho hàng hóa, dịch vụ thuộc diện được giảm thuế. Cảnh báo 0% không
         tự kết luận phải áp 8% hay 10% mà yêu cầu đối chiếu loại hàng hóa, dịch vụ và hồ sơ.
+      </div>
+
+      <div className="panel tax-auto-report">
+        <div><span className="eyebrow">BẢN CRM TỰ TÍNH</span><h3>Tờ khai nội bộ theo dữ liệu hóa đơn</h3><p className="muted">Tách riêng 8% và 10%, không tự nộp. Chọn một file kế toán phía dưới để so sánh từng chỉ tiêu.</p></div>
+        <div className="tax-auto-actions">
+          <button onClick={async () => { await api.generateTaxReport(ky); await reload(); }}>Sinh / cập nhật {ky}</button>
+          {reports.find((r) => r.ky === ky) && <a className="btn-sm" href={api.taxReportFileUrl(reports.find((r) => r.ky === ky)!.id)}>Tải XLSX</a>}
+        </div>
       </div>
 
       <div className="panel tax-up">
@@ -276,6 +298,11 @@ export function TaxReview() {
       </div>
 
       {err && <div className="error">{err}</div>}
+
+      {sel && matchingReport && <div className="panel tax-compare-box">
+        <div className="tax-compare-head"><div><b>Đối chiếu {sel.ky}</b><small>CRM v{matchingReport.version} ↔ {sel.ten_file}</small></div><button onClick={compare}>So sánh chỉ tiêu</button>{matchingReport.status === "draft" && <button className="ghost" onClick={lockReport}>Khóa bản CRM</button>}</div>
+        {diffs.length > 0 && <div className="table-wrap"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Chênh lệch</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td className="num">{d.match ? "Khớp" : vnd(d.difference)}</td></tr>)}</tbody></table></div>}
+      </div>}
 
       <div className="tax-toolbar">
         <label>

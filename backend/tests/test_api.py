@@ -195,10 +195,10 @@ def test_customer_account_and_documents(client):
     assert client.post("/api/users/1/password", json={"new_password": "x"}).status_code == 403
 
     # Khach hang tu doi mat khau
-    r = client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "moi12345"})
+    r = client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "moi12345@@"})
     assert r.status_code == 200
     client.post("/api/logout")
-    assert client.post("/api/login", json={"username": "kha", "password": "moi12345"}).status_code == 200
+    assert client.post("/api/login", json={"username": "kha", "password": "moi12345@@"}).status_code == 200
 
 
 def _make_zip(entries: dict[str, bytes]) -> bytes:

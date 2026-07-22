@@ -21,11 +21,9 @@ def _s(v) -> str:
     return str(v).strip() if v is not None else ""
 
 
-_DVT_VNACCS = {"PCE": "Cái"}  # ma don vi VNACCS -> nhan tieng Viet quen dung
-
-
 def _norm_dvt(v: str) -> str:
-    return _DVT_VNACCS.get(v.strip().upper(), v)
+    # Giu ma phap ly tren to khai (PCE, KGM...) de doi chieu khong bi sai khac.
+    return v.strip().upper()
 
 
 def _pct(v) -> float:

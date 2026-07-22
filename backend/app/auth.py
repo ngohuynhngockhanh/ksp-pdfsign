@@ -33,6 +33,8 @@ def ensure_admin_seed(db: Session, settings: Settings) -> None:
     """Tao/dong bo tai khoan admin tu .env khi khoi dong."""
     admin = db.scalar(select(User).where(User.username == settings.app_admin_username))
     if admin is None:
+        if len(settings.app_admin_password) < 10:
+            raise RuntimeError("APP_ADMIN_PASSWORD phai duoc dat va co it nhat 10 ky tu")
         db.add(
             User(
                 username=settings.app_admin_username,
@@ -40,6 +42,9 @@ def ensure_admin_seed(db: Session, settings: Settings) -> None:
                 role="admin",
             )
         )
+        db.commit()
+    elif settings.using_default_secrets and not admin.must_change_password:
+        admin.must_change_password = True
         db.commit()
 
 
@@ -57,6 +62,7 @@ def create_token(user: User, settings: Settings) -> str:
         "uid": user.id,
         "role": user.role,
         "cid": user.customer_id,
+        "sv": user.session_version,
         "iat": now,
         "exp": now + timedelta(minutes=settings.jwt_ttl_minutes),
     }
@@ -66,6 +72,7 @@ def create_token(user: User, settings: Settings) -> str:
 def require_user(
     request: Request,
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
 ) -> CurrentUser:
     token = request.cookies.get(COOKIE_NAME)
     if not token:
@@ -74,6 +81,9 @@ def require_user(
         p = jwt.decode(token, settings.effective_jwt_secret(), algorithms=["HS256"])
     except JWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phien khong hop le")
+    user = db.get(User, int(p.get("uid", 0)))
+    if not user or int(p.get("sv", 0)) != user.session_version:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phien da bi thu hoi")
     return CurrentUser(
         id=int(p.get("uid", 0)),
         username=str(p.get("sub", "")),
