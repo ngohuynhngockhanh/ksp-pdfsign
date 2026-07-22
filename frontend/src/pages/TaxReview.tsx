@@ -6,6 +6,7 @@ import {
   TaxReviewItem,
   TaxReviewSummary,
   TaxReport,
+  TaxPolicy,
 } from "../api";
 
 function vnd(n: number | null | undefined): string {
@@ -177,6 +178,7 @@ export function TaxReview() {
   const [diffs, setDiffs] = useState<{ indicator: string; crm: number; accountant: number; difference: number; match: boolean }[]>([]);
   const [activeFinding, setActiveFinding] = useState(-1);
   const [focusCode, setFocusCode] = useState("");
+  const [policy, setPolicy] = useState<TaxPolicy | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
@@ -189,6 +191,7 @@ export function TaxReview() {
   }
   useEffect(() => {
     reload();
+    api.taxPolicy().then(setPolicy).catch(() => undefined);
   }, [kyFilter]);
 
   async function upload(files: FileList | null) {
@@ -270,9 +273,11 @@ export function TaxReview() {
       </p>
 
       <div className="tax-rule-note">
-        <strong>Quy tắc thuế suất:</strong> hệ thống lấy 10% làm mức thuế GTGT phổ thông và
-        vẫn nhận diện 8% cho hàng hóa, dịch vụ thuộc diện được giảm thuế. Cảnh báo 0% không
-        tự kết luận phải áp 8% hay 10% mà yêu cầu đối chiếu loại hàng hóa, dịch vụ và hồ sơ.
+        <strong>Checkpoint pháp lý:</strong>{" "}
+        {policy ? `Từ ${new Date(policy.reduction_from).toLocaleDateString("vi-VN")} đến ${new Date(policy.reduction_to).toLocaleDateString("vi-VN")}, nhóm vốn chịu 10% và đủ điều kiện được giảm còn 8%. ` : ""}
+        Phần mềm thuộc diện không chịu thuế phải khai KCT ở [26], không gộp với thuế suất 0% ở [29].
+        0% chỉ dùng khi giao dịch đáp ứng điều kiện riêng như xuất khẩu đủ hồ sơ.
+        {policy && <small>Căn cứ: {policy.legal_basis.join(" · ")}</small>}
       </div>
 
       <div className="panel tax-auto-report">

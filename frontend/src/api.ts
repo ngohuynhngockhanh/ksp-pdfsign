@@ -15,6 +15,16 @@ export interface TaxFinding {
   detail: string;
   cells: string[];
 }
+export interface TaxPolicy {
+  date: string;
+  reduction_active: boolean;
+  standard_eligible_rate: number;
+  reduction_from: string;
+  reduction_to: string;
+  software_category: "KCT";
+  notes: string[];
+  legal_basis: string[];
+}
 export interface TaxReviewSummary {
   ban_ra_dt: number;
   ban_ra_thue: number;
@@ -451,6 +461,9 @@ export const api = {
   },
   async taxGetCredentials() {
     return req<{ mst: string; has_password: boolean }>("/api/tax/credentials");
+  },
+  async taxPolicy(date = "") {
+    return req<TaxPolicy>(`/api/tax/policy${date ? `?date_value=${encodeURIComponent(date)}` : ""}`);
   },
   async taxSaveCredentials(body: { mst: string; password: string }) {
     return req<{ ok: boolean }>("/api/tax/save-credentials", {

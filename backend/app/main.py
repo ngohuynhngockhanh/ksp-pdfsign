@@ -46,6 +46,7 @@ from . import (
     signing,
     tax,
     tax_ops,
+    tax_policy,
     tax_review,
     storage,
     token_backend,
@@ -1785,6 +1786,7 @@ async def tax_review_upload(
     content = await file.read()
     try:
         r = tax_review.review_bytes(content)
+        tax_review.crosscheck_sales(db, r)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Không đọc được file: {type(e).__name__}: {e}")
     doc_id = storage.save_upload(content, suffix=".xlsx")
@@ -1838,6 +1840,7 @@ def tax_review_detail(
     except Exception:  # noqa: BLE001
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File gốc không còn")
     r = tax_review.review_bytes(content)
+    tax_review.crosscheck_sales(db, r)
     return {
         "id": rec.id, "ky": rec.ky, "ten_file": rec.ten_file, "note": rec.note,
         "findings": r["findings"], "summary": r["summary"], "grids": r["grids"],
@@ -1972,6 +1975,16 @@ def reset_logo(user: CurrentUser = Depends(require_admin), settings: Settings = 
 @app.get("/api/operations/dashboard")
 def operations_dashboard(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
     return tax_ops.dashboard(db)
+
+
+@app.get("/api/tax/policy")
+def tax_policy_at(date_value: str = "", user: CurrentUser = Depends(require_admin)):
+    from datetime import date as date_type
+    try:
+        on_date = date_type.fromisoformat(date_value) if date_value else date_type.today()
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ngày phải có dạng YYYY-MM-DD")
+    return tax_policy.policy_snapshot(on_date)
 
 
 @app.get("/api/jobs/tax-sync")

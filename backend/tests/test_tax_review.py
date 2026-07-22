@@ -8,10 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 pytest.importorskip("openpyxl")
 
 from app import tax_review  # noqa: E402
+from app.db import Base, InvSale, InvSaleLine  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tax" / "bct_quy2_2026.xlsx"
 
@@ -58,13 +61,16 @@ def test_finding_ban_0pct(result):
     # 2 HD 0% = 45.512.500
     f = next(f for f in vang if "0%" in f["title"])
     assert "45.512.500" in f["detail"]
-    assert "mức phổ thông 10%" in f["detail"]
-    assert "mức giảm 8%" in f["detail"]
+    assert "phần mềm" in f["detail"]
+    assert "[26]" in f["detail"]
+    assert "01/07/2025–31/12/2026" in f["detail"]
 
 
-def test_finding_nhan_10pct(result):
+def test_finding_ty_le_gop_sai(result):
     vang = [f for f in result["findings"] if f["level"] == "vang"]
-    assert any("10%" in f["title"] for f in vang)
+    f = next(f for f in vang if "6.12%" in f["title"])
+    assert "148.631.516" in f["detail"]
+    assert "45.512.500" in f["detail"]
 
 
 def test_grids_serializable(result):
@@ -78,3 +84,18 @@ def test_summary_counts(result):
     s = result["summary"]
     assert s["do"] == 1
     assert s["vang"] == 2
+
+
+def test_crosscheck_confirms_software_kct(result):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine)() as db:
+        for so, ngay, amount in (("6", "2026-04-28", 30000000), ("14", "2026-06-22", 15512500)):
+            inv = InvSale(so_hd=so, ngay=ngay, status="reviewed")
+            inv.lines = [InvSaleLine(stt=1, ten_raw="Phần mềm", thanh_tien=amount, thue_suat=0, thue_kct=True)]
+            db.add(inv)
+        db.commit()
+        tax_review.crosscheck_sales(db, result)
+    finding = next(f for f in result["findings"] if "phần mềm KCT" in f["title"])
+    assert "HĐ 6, 14" in finding["detail"]
+    assert "[26]" in finding["detail"]

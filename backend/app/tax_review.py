@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import io
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from openpyxl import load_workbook
+
+from . import tax_policy
 
 # Chi tieu chi hop le khi O chi chua dung nhan [NN] (khong phai o cong thuc
 # "[27]=[29]+[30]..." — o do co nhieu nhan long nhau, KHONG phai gia tri that).
@@ -104,12 +106,31 @@ def parse_bang_ke(ws) -> list[dict]:
         # ten doi tac = o CHU dai nhat ben trai cot doanh thu (khong phai ngay)
         texts = [cv for cc, cv in by_col.items() if cc < dt_col and isinstance(cv, str) and not _CT_FULL.match(cv.strip())]
         ten = max((t for t in texts), key=len, default="")
+        ngay = next((cv.strftime("%Y-%m-%d") for cv in by_col.values() if isinstance(cv, datetime)), "")
+        date_col = next((cc for cc, cv in by_col.items() if isinstance(cv, datetime)), None)
+        if not ngay:
+            date_hit = next(((cc, cv) for cc, cv in by_col.items() if isinstance(cv, str) and re.match(r"^\d{1,2}/\d{1,2}/\d{4}$", cv.strip())), None)
+            raw_date = date_hit[1] if date_hit else ""
+            date_col = date_hit[0] if date_hit else None
+            if raw_date:
+                try:
+                    ngay = datetime.strptime(raw_date.strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+        so_hd = ""
+        if date_col:
+            candidates = [(cc, cv) for cc, cv in by_col.items() if cc < date_col and isinstance(cv, (int, float, str))]
+            if candidates:
+                raw_so = max(candidates, key=lambda x: x[0])[1]
+                so_hd = str(int(raw_so)) if isinstance(raw_so, float) and raw_so.is_integer() else str(raw_so).strip()
         rows.append({
             "doanh_thu": doanh_thu,
             "rate": rate,
             "rate_pct": round(rate * 100),
             "tien_thue": tien_thue or 0.0,
             "ten": ten.strip(),
+            "ngay": ngay,
+            "so_hd": so_hd,
         })
     return rows
 
@@ -200,31 +221,86 @@ def check(ct: dict, ban: list[dict], mua: list[dict]) -> list[dict]:
     if dn_noi_dia:
         tong = sum(r["doanh_thu"] for r in dn_noi_dia)
         c29 = ct.get("29")
-        detail = (f"{len(dn_noi_dia)} HĐ bán thuế suất 0% cho DN nội địa, tổng doanh thu {_fmt(tong)}. "
-                  "0% thường chỉ áp dụng khi đáp ứng điều kiện riêng (ví dụ hàng hóa, dịch vụ xuất khẩu). "
-                  f"Nếu đúng 0% phải khai ở [29]; nếu không, cần xác định lại theo mức phổ thông 10% "
-                  f"(thuế khoảng {_fmt(tong * 0.1)}) hoặc mức giảm 8% khi hàng hóa, dịch vụ đủ điều kiện "
-                  f"(thuế khoảng {_fmt(tong * 0.08)}).")
+        detail = (f"{len(dn_noi_dia)} HĐ đang ghi 0%, tổng doanh thu {_fmt(tong)}. Cần phân loại theo bản chất: "
+                  "nếu là sản phẩm/dịch vụ phần mềm thuộc diện không chịu thuế thì khai KCT tại [26], không phải 0%; "
+                  "nếu là xuất khẩu đủ điều kiện 0% thì khai [29]; nếu là hàng hóa/dịch vụ trong nước vốn chịu 10% "
+                  "và đủ điều kiện giảm trong giai đoạn 01/07/2025–31/12/2026 thì áp 8%. ")
         if not c29 or c29 < 1:
             detail += " Hiện [29] đang trống."
-        add("vang", "HĐ bán thuế suất 0% cho DN nội địa — cần kiểm tra", detail,
+        add("vang", "Dòng 0% cần xác nhận: phần mềm KCT, xuất khẩu 0%, hay hàng chịu 8%", detail,
             ["29"] + [f"__ten:{r['ten']}" for r in dn_noi_dia[:8]])
 
     # 4b) Nhom [32]/[33] ghi 10% nhung thue thuc te khac (lan HD 0%/8%)
     c32 = _g(ct, "32"); c33 = _g(ct, "33")
     if c32 > 0 and c33 > 0:
         implied = c33 / c32 * 100
-        if abs(implied - 10) > 0.5 and abs(implied - 8) > 0.5:
-            add("vang", f"Nhóm [32]/[33] ghi thuế suất 10% nhưng thuế thực chỉ ≈ {implied:.1f}%",
-                f"[33]/[32] = {_fmt(c33)}/{_fmt(c32)} ≈ {implied:.2f}%. Nhóm [32] có thể đang lẫn HĐ 0% "
-                f"hoặc HĐ giảm thuế 8% — nên tách 0% xuống [29] và ghi đúng nhóm 8%.", ["32", "33"])
+        base_8 = sum(r["doanh_thu"] for r in ban if r["rate_pct"] == 8)
+        base_0 = sum(r["doanh_thu"] for r in ban if r["rate_pct"] == 0)
+        if abs(implied - 8) > 0.25 and base_8 and abs(c32 - base_8 - base_0) <= 2:
+            add("vang", f"Tỷ lệ {implied:.2f}% không phải thuế suất — [32] đang gộp sai nhóm",
+                f"[32] gồm {_fmt(base_8)} doanh thu 8% + {_fmt(base_0)} doanh thu đang ghi 0%, nhưng [33] "
+                f"chỉ có {_fmt(c33)} thuế của phần 8%; vì vậy phép chia ra {implied:.2f}%. "
+                f"Sau khi tách {_fmt(base_0)} sang [26] nếu là phần mềm KCT, hoặc [29] nếu thật sự đủ điều kiện 0%, "
+                f"[32] còn {_fmt(base_8)} và [33]/[32] sẽ xấp xỉ 8%.", ["32", "33", "26", "29"])
 
     # 5) Thue suat la (suy ra) khong thuoc {0,5,8,10}
     la = sorted({r["rate_pct"] for r in (ban + mua) if r["rate_pct"] not in (0, 5, 8, 10)})
     if la:
         add("vang", "Có thuế suất lạ", f"Xuất hiện thuế suất {', '.join(str(x) + '%' for x in la)} — kiểm tra lại hóa đơn.", [])
 
+    # 6) Checkpoint thue theo ngay hoa don, khong ket luan 10% sai vi co nhom loai tru.
+    outside_8 = []
+    verify_10 = []
+    for r in ban:
+        try:
+            on_date = date.fromisoformat(r.get("ngay") or "")
+        except ValueError:
+            continue
+        active = tax_policy.reduction_active(on_date)
+        if r["rate_pct"] == 8 and not active:
+            outside_8.append(r)
+        elif r["rate_pct"] == 10 and active:
+            verify_10.append(r)
+    if outside_8:
+        add("do", "Có hóa đơn 8% nằm ngoài các giai đoạn giảm thuế đã cấu hình",
+            f"Phát hiện {len(outside_8)} dòng 8% ngoài các checkpoint giảm thuế từ năm 2022 đến hết 2026; cần kiểm tra chính sách có hiệu lực tại đúng ngày hóa đơn.", [])
+    if verify_10:
+        add("vang", "Có dòng 10% trong thời gian đang giảm 2% — kiểm tra nhóm loại trừ",
+            f"Có {len(verify_10)} dòng 10% trong giai đoạn 01/07/2025–31/12/2026. 10% vẫn đúng nếu hàng hóa/dịch vụ thuộc nhóm loại trừ; nếu không, mức áp dụng là 8%.", [])
+
     return out
+
+
+def crosscheck_sales(db, result: dict) -> dict:
+    """Dung XML hoa don trong CRM de xac nhan cac dong 0% thuc chat la KCT."""
+    from sqlalchemy import select
+
+    from .db import InvSale
+
+    confirmed = []
+    for row in result.get("ban", []):
+        if row.get("rate_pct") != 0 or not row.get("so_hd"):
+            continue
+        candidates = list(db.scalars(select(InvSale).where(InvSale.so_hd == row["so_hd"])))
+        inv = next((x for x in candidates if not row.get("ngay") or x.ngay == row["ngay"]), None)
+        if inv and inv.lines and all(line.thue_kct for line in inv.lines):
+            confirmed.append((row, inv))
+    if not confirmed:
+        return result
+    total = sum(row["doanh_thu"] for row, _ in confirmed)
+    numbers = ", ".join(str(inv.so_hd) for _, inv in confirmed)
+    for finding in result["findings"]:
+        if finding["title"].startswith("Dòng 0% cần xác nhận"):
+            finding["title"] = "Đã xác nhận là phần mềm KCT — bảng kê đang xếp sai nhóm"
+            finding["detail"] = (
+                f"XML trong CRM xác nhận HĐ {numbers} đều là sản phẩm/dịch vụ phần mềm và các dòng đã đánh dấu "
+                f"không chịu thuế (KCT), tổng {_fmt(total)}. Cần chuyển doanh thu này khỏi nhóm [32] sang [26]; "
+                "không khai ở [29] và không tính thuế 8%."
+            )
+            finding["cells"] = ["26", "29", "32"]
+        elif "không phải thuế suất" in finding["title"]:
+            finding["detail"] += f" CRM đã xác nhận {_fmt(total)} này là phần mềm KCT, nên phương án đúng là chuyển sang [26]."
+    return result
 
 
 # --------------------------------------------------------------- Entry

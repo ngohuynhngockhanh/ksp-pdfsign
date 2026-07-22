@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, IhoadonDashboard, IhoadonDraft, InvItem, SaleDraftLine } from "../api";
+import { api, IhoadonDashboard, IhoadonDraft, InvItem, SaleDraftLine, TaxPolicy } from "../api";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -25,7 +25,9 @@ function tienThue(ln: SaleDraftLine): number {
 }
 
 function blankLine(): SaleDraftLine {
-  return { ma_hang: "", ten: "", dvt: "", so_luong: 1, don_gia: 0, thanh_tien: 0, vat_name: "10%", is_dich_vu: false };
+  const now = new Date().toISOString().slice(0, 10);
+  const reduced = now >= "2025-07-01" && now <= "2026-12-31";
+  return { ma_hang: "", ten: "", dvt: "", so_luong: 1, don_gia: 0, thanh_tien: 0, vat_name: reduced ? "8%" : "10%", is_dich_vu: false };
 }
 
 export function SaleDraft() {
@@ -43,6 +45,7 @@ export function SaleDraft() {
   const [drafts, setDrafts] = useState<IhoadonDraft[]>([]);
   const [ihdErr, setIhdErr] = useState("");
   const [stockByCode, setStockByCode] = useState<Record<string, number>>({});
+  const [policy, setPolicy] = useState<TaxPolicy | null>(null);
   const [customer, setCustomer] = useState({
     customer_name: "", buyer_tax_code: "", buyer_name: "", buyer_email: "",
     buyer_address: "", payment_method_name: "TM/CK", note: "",
@@ -85,6 +88,7 @@ export function SaleDraft() {
 
   useEffect(() => {
     syncIhoadon();
+    api.taxPolicy().then(setPolicy).catch(() => undefined);
   }, []);
 
   function setLine(i: number, patch: Partial<SaleDraftLine>) {
@@ -193,6 +197,12 @@ export function SaleDraft() {
       <p className="muted" style={{ marginTop: 0 }}>
         Soạn dòng hàng rồi đẩy thẳng sang iHOADON ở trạng thái <b>GHI_TAM</b>. CRM không ký hoặc phát hành hóa đơn.
       </p>
+      {policy && <div className="tax-policy-checkpoint">
+        <b>Checkpoint thuế theo ngày {new Date(policy.date).toLocaleDateString("vi-VN")}</b>
+        <span>Nhóm vốn chịu 10% và đủ điều kiện giảm: <strong>{policy.standard_eligible_rate}%</strong> đến {new Date(policy.reduction_to).toLocaleDateString("vi-VN")}.</span>
+        <span>Phần mềm thuộc diện không chịu thuế: chọn <strong>Không chịu thuế</strong>, không chọn 0%.</span>
+        <small>Căn cứ: {policy.legal_basis.join(" · ")}. Nhóm bị loại trừ vẫn áp 10%.</small>
+      </div>}
       {err && <div className="error">{err}</div>}
       {aiNote && <div className="warn-banner">🤖 {aiNote}</div>}
 
