@@ -1544,9 +1544,17 @@ label.link-btn.file-inline {
     position: fixed;
     left: 0;
     top: 0;
-    bottom: 0;
+    bottom: auto;
     z-index: 70;
+    height: 100vh;
+    height: 100dvh;
     max-height: none;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
     transform: translateX(-105%);
     transition: transform 0.18s ease;
     box-shadow: var(--shadow-md);
@@ -2508,6 +2516,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 .sale-draft-totals span:last-child { color:#fff; background:var(--primary); }
 .sale-draft-totals b { display:block; margin-top:2px; color:inherit; font-family:Georgia,serif; font-size:20px; }
 .sale-draft-studio .ihd-drafts { border-radius:15px; }
+.ihd-draft-table { table-layout:fixed; width:100%; }
+.ihd-draft-table th:first-child { width:34%; }
+.ihd-draft-table th:last-child { width:128px; }
+.ihd-draft-customer { overflow-wrap:anywhere; color:var(--ink); font-weight:800; line-height:1.35; }
+.ihd-draft-date { white-space:nowrap; color:#667872; font-variant-numeric:tabular-nums; }
+.ihd-draft-action a { display:inline-flex; justify-content:center; min-width:112px; padding:7px 9px; border:1px solid #bad9cf; border-radius:9px; color:#176449; background:#edf8f4; font-size:10px; font-weight:850; text-decoration:none; }
 
 @media(max-width:820px){
   .sale-draft-hero { align-items:flex-start; flex-direction:column; padding:22px; }
@@ -2528,4 +2542,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
   .draft-command-bar .primary,.draft-command-bar .stock-check-time { grid-column:1/-1; }
   .draft-command-bar button { width:100%; }
   .sale-customer-card { padding:14px; }
+  .sale-draft-studio .ihd-drafts { padding:12px; }
+  .ihd-drafts summary { padding:2px 2px 10px; line-height:1.4; }
+  .ihd-drafts .table-wrap { overflow:visible; }
+  .ihd-draft-table,.ihd-draft-table tbody { display:block; min-width:0; }
+  .ihd-draft-table thead { display:none; }
+  .ihd-draft-table tr { display:grid; grid-template-columns:1fr auto; gap:7px 12px; margin-top:9px; padding:13px; border:1px solid #dce8e3; border-radius:14px; background:linear-gradient(145deg,#fff,#f7fbf9); box-shadow:0 8px 22px rgba(16,45,43,.07); }
+  .ihd-draft-table td { display:block; min-width:0; padding:0; border:0; text-align:left; }
+  .ihd-draft-table td::before { content:attr(data-label); display:block; margin-bottom:2px; color:#81908b; font-size:8px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+  .ihd-draft-customer { grid-column:1/-1; padding-bottom:8px !important; border-bottom:1px solid #e4ece8 !important; font-family:Georgia,serif; font-size:15px; }
+  .ihd-draft-total { color:#176449; font-weight:900; text-align:right !important; }
+  .ihd-draft-date { grid-column:1/-1; white-space:normal; }
+  .ihd-draft-action { grid-column:1/-1; margin-top:3px; }
+  .ihd-draft-action a { width:100%; min-height:38px; align-items:center; }
 }

@@ -5,6 +5,12 @@ import { SmartPartyPaste } from "../components/SmartPartyPaste";
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
 }
+function dateTime(s: string): string {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 16).replace("T", " ");
+  return d.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" });
+}
 function parseNum(s: string | number): number {
   if (typeof s === "number") return s;
   return Number(String(s).replace(/[^\d.-]/g, "")) || 0;
@@ -283,8 +289,15 @@ export function SaleDraft() {
         <details className="panel ihd-drafts">
           <summary>Hóa đơn ghi tạm trên iHOADON ({drafts.length} bản mới nhất)</summary>
           <div className="table-wrap">
-            <table><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th></tr></thead>
-              <tbody>{drafts.map((d) => <tr key={d.id}><td>{d.customer_name}</td><td>{d.buyer_tax_code}</td><td>{d.template_code}/{d.invoice_series}</td><td className="num">{vnd(d.total_payment)}</td><td>{d.created_at.slice(0, 16)}</td></tr>)}</tbody>
+            <table className="ihd-draft-table"><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th><th></th></tr></thead>
+              <tbody>{drafts.map((d) => <tr key={d.id}>
+                <td data-label="Khách hàng" className="ihd-draft-customer">{d.customer_name || "Khách lẻ"}</td>
+                <td data-label="MST">{d.buyer_tax_code || "—"}</td>
+                <td data-label="Mẫu">{d.template_code}/{d.invoice_series}</td>
+                <td data-label="Thanh toán" className="num ihd-draft-total">{vnd(d.total_payment)} đ</td>
+                <td data-label="Ngày tạo" className="ihd-draft-date">{dateTime(d.created_at)}</td>
+                <td className="ihd-draft-action"><a href={ihd?.web_url} target="_blank" rel="noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a></td>
+              </tr>)}</tbody>
             </table>
           </div>
         </details>
