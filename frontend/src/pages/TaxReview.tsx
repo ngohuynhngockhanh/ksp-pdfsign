@@ -264,199 +264,83 @@ export function TaxReview() {
     }, 100);
   }
 
+  const currentReport = reports.find((r) => r.ky === ky);
   return (
-    <div className="docs-page">
-      <h2>Review tờ khai thuế (BCT)</h2>
-      <p className="muted">
-        Kế toán gửi file Excel BCT — hệ thống tự soát lỗi và cho xem ngay tại đây.
-        Mỗi lần gửi lưu thành một phiên bản để đối chiếu.
-      </p>
-
-      <div className="tax-rule-note">
-        <strong>Checkpoint pháp lý:</strong>{" "}
-        {policy ? `Từ ${new Date(policy.reduction_from).toLocaleDateString("vi-VN")} đến ${new Date(policy.reduction_to).toLocaleDateString("vi-VN")}, nhóm vốn chịu 10% và đủ điều kiện được giảm còn 8%. ` : ""}
-        Phần mềm thuộc diện không chịu thuế phải khai KCT ở [26], không gộp với thuế suất 0% ở [29].
-        0% chỉ dùng khi giao dịch đáp ứng điều kiện riêng như xuất khẩu đủ hồ sơ.
-        {policy && <small>Căn cứ: {policy.legal_basis.join(" · ")}</small>}
-      </div>
-
-      <div className="panel tax-auto-report">
-        <div><span className="eyebrow">BẢN CRM TỰ TÍNH</span><h3>Tờ khai nội bộ theo dữ liệu hóa đơn</h3><p className="muted">Tách riêng 8% và 10%, không tự nộp. Chọn một file kế toán phía dưới để so sánh từng chỉ tiêu.</p></div>
-        <div className="tax-auto-actions">
-          <button onClick={async () => { await api.generateTaxReport(ky); await reload(); }}>Sinh / cập nhật {ky}</button>
-          {reports.find((r) => r.ky === ky) && <a className="btn-sm" href={api.taxReportFileUrl(reports.find((r) => r.ky === ky)!.id)}>Tải XLSX</a>}
+    <div className="tax-studio">
+      <header className="tax-studio-hero">
+        <div>
+          <span className="tax-kicker">VAT CONTROL ROOM</span>
+          <h1>Review tờ khai quý</h1>
+          <p>Đối chiếu file kế toán với XML hóa đơn, chính sách theo ngày và dữ liệu CRM.</p>
         </div>
-      </div>
-
-      <div className="panel tax-up">
-        <label>
-          Kỳ:{" "}
-          <select value={ky} onChange={(e) => setKy(e.target.value)}>
-            {KY_OPTS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-        </label>
-        <input
-          placeholder="Ghi chú (vd: bản kế toán gửi lần 1)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          style={{ flex: 1, minWidth: 180 }}
-        />
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".xlsx"
-          hidden
-          onChange={(e) => upload(e.target.files)}
-        />
-        <div
-          className={`tax-drop${dragging ? " dragging" : ""}${busy ? " busy" : ""}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => !busy && fileRef.current?.click()}
-          onKeyDown={(e) => {
-            if (!busy && (e.key === "Enter" || e.key === " ")) fileRef.current?.click();
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            if (!busy) setDragging(true);
-          }}
-          onDragOver={(e) => e.preventDefault()}
-          onDragLeave={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            if (!busy) upload(e.dataTransfer.files);
-          }}
-        >
-          <span className="tax-drop-icon">{busy ? "…" : "XLSX"}</span>
-          <span>
-            <strong>{busy ? "Đang đọc và soát file…" : "Kéo file BCT vào đây"}</strong>
-            <small>hoặc bấm để chọn file .xlsx</small>
-          </span>
+        <div className="tax-hero-score">
+          <span>Kỳ đang làm</span><strong>{ky}</strong>
+          <small>{policy?.reduction_active ? "Checkpoint giảm thuế 8% đang hiệu lực" : "Áp chính sách theo ngày hóa đơn"}</small>
         </div>
-      </div>
+      </header>
 
-      {err && <div className="error">{err}</div>}
+      <section className="tax-policy-bar">
+        <span className="policy-mark">§</span>
+        <div><b>Phần mềm KCT → [26]</b><small>Không đưa vào 0% [29]. Nhóm đủ điều kiện giảm còn 8% đến 31/12/2026; nhóm loại trừ vẫn 10%.</small></div>
+        {policy && <span className="policy-law">{policy.legal_basis.join(" · ")}</span>}
+      </section>
 
-      {sel && matchingReport && <div className="panel tax-compare-box">
-        <div className="tax-compare-head"><div><b>Đối chiếu {sel.ky}</b><small>CRM v{matchingReport.version} ↔ {sel.ten_file}</small></div><button onClick={compare}>So sánh chỉ tiêu</button>{matchingReport.status === "draft" && <button className="ghost" onClick={lockReport}>Khóa bản CRM</button>}</div>
-        {diffs.length > 0 && <div className="table-wrap"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Chênh lệch</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td className="num">{d.match ? "Khớp" : vnd(d.difference)}</td></tr>)}</tbody></table></div>}
-      </div>}
-
-      <div className="tax-toolbar">
-        <label>
-          Lọc kỳ:{" "}
-          <select value={kyFilter} onChange={(e) => setKyFilter(e.target.value)}>
-            <option value="">Tất cả</option>
-            {KY_OPTS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {list.length === 0 ? (
-        <div className="empty">
-          <div className="empty-ic">📄</div>
-          Chưa có file nào. Úp file BCT kế toán gửi để bắt đầu.
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Kỳ</th>
-                <th>File</th>
-                <th>Ghi chú</th>
-                <th className="num">Lỗi</th>
-                <th>Người / lúc</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r) => (
-                <tr
-                  key={r.id}
-                  className={sel?.id === r.id ? "row-sel" : ""}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => open(r.id)}
-                >
-                  <td>{r.ky || "—"}</td>
-                  <td>{r.ten_file}</td>
-                  <td className="muted">{r.note}</td>
-                  <td className="num">
-                    {r.n_do > 0 && <span className="chip red">{r.n_do} đỏ</span>}{" "}
-                    {r.n_vang > 0 && (
-                      <span className="chip amber">{r.n_vang} vàng</span>
-                    )}
-                    {r.n_do + r.n_vang === 0 && (
-                      <span className="chip green">OK</span>
-                    )}
-                  </td>
-                  <td className="muted">
-                    {r.uploaded_by}
-                    <br />
-                    {r.uploaded_at?.slice(0, 16).replace("T", " ")}
-                  </td>
-                  <td>
-                    <a
-                      href={api.taxReviewFileUrl(r.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Tải
-                    </a>{" "}
-                    <button
-                      className="btn-sm danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        del(r.id);
-                      }}
-                    >
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {sel && (
-        <div className="tax-detail">
-          <h3>
-            {sel.ten_file} <span className="muted">— {sel.ky}</span>
-          </h3>
-          <Summary s={sel.summary} />
-          <h4>Kết quả soát ({sel.findings.length})</h4>
-          <Findings findings={sel.findings} active={activeFinding} onSelect={selectFinding} />
-          {activeFinding >= 0 && focusCode && sel.grids[sheet] && (
-            <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />
-          )}
-
-          <h4 style={{ marginTop: 16 }}>Xem file</h4>
-          <div className="tax-sheets">
-            {sel.grids.map((g, i) => (
-              <button
-                key={i}
-                className={i === sheet ? "primary" : "ghost"}
-                onClick={() => setSheet(i)}
-              >
-                {g.name}
-              </button>
-            ))}
+      <section className="tax-command-grid">
+        <div className="tax-command-card upload-card">
+          <div className="command-head"><span>01</span><div><b>Nhận file kế toán</b><small>Upload và lưu từng phiên bản</small></div></div>
+          <div className="command-fields">
+            <select value={ky} onChange={(e) => setKy(e.target.value)}>{KY_OPTS.map((k) => <option key={k}>{k}</option>)}</select>
+            <input placeholder="Ghi chú phiên bản" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          {sel.grids[sheet] && <GridView grid={sel.grids[sheet]} flags={flags} focusCode={focusCode} />}
+          <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={(e) => upload(e.target.files)} />
+          <div className={`studio-drop${dragging ? " dragging" : ""}${busy ? " busy" : ""}`} role="button" tabIndex={0}
+            onClick={() => !busy && fileRef.current?.click()}
+            onKeyDown={(e) => !busy && (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
+            onDragEnter={(e) => { e.preventDefault(); if (!busy) setDragging(true); }} onDragOver={(e) => e.preventDefault()}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); if (!busy) upload(e.dataTransfer.files); }}>
+            <span className="drop-badge">{busy ? "···" : "XLSX"}</span><div><b>{busy ? "Đang rà soát…" : "Thả file vào đây"}</b><small>hoặc bấm để chọn từ máy</small></div>
+          </div>
         </div>
-      )}
+        <div className="tax-command-card crm-card">
+          <div className="command-head"><span>02</span><div><b>Bản tính từ CRM</b><small>Tách KCT · 8% · 10% theo hóa đơn</small></div></div>
+          <div className="crm-report-state"><strong>{currentReport ? `v${currentReport.version}` : "Chưa sinh"}</strong><span>{currentReport?.status === "locked" ? "Đã khóa" : "Bản nháp tự cập nhật"}</span></div>
+          <div className="command-actions"><button className="studio-primary" onClick={async () => { await api.generateTaxReport(ky); await reload(); }}>Sinh / cập nhật {ky}</button>{currentReport && <a href={api.taxReportFileUrl(currentReport.id)}>Tải XLSX</a>}</div>
+        </div>
+      </section>
+
+      {err && <div className="error tax-studio-error">{err}</div>}
+
+      <section className={`tax-workspace${sel ? " has-selection" : ""}`}>
+        <aside className="tax-review-rail">
+          <div className="rail-head"><div><span className="tax-kicker">PHIÊN BẢN</span><h2>File kế toán</h2></div><select value={kyFilter} onChange={(e) => setKyFilter(e.target.value)}><option value="">Tất cả</option>{KY_OPTS.map((k) => <option key={k}>{k}</option>)}</select></div>
+          <div className="version-list">
+            {list.length === 0 && <div className="rail-empty">Chưa có file BCT.</div>}
+            {list.map((r) => <div key={r.id} className={`version-card${sel?.id === r.id ? " active" : ""}`} role="button" tabIndex={0} onClick={() => open(r.id)} onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r.id); }
+            }}>
+              <div className="version-top"><strong>{r.ky || "Chưa rõ kỳ"}</strong><span>{r.n_do ? `${r.n_do} đỏ` : r.n_vang ? `${r.n_vang} vàng` : "OK"}</span></div>
+              <b className="version-file">{r.ten_file}</b><small>{r.note || "Không có ghi chú"}</small>
+              <div className="version-meta"><span>{r.uploaded_at?.slice(0, 16).replace("T", " ")}</span><span className="version-actions" onClick={(e) => e.stopPropagation()}><a href={api.taxReviewFileUrl(r.id)}>Tải</a><button type="button" onClick={() => del(r.id)}>Xóa</button></span></div>
+            </div>)}
+          </div>
+          {sel && <div className="rail-findings"><div className="rail-section-title"><span>KẾT QUẢ RÀ SOÁT</span><b>{sel.findings.length}</b></div><Findings findings={sel.findings} active={activeFinding} onSelect={selectFinding} /></div>}
+        </aside>
+
+        <main className="tax-review-stage">
+          {!sel ? <div className="tax-stage-empty"><span>↖</span><h2>Chọn một phiên bản để bắt đầu</h2><p>Hoặc tải file Excel mới ở khu vực phía trên. CRM sẽ dò sai nhóm thuế, công thức và chỉ tiêu.</p></div> : <>
+            <header className="stage-head"><div><span className="tax-kicker">ĐANG REVIEW · {sel.ky}</span><h2>{sel.ten_file}</h2></div><div className="stage-verdict"><span className={sel.summary.do ? "bad" : "ok"}>{sel.summary.do ? `${sel.summary.do} lỗi cần sửa` : "Không có lỗi đỏ"}</span><small>{sel.summary.vang} điểm cần xác nhận</small></div></header>
+            <Summary s={sel.summary} />
+
+            {matchingReport && <section className="compare-strip"><div><b>CRM v{matchingReport.version}</b><span>↔</span><b>File kế toán</b></div><div><button onClick={compare}>So sánh chỉ tiêu</button>{matchingReport.status === "draft" && <button onClick={lockReport}>Khóa bản CRM</button>}</div></section>}
+            {diffs.length > 0 && <div className="compare-results"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Kết quả</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td>{d.match ? "Khớp" : `Lệch ${vnd(d.difference)}`}</td></tr>)}</tbody></table></div>}
+            {activeFinding >= 0 && focusCode && sel.grids[sheet] && <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />}
+
+            <div className="excel-toolbar"><div className="tax-sheets">{sel.grids.map((g, i) => <button key={g.name} className={i === sheet ? "active" : ""} onClick={() => setSheet(i)}>{g.name}</button>)}</div><span>{focusCode ? `Đang xem chỉ tiêu [${focusCode}]` : "Bấm cảnh báo để nhảy tới ô liên quan"}</span></div>
+            {sel.grids[sheet] && <GridView grid={sel.grids[sheet]} flags={flags} focusCode={focusCode} />}
+          </>}
+        </main>
+      </section>
     </div>
   );
 }

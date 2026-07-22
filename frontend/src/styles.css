@@ -1812,3 +1812,197 @@ table.xls td.flag {
   .ihd-stats { grid-template-columns: repeat(2, 1fr); }
   .ihd-head { align-items: flex-start; flex-wrap: wrap; }
 }
+
+/* --- Quarterly VAT review studio --- */
+.tax-studio {
+  --tax-ink: #123b38;
+  --tax-teal: #147d72;
+  --tax-mint: #dff3ec;
+  --tax-paper: #fbfaf5;
+  --tax-amber: #df9a33;
+  --tax-coral: #d65f47;
+  color: var(--tax-ink);
+  padding: 4px 0 30px;
+}
+.tax-studio-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  overflow: hidden;
+  padding: 30px 34px;
+  border-radius: 24px 24px 10px 10px;
+  color: #f8fffccf;
+  background:
+    radial-gradient(circle at 82% 20%, rgba(74, 196, 168, .28), transparent 28%),
+    linear-gradient(125deg, #102e2c 0%, #154b46 62%, #176d63 100%);
+  box-shadow: 0 22px 55px rgba(12, 52, 48, .18);
+}
+.tax-studio-hero::after {
+  content: "";
+  position: absolute;
+  right: -48px;
+  bottom: -105px;
+  width: 260px;
+  height: 260px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 50%;
+  box-shadow: 0 0 0 28px rgba(255,255,255,.025), 0 0 0 58px rgba(255,255,255,.02);
+}
+.tax-kicker {
+  display: block;
+  color: #51bda9;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+.tax-studio-hero h1 {
+  margin: 7px 0 6px;
+  color: #fff;
+  font-family: Georgia, serif;
+  font-size: clamp(32px, 4vw, 50px);
+  font-weight: 500;
+  line-height: 1.05;
+}
+.tax-studio-hero p { max-width: 650px; margin: 0; color: #c5d9d5; }
+.tax-hero-score {
+  position: relative;
+  z-index: 1;
+  min-width: 220px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 16px;
+  background: rgba(5, 35, 32, .28);
+  backdrop-filter: blur(8px);
+}
+.tax-hero-score span, .tax-hero-score small { display: block; color: #b9d3ce; font-size: 11px; }
+.tax-hero-score strong { display: block; margin: 3px 0 5px; color: #fff2c7; font-family: Georgia, serif; font-size: 27px; }
+.tax-policy-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  margin: 8px 0 18px;
+  padding: 12px 18px;
+  border: 1px solid #ead7aa;
+  border-radius: 9px 9px 16px 16px;
+  background: linear-gradient(90deg, #fff8e7, #fffdf7);
+}
+.policy-mark { color: #a87723; font-family: Georgia, serif; font-size: 28px; }
+.tax-policy-bar b, .tax-policy-bar small { display: block; }
+.tax-policy-bar small { margin-top: 2px; color: #716a59; }
+.policy-law { color: #8c6727; font-size: 11px; font-weight: 800; text-align: right; }
+.tax-command-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 14px; margin-bottom: 16px; }
+.tax-command-card {
+  min-width: 0;
+  padding: 19px;
+  border: 1px solid rgba(18,59,56,.11);
+  border-radius: 18px;
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 9px 30px rgba(18,59,56,.055);
+}
+.command-head { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+.command-head > span { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 50%; background: var(--tax-ink); color: #fff; font-size: 10px; font-weight: 900; }
+.command-head b, .command-head small { display: block; }
+.command-head b { font-family: Georgia, serif; font-size: 18px; font-weight: 600; }
+.command-head small { color: #758581; }
+.command-fields { display: grid; grid-template-columns: 135px 1fr; gap: 8px; margin-bottom: 9px; }
+.studio-drop { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 78px; padding: 12px; border: 1.5px dashed #80afa6; border-radius: 13px; background: #f3faf7; cursor: pointer; transition: .18s ease; }
+.studio-drop:hover, .studio-drop.dragging { border-color: var(--tax-teal); background: #e7f7f1; transform: translateY(-1px); }
+.studio-drop.busy { opacity: .62; cursor: wait; }
+.studio-drop b, .studio-drop small { display: block; }
+.studio-drop small { color: #6e827d; }
+.drop-badge { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 11px; color: #fff; background: var(--tax-teal); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.crm-card { display: flex; flex-direction: column; background: linear-gradient(145deg, #f8fbf9, #edf7f3); }
+.crm-report-state { display: flex; align-items: baseline; gap: 10px; padding: 13px 0 18px; }
+.crm-report-state strong { color: var(--tax-teal); font-family: Georgia, serif; font-size: 32px; }
+.crm-report-state span { color: #6d7e79; }
+.command-actions { display: flex; align-items: center; gap: 12px; margin-top: auto; }
+.command-actions a { color: var(--tax-teal); font-weight: 800; }
+.studio-primary { flex: 1; color: #fff; border-color: var(--tax-teal); background: var(--tax-teal); font-weight: 800; }
+.tax-studio-error { margin: 12px 0; }
+.tax-workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 680px; border: 1px solid rgba(18,59,56,.12); border-radius: 20px; background: var(--tax-paper); box-shadow: 0 20px 60px rgba(18,59,56,.08); overflow: hidden; }
+.tax-review-rail { min-width: 0; padding: 18px 14px; border-right: 1px solid #dde5e1; background: #f1f4ef; }
+.rail-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 4px 13px; }
+.rail-head h2 { margin: 2px 0 0; font-family: Georgia, serif; font-size: 22px; font-weight: 500; }
+.rail-head select { width: 106px; padding: 7px 8px; font-size: 11px; }
+.version-list { display: grid; gap: 8px; }
+.version-card { padding: 12px; border: 1px solid #dce4df; border-radius: 13px; outline: none; background: rgba(255,255,255,.74); cursor: pointer; transition: .16s ease; }
+.version-card:hover, .version-card:focus-visible { border-color: #9fc6bd; background: #fff; transform: translateX(2px); }
+.version-card.active { border-color: var(--tax-teal); background: #fff; box-shadow: inset 3px 0 var(--tax-teal), 0 8px 20px rgba(18,59,56,.08); }
+.version-top, .version-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.version-top strong { color: var(--tax-teal); font-size: 12px; }
+.version-top > span { padding: 3px 7px; border-radius: 999px; color: #9c5b16; background: #fff0d4; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.version-file { display: block; overflow: hidden; margin-top: 8px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.version-card > small { display: block; overflow: hidden; margin-top: 2px; color: #7b8985; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.version-meta { margin-top: 10px; color: #87938f; font-size: 9px; }
+.version-actions { display: flex; align-items: center; gap: 8px; }
+.version-actions a, .version-actions button { padding: 0; border: 0; color: var(--tax-teal); background: none; font-size: 10px; font-style: normal; font-weight: 800; text-decoration: none; }
+.version-actions button { color: #b4523f; }
+.rail-empty { padding: 30px 12px; color: #7d8a86; text-align: center; }
+.rail-findings { margin-top: 21px; padding-top: 16px; border-top: 1px solid #d8e0dc; }
+.rail-section-title { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 9px; font-size: 10px; font-weight: 900; letter-spacing: .09em; }
+.rail-section-title b { display: grid; place-items: center; min-width: 22px; height: 22px; border-radius: 50%; color: #fff; background: var(--tax-coral); font-size: 10px; }
+.tax-review-rail .finding-card { padding: 11px; border-radius: 11px; box-shadow: none; font-size: 11px; }
+.tax-review-rail .finding-card .muted { font-size: 10px; line-height: 1.4; }
+.tax-review-rail .finding-card .chip { font-size: 8px; }
+.tax-review-rail .finding-open { margin-top: 6px; font-size: 9px; }
+.tax-review-stage { min-width: 0; padding: 24px; background: #fff; }
+.tax-stage-empty { display: grid; place-items: center; align-content: center; min-height: 610px; color: #81908c; text-align: center; }
+.tax-stage-empty > span { display: grid; place-items: center; width: 66px; height: 66px; border: 1px dashed #9cbbb4; border-radius: 50%; color: var(--tax-teal); background: #eef8f4; font-size: 25px; }
+.tax-stage-empty h2 { margin: 17px 0 5px; color: var(--tax-ink); font-family: Georgia, serif; font-weight: 500; }
+.tax-stage-empty p { max-width: 420px; margin: 0; line-height: 1.55; }
+.stage-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 15px; }
+.stage-head h2 { overflow: hidden; margin: 4px 0 0; font-family: Georgia, serif; font-size: 25px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.stage-verdict { flex: 0 0 auto; text-align: right; }
+.stage-verdict span, .stage-verdict small { display: block; }
+.stage-verdict span { padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 900; }
+.stage-verdict span.bad { color: #9d3e2f; background: #fbe3dc; }
+.stage-verdict span.ok { color: #176649; background: #dff3e9; }
+.stage-verdict small { margin-top: 5px; color: #788681; font-size: 10px; }
+.tax-review-stage .tax-sum { grid-template-columns: repeat(3, minmax(125px, 1fr)); gap: 1px; overflow: hidden; margin: 0 0 17px; border: 1px solid #e3e8e4; border-radius: 13px; background: #e3e8e4; }
+.tax-review-stage .tax-sum-i { padding: 11px 13px; border: 0; border-radius: 0; background: #fbfcfa; }
+.tax-review-stage .tax-sum-i .muted { margin-bottom: 3px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.tax-review-stage .tax-sum-i > div:last-child { color: var(--tax-ink); font-family: Georgia, serif; font-size: 16px; }
+.compare-strip { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 15px 0; padding: 11px 13px; border: 1px solid #d8e8e2; border-radius: 12px; background: #f3f9f6; }
+.compare-strip > div { display: flex; align-items: center; gap: 8px; }
+.compare-strip > div:first-child span { color: #7ea399; }
+.compare-strip button { padding: 7px 10px; font-size: 10px; font-weight: 800; }
+.compare-results { overflow: auto; max-height: 260px; margin-bottom: 15px; border: 1px solid #e1e7e3; border-radius: 12px; }
+.finding-snapshot { margin: 13px 0; }
+.excel-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 18px 0 7px; }
+.excel-toolbar > span { color: #778681; font-size: 10px; text-align: right; }
+.excel-toolbar .tax-sheets { margin: 0; }
+.tax-sheets button { padding: 7px 11px; border-color: #d7e1dd; border-radius: 9px 9px 3px 3px; color: #62736f; background: #f5f7f5; font-size: 10px; font-weight: 800; }
+.tax-sheets button.active { color: #fff; border-color: var(--tax-teal); background: var(--tax-teal); }
+.tax-review-stage .xls-wrap { max-height: 600px; border: 1px solid #dce3df; border-radius: 10px; background: #fff; }
+.tax-review-stage table.xls { min-width: 100%; }
+.tax-review-stage table.xls td { height: 24px; border-color: #e2e6e3; }
+
+@media (max-width: 1100px) {
+  .tax-workspace { grid-template-columns: 260px minmax(0, 1fr); }
+  .tax-review-stage { padding: 18px; }
+  .tax-review-stage .tax-sum { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+}
+@media (max-width: 820px) {
+  .tax-studio-hero { align-items: flex-start; flex-direction: column; padding: 25px; }
+  .tax-hero-score { width: 100%; }
+  .tax-policy-bar { grid-template-columns: auto 1fr; }
+  .policy-law { grid-column: 2; text-align: left; }
+  .tax-command-grid, .tax-workspace { grid-template-columns: 1fr; }
+  .tax-review-rail { border-right: 0; border-bottom: 1px solid #dde5e1; }
+  .version-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tax-stage-empty { min-height: 340px; }
+}
+@media (max-width: 560px) {
+  .tax-studio-hero { padding: 22px 18px; border-radius: 18px 18px 8px 8px; }
+  .tax-policy-bar { padding: 11px; }
+  .command-fields, .version-list { grid-template-columns: 1fr; }
+  .tax-review-stage { padding: 15px 11px; }
+  .stage-head, .compare-strip, .excel-toolbar { align-items: stretch; flex-direction: column; }
+  .stage-verdict { text-align: left; }
+  .tax-review-stage .tax-sum { grid-template-columns: 1fr 1fr; }
+  .compare-strip > div:last-child { flex-wrap: wrap; }
+  .excel-toolbar > span { text-align: left; }
+}
