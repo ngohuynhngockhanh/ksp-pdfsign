@@ -13,6 +13,7 @@ export function Settings() {
   // secret nhap moi (de trong = giu nguyen)
   const [aiKey, setAiKey] = useState("");
   const [nasPass, setNasPass] = useState("");
+  const [ihoadonPass, setIhoadonPass] = useState("");
   const [aiTestMsg, setAiTestMsg] = useState("");
   const [nasTestMsg, setNasTestMsg] = useState("");
   const [disk, setDisk] = useState<Awaited<ReturnType<typeof api.nasDisk>> | null>(null);
@@ -51,13 +52,20 @@ export function Settings() {
         nas_user: s.nas_user,
         nas_base_path: s.nas_base_path,
         nas_timeout: s.nas_timeout,
+        ihoadon_enabled: s.ihoadon_enabled,
+        ihoadon_base_url: s.ihoadon_base_url,
+        ihoadon_tax_code: s.ihoadon_tax_code,
+        ihoadon_username: s.ihoadon_username,
+        ihoadon_timeout: s.ihoadon_timeout,
       };
       if (aiKey.trim()) body.ai_api_key = aiKey.trim();
       if (nasPass.trim()) body.nas_password = nasPass.trim();
+      if (ihoadonPass.trim()) body.ihoadon_password = ihoadonPass.trim();
       await api.saveAppSettings(body);
       setMsg("✅ Đã lưu cấu hình (có hiệu lực ngay, không cần khởi động lại).");
       setAiKey("");
       setNasPass("");
+      setIhoadonPass("");
       await load();
     } catch (e) {
       setErr((e as Error).message);
@@ -258,6 +266,51 @@ export function Settings() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ---- iHOADON ---- */}
+      <div className="panel" style={{ marginTop: 12 }}>
+        <h3>🧾 iHOADON (đồng bộ hóa đơn bán ra)</h3>
+        <p className="muted">
+          CRM chỉ xem và tạo hóa đơn <b>GHI_TAM</b>; không ký, giữ số hoặc phát hành.
+        </p>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={s.ihoadon_enabled}
+            onChange={(e) => set("ihoadon_enabled", e.target.checked)}
+          />
+          Bật kết nối iHOADON
+        </label>
+        <label>
+          Website
+          <input style={{ width: "100%" }} value={s.ihoadon_base_url} onChange={(e) => set("ihoadon_base_url", e.target.value)} />
+        </label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <label style={{ flex: 1 }}>
+            Mã số thuế
+            <input value={s.ihoadon_tax_code} onChange={(e) => set("ihoadon_tax_code", e.target.value)} />
+          </label>
+          <label style={{ flex: 1 }}>
+            Tên đăng nhập
+            <input value={s.ihoadon_username} onChange={(e) => set("ihoadon_username", e.target.value)} />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <label style={{ flex: 1 }}>
+            Mật khẩu {s.ihoadon_password_set && <span className="chip green sm">đã đặt</span>}
+            <input
+              type="password"
+              value={ihoadonPass}
+              placeholder={s.ihoadon_password_set ? "•••• (để trống = giữ nguyên)" : "nhập mật khẩu iHOADON"}
+              onChange={(e) => setIhoadonPass(e.target.value)}
+            />
+          </label>
+          <label>
+            Timeout (s)
+            <input type="number" style={{ width: 90 }} value={s.ihoadon_timeout} onChange={(e) => set("ihoadon_timeout", Number(e.target.value) || 30)} />
+          </label>
+        </div>
       </div>
 
       <div className="modal-actions" style={{ marginTop: 14 }}>

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io as _io
+import json
 import secrets
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -43,6 +44,7 @@ from . import (
     settings_store,
     signing,
     tax,
+    tax_review,
     storage,
     token_backend,
     verify,
@@ -67,6 +69,7 @@ from .db import (
     Order,
     Product,
     Share,
+    TaxReviewUpload,
     User,
     get_session,
     init_db,
@@ -1540,6 +1543,12 @@ def get_app_settings(
         "nas_password_set": bool(settings.nas_password),
         "nas_base_path": settings.nas_base_path,
         "nas_timeout": settings.nas_timeout,
+        "ihoadon_enabled": settings.ihoadon_enabled,
+        "ihoadon_base_url": settings.ihoadon_base_url,
+        "ihoadon_tax_code": settings.ihoadon_tax_code,
+        "ihoadon_username": settings.ihoadon_username,
+        "ihoadon_password_set": bool(settings.ihoadon_password),
+        "ihoadon_timeout": settings.ihoadon_timeout,
     }
 
 
@@ -1556,7 +1565,7 @@ def save_app_settings(
     values = {k: v for k, v in (body or {}).items() if k in settings_store.ALLOWED_KEYS}
     settings_store.set_overrides(values)
     settings_store.reload_settings()
-    _audit(db, user, "settings_update", "AI/NAS", ", ".join(sorted(values.keys()))[:180])
+    _audit(db, user, "settings_update", "AI/NAS/iHOADON", ", ".join(sorted(values.keys()))[:180])
     return {"ok": True}
 
 
@@ -1695,6 +1704,123 @@ def tax_sync(
     else:
         _audit(db, user, "tax_sync", mst, f"{tu}→{den}: thiếu {len(result['missing_mua'])} mua, {len(result['missing_ban'])} bán")
     return result
+
+
+def _ky_from_range(tu: str, den: str) -> str:
+    """Suy 'yyyy-Qn' tu khoang ngay (uu tien thang cuoi)."""
+    m = (den or tu or "")[:7]
+    try:
+        y, mo = m.split("-")
+        return f"{y}-Q{(int(mo) - 1) // 3 + 1}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+@app.post("/api/tax/review/upload")
+async def tax_review_upload(
+    file: UploadFile = File(...),
+    ky: str = "",
+    note: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Ke toan up file BCT .xlsx -> parse + cham loi + luu 1 phien ban."""
+    name = file.filename or "bct.xlsx"
+    if not name.lower().endswith(".xlsx"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ nhận file Excel (.xlsx)")
+    content = await file.read()
+    try:
+        r = tax_review.review_bytes(content)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Không đọc được file: {type(e).__name__}: {e}")
+    doc_id = storage.save_upload(content, suffix=".xlsx")
+    rec = TaxReviewUpload(
+        ky=ky.strip(), ten_file=name, doc_id=doc_id,
+        findings=json.dumps(r["findings"], ensure_ascii=False),
+        ct_snapshot=json.dumps(r["summary"], ensure_ascii=False),
+        n_do=r["summary"]["do"], n_vang=r["summary"]["vang"],
+        note=note.strip(), uploaded_by=user.username,
+    )
+    db.add(rec)
+    db.commit()
+    _audit(db, user, "tax_review_upload", name, f"{ky}: {rec.n_do} đỏ, {rec.n_vang} vàng")
+    return {"id": rec.id, "findings": r["findings"], "summary": r["summary"]}
+
+
+@app.get("/api/tax/review")
+def tax_review_list(
+    ky: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    q = select(TaxReviewUpload).order_by(TaxReviewUpload.id.desc())
+    if ky.strip():
+        q = q.where(TaxReviewUpload.ky == ky.strip())
+    rows = list(db.scalars(q))
+    return [
+        {
+            "id": r.id, "ky": r.ky, "ten_file": r.ten_file, "note": r.note,
+            "n_do": r.n_do, "n_vang": r.n_vang,
+            "summary": json.loads(r.ct_snapshot or "{}"),
+            "uploaded_by": r.uploaded_by,
+            "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else "",
+        }
+        for r in rows
+    ]
+
+
+@app.get("/api/tax/review/{rid}")
+def tax_review_detail(
+    rid: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Chi tiet 1 phien ban: findings + grid 3 sheet (doc lai file goc)."""
+    rec = db.get(TaxReviewUpload, rid)
+    if not rec:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy")
+    try:
+        content = storage.read_doc(rec.doc_id, suffix=".xlsx")
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File gốc không còn")
+    r = tax_review.review_bytes(content)
+    return {
+        "id": rec.id, "ky": rec.ky, "ten_file": rec.ten_file, "note": rec.note,
+        "findings": r["findings"], "summary": r["summary"], "grids": r["grids"],
+    }
+
+
+@app.get("/api/tax/review/{rid}/file")
+def tax_review_file(
+    rid: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    rec = db.get(TaxReviewUpload, rid)
+    if not rec:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy")
+    data = storage.read_doc(rec.doc_id, suffix=".xlsx")
+    disp = f"attachment; filename*=UTF-8''{quote(rec.ten_file)}"
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": disp},
+    )
+
+
+@app.delete("/api/tax/review/{rid}")
+def tax_review_delete(
+    rid: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    rec = db.get(TaxReviewUpload, rid)
+    if not rec:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy")
+    db.delete(rec)
+    db.commit()
+    _audit(db, user, "tax_review_delete", rec.ten_file)
+    return {"ok": True}
 
 
 @app.get("/api/nas/browse")

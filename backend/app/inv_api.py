@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, inv_export, inv_import, inventory, money, nas, storage, tax
+from . import ai, audit, customs, ihoadon, inv_export, inv_import, inventory, money, nas, storage, tax
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -46,6 +46,7 @@ from .schemas import (
     InvCustomsLineOut,
     InvCustomsUpdate,
     InvImportUrlIn,
+    IhoadonDraftIn,
     InvIssueIn,
     InvIssueLineOut,
     InvIssueOut,
@@ -2047,6 +2048,108 @@ def sale_draft_export_xlsx(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có dòng hàng nào để xuất")
     lines = [ln.model_dump() for ln in body.lines]
     return inv_export.ihoadon_response(lines, "bang-ke-hoa-don.xlsx")
+
+
+def _ihoadon_client(settings: Settings) -> ihoadon.Client:
+    if not settings.ihoadon_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "iHOADON đang tắt trong Cài đặt")
+    try:
+        return ihoadon.Client(settings)
+    except ihoadon.IhoadonError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+
+
+@router.get("/ihoadon/dashboard")
+def ihoadon_dashboard(
+    user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)
+):
+    try:
+        with _ihoadon_client(settings) as client:
+            return client.dashboard()
+    except ihoadon.IhoadonError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {e}")
+
+
+@router.get("/ihoadon/drafts")
+def ihoadon_drafts(
+    page: int = 1, limit: int = 30,
+    user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings),
+):
+    try:
+        with _ihoadon_client(settings) as client:
+            return client.drafts(max(1, page), min(max(1, limit), 100))
+    except ihoadon.IhoadonError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {e}")
+
+
+def _vat_value(name: str) -> str:
+    low = (name or "").strip().lower()
+    if "không chịu" in low or "khong chiu" in low:
+        return "KCT"
+    m = re.match(r"(\d+(?:[.,]\d+)?)", low)
+    return m.group(1).replace(",", ".") if m else "0"
+
+
+@router.post("/ihoadon/drafts")
+def ihoadon_create_draft(
+    body: IhoadonDraftIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    lines = [ln for ln in body.lines if ln.ten.strip()]
+    if not lines:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có dòng hàng hóa/dịch vụ")
+    if not body.customer_name.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập tên khách hàng")
+    products = []
+    amount = total_vat = 0.0
+    for pos, ln in enumerate(lines, 1):
+        base = ln.thanh_tien or (ln.so_luong * ln.don_gia)
+        vat_amount = ln.tien_thue if ln.tien_thue is not None else 0
+        amount += base
+        total_vat += vat_amount
+        products.append({
+            "product_code": ln.ma_hang or None,
+            "product_name": ln.ten.strip(),
+            "unit_name": ln.dvt.strip(),
+            "quantity": ln.so_luong,
+            "price": ln.don_gia,
+            "vat": _vat_value(ln.vat_name),
+            "amount": base,
+            "amount_vat": vat_amount,
+            "amount_after_vat": base + vat_amount,
+            "view_order": pos,
+            "is_promotion": False,
+            "is_promotion_new": False,
+            "commercial_discount": False,
+        })
+    other_id = f"ksp-{_uuid.uuid4().hex}"
+    invoice = {
+        "other_id": other_id,
+        "customer_object_code": "DOANH_NGHIEP" if body.buyer_tax_code.strip() else "CA_NHAN",
+        "customer_name": body.customer_name.strip(),
+        "buyer_tax_code": body.buyer_tax_code.strip(),
+        "buyer_name": body.buyer_name.strip(),
+        "buyer_email": body.buyer_email.strip(),
+        "buyer_address": body.buyer_address.strip(),
+        "payment_method_name": body.payment_method_name.strip() or "TM/CK",
+        "payment_method_view_name": body.payment_method_name.strip() or "TM/CK",
+        "note": body.note.strip(),
+        "currency_code": "VND",
+        "amount": round(amount),
+        "total_amount_vat": round(total_vat),
+        "amount_after_vat": round(amount + total_vat),
+        "total_payment": round(amount + total_vat),
+        "invoice_products": products,
+    }
+    try:
+        with _ihoadon_client(settings) as client:
+            result = client.create_draft(invoice)
+    except ihoadon.IhoadonError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {e}")
+    _audit(db, user, "ihoadon_create_draft", body.customer_name, other_id)
+    return result
 
 
 def _stock_items_for_ai(db: Session, ngay: str = "") -> list[dict]:

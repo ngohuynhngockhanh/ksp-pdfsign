@@ -596,6 +596,17 @@ class SaleDraftExportIn(BaseModel):
     lines: list[SaleDraftLineIn] = Field(default_factory=list)
 
 
+class IhoadonDraftIn(BaseModel):
+    customer_name: str
+    buyer_tax_code: str = ""
+    buyer_name: str = ""
+    buyer_email: str = ""
+    buyer_address: str = ""
+    payment_method_name: str = "TM/CK"
+    note: str = ""
+    lines: list[SaleDraftLineIn] = Field(default_factory=list)
+
+
 class SuggestInvoiceLinesIn(BaseModel):
     mo_ta: str = ""  # mo ta noi dung can ban
     context: str = ""  # huong dan them cho AI

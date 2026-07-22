@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     nas_base_path: str = "ho-so"
     nas_timeout: int = 10
 
+    # iHOADON - chi dong bo va tao hoa don GHI_TAM, khong ky/phat hanh.
+    ihoadon_enabled: bool = False
+    ihoadon_base_url: str = "https://ihoadon.com.vn"
+    ihoadon_tax_code: str = "4401053694"
+    ihoadon_username: str = "4401053694"
+    ihoadon_password: str = ""
+    ihoadon_timeout: float = 30.0
+
     # Windows agent (may cam token)
     agent_default_ip: str = "192.168.1.4"
     agent_port: int = 8443

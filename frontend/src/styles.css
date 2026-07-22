@@ -1647,3 +1647,151 @@ label.link-btn.file-inline {
     min-height: 50vh;
   }
 }
+
+/* --- Review tờ khai thuế (BCT) --- */
+.tax-up {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.tax-rule-note {
+  margin: 12px 0;
+  padding: 11px 14px;
+  border: 1px solid #bae6fd;
+  border-left: 4px solid #0284c7;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #0c4a6e;
+  line-height: 1.5;
+}
+.tax-drop {
+  min-width: min(100%, 330px);
+  flex: 1 1 330px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 2px dashed #94a3b8;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.tax-drop:hover,
+.tax-drop.dragging {
+  border-color: #0284c7;
+  background: #e0f2fe;
+  transform: translateY(-1px);
+}
+.tax-drop.busy {
+  cursor: wait;
+  opacity: 0.72;
+}
+.tax-drop-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: #0f766e;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.tax-drop small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted, #64748b);
+}
+.tax-toolbar {
+  margin: 12px 0 6px;
+}
+.tax-sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+.tax-sum-i {
+  background: var(--panel, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9em;
+}
+.tax-detail {
+  margin-top: 20px;
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 12px;
+}
+.tax-sheets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.row-sel > td {
+  background: var(--sel, #eff6ff);
+}
+.xls-wrap {
+  max-height: 70vh;
+  overflow: auto;
+}
+table.xls {
+  border-collapse: collapse;
+  font-size: 0.82em;
+  white-space: nowrap;
+}
+table.xls td {
+  border: 1px solid var(--border, #d1d5db);
+  padding: 2px 6px;
+  vertical-align: top;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+table.xls td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.xls td.flag {
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 600;
+}
+
+/* --- iHOADON draft sync --- */
+.ihd-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+.ihd-head > div:first-child { margin-right: auto; }
+.ihd-head h3 { margin: 0; }
+.ihd-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ihd-stats > div {
+  padding: 12px;
+  border: 1px solid #b7d5cf;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #f0fdfa, #f8fafc);
+}
+.ihd-stats strong { display: block; color: #0f766e; font-size: 1.5rem; }
+.ihd-stats span { color: var(--muted, #64748b); font-size: .84rem; }
+.ihd-drafts { margin-bottom: 12px; }
+.ihd-drafts summary { cursor: pointer; font-weight: 650; }
+.ihd-customer { margin: 12px 0; }
+.ihd-customer h3 { margin-top: 0; }
+@media (max-width: 680px) {
+  .ihd-stats { grid-template-columns: repeat(2, 1fr); }
+  .ihd-head { align-items: flex-start; flex-wrap: wrap; }
+}

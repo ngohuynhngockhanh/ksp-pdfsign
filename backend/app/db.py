@@ -611,6 +611,27 @@ class InvCustomsCost(Base):
     decl: Mapped["InvCustomsDecl"] = relationship(back_populates="costs")
 
 
+class TaxReviewUpload(Base):
+    """File BCT (to khai GTGT) ke toan up len -> he thong cham loi + xem online.
+
+    Luu nhieu phien ban theo ky de doi chieu (lan 1, lan 2...). File goc trong storage.
+    """
+
+    __tablename__ = "tax_review_uploads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ky: Mapped[str] = mapped_column(String(20), default="", index=True)  # "2026-Q2"
+    ten_file: Mapped[str] = mapped_column(String(255), default="")
+    doc_id: Mapped[str] = mapped_column(String(64), default="")  # file .xlsx trong storage
+    findings: Mapped[str] = mapped_column(Text, default="[]")  # JSON list
+    ct_snapshot: Mapped[str] = mapped_column(Text, default="{}")  # JSON summary
+    n_do: Mapped[int] = mapped_column(default=0)
+    n_vang: Mapped[int] = mapped_column(default=0)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    uploaded_by: Mapped[str] = mapped_column(String(64), default="")
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class AppSetting(Base):
     """Cau hinh dong (key-value) sua duoc tu web — override len Settings tu .env.
 

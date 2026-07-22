@@ -22,10 +22,16 @@ ALLOWED_KEYS: dict[str, str] = {
     "nas_password": "str",
     "nas_base_path": "str",
     "nas_timeout": "int",
+    "ihoadon_enabled": "bool",
+    "ihoadon_base_url": "str",
+    "ihoadon_tax_code": "str",
+    "ihoadon_username": "str",
+    "ihoadon_password": "str",
+    "ihoadon_timeout": "float",
 }
 
 # Key bi mat — che khi tra ra web (GET /settings)
-SECRET_KEYS = {"ai_api_key", "nas_password"}
+SECRET_KEYS = {"ai_api_key", "nas_password", "ihoadon_password"}
 
 
 def _coerce(kind: str, raw: str) -> Any:

@@ -9,6 +9,45 @@ export interface CertInfo {
   valid_to: string;
 }
 
+export interface TaxFinding {
+  level: "do" | "vang";
+  title: string;
+  detail: string;
+  cells: string[];
+}
+export interface TaxReviewSummary {
+  ban_ra_dt: number;
+  ban_ra_thue: number;
+  mua_vao_dt: number;
+  mua_vao_thue: number;
+  khau_tru_ky_truoc: number;
+  ct_36: number | null;
+  ct_40: number | null;
+  ct_41: number | null;
+  ct_43: number | null;
+  so_hd_ban: number;
+  so_hd_mua: number;
+  do: number;
+  vang: number;
+}
+export interface TaxReviewItem {
+  id: number;
+  ky: string;
+  ten_file: string;
+  note: string;
+  n_do: number;
+  n_vang: number;
+  summary: TaxReviewSummary;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+export interface TaxGrid {
+  name: string;
+  rows: string[][];
+  ncols: number;
+  merges: number[][]; // [r1,c1,r2,c2] 0-indexed
+}
+
 export interface Rect {
   page: number;
   x1: number;
@@ -434,6 +473,35 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async taxReviewUpload(file: File, ky: string, note: string) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const qs = new URLSearchParams({ ky, note }).toString();
+    return req<{ id: number; findings: TaxFinding[]; summary: TaxReviewSummary }>(
+      `/api/tax/review/upload?${qs}`,
+      { method: "POST", body: fd },
+    );
+  },
+  async taxReviewList(ky = "") {
+    return req<TaxReviewItem[]>(`/api/tax/review?ky=${encodeURIComponent(ky)}`);
+  },
+  async taxReviewDetail(id: number) {
+    return req<{
+      id: number;
+      ky: string;
+      ten_file: string;
+      note: string;
+      findings: TaxFinding[];
+      summary: TaxReviewSummary;
+      grids: TaxGrid[];
+    }>(`/api/tax/review/${id}`);
+  },
+  taxReviewFileUrl(id: number) {
+    return `/api/tax/review/${id}/file`;
+  },
+  async taxReviewDelete(id: number) {
+    return req<{ ok: boolean }>(`/api/tax/review/${id}`, { method: "DELETE" });
+  },
   async nasSyncAll() {
     return req<{ ok: boolean; synced: number; failed: number }>("/api/nas/sync-all", {
       method: "POST",
@@ -855,6 +923,18 @@ export const api = {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  },
+  async ihoadonDashboard() {
+    return req<IhoadonDashboard>("/api/inv/ihoadon/dashboard");
+  },
+  async ihoadonDrafts() {
+    return req<{ items: IhoadonDraft[]; total: number }>("/api/inv/ihoadon/drafts");
+  },
+  async ihoadonCreateDraft(body: IhoadonDraftCreate) {
+    return req<{ id: string; other_id: string; status: string; template_code: string; invoice_series: string; web_url: string }>(
+      "/api/inv/ihoadon/drafts",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    );
   },
   async invSaleDraftSuggestStart(mo_ta: string, context = "") {
     return req<{ job_id: string }>("/api/inv/sale-draft/suggest-lines/start", {
@@ -1489,6 +1569,46 @@ export interface AppSettings {
   nas_password_set: boolean;
   nas_base_path: string;
   nas_timeout: number;
+  ihoadon_enabled: boolean;
+  ihoadon_base_url: string;
+  ihoadon_tax_code: string;
+  ihoadon_username: string;
+  ihoadon_password_set: boolean;
+  ihoadon_timeout: number;
+}
+
+export interface IhoadonDashboard {
+  connected: boolean;
+  account_name: string;
+  tax_code: string;
+  total: number;
+  draft: number;
+  issued: number;
+  waiting: number;
+  web_url: string;
+}
+
+export interface IhoadonDraft {
+  id: string;
+  other_id: string | null;
+  customer_name: string;
+  buyer_tax_code: string;
+  total_payment: number;
+  created_at: string;
+  template_code: string;
+  invoice_series: string;
+  status: string;
+}
+
+export interface IhoadonDraftCreate {
+  customer_name: string;
+  buyer_tax_code: string;
+  buyer_name: string;
+  buyer_email: string;
+  buyer_address: string;
+  payment_method_name: string;
+  note: string;
+  lines: SaleDraftLine[];
 }
 
 export interface SaleDraftLine {

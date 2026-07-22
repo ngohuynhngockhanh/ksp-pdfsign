@@ -20,6 +20,7 @@ import { Recipes } from "./pages/Recipes";
 import { SaleDraft } from "./pages/SaleDraft";
 import { Settings } from "./pages/Settings";
 import { TaxSync } from "./pages/TaxSync";
+import { TaxReview } from "./pages/TaxReview";
 
 type Tab =
   | "sign"
@@ -34,6 +35,7 @@ type Tab =
   | "congthuc"
   | "hoadonnhap"
   | "thuesync"
+  | "thuebct"
   | "documents"
   | "customers"
   | "nas"
@@ -55,6 +57,7 @@ const ROUTES: Record<Tab, string> = {
   congthuc: "/cong-thuc",
   hoadonnhap: "/tao-hoa-don-nhap",
   thuesync: "/dong-bo-thue",
+  thuebct: "/review-to-khai",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
@@ -147,7 +150,7 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
+              "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
@@ -189,6 +192,7 @@ export function App() {
         ["tonkho", "Tồn kho", "📦"],
         ["nhaphang", "Nhập hàng", "🧾"],
         ["thuesync", "Đồng bộ thuế", "🏛️"],
+        ["thuebct", "Review tờ khai", "🧾"],
         ["tokhai", "Tờ khai NK", "🛃"],
         ["banra", "Bán ra", "🧾"],
         ["xuatkho", "Xuất kho", "📤"],
@@ -315,6 +319,7 @@ export function App() {
         {tab === "congthuc" && isAdmin && <Recipes />}
         {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
         {tab === "thuesync" && isAdmin && <TaxSync />}
+        {tab === "thuebct" && isAdmin && <TaxReview />}
         {tab === "documents" && isAdmin && (
           <Documents
             onVerify={goVerify}

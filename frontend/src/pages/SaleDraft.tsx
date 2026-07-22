@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, InvItem, SaleDraftLine } from "../api";
+import { useEffect, useState } from "react";
+import { api, IhoadonDashboard, IhoadonDraft, InvItem, SaleDraftLine } from "../api";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -39,6 +39,47 @@ export function SaleDraft() {
   const [aiCtx, setAiCtx] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState("");
+  const [ihd, setIhd] = useState<IhoadonDashboard | null>(null);
+  const [drafts, setDrafts] = useState<IhoadonDraft[]>([]);
+  const [ihdErr, setIhdErr] = useState("");
+  const [customer, setCustomer] = useState({
+    customer_name: "", buyer_tax_code: "", buyer_name: "", buyer_email: "",
+    buyer_address: "", payment_method_name: "TM/CK", note: "",
+  });
+
+  async function syncIhoadon() {
+    setIhdErr("");
+    try {
+      const [d, ls] = await Promise.all([api.ihoadonDashboard(), api.ihoadonDrafts()]);
+      setIhd(d);
+      setDrafts(ls.items);
+    } catch (e) {
+      setIhd(null);
+      setDrafts([]);
+      setIhdErr((e as Error).message);
+    }
+  }
+
+  async function pushDraft() {
+    const valid = lines.filter((l) => l.ten.trim()).map((l) => ({ ...l, tien_thue: tienThue(l) }));
+    if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
+    if (!valid.length) return setErr("Chưa có dòng hàng nào.");
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await api.ihoadonCreateDraft({ ...customer, lines: valid });
+      setAiNote(`Đã tạo hóa đơn ${r.status} trên iHOADON · mẫu ${r.template_code}/${r.invoice_series}`);
+      await syncIhoadon();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    syncIhoadon();
+  }, []);
 
   function setLine(i: number, patch: Partial<SaleDraftLine>) {
     setLines((ls) =>
@@ -134,13 +175,53 @@ export function SaleDraft() {
 
   return (
     <div className="docs-page">
-      <h2>🧾 Tạo hóa đơn nháp (xuất Excel bảng kê iHoadon)</h2>
+      <h2>🧾 Xuất hóa đơn · iHOADON</h2>
       <p className="muted" style={{ marginTop: 0 }}>
-        Soạn dòng hàng — <b>lấy tên đúng từ kho</b> để khớp mã khi xuất kho. Xuất ra file Excel đúng
-        khuôn iHoadon (số HĐ/ký hiệu để trống, tự điền trên iHoadon).
+        Soạn dòng hàng rồi đẩy thẳng sang iHOADON ở trạng thái <b>GHI_TAM</b>. CRM không ký hoặc phát hành hóa đơn.
       </p>
       {err && <div className="error">{err}</div>}
       {aiNote && <div className="warn-banner">🤖 {aiNote}</div>}
+
+      <div className="ihd-head">
+        <div>
+          <h3>Đồng bộ iHOADON</h3>
+          <span className="muted">{ihd?.account_name || "Chưa tải trạng thái"}</span>
+        </div>
+        <button className="btn-sm" onClick={syncIhoadon}>↻ Đồng bộ</button>
+        {ihd && <a className="btn-sm primary" href={ihd.web_url} target="_blank" rel="noreferrer">Mở iHOADON ↗</a>}
+      </div>
+      {ihdErr && <div className="error">{ihdErr} — kiểm tra cấu hình trong Cài đặt.</div>}
+      {ihd && (
+        <div className="ihd-stats">
+          <div><strong>{ihd.issued}</strong><span>Đã xuất</span></div>
+          <div><strong>{ihd.draft}</strong><span>Ghi tạm</span></div>
+          <div><strong>{ihd.waiting}</strong><span>Chờ xử lý</span></div>
+          <div><strong>{ihd.total}</strong><span>Tổng hóa đơn</span></div>
+        </div>
+      )}
+      {drafts.length > 0 && (
+        <details className="panel ihd-drafts">
+          <summary>Hóa đơn ghi tạm trên iHOADON ({drafts.length} bản mới nhất)</summary>
+          <div className="table-wrap">
+            <table><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th></tr></thead>
+              <tbody>{drafts.map((d) => <tr key={d.id}><td>{d.customer_name}</td><td>{d.buyer_tax_code}</td><td>{d.template_code}/{d.invoice_series}</td><td className="num">{vnd(d.total_payment)}</td><td>{d.created_at.slice(0, 16)}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </details>
+      )}
+
+      <div className="panel ihd-customer">
+        <h3>Thông tin người mua</h3>
+        <div className="form-grid">
+          <label className="span-2">Tên khách hàng<input value={customer.customer_name} onChange={(e) => setCustomer({ ...customer, customer_name: e.target.value })} /></label>
+          <label>Mã số thuế<input value={customer.buyer_tax_code} onChange={(e) => setCustomer({ ...customer, buyer_tax_code: e.target.value })} /></label>
+          <label>Người mua<input value={customer.buyer_name} onChange={(e) => setCustomer({ ...customer, buyer_name: e.target.value })} /></label>
+          <label>Email<input type="email" value={customer.buyer_email} onChange={(e) => setCustomer({ ...customer, buyer_email: e.target.value })} /></label>
+          <label>Thanh toán<input value={customer.payment_method_name} onChange={(e) => setCustomer({ ...customer, payment_method_name: e.target.value })} /></label>
+          <label className="span-2">Địa chỉ<input value={customer.buyer_address} onChange={(e) => setCustomer({ ...customer, buyer_address: e.target.value })} /></label>
+          <label className="span-2">Ghi chú<input value={customer.note} onChange={(e) => setCustomer({ ...customer, note: e.target.value })} /></label>
+        </div>
+      </div>
 
       <div className="tb-group" style={{ marginBottom: 8 }}>
         <button className="btn-sm" onClick={() => setAiOpen((o) => !o)}>
@@ -148,6 +229,9 @@ export function SaleDraft() {
         </button>
         <button className="btn-sm primary" disabled={busy} onClick={exportXlsx}>
           {busy ? "Đang xuất…" : "⬇️ Xuất Excel bảng kê"}
+        </button>
+        <button className="btn-sm primary" disabled={busy} onClick={pushDraft}>
+          {busy ? "Đang gửi…" : "Đẩy bản ghi tạm sang iHOADON"}
         </button>
       </div>
 
