@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { SmartPartyPaste } from "../components/SmartPartyPaste";
 
 type Item = { ten: string; dvt: string; so_luong: string };
 type Ngay = { day: number; month: number; year: number };
+
+function normName(s: string): string {
+  return s.trim().toLowerCase().replace(/đ/g, "d").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+}
 
 function soBB(n: Ngay): string {
   const p = (x: number) => String(x).padStart(2, "0");
@@ -41,10 +46,24 @@ export function CreateBBBG({
     dien_thoai: "",
   });
   const [items, setItems] = useState<Item[]>([]);
+  const [stockByName, setStockByName] = useState<Map<string, { qty: number; dvt: string }>>(new Map());
 
   useEffect(() => {
     api.bbbgTemplates().then((r) => setTemplates(r.templates)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const date = `${ngay.year}-${String(ngay.month).padStart(2, "0")}-${String(ngay.day).padStart(2, "0")}`;
+    api.invAvailability(date).then((r) => {
+      const map = new Map<string, { qty: number; dvt: string }>();
+      for (const row of r.rows) {
+        const key = normName(row.ten);
+        const current = map.get(key);
+        map.set(key, { qty: (current?.qty ?? 0) + (row.kha_dung ?? row.ton), dvt: current?.dvt || row.dvt });
+      }
+      setStockByName(map);
+    }).catch(() => {});
+  }, [ngay.day, ngay.month, ngay.year]);
 
   async function onInvoice(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -177,6 +196,10 @@ export function CreateBBBG({
 
       <div className="panel">
         <h3>3. Bên B (bên nhận)</h3>
+        <SmartPartyPaste onApply={(data) => setBenB((current) => ({
+          ...current,
+          ...Object.fromEntries(Object.entries(data).filter(([, value]) => value)),
+        }))} />
         <label>
           Tên đơn vị
           <input value={benB.name} onChange={(e) => setBenB({ ...benB, name: e.target.value })} />
@@ -211,6 +234,7 @@ export function CreateBBBG({
 
       <div className="panel">
         <h3>4. Danh sách hàng hóa</h3>
+        {items.some((item) => item.ten.trim() && !item.dvt.trim()) && <div className="stock-form-alert">Có {items.filter((item) => item.ten.trim() && !item.dvt.trim()).length} dòng thiếu đơn vị tính.</div>}
         <table className="doc-table">
           <thead>
             <tr>
@@ -225,9 +249,10 @@ export function CreateBBBG({
               <tr key={i}>
                 <td>
                   <input value={it.ten} onChange={(e) => setItem(i, "ten", e.target.value)} />
+                  {stockByName.get(normName(it.ten)) && <span className={`chip sm ${(stockByName.get(normName(it.ten))?.qty ?? 0) >= Number(it.so_luong || 0) ? "green" : "red"}`}>Tồn ngày {ngay.day}/{ngay.month}: {stockByName.get(normName(it.ten))?.qty} {stockByName.get(normName(it.ten))?.dvt || "(thiếu ĐVT)"}</span>}
                 </td>
                 <td>
-                  <input value={it.dvt} onChange={(e) => setItem(i, "dvt", e.target.value)} />
+                  <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
                 </td>
                 <td>
                   <input value={it.so_luong} onChange={(e) => setItem(i, "so_luong", e.target.value)} />

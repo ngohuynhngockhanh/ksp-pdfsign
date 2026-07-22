@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type DocRecord, type OrderRec } from "../api";
+import { SmartPartyPaste } from "../components/SmartPartyPaste";
 
 type QItem = { ten: string; dvt: string; so_luong: string; don_gia: string; thue_suat: string };
 type Product = Awaited<ReturnType<typeof api.listProducts>>[number];
@@ -61,7 +62,7 @@ export function CreateQuote({
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   // Ton kho theo ten chuan hoa (tong cac kho) — chi de hien badge tham khao
-  const [stockByName, setStockByName] = useState<Map<string, number>>(new Map());
+  const [stockByName, setStockByName] = useState<Map<string, { qty: number; dvt: string }>>(new Map());
   const [orders, setOrders] = useState<OrderRec[]>([]);
   const [orderId, setOrderId] = useState("");
   const [pickedDoc, setPickedDoc] = useState("");
@@ -124,18 +125,23 @@ export function CreateQuote({
     api.aiStatus().then(setAiInfo).catch(() => {});
     api.listProducts().then(setProducts).catch(() => {});
     api.listOrders().then(setOrders).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const date = `${ngay.year}-${String(ngay.month).padStart(2, "0")}-${String(ngay.day).padStart(2, "0")}`;
     api
-      .invStock()
+      .invAvailability(date)
       .then((r) => {
-        const m = new Map<string, number>();
+        const m = new Map<string, { qty: number; dvt: string }>();
         for (const row of r.rows) {
           const k = normName(row.ten);
-          m.set(k, (m.get(k) ?? 0) + row.ton);
+          const current = m.get(k);
+          m.set(k, { qty: (current?.qty ?? 0) + (row.kha_dung ?? row.ton), dvt: current?.dvt || row.dvt });
         }
         setStockByName(m);
       })
       .catch(() => {});
-  }, []);
+  }, [ngay.day, ngay.month, ngay.year]);
 
   async function newOrder() {
     const goiy = `${benB.name || "Khách"} — ${ngay.day}/${ngay.month}/${ngay.year}`;
@@ -546,6 +552,14 @@ export function CreateQuote({
 
       <div className="panel">
         <h3>Khách hàng (Kính gửi)</h3>
+        <SmartPartyPaste onApply={(data) => setBenB((current) => ({
+          ...current,
+          name: data.name || current.name,
+          address: data.address || current.address,
+          mst: data.mst || current.mst,
+          email: data.email || current.email,
+          dai_dien: data.dai_dien || current.dai_dien,
+        }))} />
         <label>
           Tên đơn vị
           <input value={benB.name} onChange={(e) => setBenB({ ...benB, name: e.target.value })} />
@@ -620,6 +634,7 @@ export function CreateQuote({
             <option key={p.id} value={p.ten} />
           ))}
         </datalist>
+        {items.some((item) => item.ten.trim() && !item.dvt.trim()) && <div className="stock-form-alert">Thiếu đơn vị tính ở {items.filter((item) => item.ten.trim() && !item.dvt.trim()).length} dòng — cần bổ sung trước khi lập biểu.</div>}
         <div style={{ overflowX: "auto" }}>
           <table className="doc-table">
             <thead>
@@ -648,21 +663,21 @@ export function CreateQuote({
                         onChange={(e) => setItem(i, "ten", e.target.value)}
                       />
                       {(() => {
-                        const ton = stockByName.get(normName(it.ten));
-                        if (ton === undefined || !it.ten.trim()) return null;
-                        const du = ton >= parseNum(it.so_luong);
+                        const stock = stockByName.get(normName(it.ten));
+                        if (!stock || !it.ten.trim()) return null;
+                        const du = stock.qty >= parseNum(it.so_luong);
                         return (
                           <span
                             className={`chip sm ${du ? "green" : "red"}`}
-                            title="Tồn kho hiện tại (tham khảo — báo giá không trừ kho)"
+                            title={`Khả dụng tại ngày ${ngay.day}/${ngay.month}/${ngay.year} (báo giá không trừ kho)`}
                           >
-                            Tồn: {ton}
+                            Tồn ngày {ngay.day}/{ngay.month}: {stock.qty} {stock.dvt || "(thiếu ĐVT)"}
                           </span>
                         );
                       })()}
                     </td>
                     <td>
-                      <input value={it.dvt} onChange={(e) => setItem(i, "dvt", e.target.value)} />
+                      <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
                     </td>
                     <td>
                       <input

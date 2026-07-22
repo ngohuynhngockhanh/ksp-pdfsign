@@ -5,6 +5,19 @@ function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
 
+type SettingIconName = "settings" | "ai" | "nas" | "invoice" | "mail";
+
+function SettingIcon({ name }: { name: SettingIconName }) {
+  const paths: Record<SettingIconName, React.ReactNode> = {
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
+    ai: <><path d="M9 3h6v3h3a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3h3V3Z"/><path d="M8 12h.01M16 12h.01M8 16h8"/></>,
+    nas: <><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h7M11 16.5h7"/></>,
+    invoice: <><path d="M6 3h9l3 3v15l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
+  };
+  return <svg className="setting-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
 export function Settings() {
   const [s, setS] = useState<AppSettings | null>(null);
   const [err, setErr] = useState("");
@@ -17,6 +30,7 @@ export function Settings() {
   const [smtpPass, setSmtpPass] = useState("");
   const [aiTestMsg, setAiTestMsg] = useState("");
   const [nasTestMsg, setNasTestMsg] = useState("");
+  const [ihoadonTestMsg, setIhoadonTestMsg] = useState("");
   const [disk, setDisk] = useState<Awaited<ReturnType<typeof api.nasDisk>> | null>(null);
 
   async function load() {
@@ -109,17 +123,40 @@ export function Settings() {
     }
   }
 
+  async function testIhoadon() {
+    setIhoadonTestMsg("Đang đăng nhập và đọc số lượng hóa đơn…");
+    try {
+      await save();
+      const r = await api.ihoadonDashboard();
+      setIhoadonTestMsg(`Kết nối thành công · ${r.total} hóa đơn · ${r.draft} bản nháp.`);
+    } catch (e) {
+      setIhoadonTestMsg(`Kết nối thất bại: ${(e as Error).message}`);
+    }
+  }
+
   if (!s) return <div className="docs-page">{err ? <div className="error">{err}</div> : "Đang tải…"}</div>;
 
   return (
-    <div className="docs-page" style={{ maxWidth: 720 }}>
-      <h2>Cài đặt hệ thống</h2>
+    <div className="docs-page settings-page">
+      <header className="settings-hero">
+        <div className="settings-hero-mark"><SettingIcon name="settings" /></div>
+        <div>
+          <span className="eyebrow">SYSTEM CONTROL</span>
+          <h2>Cài đặt hệ thống</h2>
+          <p>Quản lý các kết nối dịch vụ của CRM tại một nơi.</p>
+        </div>
+        <button className="settings-save-primary" disabled={busy} onClick={save}>
+          {busy ? "Đang lưu…" : "Lưu tất cả thay đổi"}
+        </button>
+      </header>
       {err && <div className="error">{err}</div>}
-      {msg && <div className="warn-banner">{msg}</div>}
+      {msg && <div className="settings-toast" role="status">{msg}</div>}
+
+      <div className="settings-grid">
 
       {/* ---- AI ---- */}
-      <div className="panel" style={{ marginTop: 12 }}>
-        <h3>🤖 AI (9router / endpoint tương thích OpenAI)</h3>
+      <section className="panel setting-card setting-ai">
+        <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="ai" /></span><div><span className="setting-card-kicker">TRÍ TUỆ NHÂN TẠO</span><h3>AI Assistant</h3><p>9router hoặc endpoint tương thích OpenAI</p></div><span className={`setting-state ${s.ai_enabled ? "on" : "off"}`}>{s.ai_enabled ? "Đang bật" : "Đang tắt"}</span></header>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             type="checkbox"
@@ -177,11 +214,11 @@ export function Settings() {
           </button>
           {aiTestMsg && <span className="muted">{aiTestMsg}</span>}
         </div>
-      </div>
+      </section>
 
       {/* ---- NAS ---- */}
-      <div className="panel" style={{ marginTop: 12 }}>
-        <h3>NAS · Lưu trữ hồ sơ và hóa đơn</h3>
+      <section className="panel setting-card setting-nas">
+        <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="nas" /></span><div><span className="setting-card-kicker">LƯU TRỮ NỘI BỘ</span><h3>NAS Storage</h3><p>Đồng bộ hồ sơ, hóa đơn và chứng từ gốc</p></div><span className={`setting-state ${s.nas_enabled ? "on" : "off"}`}>{s.nas_enabled ? "Đang bật" : "Đang tắt"}</span></header>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             type="checkbox"
@@ -274,11 +311,11 @@ export function Settings() {
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {/* ---- iHOADON ---- */}
-      <div className="panel" style={{ marginTop: 12 }}>
-        <h3>iHOADON · Đồng bộ hóa đơn bán ra</h3>
+      <section className="panel setting-card setting-ihoadon">
+        <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="invoice" /></span><div><span className="setting-card-kicker">HÓA ĐƠN ĐIỆN TỬ</span><h3>iHOADON</h3><p>Đồng bộ và tạo hóa đơn bán ra dạng GHI_TAM</p></div><span className={`setting-state ${s.ihoadon_enabled ? "on" : "off"}`}>{s.ihoadon_enabled ? "Đang kết nối" : "Chưa bật"}</span></header>
         <p className="muted">
           CRM chỉ xem và tạo hóa đơn <b>GHI_TAM</b>; không ký, giữ số hoặc phát hành.
         </p>
@@ -319,11 +356,14 @@ export function Settings() {
             <input type="number" style={{ width: 90 }} value={s.ihoadon_timeout} onChange={(e) => set("ihoadon_timeout", Number(e.target.value) || 30)} />
           </label>
         </div>
-      </div>
+        <div className="setting-card-action">
+          <span>{ihoadonTestMsg || (s.ihoadon_password_set ? "Mật khẩu kết nối đã được lưu an toàn." : "Cần nhập mật khẩu để hoàn tất kết nối.")}</span>
+          <div className="setting-action-buttons"><button type="button" disabled={busy} onClick={testIhoadon}>Test kết nối</button><button className="primary" disabled={busy} onClick={save}>{busy ? "Đang lưu…" : "Lưu kết nối iHOADON"}</button></div>
+        </div>
+      </section>
 
-      <div className="panel" style={{ marginTop: 12 }}>
-        <h3>Email cảnh báo đồng bộ thuế</h3>
-        <p className="muted">Gửi email khi phiên cổng thuế hết hạn hoặc job 02:00 thất bại.</p>
+      <section className="panel setting-card setting-mail">
+        <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="mail" /></span><div><span className="setting-card-kicker">CẢNH BÁO VẬN HÀNH</span><h3>Email SMTP</h3><p>Thông báo khi phiên thuế hết hạn hoặc cron thất bại</p></div><span className={`setting-state ${s.smtp_host && s.smtp_password_set ? "on" : "off"}`}>{s.smtp_host && s.smtp_password_set ? "Đã cấu hình" : "Chưa đủ"}</span></header>
         <div className="form-grid-2">
           <label>SMTP host<input value={s.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.gmail.com" /></label>
           <label>Port<input type="number" value={s.smtp_port} onChange={(e) => set("smtp_port", Number(e.target.value) || 587)} /></label>
@@ -332,11 +372,13 @@ export function Settings() {
           <label>Email gửi<input value={s.smtp_from} onChange={(e) => set("smtp_from", e.target.value)} /></label>
           <label>Email nhận<input value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
         </div>
+      </section>
       </div>
 
-      <div className="modal-actions" style={{ marginTop: 14 }}>
+      <div className="settings-savebar">
+        <div><b>Sẵn sàng áp dụng thay đổi</b><small>Cấu hình được mã hóa và có hiệu lực ngay.</small></div>
         <button className="primary" disabled={busy} onClick={save}>
-          💾 Lưu cấu hình
+          {busy ? "Đang lưu…" : "Lưu cấu hình"}
         </button>
       </div>
     </div>
