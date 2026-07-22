@@ -506,6 +506,10 @@ export const api = {
   async operationsDashboard() {
     return req<OperationsDashboard>("/api/operations/dashboard");
   },
+  async attachPurchasePdf(id: number, file: File) {
+    const fd = new FormData(); fd.append("file", file);
+    return req<{ ok: boolean; state: string }>(`/api/inv/purchase/${id}/attach-pdf`, { method: "POST", body: fd });
+  },
   async taxSyncRuns() {
     return req<JobRun[]>("/api/jobs/tax-sync");
   },

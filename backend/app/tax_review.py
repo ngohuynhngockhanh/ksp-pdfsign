@@ -158,9 +158,10 @@ def check(ct: dict, ban: list[dict], mua: list[dict]) -> list[dict]:
     am = [ma for ma, val in (("40a", c40a), ("40", c40)) if val is not None and val < -0.5]
     if am:
         carry = max(0.0, -tmp)
-        add("do", f"Chỉ tiêu [{'], ['.join(am)}] đang âm ({_fmt(min(v for v in (c40a, c40) if v is not None))})",
-            f"Thuế phải nộp không được âm. Vì [36]−[22]+[37]−[38]+[39] = {_fmt(tmp)} < 0, "
-            f"phải để [40a]=[40]=0 và chuyển {_fmt(carry)} sang [41]=[43] (khấu trừ chuyển kỳ sau).",
+        add("do", "Kỳ này chưa phải nộp VAT — số âm đang đặt sai chỉ tiêu",
+            f"Kết quả tính là {_fmt(tmp)} < 0, nghĩa là doanh nghiệp còn dư {_fmt(carry)} thuế GTGT "
+            f"đầu vào được khấu trừ và kỳ này chưa phải nộp VAT. Tuy nhiên tờ khai không để số âm ở "
+            f"[40a]/[40]: cần ghi [40a]=[40]=0 và chuyển {_fmt(carry)} sang [41]/[43] để chuyển kỳ sau.",
             am + ["41", "43"])
 
     # 2) Kiem tra cong thuc noi bo
@@ -253,8 +254,10 @@ def review_bytes(xlsx_bytes: bytes) -> dict:
         "ban_ra_dt": _g(ct, "34", "27"), "ban_ra_thue": _g(ct, "35", "28"),
         "mua_vao_dt": _g(ct, "23"), "mua_vao_thue": _g(ct, "24", "25"),
         "khau_tru_ky_truoc": _g(ct, "22"),
-        "ct_36": ct.get("36"), "ct_40": ct.get("40", ct.get("40a")),
-        "ct_41": ct.get("41"), "ct_43": ct.get("43"),
+        "ct_36": ct.get("36"),
+        "ct_40": max(0.0, ct.get("40", ct.get("40a")) or 0.0),
+        "ct_41": max(ct.get("41") or 0.0, max(0.0, -(_g(ct, "36") - _g(ct, "22") + _g(ct, "37") - _g(ct, "38") + _g(ct, "39")))),
+        "ct_43": max(ct.get("43") or 0.0, max(0.0, -(_g(ct, "36") - _g(ct, "22") + _g(ct, "37") - _g(ct, "38") + _g(ct, "39")))),
         "so_hd_ban": len(ban), "so_hd_mua": len(mua),
         "do": sum(1 for f in findings if f["level"] == "do"),
         "vang": sum(1 for f in findings if f["level"] == "vang"),

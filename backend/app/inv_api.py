@@ -982,6 +982,30 @@ def purchase_pdf(
     )
 
 
+@router.post("/purchase/{pid}/attach-pdf")
+async def purchase_attach_pdf(
+    pid: int,
+    file: UploadFile = File(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Bo sung ban PDF ma khong lam mat XML/HTML goc da dong bo tu cong thue."""
+    inv = db.get(InvPurchase, pid)
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn mua")
+    content = await file.read()
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File bổ sung phải là PDF hợp lệ")
+    if inv.doc_id:
+        storage.path_for(inv.doc_id, ".pdf").write_bytes(content)
+    else:
+        inv.doc_id = storage.save_upload(content, suffix=".pdf")
+        inv.doc_suffix = ".pdf"
+        db.commit()
+    _audit(db, user, "inv_purchase_attach_pdf", f"HĐ mua #{pid}", file.filename or "")
+    return {"ok": True, "state": "ready"}
+
+
 @router.patch("/purchase/{pid}", response_model=InvPurchaseOut)
 def purchase_update(
     pid: int,

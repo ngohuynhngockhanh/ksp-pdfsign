@@ -39,6 +39,13 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
     try { await api.generateTaxReport(ky); await load(); } catch (e) { setErr((e as Error).message); }
     finally { setBusy(""); }
   }
+  async function attachPdf(id: number, file?: File) {
+    if (!file) return;
+    setBusy(`pdf-${id}`);
+    try { await api.attachPurchasePdf(id, file); await load(); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(""); }
+  }
 
   if (!data) return <main className="ops-page"><div className="ops-loading">{err || "Đang tổng hợp trung tâm vận hành…"}</div></main>;
   const sync = data.latest_sync;
@@ -61,10 +68,14 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
           <header><div><span className="eyebrow">HÀNG CHỜ</span><h2>Chứng từ cần hoàn thiện</h2></div><button className="text-action" onClick={() => navigate("nhaphang")}>Mở Nhập hàng →</button></header>
           <div className="action-list">
             {actionable.length === 0 && <div className="empty-state">Tất cả chứng từ đã sẵn sàng.</div>}
-            {actionable.map((x) => <div className={`action-row ${x.state}`} key={`${x.kind}-${x.id}`}>
+            {actionable.map((x) => <div className={`action-row ${x.state}${x.state === "missing" ? " blink-missing" : ""}`} key={`${x.kind}-${x.id}`}>
               <span className="status-dot"/><div className="action-main"><b>{x.so_hd || `#${x.id}`} · {x.partner || "Chưa rõ đối tác"}</b><small>{x.ngay} · {x.kind === "purchase" ? "Mua vào" : "Bán ra"}</small></div>
               <span className="state-pill">{stateLabel[x.state]}</span>
               {x.kind === "purchase" && x.state === "renderable" && <a className="mini-action" href={`/api/inv/purchase/${x.id}/pdf`}>Dựng PDF</a>}
+              {x.kind === "purchase" && (x.state === "missing" || x.state === "source_only") && <label className="mini-action upload-action">
+                {busy === `pdf-${x.id}` ? "Đang nộp…" : "Nộp PDF bù"}
+                <input type="file" accept="application/pdf,.pdf" hidden disabled={!!busy} onChange={(e) => attachPdf(x.id, e.target.files?.[0])}/>
+              </label>}
             </div>)}
           </div>
         </article>

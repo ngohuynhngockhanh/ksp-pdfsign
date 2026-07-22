@@ -29,7 +29,7 @@ function flaggedCodes(findings: TaxFinding[]): Set<string> {
   return s;
 }
 
-function Findings({ findings }: { findings: TaxFinding[] }) {
+function Findings({ findings, active, onSelect }: { findings: TaxFinding[]; active: number; onSelect: (index: number) => void }) {
   if (!findings.length)
     return (
       <div className="panel" style={{ borderLeft: "4px solid var(--green, #16a34a)" }}>
@@ -39,9 +39,10 @@ function Findings({ findings }: { findings: TaxFinding[] }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
       {findings.map((f, i) => (
-        <div
+        <button
           key={i}
-          className="panel"
+          className={`panel finding-card${active === i ? " active" : ""}`}
+          onClick={() => onSelect(i)}
           style={{
             borderLeft: `4px solid ${f.level === "do" ? "#dc2626" : "#d97706"}`,
           }}
@@ -55,7 +56,8 @@ function Findings({ findings }: { findings: TaxFinding[] }) {
           <div className="muted" style={{ marginTop: 4 }}>
             {f.detail}
           </div>
-        </div>
+          <span className="finding-open">Xem vùng lỗi trong Excel →</span>
+        </button>
       ))}
     </div>
   );
@@ -85,7 +87,7 @@ function Summary({ s }: { s: TaxReviewSummary }) {
   );
 }
 
-function GridView({ grid, flags }: { grid: TaxGrid; flags: Set<string> }) {
+function GridView({ grid, flags, focusCode }: { grid: TaxGrid; flags: Set<string>; focusCode: string }) {
   // Ô bị merge (không phải góc trên-trái) -> bỏ qua khi render.
   const covered = new Set<string>();
   const anchor = new Map<string, { rs: number; cs: number }>();
@@ -114,10 +116,12 @@ function GridView({ grid, flags }: { grid: TaxGrid; flags: Set<string> }) {
                 return (
                   <td
                     key={c}
+                    id={/^\[\d+[a-z]?\]$/.test(cell.trim()) ? `tax-cell-${code}` : undefined}
                     rowSpan={a?.rs}
                     colSpan={a?.cs}
                     className={
                       (flagged || (prevFlag && cell.trim()) ? "flag " : "") +
+                      (focusCode === code ? "focus-cell " : "") +
                       (num ? "num" : "")
                     }
                   >
@@ -129,6 +133,24 @@ function GridView({ grid, flags }: { grid: TaxGrid; flags: Set<string> }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function FindingSnapshot({ grid, code }: { grid: TaxGrid; code: string }) {
+  const hit = grid.rows.findIndex((row) => row.some((cell) => cell.trim() === `[${code}]`));
+  if (hit < 0) return null;
+  const from = Math.max(0, hit - 2);
+  return (
+    <div className="finding-snapshot">
+      <div className="snapshot-label">Ảnh chụp vùng Excel liên quan · [{code}]</div>
+      <div className="table-wrap"><table className="xls"><tbody>
+        {grid.rows.slice(from, hit + 3).map((row, i) => (
+          <tr key={from + i}>{row.map((cell, c) => (
+            <td key={c} className={cell.trim() === `[${code}]` ? "focus-cell" : ""}>{cell}</td>
+          ))}</tr>
+        ))}
+      </tbody></table></div>
     </div>
   );
 }
@@ -153,6 +175,8 @@ export function TaxReview() {
   const [err, setErr] = useState("");
   const [reports, setReports] = useState<TaxReport[]>([]);
   const [diffs, setDiffs] = useState<{ indicator: string; crm: number; accountant: number; difference: number; match: boolean }[]>([]);
+  const [activeFinding, setActiveFinding] = useState(-1);
+  const [focusCode, setFocusCode] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
@@ -190,6 +214,8 @@ export function TaxReview() {
       const d = await api.taxReviewDetail(id);
       setSel(d);
       setSheet(0);
+      setActiveFinding(-1);
+      setFocusCode("");
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -219,6 +245,20 @@ export function TaxReview() {
   async function lockReport() {
     if (!matchingReport || !confirm(`Khóa bản đối chiếu ${matchingReport.ky}? Job tự động sẽ không sửa bản này.`)) return;
     await api.lockTaxReport(matchingReport.id); await reload();
+  }
+  function selectFinding(index: number) {
+    if (!sel) return;
+    const code = sel.findings[index].cells.find((c) => /^\d+[a-z]?$/.test(c)) || "";
+    setActiveFinding(index);
+    setFocusCode(code);
+    if (!code) return;
+    const gridIndex = sel.grids.findIndex((g) =>
+      g.rows.some((row) => row.some((cell) => cell.trim() === `[${code}]`)),
+    );
+    if (gridIndex >= 0) setSheet(gridIndex);
+    window.setTimeout(() => {
+      document.getElementById(`tax-cell-${code}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }, 100);
   }
 
   return (
@@ -392,7 +432,10 @@ export function TaxReview() {
           </h3>
           <Summary s={sel.summary} />
           <h4>Kết quả soát ({sel.findings.length})</h4>
-          <Findings findings={sel.findings} />
+          <Findings findings={sel.findings} active={activeFinding} onSelect={selectFinding} />
+          {activeFinding >= 0 && focusCode && sel.grids[sheet] && (
+            <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />
+          )}
 
           <h4 style={{ marginTop: 16 }}>Xem file</h4>
           <div className="tax-sheets">
@@ -406,7 +449,7 @@ export function TaxReview() {
               </button>
             ))}
           </div>
-          {sel.grids[sheet] && <GridView grid={sel.grids[sheet]} flags={flags} />}
+          {sel.grids[sheet] && <GridView grid={sel.grids[sheet]} flags={flags} focusCode={focusCode} />}
         </div>
       )}
     </div>
