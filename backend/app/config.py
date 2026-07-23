@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Tai khoan nhan thanh toan (sau nay mo rong BANK_ACCOUNTS nhieu STK)
     bank_account_name: str = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
     bank_account_number: str = "79713"
-    bank_name: str = "Techcombank"
+    bank_name: str = "Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)"
 
     # AI (endpoint tuong thich OpenAI) - mac dinh 9router local
     ai_enabled: bool = False

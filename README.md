@@ -92,6 +92,16 @@ Màn **Xuất hóa đơn · iHOADON** cho phép xem thống kê, danh sách hóa
 có thao tác ký, giữ số hoặc phát hành. Cấu hình tài khoản tại trang **Cài đặt**;
 mật khẩu được lưu cục bộ và không commit vào Git.
 
+Phần **cổng khách hàng** đồng bộ riêng các hóa đơn `DA_XUAT`, lưu PDF/XML cục bộ
+và ghép khách hàng bằng MST khớp chính xác. Admin bấm **Đồng bộ cổng khách** tại
+trang Cài đặt; khách đăng nhập xem hóa đơn và hồ sơ của chính mình, hoặc tải ZIP
+theo khoảng ngày. Job hằng ngày lúc 03:00 dùng các unit
+`deploy/ksp-ihoadon-sync.service` và `deploy/ksp-ihoadon-sync.timer`.
+
+Trang **Đồng bộ thuế** hiển thị trạng thái token cổng thuế và giới hạn các nút
+quý trong năm 2026. Khi token hết hạn, cơ quan thuế vẫn yêu cầu admin nhập CAPTCHA
+thủ công trước khi tiếp tục đồng bộ.
+
 Test giả lập token bằng khóa RSA cục bộ (không cần token thật) và kiểm tra:
 ký → xác minh **hợp lệ**; sửa 1 byte → phát hiện **không toàn vẹn**; luồng HTTP đăng nhập → upload → ký → kiểm tra.
 

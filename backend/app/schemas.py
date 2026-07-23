@@ -276,6 +276,29 @@ class QuoteGenerate(BaseModel):
     bbnt_dieu_khoan: str = ""  # rong = dung dieu kien bao hanh mac dinh
 
 
+# --- Hop dong phan mem / van hanh ---
+class ContractGenerate(BaseModel):
+    so: str = ""
+    ngay: BBBGDate
+    noi_lap: str = "Đắk Lắk"
+    ben_b: BBBGBenB
+    ten_ung_dung: str = "Baotoantech IOT"
+    ten_mien_p2p: str = "baotoantech.io.vn"
+    phi_nam_dau: float = 10_000_000
+    phi_van_hanh_nam: float = 3_000_000
+    vat_van_hanh: float = 10
+    tien_do_ngay: int = 30
+    thoi_han_thang: int = 12
+    dieu_khoan: str = ""
+    filename: str = "hop-dong-baotoantech-iot.pdf"
+
+
+class ContractAIRequest(BaseModel):
+    ben_b_name: str = ""
+    dieu_khoan_hien_tai: str = ""
+    yeu_cau: str = ""
+
+
 class OrderCreate(BaseModel):
     name: str
     customer_id: int | None = None

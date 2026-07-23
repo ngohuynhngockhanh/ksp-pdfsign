@@ -4,6 +4,7 @@ from __future__ import annotations
 import io as _io
 import html
 import json
+import re
 import secrets
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
+    RedirectResponse,
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
@@ -40,6 +42,7 @@ from . import (
     bbbg,
     classify,
     invoice,
+    ihoadon_sync,
     money,
     nas,
     settings_store,
@@ -68,6 +71,9 @@ from .db import (
     CustomerAlias,
     Document,
     InvIssue,
+    IhoadonInvoice,
+    JobRun,
+    LoginLink,
     InvSale,
     Order,
     Product,
@@ -98,6 +104,8 @@ from .schemas import (
     OrderOut,
     CustomerOut,
     CustomerUpdate,
+    ContractAIRequest,
+    ContractGenerate,
     DocumentOut,
     DocumentsPage,
     LoginRequest,
@@ -168,6 +176,17 @@ def _bg_nas_sync(doc_id: int) -> None:
         if doc:
             nas.sync_document(settings, db, doc)
     except Exception:  # noqa: BLE001
+        pass
+    finally:
+        gen.close()
+
+
+def _bg_ihoadon_sync() -> None:
+    gen = get_session()
+    db = next(gen)
+    try:
+        ihoadon_sync.run_sync(db, get_settings())
+    except ihoadon_sync.SyncBusy:
         pass
     finally:
         gen.close()
@@ -565,6 +584,9 @@ def delete_customer(cid: int, user: CurrentUser = Depends(require_admin), db: Se
     # Bo gan ho so, xoa tai khoan khach hang
     for d in db.scalars(select(Document).where(Document.customer_id == cid)):
         d.customer_id = None
+    for inv in db.scalars(select(IhoadonInvoice).where(IhoadonInvoice.customer_id == cid)):
+        inv.customer_id = None
+        inv.match_source = ""
     _audit(db, user, "customer_delete", c.name)
     for u in list(c.users):
         db.delete(u)
@@ -596,6 +618,86 @@ def create_account(
     db.commit()
     _audit(db, user, "account_set", c.name, body.username)
     return {"ok": True, "username": body.username}
+
+
+@app.post("/api/customers/{cid}/account-auto")
+def create_account_auto(
+    cid: int, user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings), db: Session = Depends(get_session),
+):
+    """Tao moi hoac cap lai tai khoan dau tien, tra mat khau tam dung mot lan."""
+    c = db.get(Customer, cid)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
+    password = accounts.default_password(c.tax_code)
+    existing = db.scalar(select(User).where(User.customer_id == cid).order_by(User.id))
+    if existing:
+        username = existing.username
+        existing.password_hash = hash_password(password)
+        existing.session_version += 1
+        existing.must_change_password = True
+    else:
+        username = accounts.slug_username(c.name) or f"kh{c.id}"
+        if db.scalar(select(User).where(User.username == username)):
+            username = f"{username}_{c.id}"
+        db.add(User(
+            username=username, password_hash=hash_password(password), role="customer",
+            customer_id=c.id, must_change_password=True,
+        ))
+    db.commit()
+    _audit(db, user, "account_auto", c.name, username)
+    return {
+        "ok": True, "username": username, "password": password,
+        "login_url": settings.public_base_url.rstrip("/") + "/",
+    }
+
+
+@app.post("/api/customers/{cid}/login-link")
+def create_customer_login_link(
+    cid: int, days: int = 7, user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings), db: Session = Depends(get_session),
+):
+    c = db.get(Customer, cid)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
+    account = db.scalar(select(User).where(User.customer_id == cid).order_by(User.id))
+    if not account:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Khách hàng chưa có tài khoản")
+    days = min(max(days, 1), 30)
+    for old in db.scalars(select(LoginLink).where(LoginLink.user_id == account.id)):
+        old.revoked = True
+    token = secrets.token_urlsafe(32)
+    expires = datetime.utcnow() + timedelta(days=days)
+    db.add(LoginLink(token=token, user_id=account.id, expires_at=expires))
+    db.commit()
+    _audit(db, user, "account_login_link", c.name, f"{days} ngày")
+    return {
+        "url": f"{settings.public_base_url.rstrip('/')}/api/login-link/{token}",
+        "expires_at": expires.isoformat(), "username": account.username,
+    }
+
+
+@app.get("/api/login-link/{token}")
+def login_by_link(
+    token: str, request: Request, settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    link = db.scalar(select(LoginLink).where(LoginLink.token == token))
+    if not link or link.revoked or datetime.utcnow() > link.expires_at:
+        raise HTTPException(status.HTTP_410_GONE, "Link đăng nhập không còn hiệu lực")
+    account = link.user
+    jwt_token = create_token(account, settings)
+    audit.record(
+        db, account.username, account.role,
+        request.client.host if request.client else "", "login_link",
+    )
+    resp = RedirectResponse(url="/ho-so-cua-toi", status_code=302)
+    resp.set_cookie(
+        COOKIE_NAME, jwt_token, httponly=True, samesite="lax",
+        secure=(request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"),
+        max_age=settings.jwt_ttl_minutes * 60,
+    )
+    return resp
 
 
 @app.post("/api/customers/merge")
@@ -638,6 +740,8 @@ def merge_customers(
         s.customer_id = tgt.id
     for i in db.scalars(select(InvIssue).where(InvIssue.customer_id == src.id)):
         i.customer_id = tgt.id
+    for inv in db.scalars(select(IhoadonInvoice).where(IhoadonInvoice.customer_id == src.id)):
+        inv.customer_id = tgt.id
 
     # Field mem: dich trong ma nguon co thi lay sang
     for f in ("tax_code", "contact", "address", "email", "note"):
@@ -866,6 +970,214 @@ def download_signed_upload(
     return StreamingResponse(
         iter([data]), media_type="application/pdf", headers={"Content-Disposition": disp}
     )
+
+
+# ---------------------------------------------------------------------------
+# Cong khach hang: hoa don iHOADON da phat hanh
+# ---------------------------------------------------------------------------
+def _ihoadon_invoice_out(row: IhoadonInvoice) -> dict:
+    return {
+        "id": row.id,
+        "invoice_number": row.invoice_number,
+        "invoice_series": row.invoice_series,
+        "invoice_date": row.invoice_date,
+        "buyer_tax_code": row.buyer_tax_code,
+        "buyer_name": row.buyer_name,
+        "total_payment": row.total_payment,
+        "status": row.status,
+        "adjustment_type": row.adjustment_type,
+        "customer_id": row.customer_id,
+        "customer_name": row.customer.name if row.customer else None,
+        "match_source": row.match_source,
+        "pdf_ready": bool(row.pdf_doc_id),
+        "xml_ready": bool(row.xml_doc_id),
+        "sync_error": row.sync_error,
+        "synced_at": row.synced_at.isoformat() if row.synced_at else "",
+    }
+
+
+def _invoice_scope(user: CurrentUser):
+    if user.is_admin:
+        return []
+    if not user.customer_id:
+        return [IhoadonInvoice.id == -1]
+    return [IhoadonInvoice.customer_id == user.customer_id]
+
+
+@app.get("/api/my/invoices")
+def my_ihoadon_invoices(
+    tu: str = "", den: str = "", q: str = "",
+    user: CurrentUser = Depends(require_user), db: Session = Depends(get_session),
+):
+    stmt = select(IhoadonInvoice)
+    for cond in _invoice_scope(user):
+        stmt = stmt.where(cond)
+    if tu:
+        stmt = stmt.where(IhoadonInvoice.invoice_date >= tu)
+    if den:
+        stmt = stmt.where(IhoadonInvoice.invoice_date <= den)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            IhoadonInvoice.invoice_number.ilike(like)
+            | IhoadonInvoice.invoice_series.ilike(like)
+            | IhoadonInvoice.buyer_name.ilike(like)
+        )
+    rows = db.scalars(stmt.order_by(IhoadonInvoice.invoice_date.desc(), IhoadonInvoice.id.desc()))
+    return [_ihoadon_invoice_out(row) for row in rows]
+
+
+def _owned_invoice(db: Session, iid: int, user: CurrentUser) -> IhoadonInvoice:
+    row = db.get(IhoadonInvoice, iid)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
+    if not user.is_admin and row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Không có quyền")
+    return row
+
+
+@app.get("/api/my/invoices/{iid}/pdf")
+def my_ihoadon_pdf(
+    iid: int, user: CurrentUser = Depends(require_user), db: Session = Depends(get_session)
+):
+    row = _owned_invoice(db, iid, user)
+    if not row.pdf_doc_id or not storage.exists(row.pdf_doc_id, suffix=".pdf"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chưa có file PDF hóa đơn")
+    _audit(db, user, "customer_invoice_download", row.invoice_number, "PDF")
+    return StreamingResponse(
+        iter([storage.read_doc(row.pdf_doc_id, suffix=".pdf")]), media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition(row.pdf_filename or "hoa-don.pdf")},
+    )
+
+
+@app.get("/api/my/invoices/{iid}/xml")
+def my_ihoadon_xml(
+    iid: int, user: CurrentUser = Depends(require_user), db: Session = Depends(get_session)
+):
+    row = _owned_invoice(db, iid, user)
+    if not row.xml_doc_id or not storage.exists(row.xml_doc_id, suffix=".xml"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Chưa có file XML hóa đơn")
+    _audit(db, user, "customer_invoice_download", row.invoice_number, "XML")
+    return StreamingResponse(
+        iter([storage.read_doc(row.xml_doc_id, suffix=".xml")]), media_type="application/xml",
+        headers={"Content-Disposition": _content_disposition(row.xml_filename or "hoa-don.xml")},
+    )
+
+
+def _zip_arcname(folder: str, name: str, fallback: str) -> str:
+    clean = Path(name or "").name.strip() or fallback
+    clean = re.sub(r"[^A-Za-z0-9À-ỹ._() -]+", "_", clean)[:220]
+    return f"{folder}/{clean}"
+
+
+@app.get("/api/my/download.zip")
+def my_portal_zip(
+    tu: str = "", den: str = "", user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+):
+    inv_stmt = select(IhoadonInvoice)
+    for cond in _invoice_scope(user):
+        inv_stmt = inv_stmt.where(cond)
+    if tu:
+        inv_stmt = inv_stmt.where(IhoadonInvoice.invoice_date >= tu)
+    if den:
+        inv_stmt = inv_stmt.where(IhoadonInvoice.invoice_date <= den)
+    doc_stmt = select(Document)
+    if not user.is_admin:
+        doc_stmt = doc_stmt.where(Document.customer_id == user.customer_id)
+    docs = list(db.scalars(doc_stmt.order_by(Document.created_at.desc())))
+    if tu:
+        docs = [d for d in docs if d.created_at.date().isoformat() >= tu]
+    if den:
+        docs = [d for d in docs if d.created_at.date().isoformat() <= den]
+
+    buf = _io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for row in db.scalars(inv_stmt.order_by(IhoadonInvoice.invoice_date, IhoadonInvoice.id)):
+            stem = f"{row.invoice_date}_{row.invoice_series}_{row.invoice_number}".strip("_")
+            if row.pdf_doc_id and storage.exists(row.pdf_doc_id, suffix=".pdf"):
+                zf.writestr(_zip_arcname("hoa-don", stem + ".pdf", "hoa-don.pdf"), storage.read_doc(row.pdf_doc_id, suffix=".pdf"))
+                count += 1
+            if row.xml_doc_id and storage.exists(row.xml_doc_id, suffix=".xml"):
+                zf.writestr(_zip_arcname("hoa-don", stem + ".xml", "hoa-don.xml"), storage.read_doc(row.xml_doc_id, suffix=".xml"))
+                count += 1
+        for d in docs:
+            if storage.exists(d.doc_id):
+                zf.writestr(_zip_arcname("ho-so", f"{d.id}_{d.filename}", f"ho-so-{d.id}.pdf"), storage.read_doc(d.doc_id))
+                count += 1
+    if not count:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có file trong phạm vi đã lọc")
+    buf.seek(0)
+    _audit(db, user, "customer_portal_zip", f"{count} file", f"{tu or 'đầu'}..{den or 'nay'}")
+    return StreamingResponse(
+        iter([buf.getvalue()]), media_type="application/zip",
+        headers={"Content-Disposition": _content_disposition("chung-tu-khach-hang.zip")},
+    )
+
+
+@app.post("/api/ihoadon/customer-sync")
+def start_ihoadon_customer_sync(
+    background: BackgroundTasks, user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    latest = db.scalar(
+        select(JobRun).where(
+            JobRun.kind == "ihoadon_customer_sync", JobRun.status == "running"
+        ).order_by(JobRun.id.desc())
+    )
+    if latest:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Một phiên đồng bộ đang chạy")
+    background.add_task(_bg_ihoadon_sync)
+    _audit(db, user, "ihoadon_customer_sync_start", "manual")
+    return {"ok": True}
+
+
+@app.get("/api/ihoadon/customer-sync/status")
+def ihoadon_customer_sync_status(
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    job = db.scalar(
+        select(JobRun).where(JobRun.kind == "ihoadon_customer_sync").order_by(JobRun.id.desc())
+    )
+    return {
+        "job": None if not job else {
+            "id": job.id, "status": job.status, "stats": json.loads(job.stats or "{}"),
+            "error": job.error, "started_at": job.started_at.isoformat(),
+            "finished_at": job.finished_at.isoformat() if job.finished_at else "",
+        },
+        "total": db.query(IhoadonInvoice).count(),
+        "unmatched": db.query(IhoadonInvoice).filter(IhoadonInvoice.customer_id.is_(None)).count(),
+    }
+
+
+@app.get("/api/ihoadon/customer-invoices/unmatched")
+def unmatched_ihoadon_invoices(
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    rows = db.scalars(
+        select(IhoadonInvoice).where(IhoadonInvoice.customer_id.is_(None))
+        .order_by(IhoadonInvoice.invoice_date.desc())
+    )
+    return [_ihoadon_invoice_out(row) for row in rows]
+
+
+@app.post("/api/ihoadon/customer-invoices/{iid}/assign")
+def assign_ihoadon_invoice(
+    iid: int, body: AssignRequest, user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(IhoadonInvoice, iid)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
+    if body.customer_id is not None and not db.get(Customer, body.customer_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
+    row.customer_id = body.customer_id
+    row.match_source = "manual" if body.customer_id else ""
+    db.commit()
+    db.refresh(row)
+    _audit(db, user, "ihoadon_customer_assign", row.invoice_number, str(body.customer_id or "—"))
+    return _ihoadon_invoice_out(row)
 
 
 @app.get("/api/documents/{doc_pk}/verify", response_model=VerifyResponse)
@@ -1428,6 +1740,158 @@ def quote_generate(
     }
 
 
+# ---------------------------------------------------------------------------
+# Hop dong phan mem + chia se cho khach hang
+# ---------------------------------------------------------------------------
+_CONTRACT_REQUIRED = (
+    "10.000.000", "3.000.000", "50%", "30 ngày", "12 tháng",
+    "mã nguồn", "phụ lục", "không chịu thuế GTGT",
+)
+
+
+def _validate_contract_terms(text: str) -> None:
+    missing = [x for x in _CONTRACT_REQUIRED if x.lower() not in text.lower()]
+    if missing:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Điều khoản thiếu nội dung bắt buộc: " + ", ".join(missing),
+        )
+
+
+@app.get("/api/contract/defaults")
+def contract_defaults(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    return {
+        "ben_a": bbbg.default_ben_a(settings),
+        "dieu_khoan": bbbg.DEFAULT_CONTRACT_TERMS,
+        "bank": {
+            "account_name": settings.bank_account_name,
+            "account_number": settings.bank_account_number,
+            "bank_name": settings.bank_name,
+        },
+        "baotoan": {
+            "name": "CÔNG TY TNHH THƯƠNG MẠI DỊCH VỤ KỸ THUẬT BẢO TOÀN",
+            "mst": "0314360282",
+            "address": "3/16A Đường 18B, Khu phố 65, Phường Bình Hưng Hòa, Thành phố Hồ Chí Minh, Việt Nam",
+            "email": "baotoan.ceo@gmail.com",
+        },
+    }
+
+
+@app.post("/api/contract/preview")
+def contract_preview(
+    body: ContractGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    terms = body.dieu_khoan or bbbg.DEFAULT_CONTRACT_TERMS
+    _validate_contract_terms(terms)
+    try:
+        pdf = bbbg.render_contract(settings, body.model_dump())
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh hợp đồng thất bại: {e}")
+    return Response(content=pdf, media_type="application/pdf")
+
+
+@app.post("/api/contract/generate")
+def contract_generate(
+    body: ContractGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    if not body.ben_b.name.strip() or not body.ben_b.mst.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bên B phải có tên và mã số thuế")
+    terms = body.dieu_khoan or bbbg.DEFAULT_CONTRACT_TERMS
+    _validate_contract_terms(terms)
+    try:
+        pdf = bbbg.render_contract(settings, body.model_dump())
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh hợp đồng thất bại: {e}")
+
+    doc_id = storage.save_upload(pdf)
+    customer_id = _upsert_customer(db, body.ben_b)
+    if customer_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Không thể tạo hồ sơ khách hàng")
+    customer = db.get(Customer, customer_id)
+    mst_norm = re.sub(r"\D", "", body.ben_b.mst)
+    for inv in db.scalars(
+        select(IhoadonInvoice).where(IhoadonInvoice.buyer_tax_code_norm == mst_norm)
+    ):
+        inv.customer_id = customer_id
+        inv.match_source = "auto"
+
+    doc = Document(
+        doc_id=doc_id, filename=body.filename, signed=False,
+        customer_id=customer_id, doc_type="hop_dong",
+        note="Bản nháp" if not body.ben_b.dai_dien.strip() else "Sẵn sàng ký",
+    )
+    db.add(doc)
+    db.flush()
+
+    share_token = secrets.token_urlsafe(16)
+    share_expires = datetime.utcnow() + timedelta(days=settings.share_default_days)
+    db.add(Share(token=share_token, document_id=doc.id, expires_at=share_expires))
+    username, password = accounts.ensure_account(db, customer)
+    account = db.scalar(select(User).where(User.customer_id == customer_id).order_by(User.id))
+    login_token = secrets.token_urlsafe(32)
+    login_expires = datetime.utcnow() + timedelta(days=7)
+    for old in db.scalars(select(LoginLink).where(LoginLink.user_id == account.id)):
+        old.revoked = True
+    db.add(LoginLink(token=login_token, user_id=account.id, expires_at=login_expires))
+    db.commit()
+    _audit(db, user, "contract_generate", body.filename, f"{body.ben_b.name} · MST {mst_norm}")
+    return {
+        "doc_id": doc_id,
+        "document_id": doc.id,
+        "filename": body.filename,
+        "customer_id": customer_id,
+        "doc_type": "hop_dong",
+        "is_draft": not bool(body.ben_b.dai_dien.strip()),
+        "share_url": _share_url(settings, share_token),
+        "share_expires_at": share_expires.isoformat(),
+        "login_url": f"{settings.public_base_url.rstrip('/')}/api/login-link/{login_token}",
+        "login_expires_at": login_expires.isoformat(),
+        "username": username,
+        "temporary_password": password,
+    }
+
+
+@app.post("/api/ai/contract-draft")
+def ai_contract_draft(
+    body: ContractAIRequest,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    current = body.dieu_khoan_hien_tai.strip() or bbbg.DEFAULT_CONTRACT_TERMS
+    prompt = (
+        "Hãy rà soát và chỉnh câu chữ dự thảo hợp đồng cung cấp/vận hành phần mềm theo pháp luật "
+        "Việt Nam. Giữ nguyên 9 điều, mọi số tiền, thuế, tiến độ, thời hạn, quyền sở hữu mã nguồn, "
+        "cơ chế tính năng miễn phí theo lộ trình INUT và tính năng riêng phải ký phụ lục. Không thêm "
+        "cam kết uptime tuyệt đối hay cam kết Apple/Google duyệt app. Chỉ trả lại toàn văn điều khoản, "
+        "không markdown, không lời dẫn.\n\n"
+        f"Bên B: {body.ben_b_name}\nYêu cầu thêm: {body.yeu_cau or 'Chỉnh rõ ràng, cân bằng và chặt chẽ.'}"
+        f"\n\nDự thảo hiện tại:\n{current}"
+    )
+    try:
+        text = ai.chat(
+            settings,
+            [{"role": "system", "content": "Bạn là trợ lý soạn thảo hợp đồng thương mại Việt Nam."},
+             {"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+    except ai.AINotConfigured as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except ai.AIError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+    _validate_contract_terms(text)
+    _audit(db, user, "ai_contract", body.ben_b_name, f"model={settings.ai_model}")
+    return {"text": text}
+
+
 def _upsert_products(db: Session, items: list[dict]) -> int:
     """Hoc danh muc hang hoa (tu bao gia vua sinh HOAC hoa don vua parse).
 
@@ -1662,6 +2126,16 @@ def tax_get_credentials(user: CurrentUser = Depends(require_admin), db: Session 
     mst = db.get(AppSetting, "tax_mst")
     pw = db.get(AppSetting, "tax_password_enc")
     return {"mst": mst.value if mst else "", "has_password": bool(pw and pw.value)}
+
+
+@app.get("/api/tax/session")
+def tax_session(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    from . import crypto
+    from .db import AppSetting
+
+    row = db.get(AppSetting, "tax_token_enc")
+    token = crypto.decrypt(row.value) if row and row.value else ""
+    return {"valid": tax.check_token(token)}
 
 
 @app.post("/api/tax/save-credentials")

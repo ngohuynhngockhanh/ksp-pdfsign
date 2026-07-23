@@ -4,7 +4,7 @@ import { api, TaxSyncResult } from "../api";
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
 }
-const thisYear = new Date().getFullYear();
+const thisYear = 2026;
 const Q: Record<1 | 2 | 3 | 4, [string, string]> = {
   1: [`${thisYear}-01-01`, `${thisYear}-03-31`],
   2: [`${thisYear}-04-01`, `${thisYear}-06-30`],
@@ -25,6 +25,7 @@ export function TaxSync() {
   const [res, setRes] = useState<TaxSyncResult | null>(null);
 
   const [hasSavedPw, setHasSavedPw] = useState(false);
+  const [sessionValid, setSessionValid] = useState<boolean | null>(null);
   async function loadCaptcha() {
     setCvalue("");
     try {
@@ -42,6 +43,7 @@ export function TaxSync() {
         setHasSavedPw(c.has_password);
       })
       .catch(() => {});
+    api.taxSession().then((x) => setSessionValid(x.valid)).catch(() => setSessionValid(false));
   }, []);
   async function saveCreds() {
     try {
@@ -69,6 +71,7 @@ export function TaxSync() {
         do_import: doImport,
       });
       setRes(r);
+      setSessionValid(true);
       loadCaptcha(); // captcha dùng 1 lần
       if (r.import) {
         window.alert(
@@ -88,8 +91,11 @@ export function TaxSync() {
       <h2>Đồng bộ hóa đơn từ cơ quan thuế</h2>
       <p className="muted" style={{ marginTop: 0 }}>
         Đăng nhập cổng <b>hoadondientu.gdt.gov.vn</b> bằng tài khoản MST của công ty, tải hóa đơn
-        mua/bán rồi <b>đối chiếu</b> xem hệ thống thiếu hóa đơn nào. Mật khẩu không được lưu.
+        mua/bán năm <b>2026</b> rồi đối chiếu. Mật khẩu đã lưu được mã hóa trên máy chủ.
       </p>
+      <div className={`chip sm ${sessionValid ? "green" : "gray"}`} style={{ marginBottom: 10 }}>
+        {sessionValid === null ? "Đang kiểm tra phiên cổng thuế…" : sessionValid ? "Phiên cổng thuế hiện còn hiệu lực" : "Phiên đã hết hạn — cần đăng nhập lại bằng CAPTCHA"}
+      </div>
       {err && <div className="error">{err}</div>}
 
       <div className="panel">
@@ -135,6 +141,7 @@ export function TaxSync() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
           <div className="tb-group">
+            <span className="chip gray sm">Năm 2026</span>
             {[1, 2, 3, 4].map((q) => (
               <button
                 key={q}

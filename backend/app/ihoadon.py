@@ -5,6 +5,7 @@ giu so hay phat hanh de tranh vo tinh bien ban nhap thanh hoa don phap ly.
 """
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import httpx
@@ -134,6 +135,39 @@ class Client:
                 "status": inv.get("status") or "",
             })
         return {"items": rows, "total": int((data.get("meta") or {}).get("total") or 0)}
+
+    def issued_page(self, page: int = 1, limit: int = 100) -> dict:
+        params = [
+            ("limit", str(limit)),
+            ("page", str(page)),
+            ("sort[0][key]", "invoice_date"),
+            ("sort[0][direction]", "DESC"),
+            *self._status_params("DA_XUAT"),
+        ]
+        return self.get("/invoices", params)
+
+    @staticmethod
+    def _decode_file(data: Any, label: str) -> tuple[str, bytes]:
+        if not isinstance(data, dict) or not data.get("file_content"):
+            raise IhoadonError(f"iHOADON không trả file {label}")
+        try:
+            content = base64.b64decode(data["file_content"], validate=True)
+        except (ValueError, TypeError) as e:
+            raise IhoadonError(f"File {label} từ iHOADON không hợp lệ") from e
+        return str(data.get("file_name") or label), content
+
+    def invoice_pdf(self, invoice_id: str) -> tuple[str, bytes]:
+        data = self.post(
+            "/invoices/export-file-base-pdf",
+            {"invoice": [invoice_id], "is_conversion": False},
+        )
+        if isinstance(data, list):
+            data = data[0] if data else None
+        return self._decode_file(data, "hoa-don.pdf")
+
+    def invoice_xml_zip(self, invoice_id: str) -> tuple[str, bytes]:
+        data = self.post("/invoices/export-file-zip-xml", {"invoice": [invoice_id]})
+        return self._decode_file(data, "hoa-don-xml.zip")
 
     def active_template(self) -> dict:
         data = self.get("/templates", [("limit", "100"), ("page", "1")])

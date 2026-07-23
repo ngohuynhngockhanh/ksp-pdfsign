@@ -148,6 +148,53 @@ class Share(Base):
     document: Mapped["Document"] = relationship()
 
 
+class LoginLink(Base):
+    """Bearer link co han de khach mo va dang nhap ma khong go mat khau."""
+
+    __tablename__ = "login_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    user: Mapped["User"] = relationship()
+
+
+class IhoadonInvoice(Base):
+    """Hoa don da phat hanh dong bo tu iHOADON de cap cho cong khach hang."""
+
+    __tablename__ = "ihoadon_invoices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    invoice_number: Mapped[str] = mapped_column(String(30), default="", index=True)
+    invoice_series: Mapped[str] = mapped_column(String(30), default="")
+    invoice_date: Mapped[str] = mapped_column(String(10), default="", index=True)
+    buyer_tax_code: Mapped[str] = mapped_column(String(30), default="")
+    buyer_tax_code_norm: Mapped[str] = mapped_column(String(30), default="", index=True)
+    buyer_name: Mapped[str] = mapped_column(String(255), default="")
+    total_payment: Mapped[float] = mapped_column(default=0.0)
+    status: Mapped[str] = mapped_column(String(30), default="")
+    adjustment_type: Mapped[str] = mapped_column(String(20), default="")
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id"), nullable=True, index=True
+    )
+    match_source: Mapped[str] = mapped_column(String(10), default="")  # auto|manual|""
+    pdf_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    pdf_filename: Mapped[str] = mapped_column(String(255), default="")
+    xml_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    xml_filename: Mapped[str] = mapped_column(String(255), default="")
+    source_updated_at: Mapped[str] = mapped_column(String(40), default="")
+    sync_error: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    customer: Mapped["Customer | None"] = relationship()
+
+
 class Product(Base):
     """Danh muc hang hoa/dich vu — tu hoc tu cac bao gia/de nghi TT da sinh."""
 

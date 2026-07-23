@@ -9,6 +9,7 @@ import { MyDocuments } from "./pages/MyDocuments";
 import { NasBrowser } from "./pages/NasBrowser";
 import { CreateBBBG } from "./pages/CreateBBBG";
 import { CreateQuote } from "./pages/CreateQuote";
+import { CreateContract } from "./pages/CreateContract";
 import { AuditLog } from "./pages/AuditLog";
 import { Inventory } from "./pages/Inventory";
 import { PurchaseImport } from "./pages/PurchaseImport";
@@ -28,6 +29,7 @@ type Tab =
   | "sign"
   | "bbbg"
   | "quote"
+  | "contract"
   | "tonkho"
   | "nhaphang"
   | "tokhai"
@@ -51,6 +53,7 @@ const ROUTES: Record<Tab, string> = {
   sign: "/ky-so",
   bbbg: "/tao-bbbg",
   quote: "/bao-gia",
+  contract: "/soan-hop-dong",
   tonkho: "/ton-kho",
   nhaphang: "/nhap-hang",
   tokhai: "/to-khai-nk",
@@ -155,7 +158,7 @@ export function App() {
         const isAdmin = m.role === "admin";
         const allowed = isAdmin
           ? ([
-              "home", "sign", "bbbg", "quote", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
+              "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
@@ -205,7 +208,7 @@ export function App() {
       "Hồ sơ",
       [
         ["sign", "Ký số", "✎"], ["bbbg", "Tạo BBBG", "▣"],
-        ["quote", "Báo giá", "₫"], ["documents", "Kho hồ sơ", "▱"],
+        ["quote", "Báo giá", "₫"], ["contract", "Soạn hợp đồng", "§"], ["documents", "Kho hồ sơ", "▱"],
         ["verify", "Kiểm tra chữ ký", "⌕"],
       ],
     ],
@@ -322,6 +325,7 @@ export function App() {
             }}
           />
         )}
+        {tab === "contract" && isAdmin && <CreateContract />}
         {tab === "tonkho" && isAdmin && <Inventory onOpenPurchase={goPurchase} />}
         {tab === "nhaphang" && isAdmin && (
           <PurchaseImport openId={openPurchaseId} onConsumed={() => setOpenPurchaseId(null)} />

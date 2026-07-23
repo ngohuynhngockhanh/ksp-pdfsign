@@ -1,0 +1,14 @@
+[Unit]
+Description=KSP daily iHOADON customer portal synchronization
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ksp/ksp-pdfsign/backend
+ExecStart=/home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ihoadon_daily.py
+TimeoutStartSec=60min
+UMask=0077
+
+[Install]
+WantedBy=default.target

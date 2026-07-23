@@ -35,6 +35,47 @@ QUOTE_TEMPLATES: dict[str, dict] = {
     },
 }
 
+CONTRACT_TEMPLATE = "hop_dong_phan_mem.html"
+
+DEFAULT_CONTRACT_TERMS = """ĐIỀU 1. PHẠM VI CUNG CẤP
+1. INUT thiết lập ứng dụng “Baotoantech IOT” theo nhận diện và logo hợp pháp do Bên B cung cấp. Ứng dụng bao gồm các tính năng điều khiển, giám sát IoT mặc định tương đương nền tảng SecoHome, áp dụng cho các thiết bị do INUT sản xuất và xác nhận tương thích.
+2. INUT cung cấp, vận hành dịch vụ kết nối P2P tại baotoantech.io.vn, backend/server của ứng dụng và thực hiện công việc phát hành, duy trì ứng dụng trên App Store và Google Play bằng tài khoản nhà phát triển của INUT.
+3. Việc xét duyệt, thời gian hiển thị hoặc duy trì ứng dụng trên kho ứng dụng còn phụ thuộc chính sách của Apple, Google và bên thứ ba; INUT không bảo đảm kết quả nằm ngoài khả năng kiểm soát hợp lý của mình.
+
+ĐIỀU 2. GIÁ TRỊ VÀ THANH TOÁN
+1. Phí bản quyền sử dụng, thiết lập và triển khai phần mềm năm đầu là 10.000.000 đồng (Bằng chữ: Mười triệu đồng chẵn). Khoản này được xác định là sản phẩm, dịch vụ phần mềm không chịu thuế GTGT theo quy định áp dụng tại thời điểm lập hóa đơn.
+2. Bên B thanh toán 50% trong vòng 05 ngày làm việc kể từ ngày ký Hợp đồng và 50% còn lại trong vòng 05 ngày làm việc kể từ ngày ký biên bản nghiệm thu hoặc được xem là đã nghiệm thu.
+3. Từ năm thứ hai, phí vận hành server, P2P, cập nhật và duy trì kho ứng dụng là 3.000.000 đồng/năm, cộng thuế GTGT 10%; tổng thanh toán theo thuế suất hiện tại là 3.300.000 đồng/năm. Thuế suất thực tế tuân theo pháp luật tại thời điểm xuất hóa đơn.
+
+ĐIỀU 3. TIẾN ĐỘ VÀ NGHIỆM THU
+1. INUT bàn giao phiên bản để nghiệm thu trong vòng 30 ngày làm việc kể từ khi nhận đủ khoản thanh toán đợt một và Bên B cung cấp đầy đủ logo, nội dung, tài liệu và quyền truy cập cần thiết.
+2. Bên B phản hồi bằng văn bản trong vòng 05 ngày làm việc kể từ khi nhận bản bàn giao. Quá thời hạn này mà không có lỗi nghiêm trọng được mô tả cụ thể, sản phẩm được xem là đã nghiệm thu.
+
+ĐIỀU 4. QUYỀN SỞ HỮU TRÍ TUỆ VÀ DỮ LIỆU
+1. INUT giữ toàn bộ quyền đối với SecoHome, nền tảng dùng chung, mã nguồn, thư viện, API, quy trình và công nghệ lõi. Bên B được quyền sử dụng ứng dụng mang thương hiệu Baotoantech IOT trong thời hạn dịch vụ, không được chuyển giao, bán lại mã nguồn hoặc can thiệp trái phép vào hệ thống.
+2. Bên B chịu trách nhiệm và giữ quyền đối với logo, nhãn hiệu, nội dung cùng dữ liệu hợp pháp của mình. INUT chỉ xử lý dữ liệu trong phạm vi cần thiết để cung cấp dịch vụ, bảo trì, bảo mật và tuân thủ pháp luật.
+
+ĐIỀU 5. PHÁT TRIỂN TÍNH NĂNG
+1. Tính năng có thể dùng chung, tương thích thiết bị INUT và phù hợp lộ trình sản phẩm có thể được INUT xem xét thực hiện miễn phí. Phạm vi, mức độ ưu tiên và thời điểm triển khai do INUT đề xuất và chỉ ràng buộc sau khi được xác nhận bằng văn bản.
+2. Tính năng riêng, độc quyền hoặc chỉ phục vụ mô hình của Bên B phải được khảo sát và thống nhất phương án kỹ thuật, chi phí, tiến độ bằng phụ lục hoặc báo giá riêng. Việc tham khảo Hunonic IoT hay ứng dụng khác không làm phát sinh nghĩa vụ sao chép hoặc phát triển miễn phí.
+
+ĐIỀU 6. VẬN HÀNH VÀ HỖ TRỢ
+1. INUT tiếp nhận hỗ trợ trong giờ hành chính và xử lý theo mức độ ảnh hưởng trên cơ sở nỗ lực hợp lý. Hoạt động bảo trì dự kiến sẽ được thông báo khi điều kiện cho phép.
+2. Dịch vụ phụ thuộc internet, hạ tầng viễn thông, thiết bị đầu cuối và bên thứ ba nên không được cam kết hoạt động tuyệt đối, liên tục hoặc không có sai sót.
+
+ĐIỀU 7. THỜI HẠN VÀ CHẤM DỨT
+1. Hợp đồng có thời hạn 12 tháng kể từ ngày có hiệu lực. Việc vận hành từ năm thứ hai được gia hạn từng năm sau khi Bên B thanh toán phí vận hành và thuế tương ứng.
+2. Nếu Bên B không gia hạn, INUT được tạm dừng server, P2P, cập nhật kho ứng dụng và hỗ trợ sau khi thông báo. Bên B có 30 ngày kể từ thông báo để yêu cầu xuất dữ liệu thuộc quyền của mình ở định dạng hợp lý.
+
+ĐIỀU 8. BẢO MẬT, BẤT KHẢ KHÁNG VÀ TRANH CHẤP
+1. Mỗi Bên bảo mật thông tin kỹ thuật, kinh doanh và dữ liệu không công khai nhận được từ Bên kia, trừ trường hợp pháp luật yêu cầu cung cấp.
+2. Bên bị ảnh hưởng bởi sự kiện bất khả kháng phải thông báo và áp dụng biện pháp hợp lý để hạn chế thiệt hại. Thời hạn thực hiện được gia hạn tương ứng với thời gian bị ảnh hưởng.
+3. Tranh chấp trước hết được thương lượng. Nếu không giải quyết được trong 30 ngày, tranh chấp được đưa ra Tòa án có thẩm quyền tại Việt Nam.
+
+ĐIỀU 9. ĐIỀU KHOẢN CHUNG
+1. Phụ lục, biên bản nghiệm thu và văn bản được người có thẩm quyền hai Bên xác nhận là bộ phận không tách rời của Hợp đồng.
+2. Hợp đồng có hiệu lực từ ngày ký, được lập thành 02 bản có giá trị pháp lý như nhau, mỗi Bên giữ 01 bản."""
+
 # Dieu kien bao hanh mac dinh in tren BBNT (sua duoc tren form)
 BBNT_DIEU_KHOAN_MAC_DINH = """*Điều kiện bảo hành:
 - Trường hợp thiết bị bị hư hỏng về mặt kỹ thuật do lỗi của nhà sản xuất sẽ được sửa chữa và thay thế miễn phí trong vòng 1 năm đầu tiên kể từ ngày nghiệm thu
@@ -190,3 +231,26 @@ def render_quote(settings: Settings, data: dict) -> tuple[bytes, dict]:
     html = _env.get_template(QUOTE_TEMPLATES[key]["file"]).render(**ctx)
     totals["con_lai"] = con_lai
     return HTML(string=html).write_pdf(), totals
+
+
+def render_contract(settings: Settings, data: dict) -> bytes:
+    ngay = data.get("ngay") or {"day": 1, "month": 1, "year": 2026}
+    ben_b = data.get("ben_b") or {}
+    ctx = {
+        **data,
+        "ngay": {k: int(ngay.get(k, 1)) for k in ("day", "month", "year")},
+        "ben_a": default_ben_a(settings),
+        "ben_b": ben_b,
+        "dieu_khoan": (data.get("dieu_khoan") or DEFAULT_CONTRACT_TERMS).strip(),
+        "is_draft": not (ben_b.get("dai_dien") or "").strip(),
+        "logo_data_uri": _logo_data_uri(settings),
+        "email": settings.dntt_email,
+        "website": settings.dntt_website,
+        "bank": {
+            "account_name": settings.bank_account_name,
+            "account_number": settings.bank_account_number,
+            "bank_name": settings.bank_name,
+        },
+    }
+    html = _env.get_template(CONTRACT_TEMPLATE).render(**ctx)
+    return HTML(string=html).write_pdf()

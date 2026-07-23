@@ -201,6 +201,78 @@ def test_customer_account_and_documents(client):
     assert client.post("/api/login", json={"username": "kha", "password": "moi12345@@"}).status_code == 200
 
 
+def test_ihoadon_customer_portal_sync_and_isolation(client, monkeypatch):
+    _login(client)
+    a = client.post("/api/customers", json={
+        "name": "Khach Hoa Don", "tax_code": "010-123-4567",
+        "account_username": "invoice_a", "account_password": "matkhau123",
+    }).json()
+    client.post("/api/customers", json={
+        "name": "Khach Khac", "tax_code": "9999999999",
+        "account_username": "invoice_b", "account_password": "matkhau123",
+    })
+
+    xml_buf = io.BytesIO()
+    with zipfile.ZipFile(xml_buf, "w") as zf:
+        zf.writestr("hoa-don.xml", "<HDon><MST>0101234567</MST></HDon>")
+
+    class FakeIhoadon:
+        def __init__(self, _settings): pass
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def issued_page(self, page=1, limit=100):
+            assert page == 1 and limit == 100
+            return {"meta": {"total": 1}, "invoices": [{
+                "id": "ihd-1", "invoice_number": "00000123", "invoice_series": "C26TIN",
+                "invoice_date": "2026-07-20T00:00:00", "buyer_tax_code": "0101234567",
+                "customer_name": "Khach Hoa Don", "total_payment": 1100000,
+                "status": "DA_XUAT", "adjustment_type": "1", "updated_at": "2026-07-20T10:00:00",
+            }]}
+        def invoice_pdf(self, _iid): return "HD-123.pdf", PDF
+        def invoice_xml_zip(self, _iid): return "HD-123.zip", xml_buf.getvalue()
+
+    from app import ihoadon_sync
+    monkeypatch.setattr(ihoadon_sync, "Client", FakeIhoadon)
+    r = client.post("/api/ihoadon/customer-sync")
+    assert r.status_code == 200, r.text
+    status = client.get("/api/ihoadon/customer-sync/status").json()
+    assert status["total"] == 1 and status["unmatched"] == 0
+
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "invoice_a", "password": "matkhau123"}).status_code == 200
+    invoices = client.get("/api/my/invoices").json()
+    assert len(invoices) == 1 and invoices[0]["customer_id"] == a["id"]
+    iid = invoices[0]["id"]
+    assert client.get(f"/api/my/invoices/{iid}/pdf").content.startswith(b"%PDF")
+    assert client.get(f"/api/my/invoices/{iid}/xml").content.startswith(b"<HDon")
+    packed = client.get("/api/my/download.zip")
+    assert packed.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(packed.content)) as zf:
+        assert any(x.endswith(".pdf") for x in zf.namelist())
+        assert any(x.endswith(".xml") for x in zf.namelist())
+
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "invoice_b", "password": "matkhau123"}).status_code == 200
+    assert client.get("/api/my/invoices").json() == []
+    assert client.get(f"/api/my/invoices/{iid}/pdf").status_code == 403
+
+
+def test_customer_login_link(client):
+    _login(client)
+    customer = client.post("/api/customers", json={
+        "name": "Khach Link", "tax_code": "0123456789",
+        "account_username": "khach_link", "account_password": "matkhau123",
+    }).json()
+    made = client.post(f"/api/customers/{customer['id']}/login-link?days=7")
+    assert made.status_code == 200, made.text
+    path = made.json()["url"].split("/api", 1)[1]
+    client.post("/api/logout")
+    opened = client.get("/api" + path, follow_redirects=False)
+    assert opened.status_code == 302
+    assert opened.headers["location"] == "/ho-so-cua-toi"
+    assert client.get("/api/me").status_code == 200
+
+
 def _make_zip(entries: dict[str, bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:

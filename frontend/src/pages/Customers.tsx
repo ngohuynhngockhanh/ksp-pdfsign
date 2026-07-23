@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Customer } from "../api";
-import { defaultPassword, slugUsername } from "../util";
+import { copyText, defaultPassword, slugUsername } from "../util";
 
 export function Customers() {
   const [list, setList] = useState<Customer[]>([]);
@@ -183,6 +183,20 @@ function CustomerCard({
     }
   }
 
+  async function autoAccount() {
+    setMsg("");
+    try {
+      const r = await api.createAccountAuto(c.id);
+      const link = await api.createCustomerLoginLink(c.id, 7);
+      const invite = `Cổng chứng từ INUT\nNhấn link để đăng nhập ngay (hiệu lực 7 ngày):\n${link.url}\n\nHoặc đăng nhập tại ${r.login_url}\nTài khoản: ${r.username}\nMật khẩu tạm: ${r.password}\nVui lòng đổi mật khẩu sau lần đăng nhập đầu tiên.`;
+      await copyText(invite);
+      setMsg(`Đã cấp tài khoản ${r.username} và sao chép thông tin gửi khách.`);
+      onChange();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  }
+
   return (
     <div className="card">
       <div className="row-between">
@@ -232,6 +246,9 @@ function CustomerCard({
           Cấp / đổi mật khẩu
         </button>
       </div>
+      <button className="primary" style={{ marginTop: 8 }} onClick={autoAccount}>
+        {c.account_usernames.length ? "Cấp lại mật khẩu & sao chép" : "Tạo tài khoản & sao chép"}
+      </button>
       {msg && <div className="muted">{msg}</div>}
     </div>
   );

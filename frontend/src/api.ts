@@ -71,6 +71,8 @@ export interface Customer {
   name: string;
   tax_code: string;
   contact: string;
+  address: string;
+  email: string;
   note: string;
   created_at: string;
   document_count: number;
@@ -94,6 +96,25 @@ export interface DocRecord {
   signed_upload_name: string;
   order_id: number | null;
   order_code: string;
+}
+
+export interface CustomerInvoice {
+  id: number;
+  invoice_number: string;
+  invoice_series: string;
+  invoice_date: string;
+  buyer_tax_code: string;
+  buyer_name: string;
+  total_payment: number;
+  status: string;
+  adjustment_type: string;
+  customer_id: number | null;
+  customer_name: string | null;
+  match_source: string;
+  pdf_ready: boolean;
+  xml_ready: boolean;
+  sync_error: string;
+  synced_at: string;
 }
 
 export interface OrderRec {
@@ -327,6 +348,16 @@ export const api = {
       body: JSON.stringify({ username, password }),
     });
   },
+  async createAccountAuto(id: number) {
+    return req<{ ok: boolean; username: string; password: string; login_url: string }>(
+      `/api/customers/${id}/account-auto`, { method: "POST" },
+    );
+  },
+  async createCustomerLoginLink(id: number, days = 7) {
+    return req<{ url: string; expires_at: string; username: string }>(
+      `/api/customers/${id}/login-link?days=${days}`, { method: "POST" },
+    );
+  },
 
   // --- Ho so ---
   async listDocuments(
@@ -352,6 +383,22 @@ export const api = {
   },
   async myDocuments() {
     return req<DocRecord[]>("/api/my/documents");
+  },
+  async myInvoices(opts: { from?: string; to?: string; q?: string } = {}) {
+    const p = new URLSearchParams();
+    if (opts.from) p.set("tu", opts.from);
+    if (opts.to) p.set("den", opts.to);
+    if (opts.q) p.set("q", opts.q);
+    return req<CustomerInvoice[]>(`/api/my/invoices?${p.toString()}`);
+  },
+  myInvoiceFileUrl(id: number, kind: "pdf" | "xml") {
+    return `/api/my/invoices/${id}/${kind}`;
+  },
+  myPortalZipUrl(from = "", to = "") {
+    const p = new URLSearchParams();
+    if (from) p.set("tu", from);
+    if (to) p.set("den", to);
+    return `/api/my/download.zip?${p.toString()}`;
   },
   async assignDocument(docPk: number, customerId: number | null) {
     return req<DocRecord>(`/api/documents/${docPk}/assign`, {
@@ -458,6 +505,9 @@ export const api = {
   },
   async taxCaptcha() {
     return req<{ key: string; svg: string }>("/api/tax/captcha");
+  },
+  async taxSession() {
+    return req<{ valid: boolean }>("/api/tax/session");
   },
   async taxGetCredentials() {
     return req<{ mst: string; has_password: boolean }>("/api/tax/credentials");
@@ -721,6 +771,39 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async contractDefaults() {
+    return req<{
+      ben_a: Record<string, string>;
+      dieu_khoan: string;
+      bank: { account_name: string; account_number: string; bank_name: string };
+      baotoan: { name: string; mst: string; address: string; email: string };
+    }>("/api/contract/defaults");
+  },
+  async contractPreview(body: unknown): Promise<Blob> {
+    const res = await fetch("/api/contract/preview", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || `Lỗi ${res.status}`);
+    }
+    return res.blob();
+  },
+  async contractGenerate(body: unknown) {
+    return req<{
+      doc_id: string; document_id: number; filename: string; customer_id: number;
+      is_draft: boolean; share_url: string; login_url: string; username: string;
+      temporary_password: string; share_expires_at: string; login_expires_at: string;
+    }>("/api/contract/generate", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
+  async aiContractDraft(body: { ben_b_name: string; dieu_khoan_hien_tai: string; yeu_cau: string }) {
+    return req<{ text: string }>("/api/ai/contract-draft", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
   async setDocType(docPk: number, docType: string) {
     return req<DocRecord>(`/api/documents/${docPk}/type`, {
       method: "POST",
@@ -970,6 +1053,25 @@ export const api = {
   },
   async ihoadonDashboard() {
     return req<IhoadonDashboard>("/api/inv/ihoadon/dashboard");
+  },
+  async ihoadonCustomerSync() {
+    return req<{ ok: boolean }>("/api/ihoadon/customer-sync", { method: "POST" });
+  },
+  async ihoadonCustomerSyncStatus() {
+    return req<{
+      job: null | { id: number; status: string; stats: Record<string, number>; error: string; started_at: string; finished_at: string };
+      total: number;
+      unmatched: number;
+    }>("/api/ihoadon/customer-sync/status");
+  },
+  async ihoadonUnmatched() {
+    return req<CustomerInvoice[]>("/api/ihoadon/customer-invoices/unmatched");
+  },
+  async ihoadonAssignCustomer(invoiceId: number, customerId: number | null) {
+    return req<CustomerInvoice>(`/api/ihoadon/customer-invoices/${invoiceId}/assign`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer_id: customerId }),
+    });
   },
   async ihoadonDrafts() {
     return req<{ items: IhoadonDraft[]; total: number }>("/api/inv/ihoadon/drafts");

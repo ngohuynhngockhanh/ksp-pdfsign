@@ -1,0 +1,11 @@
+[Unit]
+Description=Run iHOADON customer synchronization every day at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Ho_Chi_Minh
+Persistent=true
+RandomizedDelaySec=60
+Unit=ksp-ihoadon-sync.service
+
+[Install]
+WantedBy=timers.target

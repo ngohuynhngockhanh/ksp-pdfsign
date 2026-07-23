@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, AppSettings } from "../api";
+import { api, AppSettings, type Customer, type CustomerInvoice } from "../api";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -31,12 +31,21 @@ export function Settings() {
   const [aiTestMsg, setAiTestMsg] = useState("");
   const [nasTestMsg, setNasTestMsg] = useState("");
   const [ihoadonTestMsg, setIhoadonTestMsg] = useState("");
+  const [syncStatus, setSyncStatus] = useState<Awaited<ReturnType<typeof api.ihoadonCustomerSyncStatus>> | null>(null);
+  const [unmatched, setUnmatched] = useState<CustomerInvoice[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [disk, setDisk] = useState<Awaited<ReturnType<typeof api.nasDisk>> | null>(null);
 
   async function load() {
     setErr("");
     try {
-      setS(await api.getAppSettings());
+      const [settings, status, unmatchedRows, customerRows] = await Promise.all([
+        api.getAppSettings(), api.ihoadonCustomerSyncStatus(), api.ihoadonUnmatched(), api.listCustomers(),
+      ]);
+      setS(settings);
+      setSyncStatus(status);
+      setUnmatched(unmatchedRows);
+      setCustomers(customerRows);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -44,6 +53,11 @@ export function Settings() {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    if (syncStatus?.job?.status !== "running") return;
+    const timer = window.setInterval(load, 3000);
+    return () => window.clearInterval(timer);
+  }, [syncStatus?.job?.status]);
 
   function set<K extends keyof AppSettings>(k: K, v: AppSettings[K]) {
     setS((c) => (c ? { ...c, [k]: v } : c));
@@ -132,6 +146,22 @@ export function Settings() {
     } catch (e) {
       setIhoadonTestMsg(`Kết nối thất bại: ${(e as Error).message}`);
     }
+  }
+
+  async function syncIhoadon() {
+    setIhoadonTestMsg("Đã yêu cầu đồng bộ; tiến trình đang chạy nền...");
+    try {
+      await api.ihoadonCustomerSync();
+      window.setTimeout(load, 1500);
+    } catch (e) {
+      setIhoadonTestMsg((e as Error).message);
+    }
+  }
+
+  async function assignInvoice(invoiceId: number, customerId: number) {
+    if (!customerId) return;
+    await api.ihoadonAssignCustomer(invoiceId, customerId);
+    await load();
   }
 
   if (!s) return <div className="docs-page">{err ? <div className="error">{err}</div> : "Đang tải…"}</div>;
@@ -357,9 +387,11 @@ export function Settings() {
           </label>
         </div>
         <div className="setting-card-action">
-          <span>{ihoadonTestMsg || (s.ihoadon_password_set ? "Mật khẩu kết nối đã được lưu an toàn." : "Cần nhập mật khẩu để hoàn tất kết nối.")}</span>
-          <div className="setting-action-buttons"><button type="button" disabled={busy} onClick={testIhoadon}>Test kết nối</button><button className="primary" disabled={busy} onClick={save}>{busy ? "Đang lưu…" : "Lưu kết nối iHOADON"}</button></div>
+          <span>{ihoadonTestMsg || (syncStatus ? `${syncStatus.total} hóa đơn cổng khách · ${syncStatus.unmatched} chưa ghép` : "Chưa đồng bộ cổng khách hàng.")}</span>
+          <div className="setting-action-buttons"><button type="button" disabled={busy} onClick={testIhoadon}>Test kết nối</button><button type="button" disabled={busy || syncStatus?.job?.status === "running"} onClick={syncIhoadon}>{syncStatus?.job?.status === "running" ? "Đang đồng bộ…" : "Đồng bộ cổng khách"}</button><button className="primary" disabled={busy} onClick={save}>{busy ? "Đang lưu…" : "Lưu kết nối iHOADON"}</button></div>
         </div>
+        {syncStatus?.job && <div className="muted" style={{ marginTop: 8 }}>Lần gần nhất: {syncStatus.job.status} · {new Date(syncStatus.job.started_at).toLocaleString("vi-VN")} · {syncStatus.job.stats.seen ?? 0} hóa đơn, {syncStatus.job.stats.errors ?? 0} lỗi file.</div>}
+        {unmatched.length > 0 && <div className="ihoadon-unmatched"><b>Hóa đơn chưa ghép MST ({unmatched.length})</b>{unmatched.slice(0, 20).map((inv) => <div className="ihoadon-unmatched-row" key={inv.id}><span>{inv.invoice_date} · {inv.invoice_series} {inv.invoice_number}<small>{inv.buyer_name} · MST {inv.buyer_tax_code || "trống"}</small></span><select defaultValue="" onChange={(e) => assignInvoice(inv.id, Number(e.target.value))}><option value="">Chọn khách hàng…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.tax_code}</option>)}</select></div>)}</div>}
       </section>
 
       <section className="panel setting-card setting-mail">
