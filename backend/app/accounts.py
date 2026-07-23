@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import secrets
 import unicodedata
 
 from sqlalchemy import select
@@ -22,9 +21,15 @@ def slug_username(name: str) -> str:
 
 
 def default_password(tax_code: str) -> str:
-    """Mat khau tam ngau nhien; tham so giu lai de tuong thich call-site cu."""
+    """Mat khau mac dinh theo quy uoc cap tai khoan khach hang cua INUT."""
     del tax_code
-    return secrets.token_urlsafe(15)
+    return "inut12345"
+
+
+def default_username(name: str, tax_code: str, customer_id: int | None = None) -> str:
+    """Uu tien MST; chi dung ten rut gon khi khach hang khong co MST."""
+    mst = re.sub(r"\D", "", tax_code or "")
+    return mst or slug_username(name) or (f"kh{customer_id}" if customer_id else "khach_hang")
 
 
 def ensure_account(db: Session, customer: Customer) -> tuple[str, str]:
@@ -37,7 +42,7 @@ def ensure_account(db: Session, customer: Customer) -> tuple[str, str]:
     if u:
         return u.username, ""
     else:
-        username = slug_username(customer.name) or f"kh{customer.id}"
+        username = default_username(customer.name, customer.tax_code, customer.id)
         if db.scalar(select(User).where(User.username == username)):
             username = f"{username}_{customer.id}"
         db.add(User(

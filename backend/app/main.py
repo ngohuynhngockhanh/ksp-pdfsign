@@ -637,7 +637,7 @@ def create_account_auto(
         existing.session_version += 1
         existing.must_change_password = True
     else:
-        username = accounts.slug_username(c.name) or f"kh{c.id}"
+        username = accounts.default_username(c.name, c.tax_code, c.id)
         if db.scalar(select(User).where(User.username == username)):
             username = f"{username}_{c.id}"
         db.add(User(
