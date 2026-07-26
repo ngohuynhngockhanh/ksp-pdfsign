@@ -441,7 +441,7 @@ def hr_summary(year: int = 2026, db: Session = Depends(get_session),
     for imported in _latest_imports_for_year(db, year):
         draft = db.scalar(select(PayrollWorkbookDraft).where(
             PayrollWorkbookDraft.import_id == imported.id,
-            PayrollWorkbookDraft.status.in_(("reviewed", "uploaded")),
+            PayrollWorkbookDraft.status == "reviewed",
         ).order_by(PayrollWorkbookDraft.id.desc()))
         if draft:
             draft_rows[imported.id] = {int(item.get("row", 0))
@@ -530,7 +530,7 @@ def create_payment(payload: PaymentIn, db: Session = Depends(get_session),
         raise HTTPException(409, "Chưa có bảng lương chính thức của nhân viên trong tháng này")
     draft = db.scalar(select(PayrollWorkbookDraft).where(
         PayrollWorkbookDraft.import_id == statement.source_import_id,
-        PayrollWorkbookDraft.status.in_(("reviewed", "uploaded")),
+        PayrollWorkbookDraft.status == "reviewed",
     ).order_by(PayrollWorkbookDraft.id.desc()))
     if draft and statement.source_row in {int(item.get("row", 0)) for item in _loads(draft.changes, [])}:
         raise HTTPException(409, "Dòng lương đang chờ chốt bản điều chỉnh; chưa thể ghi thanh toán")
