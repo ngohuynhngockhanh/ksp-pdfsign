@@ -306,6 +306,12 @@ def _formula_hours(value: object) -> float:
     # Bat buoc dung cau truc *<rate>*<gio> de khong bat nham so trong (D/E/8).
     if not isinstance(value, str) or not value.startswith("="):
         return 0
+    grouped = re.search(
+        r"\*\s*[0-9]+(?:\.[0-9]+)?\s*\*\s*\(\s*([0-9]+(?:\.[0-9]+)?)\s*\*\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$",
+        value,
+    )
+    if grouped:
+        return float(grouped.group(1)) * float(grouped.group(2))
     match = re.search(r"\*\s*[0-9]+(?:\.[0-9]+)?\s*\*\s*([0-9]+(?:\.[0-9]+)?)\s*\)?\s*$", value)
     if not match:
         return 0

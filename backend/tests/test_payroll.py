@@ -223,6 +223,8 @@ def test_formula_hours_reads_hours_not_rate_times_hours():
     assert _formula_hours("=(D15/E15/8)*1.5*12") == 12
     assert _formula_hours("=(D15/E15/8)*2*8") == 8
     assert _formula_hours("=(D15/E15/8)*1.5*0") == 0
+    assert _formula_hours("=(D15/E15/8)*1.5*(8*16)") == 128
+    assert _formula_hours("=(D15/E15/8)*2*(8*6)") == 48
     # Cong thuc khong co phan gio -> khong bat nham so 8 trong (D/E/8).
     assert _formula_hours("=D15/E15/8") == 0
     assert _formula_hours(12000) == 0
