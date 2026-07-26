@@ -31,7 +31,7 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
           self_deduction: 186000000, dependent_deduction: 0, education_deduction: 0,
           basis: "Dữ liệu thu nhập do công ty quản lý" },
         months: [{ month: "2026-07", statement_id: 5, source_import_id: 9,
-          gross_income: 21715385, employee_insurance: 577500, pit_withheld: 0,
+          gross_income: 21715385, employee_insurance: 577500, employer_insurance: 1182500, pit_withheld: 0,
           net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid,
           reconciliation_status: hrPaid ? (hrHasEvidence ? "paid" : "missing_evidence") : "unpaid",
           payments: hrPaid ? [{ id: 7, employee_id: 2, month: "2026-07", amount: hrPaid,
@@ -44,7 +44,7 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
             self_deduction: 186000000, dependent_deduction: 43400000, education_deduction: 0,
             basis: "Dữ liệu thu nhập do công ty quản lý" },
           months: [{ month: "2026-07", statement_id: 6, source_import_id: 9,
-            gross_income: 29107561, employee_insurance: 577500, pit_withheld: 142176,
+            gross_income: 29107561, employee_insurance: 577500, employer_insurance: 1182500, pit_withheld: 142176,
             net_payable: 28387885, paid: 28387885, outstanding: 0,
             reconciliation_status: "missing_evidence", payments: [] }] }] } });
     }
@@ -134,6 +134,8 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByLabel("Biểu đồ của Huỳnh Đức Nhâm")).toContainText("21.137.885");
   await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toContainText("28.387.885");
   await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toContainText("142.176");
+  await expect(page.getByLabel("Khấu trừ và nghĩa vụ bảo hiểm của Ngô Huỳnh Ngọc Khánh"))
+    .toContainText("BHXH công ty đóng1.182.500");
   await page.getByLabel("Hiển thị Ngô Huỳnh Ngọc Khánh").uncheck();
   await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toHaveCount(0);
   await page.getByRole("button", { name: "Bỏ chọn" }).click();

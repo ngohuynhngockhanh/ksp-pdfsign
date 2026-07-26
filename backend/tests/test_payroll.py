@@ -571,6 +571,7 @@ def test_hr_summary_tracks_paid_outstanding_and_annual_tax(client, tmp_path):
     assert after["paid"] == 21_137_885
     assert after["outstanding"] == 14_637_885
     july = next(row for row in after["months"] if row["month"] == "2026-07")
+    assert july["employer_insurance"] == 1_182_500
     assert july["paid"] == 21_137_885
     assert july["outstanding"] == 0
     assert july["reconciliation_status"] == "missing_evidence"
