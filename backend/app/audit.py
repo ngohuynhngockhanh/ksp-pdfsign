@@ -68,6 +68,9 @@ ACTION_LABELS = {
     "payroll_draft_save": "Lưu bản nháp bảng lương",
     "payroll_draft_review": "Review bản nháp bảng lương",
     "payroll_draft_upload": "Gửi bảng lương lên Google Drive",
+    "payroll_payment_create": "Ghi nhận thanh toán lương",
+    "payroll_payment_evidence": "Bổ sung chứng từ thanh toán lương",
+    "payroll_payment_cancel": "Hủy thanh toán lương",
 }
 
 

@@ -329,6 +329,66 @@ class PayrollWorkbookDraft(Base):
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class PayrollEmployeeAlias(Base):
+    """Ten trong file Excel duoc gan ve mot ho so nhan vien HR."""
+
+    __tablename__ = "payroll_employee_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    normalized_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("payroll_employees.id"), index=True)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PayrollStatement(Base):
+    """Snapshot dong luong theo tung phien ban file; chi mot ban current moi duoc cong."""
+
+    __tablename__ = "payroll_statements"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "month", "source_import_id",
+                         name="uq_payroll_statement_source"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("payroll_employees.id"), index=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    source_import_id: Mapped[int] = mapped_column(ForeignKey("payroll_imports.id"), index=True)
+    source_row: Mapped[int] = mapped_column(default=0)
+    is_current: Mapped[bool] = mapped_column(default=True, index=True)
+    gross_income: Mapped[float] = mapped_column(default=0.0)
+    employee_insurance: Mapped[float] = mapped_column(default=0.0)
+    taxable_income_before_deductions: Mapped[float] = mapped_column(default=0.0)
+    pit_withheld: Mapped[float] = mapped_column(default=0.0)
+    net_payable: Mapped[float] = mapped_column(default=0.0)
+    employer_cost: Mapped[float] = mapped_column(default=0.0)
+    dependent_count: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PayrollPayment(Base):
+    """So thanh toan luong; giao dich hoan tat khong sua, chi duoc huy co ly do."""
+
+    __tablename__ = "payroll_payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("payroll_employees.id"), index=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    amount: Mapped[float] = mapped_column(default=0.0)
+    status: Mapped[str] = mapped_column(String(20), default="prepared", index=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    bank_name: Mapped[str] = mapped_column(String(150), default="")
+    transaction_ref: Mapped[str] = mapped_column(String(150), default="")
+    note: Mapped[str] = mapped_column(String(500), default="")
+    evidence_path: Mapped[str] = mapped_column(String(500), default="")
+    evidence_name: Mapped[str] = mapped_column(String(255), default="")
+    evidence_sha256: Mapped[str] = mapped_column(String(64), default="")
+    cancel_reason: Mapped[str] = mapped_column(String(500), default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 # ---------------------------------------------------------------------------
 # Ton kho (ke toan kho)
 # ---------------------------------------------------------------------------

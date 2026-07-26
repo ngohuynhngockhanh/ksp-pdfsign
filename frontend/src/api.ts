@@ -246,6 +246,36 @@ export interface PayrollNetTargetPlan {
   dependencies: string[]; warnings: string[];
 }
 
+export interface PayrollPayment {
+  id: number; employee_id: number; month: string; amount: number;
+  status: "prepared" | "completed" | "cancelled"; paid_at: string;
+  bank_name: string; transaction_ref: string; note: string;
+  evidence_name: string; evidence_missing: boolean; cancel_reason: string;
+}
+
+export interface PayrollHrMonth {
+  month: string; statement_id: number; source_import_id: number;
+  gross_income: number; employee_insurance: number; pit_withheld: number;
+  net_payable: number; paid: number; outstanding: number;
+  reconciliation_status: "pending_revision" | "missing_evidence" | "paid" | "partial" | "unpaid";
+  payments: PayrollPayment[];
+}
+
+export interface PayrollHrEmployee {
+  employee_id: number; code: string; name: string; position: string;
+  net_payable: number; paid: number; outstanding: number; gross_income: number;
+  tax: { withheld: number; annual_pit: number; annual_taxable_income: number;
+    balance: number; self_deduction: number; dependent_deduction: number;
+    education_deduction: number; basis: string };
+  months: PayrollHrMonth[];
+}
+
+export interface PayrollHrSummary {
+  year: number; employees: PayrollHrEmployee[];
+  totals: { net_payable: number; paid: number; outstanding: number;
+    pit_withheld: number; annual_pit: number };
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -1491,6 +1521,27 @@ export const api = {
   },
   payrollUploadDraft(id: number) {
     return req<PayrollWorkbookDraft>(`/api/payroll/drafts/${id}/upload-drive`, { method: "POST" });
+  },
+  payrollHrSummary(year: number) {
+    return req<PayrollHrSummary>(`/api/payroll/hr-summary?year=${year}`);
+  },
+  payrollCreatePayment(body: { employee_id: number; month: string; amount: number;
+    status: "prepared" | "completed"; paid_at?: string; bank_name?: string;
+    transaction_ref?: string; note?: string }) {
+    return req<PayrollPayment>("/api/payroll/payments", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
+  payrollUploadPaymentEvidence(id: number, file: File) {
+    const body = new FormData(); body.append("file", file);
+    return req<PayrollPayment>(`/api/payroll/payments/${id}/evidence`, { method: "POST", body });
+  },
+  payrollPaymentEvidenceUrl(id: number) { return `/api/payroll/payments/${id}/evidence`; },
+  payrollCancelPayment(id: number, reason: string) {
+    return req<PayrollPayment>(`/api/payroll/payments/${id}/cancel`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
   },
   payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
 };

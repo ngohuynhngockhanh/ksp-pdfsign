@@ -101,6 +101,29 @@ def calculate_pit(taxable_income: float) -> float:
     return _money(tax + remaining * .35)
 
 
+def calculate_annual_pit(*, taxable_income_before_deductions: float,
+                         employee_insurance: float, dependent_months: int = 0,
+                         education_deduction: float = 0) -> dict[str, float]:
+    """Tam tinh quyet toan nam tu du lieu tien luong cong ty dang co."""
+    self_deduction = SELF_DEDUCTION * 12
+    dependent_deduction = DEPENDENT_DEDUCTION * max(dependent_months, 0)
+    education = min(max(education_deduction, 0), 24_000_000)
+    annual_taxable = max(
+        taxable_income_before_deductions - employee_insurance - self_deduction
+        - dependent_deduction - education,
+        0,
+    )
+    # Bieu thue nam la bieu thang quy doi 12 lan.
+    annual_pit = calculate_pit(annual_taxable / 12) * 12
+    return {
+        "self_deduction": _money(self_deduction),
+        "dependent_deduction": _money(dependent_deduction),
+        "education_deduction": _money(education),
+        "annual_taxable_income": _money(annual_taxable),
+        "annual_pit": _money(annual_pit),
+    }
+
+
 def calculate_payroll(data: PayrollInput) -> PayrollResult:
     if data.standard_days <= 0 or data.actual_days < 0:
         raise ValueError("Ngày công không hợp lệ")

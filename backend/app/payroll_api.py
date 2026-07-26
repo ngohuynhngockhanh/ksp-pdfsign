@@ -6,6 +6,7 @@ import logging
 import re
 import shutil
 import subprocess
+import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -18,10 +19,12 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, require_admin
 from .config import get_settings
-from .db import (JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod,
+from .db import (JobRun, PayrollEmployee, PayrollEmployeeAlias, PayrollImport,
+                 PayrollLine, PayrollPayment, PayrollPeriod, PayrollStatement,
                  PayrollWorkbookDraft, get_session)
 from .payroll import (COL_MEAL, DEPENDENT_DEDUCTION, SELF_DEDUCTION, TRADE_UNION_RATE,
-                      PayrollInput, apply_workbook_changes, calculate_payroll,
+                      PayrollInput, apply_workbook_changes, calculate_annual_pit,
+                      calculate_payroll,
                       insurance_base_cap, plan_net_target, review_workbook)
 from . import audit
 
@@ -99,6 +102,21 @@ class NetTargetIn(BaseModel):
     allow_taxable_bonus: bool = False
 
 
+class PaymentIn(BaseModel):
+    employee_id: int = Field(gt=0)
+    month: str = Field(pattern=r"^20\d\d-(0[1-9]|1[0-2])$")
+    amount: float = Field(gt=0, le=1_000_000_000)
+    status: str = Field(pattern=r"^(prepared|completed)$")
+    paid_at: datetime | None = None
+    bank_name: str = Field(default="", max_length=150)
+    transaction_ref: str = Field(default="", max_length=150)
+    note: str = Field(default="", max_length=500)
+
+
+class CancelPaymentIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
 def _rclone_binary() -> str:
     """Duong dan rclone: uu tien PATH, sau do ~/.local/bin (systemd khong co PATH day du)."""
     local_rclone = Path.home() / ".local" / "bin" / "rclone"
@@ -122,6 +140,113 @@ def _loads(value: str, default):
         if value not in (None, "", "null"):
             logger.warning("payroll: bo qua JSON hong (%s): %.80r", type(exc).__name__, value)
         return default
+
+
+def _normalized_employee_name(value: str) -> str:
+    folded = unicodedata.normalize("NFKD", value.strip().lower())
+    ascii_name = "".join(char for char in folded if not unicodedata.combining(char))
+    return " ".join(ascii_name.replace("đ", "d").split())
+
+
+def _grid_number(row: list[str], index: int) -> float:
+    if index >= len(row):
+        return 0.0
+    text = str(row[index]).strip().replace(" ", "")
+    if not text:
+        return 0.0
+    try:
+        return float(text.replace(",", ""))
+    except ValueError:
+        return 0.0
+
+
+def _is_payroll_section_or_total(name: str) -> bool:
+    normalized = _normalized_employee_name(name)
+    return (normalized in {"chinh thuc", "thu viec"}
+            or normalized.startswith("tong ") or normalized.startswith("cong "))
+
+
+def _employee_for_excel_name(db: Session, name: str, position: str) -> PayrollEmployee:
+    normalized = _normalized_employee_name(name)
+    alias = db.scalar(select(PayrollEmployeeAlias).where(
+        PayrollEmployeeAlias.normalized_name == normalized))
+    if alias:
+        employee = db.get(PayrollEmployee, alias.employee_id)
+        if employee:
+            return employee
+    digest = hashlib.sha256(normalized.encode()).hexdigest()[:12].upper()
+    code = f"HR-{digest}"
+    employee = db.scalar(select(PayrollEmployee).where(PayrollEmployee.code == code))
+    if not employee:
+        employee = PayrollEmployee(code=code, name=" ".join(name.split()),
+                                   position=position.strip())
+        db.add(employee); db.flush()
+    db.add(PayrollEmployeeAlias(normalized_name=normalized, employee_id=employee.id,
+                                display_name=name.strip()))
+    db.flush()
+    return employee
+
+
+def _latest_imports_for_year(db: Session, year: int) -> list[PayrollImport]:
+    rows = db.scalars(select(PayrollImport).where(
+        PayrollImport.month.like(f"{year:04d}-%")).order_by(
+            PayrollImport.imported_at, PayrollImport.id)).all()
+    latest: dict[str, PayrollImport] = {}
+    for row in rows:
+        filename = row.filename.lower()
+        if "bản gốc trước cập nhật" in filename or "ban goc truoc cap nhat" in filename:
+            continue
+        latest[row.month] = row
+    return list(latest.values())
+
+
+def _rebuild_hr_statements(db: Session, year: int) -> None:
+    imports = _latest_imports_for_year(db, year)
+    db.query(PayrollStatement).filter(PayrollStatement.month.like(f"{year:04d}-%")).update(
+        {PayrollStatement.is_current: False}, synchronize_session=False)
+    for imported in imports:
+        snapshot = _loads(imported.snapshot, {})
+        for excel_row, row in enumerate(snapshot.get("grid", [])[14:], 15):
+            name = str(row[1]).strip() if len(row) > 1 else ""
+            if not name or _is_payroll_section_or_total(name):
+                continue
+            position = str(row[2]).strip() if len(row) > 2 else ""
+            employee = _employee_for_excel_name(db, name, position)
+            statement = db.scalar(select(PayrollStatement).where(
+                PayrollStatement.employee_id == employee.id,
+                PayrollStatement.month == imported.month,
+                PayrollStatement.source_import_id == imported.id,
+            ))
+            values = {
+                "source_row": excel_row,
+                "is_current": True,
+                "gross_income": _grid_number(row, 16),
+                "employee_insurance": _grid_number(row, 26),
+                "taxable_income_before_deductions": _grid_number(row, 30),
+                "pit_withheld": _grid_number(row, 32),
+                "net_payable": _grid_number(row, 35),
+                "employer_cost": _grid_number(row, 36),
+                "dependent_count": int(_grid_number(row, 28)),
+            }
+            if statement:
+                for key, value in values.items():
+                    setattr(statement, key, value)
+            else:
+                db.add(PayrollStatement(employee_id=employee.id, month=imported.month,
+                                        source_import_id=imported.id, **values))
+    db.commit()
+
+
+def _payment_out(row: PayrollPayment) -> dict:
+    return {
+        "id": row.id, "employee_id": row.employee_id, "month": row.month,
+        "amount": row.amount, "status": row.status,
+        "paid_at": row.paid_at.isoformat() if row.paid_at else "",
+        "bank_name": row.bank_name, "transaction_ref": row.transaction_ref,
+        "note": row.note, "evidence_name": row.evidence_name,
+        "evidence_missing": row.status == "completed" and not row.evidence_path,
+        "cancel_reason": row.cancel_reason,
+    }
 
 
 def _employee(row: PayrollEmployee):
@@ -289,6 +414,205 @@ def get_import(import_id: int, db: Session = Depends(get_session), _: CurrentUse
         raise HTTPException(404, "Không tìm thấy tệp bảng lương")
     return {"id": row.id, "month": row.month, "filename": row.filename,
             "findings": _loads(row.findings, []), "snapshot": _loads(row.snapshot, {})}
+
+
+@router.get("/hr-summary")
+def hr_summary(year: int = 2026, db: Session = Depends(get_session),
+               _: CurrentUser = Depends(require_admin)):
+    if year < 2026 or year > 2100:
+        raise HTTPException(400, "Năm tổng hợp không hợp lệ")
+    _rebuild_hr_statements(db, year)
+    statements = db.scalars(select(PayrollStatement).where(
+        PayrollStatement.month.like(f"{year:04d}-%"),
+        PayrollStatement.is_current.is_(True),
+    ).order_by(PayrollStatement.month)).all()
+    employee_ids = {row.employee_id for row in statements}
+    employees = {employee_id: db.get(PayrollEmployee, employee_id)
+                 for employee_id in employee_ids}
+    payments = db.scalars(select(PayrollPayment).where(
+        PayrollPayment.employee_id.in_(employee_ids) if employee_ids else PayrollPayment.id == -1,
+        PayrollPayment.month.like(f"{year:04d}-%"),
+    ).order_by(PayrollPayment.created_at)).all()
+    payments_by_key: dict[tuple[int, str], list[PayrollPayment]] = {}
+    for payment in payments:
+        payments_by_key.setdefault((payment.employee_id, payment.month), []).append(payment)
+
+    draft_rows: dict[int, set[int]] = {}
+    for imported in _latest_imports_for_year(db, year):
+        draft = db.scalar(select(PayrollWorkbookDraft).where(
+            PayrollWorkbookDraft.import_id == imported.id,
+            PayrollWorkbookDraft.status.in_(("reviewed", "uploaded")),
+        ).order_by(PayrollWorkbookDraft.id.desc()))
+        if draft:
+            draft_rows[imported.id] = {int(item.get("row", 0))
+                                       for item in _loads(draft.changes, [])}
+
+    grouped: dict[int, list[PayrollStatement]] = {}
+    for statement in statements:
+        grouped.setdefault(statement.employee_id, []).append(statement)
+    result = []
+    for employee_id, rows in grouped.items():
+        employee = employees[employee_id]
+        months = []
+        for statement in rows:
+            month_payments = payments_by_key.get((employee_id, statement.month), [])
+            completed = [item for item in month_payments if item.status == "completed"]
+            paid = sum(item.amount for item in completed)
+            outstanding = max(statement.net_payable - paid, 0)
+            pending_revision = statement.source_row in draft_rows.get(statement.source_import_id, set())
+            missing_evidence = any(not item.evidence_path for item in completed)
+            if pending_revision:
+                reconciliation = "pending_revision"
+            elif missing_evidence:
+                reconciliation = "missing_evidence"
+            elif outstanding == 0 and statement.net_payable > 0:
+                reconciliation = "paid"
+            elif paid > 0:
+                reconciliation = "partial"
+            else:
+                reconciliation = "unpaid"
+            months.append({
+                "month": statement.month, "statement_id": statement.id,
+                "source_import_id": statement.source_import_id,
+                "gross_income": statement.gross_income,
+                "employee_insurance": statement.employee_insurance,
+                "pit_withheld": statement.pit_withheld,
+                "net_payable": statement.net_payable, "paid": paid,
+                "outstanding": outstanding, "reconciliation_status": reconciliation,
+                "payments": [_payment_out(item) for item in month_payments],
+            })
+        taxable_before = sum(row.taxable_income_before_deductions for row in rows)
+        employee_insurance = sum(row.employee_insurance for row in rows)
+        dependent_months = sum(row.dependent_count for row in rows)
+        annual = calculate_annual_pit(
+            taxable_income_before_deductions=taxable_before,
+            employee_insurance=employee_insurance,
+            dependent_months=dependent_months,
+        )
+        withheld = sum(row.pit_withheld for row in rows)
+        net_payable = sum(row.net_payable for row in rows)
+        paid = sum(month["paid"] for month in months)
+        result.append({
+            "employee_id": employee_id, "code": employee.code, "name": employee.name,
+            "position": employee.position, "net_payable": net_payable, "paid": paid,
+            "outstanding": max(net_payable - paid, 0),
+            "gross_income": sum(row.gross_income for row in rows),
+            "tax": {"withheld": withheld, **annual,
+                    "balance": annual["annual_pit"] - withheld,
+                    "basis": "Dữ liệu thu nhập do công ty quản lý"},
+            "months": months,
+        })
+    result.sort(key=lambda item: item["name"])
+    return {
+        "year": year, "employees": result,
+        "totals": {
+            "net_payable": sum(item["net_payable"] for item in result),
+            "paid": sum(item["paid"] for item in result),
+            "outstanding": sum(item["outstanding"] for item in result),
+            "pit_withheld": sum(item["tax"]["withheld"] for item in result),
+            "annual_pit": sum(item["tax"]["annual_pit"] for item in result),
+        },
+    }
+
+
+@router.post("/payments")
+def create_payment(payload: PaymentIn, db: Session = Depends(get_session),
+                   user: CurrentUser = Depends(require_admin)):
+    employee = db.get(PayrollEmployee, payload.employee_id)
+    if not employee:
+        raise HTTPException(404, "Không tìm thấy nhân viên")
+    statement = db.scalar(select(PayrollStatement).where(
+        PayrollStatement.employee_id == payload.employee_id,
+        PayrollStatement.month == payload.month,
+        PayrollStatement.is_current.is_(True),
+    ))
+    if not statement:
+        raise HTTPException(409, "Chưa có bảng lương chính thức của nhân viên trong tháng này")
+    draft = db.scalar(select(PayrollWorkbookDraft).where(
+        PayrollWorkbookDraft.import_id == statement.source_import_id,
+        PayrollWorkbookDraft.status.in_(("reviewed", "uploaded")),
+    ).order_by(PayrollWorkbookDraft.id.desc()))
+    if draft and statement.source_row in {int(item.get("row", 0)) for item in _loads(draft.changes, [])}:
+        raise HTTPException(409, "Dòng lương đang chờ chốt bản điều chỉnh; chưa thể ghi thanh toán")
+    paid = db.scalar(select(func.coalesce(func.sum(PayrollPayment.amount), 0)).where(
+        PayrollPayment.employee_id == payload.employee_id,
+        PayrollPayment.month == payload.month,
+        PayrollPayment.status == "completed",
+    )) or 0
+    if payload.status == "completed" and paid + payload.amount > statement.net_payable:
+        raise HTTPException(409, "Số tiền vượt quá phần lương còn phải trả")
+    row = PayrollPayment(
+        employee_id=payload.employee_id, month=payload.month, amount=payload.amount,
+        status=payload.status,
+        paid_at=payload.paid_at or (datetime.now(timezone.utc) if payload.status == "completed" else None),
+        bank_name=payload.bank_name.strip(), transaction_ref=payload.transaction_ref.strip(),
+        note=payload.note.strip(), created_by=user.id,
+    )
+    db.add(row); db.commit(); db.refresh(row)
+    audit.record(db, user.username, user.role, user.ip, "payroll_payment_create",
+                 f"payment:{row.id}", f"{row.month}; {int(row.amount)} đồng; {row.status}")
+    return _payment_out(row)
+
+
+@router.post("/payments/{payment_id}/evidence")
+async def upload_payment_evidence(payment_id: int, file: UploadFile = File(...),
+                                  db: Session = Depends(get_session),
+                                  user: CurrentUser = Depends(require_admin)):
+    payment = db.get(PayrollPayment, payment_id)
+    if not payment or payment.status == "cancelled":
+        raise HTTPException(404, "Không tìm thấy thanh toán đang hiệu lực")
+    filename = Path(file.filename or "").name
+    suffix = Path(filename).suffix.lower()
+    allowed = {".pdf": "application/pdf", ".png": "image/png",
+               ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+    if suffix not in allowed:
+        raise HTTPException(400, "Chứng từ chỉ chấp nhận PDF, PNG hoặc JPG")
+    if file.content_type and file.content_type != allowed[suffix]:
+        raise HTTPException(400, "Loại nội dung chứng từ không khớp phần mở rộng")
+    data = await file.read(10_000_001)
+    if not data or len(data) > 10_000_000:
+        raise HTTPException(400, "Chứng từ phải có dung lượng từ 1 byte đến 10 MB")
+    signatures = {".pdf": (b"%PDF",), ".png": (b"\x89PNG\r\n\x1a\n",),
+                  ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",)}
+    if not any(data.startswith(signature) for signature in signatures[suffix]):
+        raise HTTPException(400, "Nội dung chứng từ không đúng định dạng tệp")
+    digest = hashlib.sha256(data).hexdigest()
+    root = get_settings().data_path / "payroll_evidence" / str(payment.id)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{digest}{suffix}"
+    path.write_bytes(data)
+    payment.evidence_path = str(path); payment.evidence_name = filename
+    payment.evidence_sha256 = digest; payment.updated_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(payment)
+    audit.record(db, user.username, user.role, user.ip, "payroll_payment_evidence",
+                 f"payment:{payment.id}", filename)
+    return _payment_out(payment)
+
+
+@router.get("/payments/{payment_id}/evidence")
+def download_payment_evidence(payment_id: int, db: Session = Depends(get_session),
+                              _: CurrentUser = Depends(require_admin)):
+    payment = db.get(PayrollPayment, payment_id)
+    if not payment or not payment.evidence_path or not Path(payment.evidence_path).is_file():
+        raise HTTPException(404, "Không tìm thấy chứng từ thanh toán")
+    return FileResponse(payment.evidence_path, filename=payment.evidence_name)
+
+
+@router.post("/payments/{payment_id}/cancel")
+def cancel_payment(payment_id: int, payload: CancelPaymentIn,
+                   db: Session = Depends(get_session),
+                   user: CurrentUser = Depends(require_admin)):
+    payment = db.get(PayrollPayment, payment_id)
+    if not payment:
+        raise HTTPException(404, "Không tìm thấy thanh toán")
+    if payment.status == "cancelled":
+        raise HTTPException(409, "Thanh toán đã được hủy trước đó")
+    payment.status = "cancelled"; payment.cancel_reason = payload.reason.strip()
+    payment.updated_at = datetime.now(timezone.utc)
+    db.commit(); db.refresh(payment)
+    audit.record(db, user.username, user.role, user.ip, "payroll_payment_cancel",
+                 f"payment:{payment.id}", payment.cancel_reason)
+    return _payment_out(payment)
 
 
 def _import_source(row: PayrollImport) -> Path:

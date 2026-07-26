@@ -49,6 +49,16 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 - Giam tru giao duc toi da 24 trieu dong/nam, theo chi phi thuc te co hoa don, chung tu tai co so giao duc trong nuoc va khong duoc nguon khac hoan tra.
 - Doi chieu file da sync tu thang 1 den thang 7/2026: hai nhan vien duoc kiem tra dang co thue TNCN tam khau tru 0 dong va chua thay thieu thue theo tong thu nhap hien co. Can tinh lai khi co du thu nhap, thuong va giam tru tu thang 8 den thang 12.
 
+## Tong quan HR va so thanh toan
+
+- `GET /api/payroll/hr-summary?year=2026` tong hop mot ban luong hien hanh cho moi thang, khong cong trung cac file cu.
+- He thong tu tao ho so HR va ghep ten Excel theo dang chuan hoa; dong tieu de, thu viec va dong tong khong duoc nhan la nhan vien.
+- So thanh toan tach khoi so thuc linh trong Excel. Chi giao dich `completed` moi cong vao da tra; giao dich sai phai huy co ly do.
+- Thanh toan hoan tat thieu PDF/PNG/JPG duoc cong vao da tra nhung hien canh bao thieu chung tu.
+- Dong dang co ban nhap da review hoac da upload nhung chua sync lai bi khoa ghi thanh toan de tranh chuyen sai so.
+- TNCN nam hien ba lop: da khau tru, nghia vu tam tinh nam va chenh lech du kien. So nay chi dua tren du lieu cong ty dang quan ly.
+- Chung tu toi da 10 MB, kiem tra phan mo rong, MIME va chu ky tep; chi admin duoc tai len hoac tai xuong.
+
 Payload mau:
 
 ```json

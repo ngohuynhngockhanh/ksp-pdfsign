@@ -575,11 +575,33 @@ def test_hr_summary_tracks_paid_outstanding_and_annual_tax(client, tmp_path):
     assert july["outstanding"] == 0
     assert july["reconciliation_status"] == "missing_evidence"
 
+    invalid_evidence = client.post(
+        f"/api/payroll/payments/{paid.json()['id']}/evidence",
+        files={"file": ("chung-tu.pdf", b"not-a-pdf", "application/pdf")},
+    )
+    assert invalid_evidence.status_code == 400
+    evidence = client.post(
+        f"/api/payroll/payments/{paid.json()['id']}/evidence",
+        files={"file": ("chung-tu.pdf", b"%PDF-1.4\n%%EOF", "application/pdf")},
+    )
+    assert evidence.status_code == 200, evidence.text
+    assert evidence.json()["evidence_missing"] is False
+
     overpayment = client.post("/api/payroll/payments", json={
         "employee_id": employee["employee_id"], "month": "2026-07",
         "amount": 1, "status": "completed",
     })
     assert overpayment.status_code == 409
+
+    cancelled = client.post(
+        f"/api/payroll/payments/{paid.json()['id']}/cancel",
+        json={"reason": "Hạch toán nhầm giao dịch"},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    restored = client.get("/api/payroll/hr-summary?year=2026").json()["employees"][0]
+    assert restored["paid"] == 0
+    assert restored["outstanding"] == 35_775_770
 
 
 def test_hr_summary_merges_normalized_names_and_ignores_older_month_version(client, tmp_path):
@@ -597,6 +619,8 @@ def test_hr_summary_merges_normalized_names_and_ignores_older_month_version(clie
         sheet["AE15"] = net + 577_500
         sheet["AJ15"] = net
         sheet["AK15"] = net + 1_760_000
+        sheet["B16"] = "Tổng A + B"
+        sheet["AJ16"] = 99_000_000
         path = tmp_path / f"luong-7-v{index}.xlsx"
         workbook.save(path)
         with path.open("rb") as handle:

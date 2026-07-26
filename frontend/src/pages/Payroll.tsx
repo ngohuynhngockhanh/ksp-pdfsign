@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, PayrollImportDetail, PayrollImportItem, PayrollNetTargetPlan, PayrollPeriod, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
+import { api, PayrollHrSummary, PayrollImportDetail, PayrollImportItem, PayrollNetTargetPlan, PayrollPeriod, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
+import { PayrollHrOverview } from "../components/PayrollHrOverview";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 const excelMoney = (value = "") => {
@@ -24,6 +25,8 @@ export function Payroll() {
   const [targetNet, setTargetNet] = useState("");
   const [allowTaxableBonus, setAllowTaxableBonus] = useState(false);
   const [netPlan, setNetPlan] = useState<PayrollNetTargetPlan | null>(null);
+  const [hrSummary, setHrSummary] = useState<PayrollHrSummary | null>(null);
+  const hrYear = 2026;
 
   function openFinding(cell = "") {
     if (!cell || !importDetail) return;
@@ -106,7 +109,7 @@ export function Payroll() {
 
   async function uploadWorkbookDraft() {
     if (!draft) return;
-    try { setDraftBusy(true); const uploaded = await api.payrollUploadDraft(draft.id); setDraft(uploaded); setMessage(`Đã gửi lên Google Drive: ${uploaded.drive_filename}`); }
+    try { setDraftBusy(true); const uploaded = await api.payrollUploadDraft(draft.id); setDraft(uploaded); setMessage(`Đã gửi lên Google Drive: ${uploaded.drive_filename}`); await loadHr(); }
     catch (error) { setMessage((error as Error).message); } finally { setDraftBusy(false); }
   }
 
@@ -117,7 +120,11 @@ export function Payroll() {
     setSelected(rows.find((row) => row.id === preferred) ?? rows[0] ?? null);
   }
 
-  useEffect(() => { load().catch((e) => setMessage((e as Error).message)); }, []);
+  async function loadHr() { setHrSummary(await api.payrollHrSummary(hrYear)); }
+
+  useEffect(() => {
+    Promise.all([load(), loadHr()]).catch((e) => setMessage((e as Error).message));
+  }, []);
   useEffect(() => {
     let stopped = false;
     let timer = 0;
@@ -143,7 +150,7 @@ export function Payroll() {
         if (result.job?.status === "running") window.setTimeout(poll, 700);
         else if (result.job?.status === "success") {
           setMessage(`Đã đồng bộ ${result.job.stats.files?.length ?? 0} file, thêm mới ${result.job.stats.imported ?? 0}.`);
-          await load(selected?.id);
+          await Promise.all([load(selected?.id), loadHr()]);
         }
         else if (result.job?.status === "failed") setMessage(result.job.error || "Đồng bộ thất bại.");
       };
@@ -180,6 +187,7 @@ export function Payroll() {
       {syncJob.status === "failed" && <small>{syncJob.error}</small>}
     </section>}
     {message && <div className="payroll-message">{message}</div>}
+    <PayrollHrOverview year={hrYear} summary={hrSummary} reload={loadHr} setMessage={setMessage} />
     <section className="payroll-imports">
       <header><div><p className="eyebrow">EXCEL ĐÃ SYNC</p><h2>Bảng lương từ Google Drive</h2></div><span>{imports.length} file</span></header>
       {!imports.length ? <p className="muted">Chưa có file. Bấm Sync Drive để tải danh sách.</p> :
