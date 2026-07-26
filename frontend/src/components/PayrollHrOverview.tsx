@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, PayrollHrEmployee, PayrollHrSummary } from "../api";
+import { PayrollEmployeeCharts } from "./PayrollEmployeeCharts";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 
@@ -88,6 +89,7 @@ export function PayrollHrOverview({ year, summary, reload, setMessage }: Props) 
       <article><small>TNCN đã khấu trừ</small><strong>{money(summary.totals.pit_withheld)}</strong></article>
       <article><small>TNCN tạm tính năm</small><strong>{money(summary.totals.annual_pit)}</strong></article>
     </div>
+    {!!summary.employees.length && <PayrollEmployeeCharts employees={summary.employees} />}
     {!summary.employees.length ? <p className="muted">Chưa có dữ liệu lương để tổng hợp.</p> :
       <div className="hr-workspace">
         <div className="hr-employee-list">{summary.employees.map((employee) =>

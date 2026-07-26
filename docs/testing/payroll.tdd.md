@@ -39,3 +39,11 @@ cd frontend && npm run test:e2e
 | Moi thang chi cong phien ban Excel moi nhat va ghep ten da chuan hoa | `test_hr_summary_merges_normalized_names_and_ignores_older_month_version` | Integration |
 | Thanh toan hoan tat cap nhat da tra, con lai, chung tu va huy giao dich | `test_hr_summary_tracks_paid_outstanding_and_annual_tax` | Integration |
 | HR ghi thanh toan va tai chung tu tren desktop/mobile | `frontend/e2e/payroll.spec.ts` | E2E |
+
+## Bo sung bieu do nhieu nhan vien
+
+- RED E2E: `1e698b5` - chua co khu vuc bieu do, bo chon va chon lai nhan vien.
+- Moi nhan vien duoc chon co mot hang rieng gom bieu do gross/thuc linh va BHXH/TNCN theo thang.
+- Mac dinh chon tat ca; co nut `Chon tat ca`, `Bo chon` va thong bao tieng Viet khi danh sach rong.
+- SVG khong them thu vien ngoai; vung bieu do cuon ngang rieng tren dien thoai.
+- Playwright desktop/mobile kiem tra chon nhieu nguoi, so tien, bo chon, khoi phuc lua chon va axe WCAG A/AA.
