@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -19,11 +20,13 @@ from .auth import CurrentUser, require_admin
 from .config import get_settings
 from .db import (JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod,
                  PayrollWorkbookDraft, get_session)
-from .payroll import (PayrollInput, apply_workbook_changes, calculate_payroll,
-                      plan_net_target, review_workbook)
+from .payroll import (COL_MEAL, DEPENDENT_DEDUCTION, SELF_DEDUCTION, TRADE_UNION_RATE,
+                      PayrollInput, apply_workbook_changes, calculate_payroll,
+                      insurance_base_cap, plan_net_target, review_workbook)
 from . import audit
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
+logger = logging.getLogger(__name__)
 
 
 class EmployeeIn(BaseModel):
@@ -95,10 +98,28 @@ class NetTargetIn(BaseModel):
     available_weekend_ot_hours: float | None = Field(default=None, ge=0, le=400)
 
 
+def _rclone_binary() -> str:
+    """Duong dan rclone: uu tien PATH, sau do ~/.local/bin (systemd khong co PATH day du)."""
+    local_rclone = Path.home() / ".local" / "bin" / "rclone"
+    rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
+    if not rclone:
+        raise HTTPException(503, "Không tìm thấy rclone trên máy chủ")
+    return rclone
+
+
+def _drive_flags(settings) -> list[str]:
+    return ["--drive-root-folder-id", settings.payroll_drive_folder_id,
+            "--bind", settings.payroll_rclone_bind]
+
+
 def _loads(value: str, default):
     try:
         return json.loads(value)
-    except (TypeError, json.JSONDecodeError):
+    except (TypeError, json.JSONDecodeError) as exc:
+        # JSON hong trong DB -> tra default nhung PHAI log de ke toan biet du lieu
+        # (override luong / snapshot / findings) co the bi mat, tranh sai lam lang.
+        if value not in (None, "", "null"):
+            logger.warning("payroll: bo qua JSON hong (%s): %.80r", type(exc).__name__, value)
         return default
 
 
@@ -168,8 +189,11 @@ def list_periods(db: Session = Depends(get_session), _: CurrentUser = Depends(re
 def create_period(payload: PeriodIn, db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
     version = (db.scalar(select(func.max(PayrollPeriod.version)).where(PayrollPeriod.month == payload.month)) or 0) + 1
     row = PayrollPeriod(month=payload.month, version=version, created_by=user.id,
-                        policy_snapshot=json.dumps({"pit": "109/2025/QH15", "self": 15500000,
-                                                    "dependent": 6200000, "kpcd": .02}))
+                        policy_snapshot=json.dumps({
+                            "pit": "109/2025/QH15", "self": SELF_DEDUCTION,
+                            "dependent": DEPENDENT_DEDUCTION, "kpcd": TRADE_UNION_RATE,
+                            "insurance_cap": insurance_base_cap(date.fromisoformat(payload.month + "-01")),
+                        }))
     db.add(row); db.flush()
     employees = db.scalars(select(PayrollEmployee).where(PayrollEmployee.active.is_(True))).all()
     for employee in employees:
@@ -277,12 +301,15 @@ def _import_source(row: PayrollImport) -> Path:
 
 
 def _formula_hours(value: object) -> float:
+    # Cong thuc OT do he thong sinh: =(D/E/8)*1.5*<gio> hoac =(D/E/8)*2*<gio>.
+    # Chi lay factor cuoi (so gio); KHONG nhan voi he so 1.5/2 keo theo.
+    # Bat buoc dung cau truc *<rate>*<gio> de khong bat nham so trong (D/E/8).
     if not isinstance(value, str) or not value.startswith("="):
         return 0
-    match = re.search(r"\*\s*(?:\(\s*)?([0-9]+(?:\.[0-9]+)?)(?:\s*\*\s*([0-9]+(?:\.[0-9]+)?))?\s*\)?\s*$", value)
+    match = re.search(r"\*\s*[0-9]+(?:\.[0-9]+)?\s*\*\s*([0-9]+(?:\.[0-9]+)?)\s*\)?\s*$", value)
     if not match:
         return 0
-    return float(match.group(1)) * float(match.group(2) or 1)
+    return float(match.group(1))
 
 
 @router.post("/imports/{import_id}/net-target")
@@ -317,7 +344,7 @@ def import_net_target(import_id: int, payload: NetTargetIn,
             month=date.fromisoformat(month_text + "-01"), current_net=number(36),
             target_net=payload.target_net, current_pit=number(33),
             current_employee_insurance=insurance, base_salary=number(4),
-            standard_days=number(5), current_meal_allowance=number(9),
+            standard_days=number(5), current_meal_allowance=number(COL_MEAL),
             available_weekday_ot_hours=payload.available_weekday_ot_hours,
             available_weekend_ot_hours=payload.available_weekend_ot_hours,
             current_weekday_ot_hours=_formula_hours(formulas.cell(row, 14).value),
@@ -392,12 +419,10 @@ def upload_draft(draft_id: int, db: Session = Depends(get_session), user: Curren
     imported = db.get(PayrollImport, draft.import_id)
     stem = Path(imported.filename).stem
     filename = f"{stem} - đã review - bản {draft.id}.xlsx"
-    local_rclone = Path.home() / ".local" / "bin" / "rclone"
-    rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
-    if not rclone:
-        raise HTTPException(503, "Không tìm thấy rclone trên máy chủ")
-    command = [rclone, "copyto", draft.local_path, f"vnmap-drive:{filename}",
-               "--drive-root-folder-id", "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI", "--bind", "0.0.0.0"]
+    settings = get_settings()
+    command = [_rclone_binary(), "copyto", draft.local_path,
+               f"{settings.payroll_drive_remote}{filename}",
+               *_drive_flags(settings)]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
     except subprocess.TimeoutExpired as exc:
@@ -432,8 +457,12 @@ def _run_drive_sync(job_id: int, user_id: int) -> None:
         job.stats = json.dumps({**result, "phase": "done", "progress": 100,
                                 "message": f"Hoàn tất {len(result['files'])} file"}, ensure_ascii=False)
     except Exception as exc:
+        logger.exception("payroll: dong bo Drive that bai (job %s)", job_id)
         db.rollback()
         job = db.get(JobRun, job_id)
+        if job is None:  # Job bi xoa giua chung -> khong con gi de cap nhat.
+            gen.close()
+            return
         job.status = "failed"
         job.error = str(exc)[:1000]
     job.finished_at = datetime.now(timezone.utc)
@@ -442,14 +471,10 @@ def _run_drive_sync(job_id: int, user_id: int) -> None:
 
 
 def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> dict:
-    target = get_settings().data_path / "payroll_drive"; target.mkdir(parents=True, exist_ok=True)
-    local_rclone = Path.home() / ".local" / "bin" / "rclone"
-    rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
-    if not rclone:
-        raise HTTPException(503, "Không tìm thấy rclone trên máy chủ")
-    command = [rclone, "copy", "vnmap-drive:", str(target), "--drive-root-folder-id",
-               "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI", "--include", "*.xlsx", "--max-depth", "1",
-               "--bind", "0.0.0.0"]
+    settings = get_settings()
+    target = settings.data_path / "payroll_drive"; target.mkdir(parents=True, exist_ok=True)
+    command = [_rclone_binary(), "copy", settings.payroll_drive_remote, str(target),
+               *_drive_flags(settings), "--include", "*.xlsx", "--max-depth", "1"]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
     except subprocess.TimeoutExpired as exc:
@@ -465,6 +490,7 @@ def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> d
         try:
             snapshot = review_workbook(path)
         except Exception as exc:  # File loi khong duoc lam hong ca dot sync.
+            logger.warning("payroll: khong doc duoc %s: %s", path.name, exc)
             summaries.append({"filename": path.name, "findings": 0,
                               "error": f"Không đọc được tệp Excel: {type(exc).__name__}"})
             continue

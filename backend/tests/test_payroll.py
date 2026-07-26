@@ -8,13 +8,16 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 
 from app.payroll import (
+    COL_MEAL,
     PayrollInput,
     apply_workbook_changes,
     calculate_payroll,
     calculate_pit,
+    insurance_base_cap,
     plan_net_target,
     review_workbook,
 )
+from app.payroll_api import _formula_hours
 
 
 @pytest.fixture
@@ -169,7 +172,7 @@ def test_review_legacy_workbook_flags_missing_kpcd_and_july_meal_cap(tmp_path):
     sheet.title = "Thang 7-2026"
     sheet.cell(15, 2, "NV-DEMO")
     sheet.cell(15, 3, "Nhan vien mau")
-    sheet.cell(15, 8, 1_500_000)
+    sheet.cell(15, COL_MEAL, 1_500_000)  # cot I: tien an
     path = tmp_path / "bang-luong-an-danh.xlsx"
     workbook.save(path)
 
@@ -191,6 +194,64 @@ def test_review_empty_workbook_does_not_crash(tmp_path):
     review = review_workbook(path)
     assert review["rows"] == []
     assert review["findings"] == []
+
+
+def test_insurance_base_is_capped_at_twenty_times_reference():
+    # Dieu 31 Luat BHXH 2024: tran = 20 x muc tham chieu (luong co so).
+    # Truoc 01/07/2026 luong co so 2,34tr -> tran 46,8tr; tu 01/07/2026 2,53tr -> 50,6tr.
+    assert insurance_base_cap(date(2026, 6, 1)) == 46_800_000
+    assert insurance_base_cap(date(2026, 7, 1)) == 50_600_000
+
+    # Luong cao hon tran -> chi dong tren phan tran, khong dong tren toan bo luong.
+    high = calculate_payroll(PayrollInput(
+        month=date(2026, 7, 1), base_salary=80_000_000, standard_days=22, actual_days=22,
+    ))
+    assert high.insurance_salary == 50_600_000
+    assert high.employee_insurance == 5_313_000  # 50,6tr x 10,5%
+    assert high.employer_insurance == 10_879_000  # 50,6tr x 21,5%
+
+    # Luong duoi tran -> giu nguyen cach tinh cu (khong hoi quy).
+    low = calculate_payroll(PayrollInput(
+        month=date(2026, 7, 1), base_salary=20_000_000, standard_days=22, actual_days=22,
+    ))
+    assert low.insurance_salary == 20_000_000
+    assert low.employee_insurance == 2_100_000
+
+
+def test_formula_hours_reads_hours_not_rate_times_hours():
+    # Cong thuc do apply_workbook_changes sinh ra: gio phai la factor cuoi, KHONG nhan 1.5/2.
+    assert _formula_hours("=(D15/E15/8)*1.5*12") == 12
+    assert _formula_hours("=(D15/E15/8)*2*8") == 8
+    assert _formula_hours("=(D15/E15/8)*1.5*0") == 0
+    # Cong thuc khong co phan gio -> khong bat nham so 8 trong (D/E/8).
+    assert _formula_hours("=D15/E15/8") == 0
+    assert _formula_hours(12000) == 0
+    assert _formula_hours(None) == 0
+
+
+def test_review_and_edit_agree_on_meal_column(tmp_path):
+    # Mot fixture DUNG CHUNG cho ca review va edit: bat lech cot tien an neu tai dien.
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Thang 7-2026"
+    sheet.cell(15, 2, "NV-DEMO")
+    sheet.cell(15, 3, "Nhan vien mau")
+    sheet.cell(15, COL_MEAL, 1_500_000)  # tien an vuot tran o cot I
+    sheet.cell(15, 19, 240_000)  # cot S: KPCD da co -> khong bao missing_kpcd
+    source = tmp_path / "source.xlsx"
+    workbook.save(source)
+
+    # Review phai bat duoc canh bao vuot tran o dung cot I.
+    before = review_workbook(source)
+    meal_findings = [f for f in before["findings"] if f["code"] == "meal_cap"]
+    assert meal_findings, "review phai bat tien an vuot tran o cot I"
+    assert meal_findings[0]["cells"] == ["I15"]
+
+    # Edit ha tien an ve muc hop le -> re-review phai het canh bao meal_cap.
+    output = tmp_path / "draft.xlsx"
+    apply_workbook_changes(source, output, [{"row": 15, "meal_allowance": 1_200_000}])
+    after = review_workbook(output)
+    assert not any(f["code"] == "meal_cap" for f in after["findings"])
 
 
 def test_payroll_period_workflow_and_override_reason(client):

@@ -14,6 +14,33 @@ from openpyxl import load_workbook
 SELF_DEDUCTION = 15_500_000
 DEPENDENT_DEDUCTION = 6_200_000
 
+# Ty le dong bao hiem (NLD 10,5% = BHXH 8 + BHYT 1,5 + BHTN 1; DN 21,5%; KPCD 2%).
+EMPLOYEE_INSURANCE_RATE = .105
+EMPLOYER_INSURANCE_RATE = .215
+TRADE_UNION_RATE = .02
+
+# Tran luong lam can cu dong BHXH bat buoc = 20 x muc tham chieu (luong co so),
+# theo diem d khoan 1 Dieu 31 Luat BHXH 2024. Luong co so doi giua nam 2026:
+#   - Truoc 01/07/2026: 2.340.000 (ND 73/2024) -> tran 46,8 trieu
+#   - Tu 01/07/2026:    2.530.000 (ND 161/2026) -> tran 50,6 trieu
+# Luu y: BHTN thuc te co tran rieng (20 x luong toi thieu vung, cao hon nhieu); o day
+# ap chung tran luong co so cho toan bo phan bao hiem de khong tinh VUOT tran BHXH/BHYT.
+BASE_REFERENCE_BEFORE_JUL_2026 = 2_340_000
+BASE_REFERENCE_FROM_JUL_2026 = 2_530_000
+INSURANCE_CAP_MULTIPLIER = 20
+
+# Cot Excel dung chung cho review/edit/planner (1-based). Cot tien an la I (9);
+# review, apply_workbook_changes va import_net_target phai tham chieu cung mot cot.
+COL_MEAL = 9
+COL_MEAL_LETTER = "I"
+
+
+def insurance_base_cap(month: date) -> float:
+    """Tran luong lam can cu dong BHXH bat buoc tai thoi diem cua ky luong."""
+    reference = (BASE_REFERENCE_FROM_JUL_2026 if month >= date(2026, 7, 1)
+                 else BASE_REFERENCE_BEFORE_JUL_2026)
+    return reference * INSURANCE_CAP_MULTIPLIER
+
 
 @dataclass
 class PayrollInput:
@@ -81,9 +108,11 @@ def calculate_payroll(data: PayrollInput) -> PayrollResult:
     gross = salary + data.meal_allowance + data.phone_allowance + data.fuel_allowance
     gross += data.responsibility_allowance + data.overtime_pay + data.bonus + data.other_taxable
     insurance_base = data.insurance_salary if data.insurance_salary is not None else data.base_salary
-    employee_insurance = insurance_base * .105
-    employer_insurance = insurance_base * .215
-    trade_union_fee = insurance_base * .02
+    # Ap tran 20 x muc tham chieu: phan luong vuot tran khong lam can cu dong BHXH.
+    insurance_base = min(insurance_base, insurance_base_cap(data.month))
+    employee_insurance = insurance_base * EMPLOYEE_INSURANCE_RATE
+    employer_insurance = insurance_base * EMPLOYER_INSURANCE_RATE
+    trade_union_fee = insurance_base * TRADE_UNION_RATE
     meal_exempt_cap = 1_200_000 if data.month >= date(2026, 7, 1) else 730_000
     taxable_before = gross - min(data.meal_allowance, meal_exempt_cap) - data.overtime_pay
     # Dien thoai/xang chi duoc mien khi co quy che/chung tu; mac dinh bao thu de review.
@@ -236,11 +265,11 @@ def review_workbook(path: Path) -> dict[str, Any]:
             continue
         employee_rows.append(row)
         rows.append({"row": row, "code": str(code or ""), "has_name": bool(name)})
-        meal = sheet.cell(row, 8).value
+        meal = sheet.cell(row, COL_MEAL).value
         if month >= "2026-07" and isinstance(meal, (int, float)) and meal > 1_200_000:
             findings.append({"level": "vang", "code": "meal_cap",
                              "message": "Tiền ăn vượt 1,2 triệu đồng từ ngày 01/07/2026.",
-                             "cells": [f"H{row}"]})
+                             "cells": [f"{COL_MEAL_LETTER}{row}"]})
     missing_kpcd = [row for row in employee_rows if sheet.cell(row, 19).value in (None, "")]
     if employee_rows and len(missing_kpcd) == len(employee_rows):
         findings.insert(0, {"level": "do", "code": "missing_kpcd",
@@ -269,7 +298,7 @@ def apply_workbook_changes(source: Path, output: Path, changes: list[dict[str, A
         if sheet.cell(row, 2).value in (None, "") and sheet.cell(row, 3).value in (None, ""):
             raise ValueError(f"Dòng {row} không có nhân viên")
         if change.get("meal_allowance") is not None:
-            sheet.cell(row, 9).value = float(change["meal_allowance"])
+            sheet.cell(row, COL_MEAL).value = float(change["meal_allowance"])
         if change.get("attendance_bonus") is not None:
             sheet.cell(row, 13).value = float(change["attendance_bonus"])
         if change.get("overtime_weekday_hours") is not None:
