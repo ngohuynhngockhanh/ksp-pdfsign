@@ -29,6 +29,21 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     if (path === "/api/payroll/imports/9/draft" && route.request().method() === "GET") {
       return route.fulfill({ json: { draft: workbookDraft } });
     }
+    if (path === "/api/payroll/imports/9/net-target") {
+      return route.fulfill({ json: {
+        feasible: true, current_net: 12240000, target_net: 13000000, proposed_net: 13000000, shortfall: 0,
+        current_pit: 0, proposed_pit: 0, current_employee_insurance: 1260000, proposed_employee_insurance: 1260000,
+        proposed: { meal_allowance: 760000, overtime_weekday_hours: 0, overtime_weekend_hours: 0, attendance_bonus: null },
+        cashflows: [
+          { key: "meal", label: "Tiền ăn", current: 0, proposed: 760000, delta: 760000 },
+          { key: "pit", label: "Thuế TNCN", current: 0, proposed: 0, delta: 0 },
+          { key: "insurance", label: "BHXH người lao động", current: 1260000, proposed: 1260000, delta: 0 },
+          { key: "net", label: "Thực lĩnh", current: 12240000, proposed: 13000000, delta: 760000 },
+          { key: "employer_cost", label: "Tổng chi phí công ty", current: 16080000, proposed: 16840000, delta: 760000 },
+        ],
+        dependencies: ["Tiền ăn phải có quy chế công ty.", "Giờ làm thêm phải có bảng chấm công và phê duyệt."],
+      }});
+    }
     if (path === "/api/payroll/imports/9/draft" && route.request().method() === "POST") {
       workbookDraft = { id: 12, import_id: 9, status: "draft", changes: route.request().postDataJSON().changes,
         findings: [], drive_filename: "", updated_at: new Date().toISOString() };
@@ -81,6 +96,14 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
   await page.getByRole("button", { name: /NV-DEMO/ }).click();
+  await page.getByLabel("Thực lĩnh muốn nhận").fill("13000000");
+  await page.getByRole("button", { name: "Tính phương án" }).click();
+  await expect(page.getByText("Đủ dư địa hợp pháp")).toBeVisible();
+  await expect(page.getByLabel("So sánh dòng tiền với file đã submit")).toContainText("+760.000");
+  await expect(page.locator(".cashflow-row.better", { hasText: "Thực lĩnh" })).toBeVisible();
+  await expect(page.locator(".cashflow-row.worse", { hasText: "Tổng chi phí công ty" })).toBeVisible();
+  await page.getByRole("button", { name: "Áp dụng đề xuất vào bản nháp" }).click();
+  await expect(page.getByLabel("Tiền ăn")).toHaveValue("760000");
   await page.getByLabel("Tiền ăn").fill("1200000");
   await page.getByLabel("Chuyên cần hoặc thưởng").fill("2000000");
   await page.getByLabel("Giờ làm thêm trong tuần").fill("12");
@@ -94,7 +117,7 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByText(/Đã gửi lên Google Drive/)).toBeVisible();
   if (testInfo.project.name === "mobile") {
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");
-    await expect(page.getByText("12.240.000")).toBeVisible();
+    await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("12.240.000");
     await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeHidden();
     await page.getByRole("button", { name: /Xem ô H15/ }).click();
     await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeVisible();

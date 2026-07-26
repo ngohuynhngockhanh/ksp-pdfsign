@@ -80,7 +80,7 @@ def test_meal_allowance_before_july_uses_730k_cap():
 
 def test_net_target_uses_lawful_meal_room_then_actual_overtime_without_more_tax_or_insurance():
     plan = plan_net_target(
-        month=date(2026, 7, 1), current_net=15_000_000, target_net=17_700_000,
+        month=date(2026, 7, 1), current_net=15_000_000, target_net=17_300_000,
         current_pit=350_000, current_employee_insurance=1_260_000,
         base_salary=12_000_000, standard_days=22, current_meal_allowance=500_000,
         available_weekday_ot_hours=16, available_weekend_ot_hours=8,
@@ -90,10 +90,10 @@ def test_net_target_uses_lawful_meal_room_then_actual_overtime_without_more_tax_
     assert plan["proposed"]["meal_allowance"] == 1_200_000
     assert plan["proposed"]["overtime_weekday_hours"] > 0
     assert plan["proposed"]["overtime_weekend_hours"] == 0
-    assert plan["proposed_net"] == 17_700_000
+    assert plan["proposed_net"] == 17_300_000
     assert plan["proposed_pit"] == plan["current_pit"] == 350_000
     assert plan["proposed_employee_insurance"] == plan["current_employee_insurance"] == 1_260_000
-    assert any(row["key"] == "net" and row["delta"] == 2_700_000 for row in plan["cashflows"])
+    assert any(row["key"] == "net" and row["delta"] == 2_300_000 for row in plan["cashflows"])
 
 
 def test_net_target_reports_shortfall_and_does_not_invent_unproven_allowances():
@@ -342,6 +342,7 @@ def test_import_net_target_returns_comparison_without_changing_workbook(client, 
               "AG15": 350_000, "AJ15": 11_390_000, "AK15": 15_820_000}
     for cell, value in values.items():
         sheet[cell] = value
+    sheet["N15"] = "=(D15/E15/8)*1.5*4"
     workbook.save(target / "payroll-target-demo.xlsx")
     monkeypatch.setattr(
         payroll_api.subprocess, "run",
@@ -362,6 +363,7 @@ def test_import_net_target_returns_comparison_without_changing_workbook(client, 
     assert response.json()["proposed_pit"] == 350_000
     assert response.json()["proposed_employee_insurance"] == 1_260_000
     assert response.json()["proposed"]["meal_allowance"] == 1_200_000
+    assert response.json()["proposed"]["overtime_weekday_hours"] > 4
 
 
 def test_import_net_target_validates_employee_row(client):

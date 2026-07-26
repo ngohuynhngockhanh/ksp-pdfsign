@@ -236,6 +236,16 @@ export interface PayrollWorkbookDraft {
   drive_filename: string; updated_at: string;
 }
 
+export interface PayrollNetTargetPlan {
+  feasible: boolean; current_net: number; target_net: number; proposed_net: number; shortfall: number;
+  current_pit: number; proposed_pit: number;
+  current_employee_insurance: number; proposed_employee_insurance: number;
+  proposed: { meal_allowance: number; overtime_weekday_hours: number;
+    overtime_weekend_hours: number; attendance_bonus: null };
+  cashflows: { key: string; label: string; current: number; proposed: number; delta: number }[];
+  dependencies: string[];
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -1465,6 +1475,12 @@ export const api = {
   payrollImportDetail(id: number) { return req<PayrollImportDetail>(`/api/payroll/imports/${id}`); },
   payrollLatestDraft(importId: number) {
     return req<{ draft: PayrollWorkbookDraft | null }>(`/api/payroll/imports/${importId}/draft`);
+  },
+  payrollNetTarget(importId: number, body: { row: number; target_net: number;
+    available_weekday_ot_hours: number; available_weekend_ot_hours: number }) {
+    return req<PayrollNetTargetPlan>(`/api/payroll/imports/${importId}/net-target`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
   },
   payrollSaveDraft(importId: number, changes: PayrollWorkbookChange[]) {
     return req<PayrollWorkbookDraft>(`/api/payroll/imports/${importId}/draft`, {

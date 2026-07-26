@@ -94,6 +94,92 @@ def calculate_payroll(data: PayrollInput) -> PayrollResult:
     )))
 
 
+def plan_net_target(*, month: date, current_net: float, target_net: float,
+                    current_pit: float, current_employee_insurance: float,
+                    base_salary: float, standard_days: float, current_meal_allowance: float,
+                    available_weekday_ot_hours: float, available_weekend_ot_hours: float,
+                    current_weekday_ot_hours: float = 0,
+                    current_weekend_ot_hours: float = 0,
+                    current_overtime_pay: float = 0, current_gross: float = 0,
+                    current_employer_cost: float = 0) -> dict[str, Any]:
+    """Lập đề xuất thực lĩnh bảo thủ, chỉ dùng dư địa tiền ăn và giờ OT có thật."""
+    if standard_days <= 0:
+        raise ValueError("Ngày công chuẩn phải lớn hơn 0")
+    if min(available_weekday_ot_hours, available_weekend_ot_hours) < 0:
+        raise ValueError("Số giờ làm thêm thực tế không được âm")
+    values = (current_net, target_net, current_pit, current_employee_insurance,
+              base_salary, current_meal_allowance, current_overtime_pay,
+              current_gross, current_employer_cost)
+    if min(values) < 0:
+        raise ValueError("Dữ liệu tiền lương không được âm")
+
+    requested = max(_money(target_net) - _money(current_net), 0)
+    remaining = requested
+    meal_cap = 1_200_000 if month >= date(2026, 7, 1) else 730_000
+    meal_room = max(meal_cap - current_meal_allowance, 0)
+    meal_increase = min(remaining, meal_room)
+    remaining -= meal_increase
+
+    hourly_rate = base_salary / standard_days / 8
+    weekday_rate = hourly_rate * 1.5
+    weekend_rate = hourly_rate * 2
+    weekday_hours = min(available_weekday_ot_hours,
+                        remaining / weekday_rate if weekday_rate else 0)
+    weekday_increase = min(remaining, _money(weekday_hours * weekday_rate))
+    remaining -= weekday_increase
+    weekend_hours = min(available_weekend_ot_hours,
+                        remaining / weekend_rate if weekend_rate else 0)
+    weekend_increase = min(remaining, _money(weekend_hours * weekend_rate))
+    remaining -= weekend_increase
+
+    increase = requested - remaining
+    proposed_net = _money(current_net + increase)
+    shortfall = _money(max(target_net - proposed_net, 0))
+    proposed_meal = _money(current_meal_allowance + meal_increase)
+    total_weekday_hours = round(current_weekday_ot_hours + weekday_hours, 4)
+    total_weekend_hours = round(current_weekend_ot_hours + weekend_hours, 4)
+    cashflows = [
+        {"key": "meal", "label": "Tiền ăn", "current": _money(current_meal_allowance),
+         "proposed": proposed_meal, "delta": _money(meal_increase)},
+        {"key": "overtime", "label": "Tiền làm thêm hợp lệ", "current": _money(current_overtime_pay),
+         "proposed": _money(current_overtime_pay + weekday_increase + weekend_increase),
+         "delta": _money(weekday_increase + weekend_increase)},
+        {"key": "gross", "label": "Tổng thu nhập (gross)", "current": _money(current_gross),
+         "proposed": _money(current_gross + increase), "delta": _money(increase)},
+        {"key": "pit", "label": "Thuế TNCN", "current": _money(current_pit),
+         "proposed": _money(current_pit), "delta": 0},
+        {"key": "insurance", "label": "BHXH người lao động",
+         "current": _money(current_employee_insurance),
+         "proposed": _money(current_employee_insurance), "delta": 0},
+        {"key": "net", "label": "Thực lĩnh", "current": _money(current_net),
+         "proposed": proposed_net, "delta": _money(increase)},
+        {"key": "employer_cost", "label": "Tổng chi phí công ty",
+         "current": _money(current_employer_cost),
+         "proposed": _money(current_employer_cost + increase), "delta": _money(increase)},
+    ]
+    return {
+        "feasible": shortfall == 0,
+        "current_net": _money(current_net), "target_net": _money(target_net),
+        "proposed_net": proposed_net, "shortfall": shortfall,
+        "current_pit": _money(current_pit), "proposed_pit": _money(current_pit),
+        "current_employee_insurance": _money(current_employee_insurance),
+        "proposed_employee_insurance": _money(current_employee_insurance),
+        "proposed": {
+            "meal_allowance": proposed_meal,
+            "overtime_weekday_hours": total_weekday_hours,
+            "overtime_weekend_hours": total_weekend_hours,
+            "attendance_bonus": None,
+        },
+        "cashflows": cashflows,
+        "dependencies": [
+            "Tiền ăn phải được quy định trong hợp đồng lao động, thỏa ước hoặc quy chế công ty.",
+            "Giờ làm thêm chỉ áp dụng theo bảng chấm công và phê duyệt làm thêm thực tế.",
+            "Khoản hoàn chi điện thoại, xăng xe chỉ xem xét riêng khi có quy chế và chứng từ; hệ thống không tự cộng.",
+            "Kế toán phải review bản nháp trước khi gửi bản Excel mới lên Google Drive.",
+        ],
+    }
+
+
 def detect_month(*texts: str) -> str:
     combined = " ".join(texts).lower()
     match = re.search(r"(?:th[aá]ng\s*)?(1[0-2]|0?[1-9])\D+(20\d{2})", combined)

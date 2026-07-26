@@ -24,6 +24,30 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 - Workflow bat bien sau khoa: `draft -> reviewed -> locked`.
 - Override chi chap nhan khi co ly do va giu ket qua canonical de doi chieu.
 
+## Tinh nang thuc linh muc tieu
+
+- Endpoint: `POST /api/payroll/imports/{import_id}/net-target`.
+- UI nam trong form sua tung nhan vien cua file Excel da sync.
+- Engine `plan_net_target` chi phan bo phan tang qua du dia tien an mien thue va gio lam them thuc te.
+- Gio lam them phai do nguoi dung khai theo bang cham cong/phe duyet; he thong khong tu tao gio.
+- Thuong chuyen can, hoan chi dien thoai va xang xe khong duoc tu dong cong de dat muc thuc linh.
+- Neu du dia hop phap khong du, API tra `feasible=false` va `shortfall`; UI khong cho ap dung de tranh tao so lieu khong co can cu.
+- Ket qua luon doi chieu va giu nguyen TNCN, BHXH nguoi lao dong so voi file submit.
+- Bang `cashflows` tom tat tien an, lam them, gross, TNCN, BHXH, thuc linh va tong chi phi cong ty.
+- Mau xanh la khoan co loi cho nguoi lao dong; mau do la chi phi cong ty tang; mau trung tinh la khoan khong doi.
+- Nut ap dung chi dien de xuat vao form. Nguoi dung van phai luu nhap, chay review, sau do moi gui ban moi len Drive.
+
+Payload mau:
+
+```json
+{
+  "row": 15,
+  "target_net": 20000000,
+  "available_weekday_ot_hours": 12,
+  "available_weekend_ot_hours": 8
+}
+```
+
 ## Nguon chinh thuc da doi chieu
 
 - https://xaydungchinhsach.chinhphu.vn/noi-dung-chinh-cua-luat-thue-thu-nhap-ca-nhan-so-109-2025-qh15-119260123144204743.htm

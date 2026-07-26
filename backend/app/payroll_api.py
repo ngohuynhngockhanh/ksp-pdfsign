@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 from datetime import date, datetime, timezone
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,7 +19,8 @@ from .auth import CurrentUser, require_admin
 from .config import get_settings
 from .db import (JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod,
                  PayrollWorkbookDraft, get_session)
-from .payroll import PayrollInput, apply_workbook_changes, calculate_payroll, review_workbook
+from .payroll import (PayrollInput, apply_workbook_changes, calculate_payroll,
+                      plan_net_target, review_workbook)
 from . import audit
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -84,6 +86,13 @@ class WorkbookDraftIn(BaseModel):
         if len(rows) != len(set(rows)):
             raise ValueError("Mỗi nhân viên chỉ được xuất hiện một lần trong bản nháp")
         return self
+
+
+class NetTargetIn(BaseModel):
+    row: int = Field(ge=15, le=200)
+    target_net: float = Field(gt=0, le=1_000_000_000)
+    available_weekday_ot_hours: float = Field(default=0, ge=0, le=400)
+    available_weekend_ot_hours: float = Field(default=0, ge=0, le=400)
 
 
 def _loads(value: str, default):
@@ -265,6 +274,59 @@ def _import_source(row: PayrollImport) -> Path:
     if not path.is_file():
         raise HTTPException(404, "Không tìm thấy tệp Excel gốc trên máy chủ")
     return path
+
+
+def _formula_hours(value: object) -> float:
+    if not isinstance(value, str) or not value.startswith("="):
+        return 0
+    match = re.search(r"\*\s*(?:\(\s*)?([0-9]+(?:\.[0-9]+)?)(?:\s*\*\s*([0-9]+(?:\.[0-9]+)?))?\s*\)?\s*$", value)
+    if not match:
+        return 0
+    return float(match.group(1)) * float(match.group(2) or 1)
+
+
+@router.post("/imports/{import_id}/net-target")
+def import_net_target(import_id: int, payload: NetTargetIn,
+                      db: Session = Depends(get_session),
+                      _: CurrentUser = Depends(require_admin)):
+    imported = db.get(PayrollImport, import_id)
+    if not imported:
+        raise HTTPException(404, "Không tìm thấy tệp bảng lương")
+    source = _import_source(imported)
+    # Khong dung read-only: mot so file cu khai bao sai dimension A1:A1000.
+    values_book = load_workbook(source, data_only=True, read_only=False)
+    formulas_book = load_workbook(source, data_only=False, read_only=False)
+    values = values_book[values_book.sheetnames[0]]
+    formulas = formulas_book[formulas_book.sheetnames[0]]
+    row = payload.row
+    if values.cell(row, 2).value in (None, "") and values.cell(row, 3).value in (None, ""):
+        raise HTTPException(400, "Dòng đã chọn không có nhân viên")
+    month_text = imported.month or review_workbook(source)["month"]
+    if not month_text:
+        raise HTTPException(400, "Không xác định được tháng của bảng lương")
+
+    def number(column: int) -> float:
+        value = values.cell(row, column).value
+        return float(value) if isinstance(value, (int, float)) else 0
+
+    insurance = sum(number(column) for column in range(24, 28))
+    if insurance <= 0:
+        insurance = number(18) * .105
+    try:
+        return plan_net_target(
+            month=date.fromisoformat(month_text + "-01"), current_net=number(36),
+            target_net=payload.target_net, current_pit=number(33),
+            current_employee_insurance=insurance, base_salary=number(4),
+            standard_days=number(5), current_meal_allowance=number(9),
+            available_weekday_ot_hours=payload.available_weekday_ot_hours,
+            available_weekend_ot_hours=payload.available_weekend_ot_hours,
+            current_weekday_ot_hours=_formula_hours(formulas.cell(row, 14).value),
+            current_weekend_ot_hours=_formula_hours(formulas.cell(row, 15).value),
+            current_overtime_pay=number(14) + number(15), current_gross=number(17),
+            current_employer_cost=number(37),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _draft_out(row: PayrollWorkbookDraft) -> dict:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, PayrollImportDetail, PayrollImportItem, PayrollPeriod, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
+import { api, PayrollImportDetail, PayrollImportItem, PayrollNetTargetPlan, PayrollPeriod, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 const excelMoney = (value = "") => {
@@ -21,6 +21,10 @@ export function Payroll() {
   const [editRow, setEditRow] = useState<number | null>(null);
   const [draftChanges, setDraftChanges] = useState<Record<number, PayrollWorkbookChange>>({});
   const [draftBusy, setDraftBusy] = useState(false);
+  const [targetNet, setTargetNet] = useState("");
+  const [weekdayHours, setWeekdayHours] = useState("");
+  const [weekendHours, setWeekendHours] = useState("");
+  const [netPlan, setNetPlan] = useState<PayrollNetTargetPlan | null>(null);
 
   function openFinding(cell = "") {
     if (!cell || !importDetail) return;
@@ -48,6 +52,31 @@ export function Payroll() {
       ...current[row], ...patch, row,
       reason: patch.reason ?? current[row]?.reason ?? "Điều chỉnh theo tình hình công việc trong tháng",
     }}));
+  }
+
+  async function calculateTargetNet() {
+    if (!importDetail || !editRow) return;
+    if (!targetNet || Number(targetNet) <= 0) { setMessage("Vui lòng nhập số thực lĩnh mục tiêu hợp lệ."); return; }
+    try {
+      setDraftBusy(true); setMessage("");
+      setNetPlan(await api.payrollNetTarget(importDetail.id, {
+        row: editRow, target_net: Number(targetNet),
+        available_weekday_ot_hours: Number(weekdayHours || 0),
+        available_weekend_ot_hours: Number(weekendHours || 0),
+      }));
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setDraftBusy(false); }
+  }
+
+  function applyTargetNetPlan() {
+    if (!editRow || !netPlan) return;
+    updateDraftChange(editRow, {
+      meal_allowance: netPlan.proposed.meal_allowance,
+      overtime_weekday_hours: netPlan.proposed.overtime_weekday_hours,
+      overtime_weekend_hours: netPlan.proposed.overtime_weekend_hours,
+      reason: "Điều chỉnh theo thực lĩnh mục tiêu, giờ làm thêm thực tế và hồ sơ hợp lệ",
+    });
+    setMessage("Đã đưa đề xuất vào biểu mẫu. Hãy kiểm tra chứng từ rồi lưu bản nháp.");
   }
 
   async function saveWorkbookDraft() {
@@ -150,7 +179,7 @@ export function Payroll() {
         <div className="payroll-import-list">{imports.map((item) => <button key={item.id} onClick={async () => {
           try {
             const [detail, latest] = await Promise.all([api.payrollImportDetail(item.id), api.payrollLatestDraft(item.id)]);
-            setImportDetail(detail); setDraft(latest.draft); setDraftChanges({}); setEditRow(null);
+            setImportDetail(detail); setDraft(latest.draft); setDraftChanges({}); setEditRow(null); setNetPlan(null);
             setShowRawMobile(false); setFocusedCell("");
           } catch (error) { setMessage((error as Error).message); }
         }}><strong>{item.month || "Chưa rõ tháng"}</strong><span>{item.filename}</span><small>{item.findings.length} cảnh báo · Xem bảng →</small></button>)}</div>}
@@ -167,6 +196,7 @@ export function Payroll() {
         <div className="payroll-edit-people">{importDetail.snapshot.grid.slice(14).map((row, index) => ({ row, excelRow: index + 15 })).filter(({ row }) => row[1] || row[2]).map(({ row, excelRow }) =>
           <button key={excelRow} className={editRow === excelRow ? "active" : ""} onClick={() => {
             setEditRow(excelRow);
+            setNetPlan(null); setTargetNet(row[35] || ""); setWeekdayHours(""); setWeekendHours("");
             if (!draftChanges[excelRow]) updateDraftChange(excelRow, { meal_allowance: numberValue(row[8]), attendance_bonus: numberValue(row[12]) });
           }}><strong>{row[1]}</strong><span>{row[2]}</span></button>)}</div>
         {editRow && (() => {
@@ -178,6 +208,35 @@ export function Payroll() {
             <label>Giờ làm thêm trong tuần<input aria-label="Giờ làm thêm trong tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekday_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekday_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
             <label>Giờ làm thêm cuối tuần<input aria-label="Giờ làm thêm cuối tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekend_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekend_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
             <label className="edit-reason">Lý do điều chỉnh<textarea aria-label="Lý do điều chỉnh" value={change.reason || ""} onChange={(e) => updateDraftChange(editRow, { reason: e.target.value })} /></label>
+            <section className="net-target-panel">
+              <div><p className="eyebrow">TÍNH NHANH HỢP PHÁP</p><h4>Thực lĩnh mục tiêu</h4>
+                <p>Chỉ dùng dư địa tiền ăn và giờ làm thêm có bảng chấm công. Không tự tăng thưởng hoặc khoản hoàn chi chưa có chứng từ.</p></div>
+              <div className="net-target-inputs">
+                <label>Thực lĩnh muốn nhận<input aria-label="Thực lĩnh muốn nhận" type="number" min="1" value={targetNet} onChange={(e) => setTargetNet(e.target.value)} /></label>
+                <label>Giờ tăng ca thường có thật<input aria-label="Giờ tăng ca thường có thật" type="number" min="0" max="400" value={weekdayHours} onChange={(e) => setWeekdayHours(e.target.value)} /></label>
+                <label>Giờ tăng ca cuối tuần có thật<input aria-label="Giờ tăng ca cuối tuần có thật" type="number" min="0" max="400" value={weekendHours} onChange={(e) => setWeekendHours(e.target.value)} /></label>
+                <button type="button" disabled={draftBusy} onClick={calculateTargetNet}>Tính phương án</button>
+              </div>
+              {netPlan && <div className="net-target-result" aria-live="polite">
+                <div className={`net-target-status ${netPlan.feasible ? "ok" : "short"}`}>
+                  <strong>{netPlan.feasible ? "Đủ dư địa hợp pháp" : `Còn thiếu ${money(netPlan.shortfall)} đồng`}</strong>
+                  <span>Thuế TNCN và BHXH người lao động đều giữ nguyên.</span>
+                </div>
+                <div className="cashflow-table" aria-label="So sánh dòng tiền với file đã submit">
+                  <div className="cashflow-head"><span>Khoản</span><span>File submit</span><span>Đề xuất</span><span>Chênh lệch</span></div>
+                  {netPlan.cashflows.map((row) => {
+                    const beneficial = row.key === "net" || row.key === "meal" || row.key === "overtime";
+                    const tone = row.delta === 0 ? "same" : beneficial ? "better" : "worse";
+                    return <div className={`cashflow-row ${tone}`} key={row.key}>
+                      <strong>{row.label}</strong><span>{money(row.current)}</span><span>{money(row.proposed)}</span>
+                      <b>{row.delta > 0 ? "+" : ""}{money(row.delta)}</b>
+                    </div>;
+                  })}
+                </div>
+                <div className="net-dependencies"><strong>Hồ sơ phụ thuộc</strong>{netPlan.dependencies.map((item) => <p key={item}>• {item}</p>)}</div>
+                <button type="button" disabled={!netPlan.feasible} onClick={applyTargetNetPlan}>Áp dụng đề xuất vào bản nháp</button>
+              </div>}
+            </section>
           </div>;
         })()}
         <div className="payroll-draft-actions">
