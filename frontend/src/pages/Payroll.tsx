@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, PayrollPeriod } from "../api";
+import { api, PayrollImportDetail, PayrollImportItem, PayrollPeriod } from "../api";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 
@@ -9,10 +9,13 @@ export function Payroll() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [message, setMessage] = useState("");
   const [syncJob, setSyncJob] = useState<Awaited<ReturnType<typeof api.payrollSyncStatus>>["job"]>(null);
+  const [imports, setImports] = useState<PayrollImportItem[]>([]);
+  const [importDetail, setImportDetail] = useState<PayrollImportDetail | null>(null);
 
   async function load(preferred?: number) {
-    const rows = await api.payrollPeriods();
+    const [rows, imported] = await Promise.all([api.payrollPeriods(), api.payrollImports()]);
     setPeriods(rows);
+    setImports(imported);
     setSelected(rows.find((row) => row.id === preferred) ?? rows[0] ?? null);
   }
 
@@ -40,7 +43,10 @@ export function Payroll() {
         const result = await api.payrollSyncStatus();
         setSyncJob(result.job);
         if (result.job?.status === "running") window.setTimeout(poll, 700);
-        else if (result.job?.status === "success") setMessage(`Đã đồng bộ ${result.job.stats.files?.length ?? 0} file, thêm mới ${result.job.stats.imported ?? 0}.`);
+        else if (result.job?.status === "success") {
+          setMessage(`Đã đồng bộ ${result.job.stats.files?.length ?? 0} file, thêm mới ${result.job.stats.imported ?? 0}.`);
+          await load(selected?.id);
+        }
         else if (result.job?.status === "failed") setMessage(result.job.error || "Đồng bộ thất bại.");
       };
       await poll();
@@ -76,6 +82,21 @@ export function Payroll() {
       {syncJob.status === "failed" && <small>{syncJob.error}</small>}
     </section>}
     {message && <div className="payroll-message">{message}</div>}
+    <section className="payroll-imports">
+      <header><div><p className="eyebrow">EXCEL ĐÃ SYNC</p><h2>Bảng lương từ Google Drive</h2></div><span>{imports.length} file</span></header>
+      {!imports.length ? <p className="muted">Chưa có file. Bấm Sync Drive để tải danh sách.</p> :
+        <div className="payroll-import-list">{imports.map((item) => <button key={item.id} onClick={async () => {
+          try { setImportDetail(await api.payrollImportDetail(item.id)); } catch (error) { setMessage((error as Error).message); }
+        }}><strong>{item.month || "Chưa rõ tháng"}</strong><span>{item.filename}</span><small>{item.findings.length} cảnh báo · Xem bảng →</small></button>)}</div>}
+    </section>
+    {importDetail && <section className="payroll-import-view">
+      <header><div><p className="eyebrow">{importDetail.snapshot.sheet}</p><h2>{importDetail.filename}</h2></div><button className="secondary" onClick={() => setImportDetail(null)}>Đóng</button></header>
+      {importDetail.findings.map((finding, index) => <div className={`finding ${finding.level}`} key={index}>{finding.message}</div>)}
+      <div className="excel-grid" tabIndex={0} aria-label={`Nội dung bảng lương ${importDetail.month}`}>
+        <table><tbody>{importDetail.snapshot.grid.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, colIndex) =>
+          <td key={colIndex} className={rowIndex >= 14 && colIndex >= 1 ? "payroll-data" : ""}>{cell}</td>)}</tr>)}</tbody></table>
+      </div>
+    </section>}
     <div className="payroll-layout">
       <aside className="payroll-periods"><h3>Các kỳ lương</h3>{periods.map((row) =>
         <button key={row.id} className={selected?.id === row.id ? "active" : ""} onClick={() => setSelected(row)}>

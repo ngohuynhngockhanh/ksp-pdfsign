@@ -211,6 +211,23 @@ async def upload_import(file: UploadFile = File(...), db: Session = Depends(get_
     return {"id": row.id, "filename": row.filename, **snapshot}
 
 
+@router.get("/imports")
+def list_imports(db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
+    rows = db.scalars(select(PayrollImport).order_by(PayrollImport.month.desc(), PayrollImport.id.desc())).all()
+    return [{"id": row.id, "month": row.month, "filename": row.filename,
+             "findings": _loads(row.findings, []), "imported_at": row.imported_at.isoformat()}
+            for row in rows]
+
+
+@router.get("/imports/{import_id}")
+def get_import(import_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
+    row = db.get(PayrollImport, import_id)
+    if not row:
+        raise HTTPException(404, "Khong tim thay file bang luong")
+    return {"id": row.id, "month": row.month, "filename": row.filename,
+            "findings": _loads(row.findings, []), "snapshot": _loads(row.snapshot, {})}
+
+
 def _update_job(db: Session, job: JobRun, **stats) -> None:
     current = _loads(job.stats, {})
     current.update(stats)
@@ -269,13 +286,18 @@ def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> d
                               "error": f"Khong doc duoc Excel: {type(exc).__name__}"})
             continue
         summaries.append({"filename": path.name, "findings": len(snapshot["findings"])})
-        if db.scalar(select(PayrollImport).where(PayrollImport.sha256 == digest)):
-            continue
-        db.add(PayrollImport(month=snapshot["month"], filename=path.name, drive_file_id=path.name,
-                             sha256=digest, snapshot=json.dumps(snapshot, ensure_ascii=False),
-                             findings=json.dumps(snapshot["findings"], ensure_ascii=False),
-                             imported_by=user_id))
-        imported += 1
+        existing = db.scalar(select(PayrollImport).where(PayrollImport.sha256 == digest))
+        if existing:
+            existing.month = snapshot["month"]
+            existing.filename = path.name
+            existing.snapshot = json.dumps(snapshot, ensure_ascii=False)
+            existing.findings = json.dumps(snapshot["findings"], ensure_ascii=False)
+        else:
+            db.add(PayrollImport(month=snapshot["month"], filename=path.name, drive_file_id=path.name,
+                                 sha256=digest, snapshot=json.dumps(snapshot, ensure_ascii=False),
+                                 findings=json.dumps(snapshot["findings"], ensure_ascii=False),
+                                 imported_by=user_id))
+            imported += 1
         if job:
             _update_job(db, job, phase="reviewing", progress=55 + round(index / max(len(paths), 1) * 40),
                         message=f"Đang kiểm tra file {index}/{len(paths)}")

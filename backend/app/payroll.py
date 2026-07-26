@@ -123,4 +123,9 @@ def review_workbook(path: Path) -> dict[str, Any]:
         meal = sheet.cell(row, 8).value
         if month >= "2026-07" and isinstance(meal, (int, float)) and meal > 1_200_000:
             findings.append({"level": "vang", "code": "meal_cap", "message": "Tien an vuot 1,2 trieu tu 01/07/2026."})
-    return {"sheet": sheet.title, "month": month, "rows": rows, "findings": findings}
+    grid: list[list[str]] = []
+    for row in sheet.iter_rows(min_row=1, max_row=min(max_row, 200), max_col=min(sheet.max_column or 1, 40)):
+        grid.append(["" if cell.value is None else str(cell.value) for cell in row])
+    return {"sheet": sheet.title, "month": month, "rows": rows,
+            "grid": grid, "ncols": max((len(row) for row in grid), default=0),
+            "findings": findings}

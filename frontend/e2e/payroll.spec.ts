@@ -14,6 +14,16 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     if (path === "/api/payroll/periods" && route.request().method() === "GET") {
       return route.fulfill({ json: period ? [period] : [] });
     }
+    if (path === "/api/payroll/imports" && route.request().method() === "GET") {
+      return route.fulfill({ json: [{ id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
+        imported_at: new Date().toISOString(), findings: [{ level: "do", code: "missing_kpcd", message: "Cột KPCĐ 2% đang trống." }] }] });
+    }
+    if (path === "/api/payroll/imports/9") {
+      return route.fulfill({ json: { id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
+        imported_at: new Date().toISOString(), findings: [{ level: "do", code: "missing_kpcd", message: "Cột KPCĐ 2% đang trống." }],
+        snapshot: { sheet: "Tháng 7-2026", month: "2026-07", ncols: 3,
+          grid: [["BẢNG LƯƠNG THÁNG 7/2026", "", ""], ["STT", "Mã NV", "Họ tên"], ["1", "NV-DEMO", "Nhân viên mẫu"]] } } });
+    }
     if (path === "/api/payroll/periods" && route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       period = { id: 1, month: body.month, version: 1, status: "draft", findings: [], lines: [{
@@ -49,6 +59,10 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByText("reviewed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Khóa sổ" }).click();
   await expect(page.getByText("locked", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
+  await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
+  await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toContainText("NV-DEMO");
 
   await page.getByRole("button", { name: "Sync Drive" }).click();
   await expect(page.getByRole("progressbar", { name: "Tiến độ đồng bộ Drive" })).toHaveAttribute("aria-valuenow", "100", { timeout: 5000 });

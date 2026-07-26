@@ -190,3 +190,10 @@ def test_drive_sync_runs_as_job_and_reports_progress(client, monkeypatch):
     assert job["status"] == "success"
     assert job["stats"]["progress"] == 100
     assert job["stats"]["files"] == ["payroll-demo.xlsx"]
+
+    imports = client.get("/api/payroll/imports")
+    assert imports.status_code == 200
+    assert imports.json()[0]["filename"] == "payroll-demo.xlsx"
+    detail = client.get(f"/api/payroll/imports/{imports.json()[0]['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["snapshot"]["grid"][14][1] == "NV-DEMO"

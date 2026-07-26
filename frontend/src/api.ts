@@ -216,6 +216,15 @@ export interface PayrollPeriod {
   lines: PayrollLine[];
 }
 
+export interface PayrollImportItem {
+  id: number; month: string; filename: string; imported_at: string;
+  findings: { level: "do" | "vang"; code: string; message: string }[];
+}
+
+export interface PayrollImportDetail extends PayrollImportItem {
+  snapshot: { sheet: string; month: string; grid: string[][]; ncols: number };
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -1441,6 +1450,8 @@ export const api = {
       finished_at: string; stats: { progress?: number; phase?: string; message?: string;
         files?: string[]; imported?: number; summaries?: { filename: string; findings: number; error?: string }[] } } }>("/api/payroll/sync-drive/status");
   },
+  payrollImports() { return req<PayrollImportItem[]>("/api/payroll/imports"); },
+  payrollImportDetail(id: number) { return req<PayrollImportDetail>(`/api/payroll/imports/${id}`); },
   payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
 };
 
