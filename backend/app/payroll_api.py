@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, require_admin
 from .config import get_settings
-from .db import JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod, get_session
-from .payroll import PayrollInput, calculate_payroll, review_workbook
+from .db import (JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod,
+                 PayrollWorkbookDraft, get_session)
+from .payroll import PayrollInput, apply_workbook_changes, calculate_payroll, review_workbook
 from . import audit
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -54,6 +55,34 @@ class LineIn(BaseModel):
     def require_reason(self):
         if self.override_net is not None and not self.override_reason.strip():
             raise ValueError("Giá trị ghi đè phải có lý do")
+        return self
+
+
+class WorkbookChange(BaseModel):
+    row: int = Field(ge=15, le=200)
+    meal_allowance: float | None = Field(default=None, ge=0)
+    attendance_bonus: float | None = Field(default=None, ge=0)
+    overtime_weekday_hours: float | None = Field(default=None, ge=0, le=400)
+    overtime_weekend_hours: float | None = Field(default=None, ge=0, le=400)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @model_validator(mode="after")
+    def has_change(self):
+        fields = (self.meal_allowance, self.attendance_bonus,
+                  self.overtime_weekday_hours, self.overtime_weekend_hours)
+        if all(value is None for value in fields):
+            raise ValueError("Phải nhập ít nhất một khoản cần điều chỉnh")
+        return self
+
+
+class WorkbookDraftIn(BaseModel):
+    changes: list[WorkbookChange] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_rows(self):
+        rows = [item.row for item in self.changes]
+        if len(rows) != len(set(rows)):
+            raise ValueError("Mỗi nhân viên chỉ được xuất hiện một lần trong bản nháp")
         return self
 
 
@@ -226,6 +255,98 @@ def get_import(import_id: int, db: Session = Depends(get_session), _: CurrentUse
         raise HTTPException(404, "Không tìm thấy tệp bảng lương")
     return {"id": row.id, "month": row.month, "filename": row.filename,
             "findings": _loads(row.findings, []), "snapshot": _loads(row.snapshot, {})}
+
+
+def _import_source(row: PayrollImport) -> Path:
+    settings = get_settings()
+    drive_path = settings.data_path / "payroll_drive" / row.drive_file_id
+    upload_path = settings.data_path / "payroll_imports" / f"{row.sha256}.xlsx"
+    path = drive_path if row.drive_file_id and drive_path.is_file() else upload_path
+    if not path.is_file():
+        raise HTTPException(404, "Không tìm thấy tệp Excel gốc trên máy chủ")
+    return path
+
+
+def _draft_out(row: PayrollWorkbookDraft) -> dict:
+    return {"id": row.id, "import_id": row.import_id, "status": row.status,
+            "changes": _loads(row.changes, []), "findings": _loads(row.findings, []),
+            "drive_filename": row.drive_filename, "updated_at": row.updated_at.isoformat()}
+
+
+@router.get("/imports/{import_id}/draft")
+def latest_draft(import_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
+    row = db.scalar(select(PayrollWorkbookDraft).where(PayrollWorkbookDraft.import_id == import_id)
+                    .order_by(PayrollWorkbookDraft.id.desc()))
+    return {"draft": _draft_out(row) if row else None}
+
+
+@router.post("/imports/{import_id}/draft")
+def save_draft(import_id: int, payload: WorkbookDraftIn, db: Session = Depends(get_session),
+               user: CurrentUser = Depends(require_admin)):
+    imported = db.get(PayrollImport, import_id)
+    if not imported:
+        raise HTTPException(404, "Không tìm thấy tệp bảng lương")
+    source = _import_source(imported)
+    change_values = [item.model_dump() for item in payload.changes]
+    draft = PayrollWorkbookDraft(import_id=import_id, status="draft", created_by=user.id,
+                                 changes=json.dumps(change_values, ensure_ascii=False),
+                                 updated_at=datetime.now(timezone.utc))
+    db.add(draft); db.flush()
+    output = get_settings().data_path / "payroll_drafts" / f"draft-{draft.id}.xlsx"
+    apply_workbook_changes(source, output, change_values)
+    draft.local_path = str(output)
+    db.commit(); db.refresh(draft)
+    audit.record(db, user.username, user.role, user.ip, "payroll_draft_save", f"draft:{draft.id}",
+                 f"{len(payload.changes)} dòng thay đổi")
+    return _draft_out(draft)
+
+
+@router.post("/drafts/{draft_id}/review")
+def review_draft(draft_id: int, db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
+    draft = db.get(PayrollWorkbookDraft, draft_id)
+    if not draft or not Path(draft.local_path).is_file():
+        raise HTTPException(404, "Không tìm thấy bản nháp bảng lương")
+    if draft.status != "draft":
+        raise HTTPException(409, "Chỉ bản nháp mới được chạy review")
+    snapshot = review_workbook(Path(draft.local_path))
+    draft.findings = json.dumps(snapshot["findings"], ensure_ascii=False)
+    draft.status = "reviewed"
+    draft.reviewed_at = datetime.now(timezone.utc); draft.updated_at = draft.reviewed_at
+    db.commit(); db.refresh(draft)
+    audit.record(db, user.username, user.role, user.ip, "payroll_draft_review", f"draft:{draft.id}",
+                 f"{len(snapshot['findings'])} cảnh báo")
+    return _draft_out(draft)
+
+
+@router.post("/drafts/{draft_id}/upload-drive")
+def upload_draft(draft_id: int, db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
+    draft = db.get(PayrollWorkbookDraft, draft_id)
+    if not draft or not Path(draft.local_path).is_file():
+        raise HTTPException(404, "Không tìm thấy bản nháp bảng lương")
+    if draft.status != "reviewed":
+        raise HTTPException(409, "Phải chạy review trước khi gửi lên Google Drive")
+    if any(item.get("level") == "do" for item in _loads(draft.findings, [])):
+        raise HTTPException(409, "Bản nháp vẫn còn cảnh báo mức đỏ")
+    imported = db.get(PayrollImport, draft.import_id)
+    stem = Path(imported.filename).stem
+    filename = f"{stem} - đã review - bản {draft.id}.xlsx"
+    local_rclone = Path.home() / ".local" / "bin" / "rclone"
+    rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
+    if not rclone:
+        raise HTTPException(503, "Không tìm thấy rclone trên máy chủ")
+    command = [rclone, "copyto", draft.local_path, f"vnmap-drive:{filename}",
+               "--drive-root-folder-id", "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI", "--bind", "0.0.0.0"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(504, "Gửi bản nháp lên Drive vượt quá thời gian chờ") from exc
+    if result.returncode:
+        raise HTTPException(502, f"Không gửi được bản nháp lên Drive: {result.stderr[-300:]}")
+    draft.status = "uploaded"; draft.drive_filename = filename
+    draft.uploaded_at = datetime.now(timezone.utc); draft.updated_at = draft.uploaded_at
+    db.commit(); db.refresh(draft)
+    audit.record(db, user.username, user.role, user.ip, "payroll_draft_upload", f"draft:{draft.id}", filename)
+    return _draft_out(draft)
 
 
 def _update_job(db: Session, job: JobRun, **stats) -> None:

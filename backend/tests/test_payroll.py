@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from app.payroll import (
     PayrollInput,
@@ -246,6 +246,7 @@ def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
     sheet["D15"] = 12_000_000
     sheet["E15"] = 26
     sheet["I15"] = 1_500_000
+    sheet["S15"] = 240_000
     workbook.save(target / "payroll-edit-demo.xlsx")
     monkeypatch.setattr(
         payroll_api.subprocess, "run",
@@ -273,4 +274,4 @@ def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
     uploaded = client.post(f"/api/payroll/drafts/{draft_id}/upload-drive")
     assert uploaded.status_code == 200, uploaded.text
     assert uploaded.json()["status"] == "uploaded"
-    assert uploaded.json()["drive_filename"].endswith("- da review.xlsx")
+    assert "- đã review - bản " in uploaded.json()["drive_filename"]

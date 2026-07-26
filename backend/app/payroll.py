@@ -147,3 +147,30 @@ def review_workbook(path: Path) -> dict[str, Any]:
     return {"sheet": sheet.title, "month": month, "rows": rows,
             "grid": grid, "ncols": max((len(row) for row in grid), default=0),
             "findings": findings}
+
+
+def apply_workbook_changes(source: Path, output: Path, changes: list[dict[str, Any]]) -> None:
+    """Tạo bản Excel mới, giữ nguyên bản Drive đã sync và công thức còn lại."""
+    workbook = load_workbook(source, data_only=False)
+    sheet = workbook[workbook.sheetnames[0]]
+    for change in changes:
+        row = int(change["row"])
+        if row < 15 or row > 200:
+            raise ValueError("Dòng nhân viên không hợp lệ")
+        if sheet.cell(row, 2).value in (None, "") and sheet.cell(row, 3).value in (None, ""):
+            raise ValueError(f"Dòng {row} không có nhân viên")
+        if change.get("meal_allowance") is not None:
+            sheet.cell(row, 9).value = float(change["meal_allowance"])
+        if change.get("attendance_bonus") is not None:
+            sheet.cell(row, 13).value = float(change["attendance_bonus"])
+        if change.get("overtime_weekday_hours") is not None:
+            hours = float(change["overtime_weekday_hours"])
+            sheet.cell(row, 14).value = f"=(D{row}/E{row}/8)*1.5*{hours:g}"
+        if change.get("overtime_weekend_hours") is not None:
+            hours = float(change["overtime_weekend_hours"])
+            sheet.cell(row, 15).value = f"=(D{row}/E{row}/8)*2*{hours:g}"
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    workbook.calculation.calcMode = "auto"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(output)

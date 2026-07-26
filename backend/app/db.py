@@ -312,6 +312,23 @@ class PayrollImport(Base):
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class PayrollWorkbookDraft(Base):
+    __tablename__ = "payroll_workbook_drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey("payroll_imports.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    changes: Mapped[str] = mapped_column(Text, default="[]")
+    findings: Mapped[str] = mapped_column(Text, default="[]")
+    local_path: Mapped[str] = mapped_column(String(500), default="")
+    drive_filename: Mapped[str] = mapped_column(String(255), default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # Ton kho (ke toan kho)
 # ---------------------------------------------------------------------------

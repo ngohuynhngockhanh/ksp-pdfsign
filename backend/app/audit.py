@@ -65,6 +65,9 @@ ACTION_LABELS = {
     "inv_production_void": "Hủy ghi sổ lệnh SX",
     "inv_production_delete": "Xóa lệnh SX",
     "inv_recipe_create": "Lưu công thức SX",
+    "payroll_draft_save": "Lưu bản nháp bảng lương",
+    "payroll_draft_review": "Review bản nháp bảng lương",
+    "payroll_draft_upload": "Gửi bảng lương lên Google Drive",
 }
 
 

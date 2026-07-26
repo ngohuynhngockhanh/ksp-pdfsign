@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 test("admin creates, reviews and locks an anonymized payroll period", async ({ page }, testInfo) => {
   let period: any = null;
+  let workbookDraft: any = null;
   let syncPolls = 0;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -24,6 +25,22 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
         snapshot: { sheet: "Tháng 7-2026", month: "2026-07", ncols: 40,
           grid: [...Array.from({ length: 14 }, () => Array(40).fill("")),
             ["1", "NV-DEMO", "Nhân viên mẫu", "12000000", "22", "22", "12000000", "1500000", "", "", "", "", "", "", "", "", "13500000", "12000000", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "0", "", "", "12240000", "16080000", "", "", ""]] } } });
+    }
+    if (path === "/api/payroll/imports/9/draft" && route.request().method() === "GET") {
+      return route.fulfill({ json: { draft: workbookDraft } });
+    }
+    if (path === "/api/payroll/imports/9/draft" && route.request().method() === "POST") {
+      workbookDraft = { id: 12, import_id: 9, status: "draft", changes: route.request().postDataJSON().changes,
+        findings: [], drive_filename: "", updated_at: new Date().toISOString() };
+      return route.fulfill({ json: workbookDraft });
+    }
+    if (path === "/api/payroll/drafts/12/review") {
+      workbookDraft = { ...workbookDraft, status: "reviewed", findings: [] };
+      return route.fulfill({ json: workbookDraft });
+    }
+    if (path === "/api/payroll/drafts/12/upload-drive") {
+      workbookDraft = { ...workbookDraft, status: "uploaded", drive_filename: "Bang-luong-07-2026 - da review.xlsx" };
+      return route.fulfill({ json: workbookDraft });
     }
     if (path === "/api/payroll/periods" && route.request().method() === "POST") {
       const body = route.request().postDataJSON();
@@ -63,6 +80,18 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
 
   await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
+  await page.getByRole("button", { name: /NV-DEMO/ }).click();
+  await page.getByLabel("Tiền ăn").fill("1200000");
+  await page.getByLabel("Chuyên cần hoặc thưởng").fill("2000000");
+  await page.getByLabel("Giờ làm thêm trong tuần").fill("12");
+  await page.getByLabel("Giờ làm thêm cuối tuần").fill("8");
+  await page.getByLabel("Lý do điều chỉnh").fill("Tháng có nhiều hợp đồng");
+  await page.getByRole("button", { name: "Lưu bản nháp" }).click();
+  await expect(page.getByText("Đã lưu bản nháp.")).toBeVisible();
+  await page.getByRole("button", { name: "Chạy lại review" }).click();
+  await expect(page.getByText("Review xong: 0 cảnh báo.")).toBeVisible();
+  await page.getByRole("button", { name: "Gửi lên Google Drive" }).click();
+  await expect(page.getByText(/Đã gửi lên Google Drive/)).toBeVisible();
   if (testInfo.project.name === "mobile") {
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");
     await expect(page.getByText("12.240.000")).toBeVisible();

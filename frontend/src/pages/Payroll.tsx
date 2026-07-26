@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, PayrollImportDetail, PayrollImportItem, PayrollPeriod } from "../api";
+import { api, PayrollImportDetail, PayrollImportItem, PayrollPeriod, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 const excelMoney = (value = "") => {
@@ -17,6 +17,10 @@ export function Payroll() {
   const [importDetail, setImportDetail] = useState<PayrollImportDetail | null>(null);
   const [showRawMobile, setShowRawMobile] = useState(false);
   const [focusedCell, setFocusedCell] = useState("");
+  const [draft, setDraft] = useState<PayrollWorkbookDraft | null>(null);
+  const [editRow, setEditRow] = useState<number | null>(null);
+  const [draftChanges, setDraftChanges] = useState<Record<number, PayrollWorkbookChange>>({});
+  const [draftBusy, setDraftBusy] = useState(false);
 
   function openFinding(cell = "") {
     if (!cell || !importDetail) return;
@@ -32,6 +36,42 @@ export function Payroll() {
     for (let value = col + 1; value > 0; value = Math.floor((value - 1) / 26))
       name = String.fromCharCode(65 + ((value - 1) % 26)) + name;
     return `${name}${row + 1}`;
+  }
+
+  function numberValue(value = "") {
+    const parsed = Number(String(value).replace(/[,.\s]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function updateDraftChange(row: number, patch: Partial<PayrollWorkbookChange>) {
+    setDraftChanges((current) => ({ ...current, [row]: {
+      ...current[row], ...patch, row,
+      reason: patch.reason ?? current[row]?.reason ?? "Điều chỉnh theo tình hình công việc trong tháng",
+    }}));
+  }
+
+  async function saveWorkbookDraft() {
+    if (!importDetail) return;
+    const changes = Object.values(draftChanges);
+    if (!changes.length) { setMessage("Bạn chưa thay đổi dữ liệu nhân viên nào."); return; }
+    try {
+      setDraftBusy(true);
+      const saved = await api.payrollSaveDraft(importDetail.id, changes);
+      setDraft(saved); setMessage("Đã lưu bản nháp. Hãy chạy review trước khi gửi lên Drive.");
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setDraftBusy(false); }
+  }
+
+  async function reviewWorkbookDraft() {
+    if (!draft) return;
+    try { setDraftBusy(true); const reviewed = await api.payrollReviewDraft(draft.id); setDraft(reviewed); setMessage(`Review xong: ${reviewed.findings.length} cảnh báo.`); }
+    catch (error) { setMessage((error as Error).message); } finally { setDraftBusy(false); }
+  }
+
+  async function uploadWorkbookDraft() {
+    if (!draft) return;
+    try { setDraftBusy(true); const uploaded = await api.payrollUploadDraft(draft.id); setDraft(uploaded); setMessage(`Đã gửi lên Google Drive: ${uploaded.drive_filename}`); }
+    catch (error) { setMessage((error as Error).message); } finally { setDraftBusy(false); }
   }
 
   async function load(preferred?: number) {
@@ -108,7 +148,11 @@ export function Payroll() {
       <header><div><p className="eyebrow">EXCEL ĐÃ SYNC</p><h2>Bảng lương từ Google Drive</h2></div><span>{imports.length} file</span></header>
       {!imports.length ? <p className="muted">Chưa có file. Bấm Sync Drive để tải danh sách.</p> :
         <div className="payroll-import-list">{imports.map((item) => <button key={item.id} onClick={async () => {
-          try { setImportDetail(await api.payrollImportDetail(item.id)); setShowRawMobile(false); setFocusedCell(""); } catch (error) { setMessage((error as Error).message); }
+          try {
+            const [detail, latest] = await Promise.all([api.payrollImportDetail(item.id), api.payrollLatestDraft(item.id)]);
+            setImportDetail(detail); setDraft(latest.draft); setDraftChanges({}); setEditRow(null);
+            setShowRawMobile(false); setFocusedCell("");
+          } catch (error) { setMessage((error as Error).message); }
         }}><strong>{item.month || "Chưa rõ tháng"}</strong><span>{item.filename}</span><small>{item.findings.length} cảnh báo · Xem bảng →</small></button>)}</div>}
     </section>
     {importDetail && <section className="payroll-import-view">
@@ -116,6 +160,33 @@ export function Payroll() {
       {importDetail.findings.map((finding, index) => <button className={`finding finding-jump ${finding.level}`} key={index} onClick={() => openFinding(finding.cells?.[0])}>
         <span>{finding.message}</span>{finding.cells?.length ? <strong>Xem ô {finding.cells[0]} →</strong> : null}
       </button>)}
+      <section className="payroll-edit-panel">
+        <div className="payroll-edit-intro"><div><h3>Điều chỉnh và lưu nháp</h3><p>Chọn nhân viên, nhập khoản cần sửa. Ô làm thêm giờ để trống sẽ giữ nguyên công thức cũ.</p></div>
+          {draft && <span className={`draft-state ${draft.status}`}>{draft.status === "draft" ? "Bản nháp" : draft.status === "reviewed" ? "Đã review" : "Đã gửi Drive"}</span>}
+        </div>
+        <div className="payroll-edit-people">{importDetail.snapshot.grid.slice(14).map((row, index) => ({ row, excelRow: index + 15 })).filter(({ row }) => row[1] || row[2]).map(({ row, excelRow }) =>
+          <button key={excelRow} className={editRow === excelRow ? "active" : ""} onClick={() => {
+            setEditRow(excelRow);
+            if (!draftChanges[excelRow]) updateDraftChange(excelRow, { meal_allowance: numberValue(row[8]), attendance_bonus: numberValue(row[12]) });
+          }}><strong>{row[1]}</strong><span>{row[2]}</span></button>)}</div>
+        {editRow && (() => {
+          const source = importDetail.snapshot.grid[editRow - 1] || [];
+          const change = draftChanges[editRow] || { row: editRow, reason: "" };
+          return <div className="payroll-edit-form">
+            <label>Tiền ăn<input aria-label="Tiền ăn" type="number" min="0" value={change.meal_allowance ?? numberValue(source[8])} onChange={(e) => updateDraftChange(editRow, { meal_allowance: Number(e.target.value) })} /><small>Mức miễn thuế từ 01/07/2026: tối đa 1.200.000 đồng.</small></label>
+            <label>Chuyên cần / thưởng<input aria-label="Chuyên cần hoặc thưởng" type="number" min="0" value={change.attendance_bonus ?? numberValue(source[12])} onChange={(e) => updateDraftChange(editRow, { attendance_bonus: Number(e.target.value) })} /></label>
+            <label>Giờ làm thêm trong tuần<input aria-label="Giờ làm thêm trong tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekday_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekday_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
+            <label>Giờ làm thêm cuối tuần<input aria-label="Giờ làm thêm cuối tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekend_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekend_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
+            <label className="edit-reason">Lý do điều chỉnh<textarea aria-label="Lý do điều chỉnh" value={change.reason || ""} onChange={(e) => updateDraftChange(editRow, { reason: e.target.value })} /></label>
+          </div>;
+        })()}
+        <div className="payroll-draft-actions">
+          <button disabled={draftBusy || !Object.keys(draftChanges).length} onClick={saveWorkbookDraft}>{draftBusy ? "Đang xử lý…" : "Lưu bản nháp"}</button>
+          <button className="secondary" disabled={draftBusy || !draft || draft.status !== "draft"} onClick={reviewWorkbookDraft}>Chạy lại review</button>
+          <button className="drive-upload" disabled={draftBusy || !draft || draft.status !== "reviewed" || draft.findings.some((finding) => finding.level === "do")} onClick={uploadWorkbookDraft}>Gửi lên Google Drive</button>
+        </div>
+        {draft?.findings.map((finding, index) => <div key={index} className={`finding ${finding.level}`}>{finding.message}</div>)}
+      </section>
       <div className="payroll-mobile-excel" aria-label={`Tóm tắt bảng lương ${importDetail.month}`}>
         {importDetail.snapshot.grid.slice(14).filter((row) => row[1] || row[2]).map((row, index) => <article key={index}>
           <header><div><strong>{row[1] || `Dòng ${index + 15}`}</strong><span>{row[2] || "Chưa có tên"}</span></div><b>{excelMoney(row[35])}<small>Thực lĩnh</small></b></header>

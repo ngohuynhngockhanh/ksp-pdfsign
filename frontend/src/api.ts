@@ -225,6 +225,17 @@ export interface PayrollImportDetail extends PayrollImportItem {
   snapshot: { sheet: string; month: string; grid: string[][]; ncols: number };
 }
 
+export interface PayrollWorkbookChange {
+  row: number; meal_allowance?: number; attendance_bonus?: number;
+  overtime_weekday_hours?: number; overtime_weekend_hours?: number; reason: string;
+}
+
+export interface PayrollWorkbookDraft {
+  id: number; import_id: number; status: "draft" | "reviewed" | "uploaded";
+  changes: PayrollWorkbookChange[]; findings: PayrollImportItem["findings"];
+  drive_filename: string; updated_at: string;
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -1452,6 +1463,20 @@ export const api = {
   },
   payrollImports() { return req<PayrollImportItem[]>("/api/payroll/imports"); },
   payrollImportDetail(id: number) { return req<PayrollImportDetail>(`/api/payroll/imports/${id}`); },
+  payrollLatestDraft(importId: number) {
+    return req<{ draft: PayrollWorkbookDraft | null }>(`/api/payroll/imports/${importId}/draft`);
+  },
+  payrollSaveDraft(importId: number, changes: PayrollWorkbookChange[]) {
+    return req<PayrollWorkbookDraft>(`/api/payroll/imports/${importId}/draft`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }),
+    });
+  },
+  payrollReviewDraft(id: number) {
+    return req<PayrollWorkbookDraft>(`/api/payroll/drafts/${id}/review`, { method: "POST" });
+  },
+  payrollUploadDraft(id: number) {
+    return req<PayrollWorkbookDraft>(`/api/payroll/drafts/${id}/upload-drive`, { method: "POST" });
+  },
   payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
 };
 
