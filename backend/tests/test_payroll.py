@@ -380,10 +380,11 @@ def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
     sheet["I15"] = 1_500_000
     sheet["S15"] = 240_000
     workbook.save(target / "payroll-edit-demo.xlsx")
-    monkeypatch.setattr(
-        payroll_api.subprocess, "run",
-        lambda *args, **kwargs: payroll_api.subprocess.CompletedProcess(args[0], 0, "", ""),
-    )
+    commands = []
+    def successful_rclone(command, **kwargs):
+        commands.append(command)
+        return payroll_api.subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(payroll_api.subprocess, "run", successful_rclone)
     _login(client)
     client.post("/api/payroll/sync-drive")
     imported = next(row for row in client.get("/api/payroll/imports").json()
@@ -406,7 +407,11 @@ def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
     uploaded = client.post(f"/api/payroll/drafts/{draft_id}/upload-drive")
     assert uploaded.status_code == 200, uploaded.text
     assert uploaded.json()["status"] == "uploaded"
-    assert "- đã review - bản " in uploaded.json()["drive_filename"]
+    assert uploaded.json()["drive_filename"] == "payroll-edit-demo.xlsx"
+    upload_commands = [command for command in commands if "copyto" in command]
+    assert len(upload_commands) == 2
+    assert "bản gốc trước cập nhật" in upload_commands[0][3]
+    assert upload_commands[1][3] == "vnmap-drive:payroll-edit-demo.xlsx"
 
 
 def test_import_net_target_returns_comparison_without_changing_workbook(client, monkeypatch):

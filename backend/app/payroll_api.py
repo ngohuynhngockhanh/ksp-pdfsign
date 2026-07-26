@@ -417,18 +417,27 @@ def upload_draft(draft_id: int, db: Session = Depends(get_session), user: Curren
     if any(item.get("level") == "do" for item in _loads(draft.findings, [])):
         raise HTTPException(409, "Bản nháp vẫn còn cảnh báo mức đỏ")
     imported = db.get(PayrollImport, draft.import_id)
+    if not imported:
+        raise HTTPException(404, "Không tìm thấy tệp bảng lương gốc")
     stem = Path(imported.filename).stem
-    filename = f"{stem} - đã review - bản {draft.id}.xlsx"
+    filename = imported.filename if imported.drive_file_id else f"{stem} - đã review - bản {draft.id}.xlsx"
     settings = get_settings()
-    command = [_rclone_binary(), "copyto", draft.local_path,
-               f"{settings.payroll_drive_remote}{filename}",
-               *_drive_flags(settings)]
+    commands = []
+    if imported.drive_file_id:
+        backup = f"{stem} - bản gốc trước cập nhật - bản {draft.id}.xlsx"
+        commands.append([_rclone_binary(), "copyto",
+                         f"{settings.payroll_drive_remote}{imported.filename}",
+                         f"{settings.payroll_drive_remote}{backup}", *_drive_flags(settings)])
+    commands.append([_rclone_binary(), "copyto", draft.local_path,
+                     f"{settings.payroll_drive_remote}{filename}", *_drive_flags(settings)])
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+        for index, command in enumerate(commands):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+            if result.returncode:
+                action = "sao lưu file gốc" if index == 0 and len(commands) > 1 else "cập nhật file Drive"
+                raise HTTPException(502, f"Không thể {action}: {result.stderr[-300:]}")
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(504, "Gửi bản nháp lên Drive vượt quá thời gian chờ") from exc
-    if result.returncode:
-        raise HTTPException(502, f"Không gửi được bản nháp lên Drive: {result.stderr[-300:]}")
     draft.status = "uploaded"; draft.drive_filename = filename
     draft.uploaded_at = datetime.now(timezone.utc); draft.updated_at = draft.uploaded_at
     db.commit(); db.refresh(draft)

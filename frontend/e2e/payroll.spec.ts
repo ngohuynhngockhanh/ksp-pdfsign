@@ -103,18 +103,19 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByLabel("So sánh dòng tiền với file đã submit")).toContainText("+760.000");
   await expect(page.locator(".cashflow-row.better", { hasText: "Thực lĩnh" })).toBeVisible();
   await expect(page.locator(".cashflow-row.worse", { hasText: "Tổng chi phí công ty" })).toBeVisible();
-  await page.getByRole("button", { name: "Áp dụng đề xuất vào bản nháp" }).click();
+  await page.getByRole("button", { name: "Áp dụng và lưu bản nháp" }).click();
   await expect(page.getByLabel("Tiền ăn")).toHaveValue("760000");
+  await expect(page.getByText("Đã áp dụng và lưu bản nháp.")).toBeVisible();
   await page.getByLabel("Tiền ăn").fill("1200000");
   await page.getByLabel("Chuyên cần hoặc thưởng").fill("2000000");
   await page.getByLabel("Giờ làm thêm trong tuần").fill("12");
   await page.getByLabel("Giờ làm thêm cuối tuần").fill("8");
   await page.getByLabel("Lý do điều chỉnh").fill("Tháng có nhiều hợp đồng");
-  await page.getByRole("button", { name: "Lưu bản nháp" }).click();
+  await page.getByRole("button", { name: "Lưu bản nháp", exact: true }).click();
   await expect(page.getByText("Đã lưu bản nháp.")).toBeVisible();
   await page.getByRole("button", { name: "Chạy lại review" }).click();
   await expect(page.getByText("Review xong: 0 cảnh báo.")).toBeVisible();
-  await page.getByRole("button", { name: "Gửi lên Google Drive" }).click();
+  await page.getByRole("button", { name: "Cập nhật file gốc trên Drive" }).click();
   await expect(page.getByText(/Đã gửi lên Google Drive/)).toBeVisible();
   if (testInfo.project.name === "mobile") {
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");

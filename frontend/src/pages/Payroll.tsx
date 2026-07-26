@@ -64,15 +64,24 @@ export function Payroll() {
     finally { setDraftBusy(false); }
   }
 
-  function applyTargetNetPlan() {
-    if (!editRow || !netPlan) return;
-    updateDraftChange(editRow, {
+  async function applyTargetNetPlan() {
+    if (!editRow || !netPlan || !importDetail) return;
+    const nextChange: PayrollWorkbookChange = {
+      ...draftChanges[editRow], row: editRow,
       meal_allowance: netPlan.proposed.meal_allowance,
       overtime_weekday_hours: netPlan.proposed.overtime_weekday_hours,
       overtime_weekend_hours: netPlan.proposed.overtime_weekend_hours,
       reason: "Điều chỉnh theo thực lĩnh mục tiêu, giờ làm thêm thực tế và hồ sơ hợp lệ",
-    });
-    setMessage("Đã đưa đề xuất vào biểu mẫu. Hãy kiểm tra chứng từ rồi lưu bản nháp.");
+    };
+    const nextChanges = { ...draftChanges, [editRow]: nextChange };
+    setDraftChanges(nextChanges);
+    try {
+      setDraftBusy(true);
+      const saved = await api.payrollSaveDraft(importDetail.id, Object.values(nextChanges));
+      setDraft(saved);
+      setMessage("Đã áp dụng và lưu bản nháp. Hãy chạy review trước khi cập nhật file gốc trên Drive.");
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setDraftBusy(false); }
   }
 
   async function saveWorkbookDraft() {
@@ -231,7 +240,7 @@ export function Payroll() {
                 </div>
                 {netPlan.warnings.map((warning) => <div className="net-target-warning" key={warning}>{warning}</div>)}
                 <div className="net-dependencies"><strong>Hồ sơ phụ thuộc</strong>{netPlan.dependencies.map((item) => <p key={item}>• {item}</p>)}</div>
-                <button type="button" onClick={applyTargetNetPlan}>{netPlan.feasible ? "Áp dụng đề xuất vào bản nháp" : "Áp dụng phần điều chỉnh hợp lệ"}</button>
+                <button type="button" disabled={draftBusy} onClick={applyTargetNetPlan}>{netPlan.feasible ? "Áp dụng và lưu bản nháp" : "Lưu phần điều chỉnh hợp lệ"}</button>
               </div>}
             </section>
           </div>;
@@ -239,7 +248,7 @@ export function Payroll() {
         <div className="payroll-draft-actions">
           <button disabled={draftBusy || !Object.keys(draftChanges).length} onClick={saveWorkbookDraft}>{draftBusy ? "Đang xử lý…" : "Lưu bản nháp"}</button>
           <button className="secondary" disabled={draftBusy || !draft || draft.status !== "draft"} onClick={reviewWorkbookDraft}>Chạy lại review</button>
-          <button className="drive-upload" disabled={draftBusy || !draft || draft.status !== "reviewed" || draft.findings.some((finding) => finding.level === "do")} onClick={uploadWorkbookDraft}>Gửi lên Google Drive</button>
+          <button className="drive-upload" disabled={draftBusy || !draft || draft.status !== "reviewed" || draft.findings.some((finding) => finding.level === "do")} onClick={uploadWorkbookDraft}>Cập nhật file gốc trên Drive</button>
         </div>
         {draft?.findings.map((finding, index) => <div key={index} className={`finding ${finding.level}`}>{finding.message}</div>)}
       </section>
