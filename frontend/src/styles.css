@@ -2626,3 +2626,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 .credential { grid-column:1/-1; padding-top:13px; border-top:1px solid #ffffff2b; }
 @media (max-width:900px) { .contract-grid{grid-template-columns:1fr}.contract-hero,.contract-draft-toolbar{align-items:flex-start;flex-direction:column}.contract-value{width:100%}.contract-draft-controls{width:100%}.contract-draft-controls select{flex:1}.terms-card textarea{min-height:520px}.share-result{grid-template-columns:1fr}.share-links{justify-content:flex-start} }
 @media (max-width:560px) { .contract-hero,.contract-card{padding:18px}.form-row{grid-template-columns:1fr}.contract-actions{flex-direction:column}.contract-actions button{width:100%} }
+.payroll-page { --payroll-ink:#17362f; --payroll-accent:#d86b3b; color:var(--payroll-ink); }
+.payroll-hero { display:flex; justify-content:space-between; gap:24px; padding:28px; border-radius:20px; background:linear-gradient(125deg,#f1ead7,#d9eee4); box-shadow:0 14px 40px #23483a18; }
+.payroll-hero h1 { margin:4px 0 8px; font-family:Georgia,serif; font-size:clamp(28px,4vw,44px); }
+.payroll-hero p { margin:0; }.payroll-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.payroll-layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:18px; margin-top:18px; }
+.payroll-periods,.payroll-sheet { background:#fff; border:1px solid #dfe8e3; border-radius:16px; padding:16px; }
+.payroll-periods button { width:100%; display:flex; justify-content:space-between; padding:11px; margin:5px 0; border:0; background:#f3f6f4; color:inherit; }
+.payroll-periods button.active { background:var(--payroll-ink); color:#fff; }.payroll-periods span { font-size:12px; }
+.payroll-sheet header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
+.payroll-sheet h2 { display:inline-block; margin-right:10px; }.status { padding:4px 9px; border-radius:999px; background:#eee; font-size:12px; }
+.status.reviewed { background:#fff1bd; }.status.locked { background:#d9eee4; }.table-scroll { overflow:auto; }
+.payroll-sheet table { min-width:820px; width:100%; border-collapse:collapse; }.payroll-sheet th,.payroll-sheet td { padding:10px; border-bottom:1px solid #e8eeeb; text-align:right; }
+.payroll-sheet th:first-child,.payroll-sheet td:first-child { text-align:left; }.payroll-sheet td small { display:block; color:#678078; }.payroll-sheet td input { width:72px; }.payroll-sheet .net { color:var(--payroll-accent); font-weight:700; }
+.finding { padding:10px 12px; margin:8px 0; border-left:4px solid #dba928; background:#fff9df; }.finding.do { border-color:#c44536; background:#fff0ed; }
+.payroll-message { margin-top:12px; padding:10px 14px; background:#eef7f2; border-radius:10px; }.legal-note { font-size:12px; color:#62766f; line-height:1.5; }
+@media(max-width:800px){.payroll-hero{display:block}.payroll-actions{margin-top:14px}.payroll-layout{grid-template-columns:1fr}.payroll-periods{display:flex;overflow:auto;gap:6px}.payroll-periods h3{display:none}.payroll-periods button{min-width:150px}}

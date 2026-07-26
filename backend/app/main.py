@@ -127,9 +127,11 @@ from .schemas import (
 from .security import hash_password, verify_password
 
 from .inv_api import router as inv_router  # noqa: E402
+from .payroll_api import router as payroll_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
+app.include_router(payroll_router)
 
 
 @app.middleware("http")

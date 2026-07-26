@@ -23,6 +23,7 @@ import { Settings } from "./pages/Settings";
 import { TaxSync } from "./pages/TaxSync";
 import { TaxReview } from "./pages/TaxReview";
 import { Operations } from "./pages/Operations";
+import { Payroll } from "./pages/Payroll";
 
 type Tab =
   | "home"
@@ -45,6 +46,7 @@ type Tab =
   | "nas"
   | "audit"
   | "settings"
+  | "payroll"
   | "verify"
   | "mine";
 
@@ -69,6 +71,7 @@ const ROUTES: Record<Tab, string> = {
   nas: "/nas",
   audit: "/nhat-ky",
   settings: "/cai-dat",
+  payroll: "/bang-luong",
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
 };
@@ -159,7 +162,7 @@ export function App() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "verify",
+              "documents", "customers", "nas", "audit", "settings", "payroll", "verify",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
@@ -215,6 +218,7 @@ export function App() {
     [
       "Quản lý",
       [
+        ["payroll", "Bảng lương", "₫"],
         ["customers", "Khách hàng", "👥"],
         ["nas", "NAS", "💾"],
         ["audit", "Nhật ký", "📜"],
@@ -349,6 +353,7 @@ export function App() {
         {tab === "nas" && isAdmin && <NasBrowser />}
         {tab === "audit" && isAdmin && <AuditLog />}
         {tab === "settings" && isAdmin && <Settings />}
+        {tab === "payroll" && isAdmin && <Payroll />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />

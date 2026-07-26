@@ -2,7 +2,32 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.payroll import PayrollInput, calculate_payroll, calculate_pit
+import pytest
+from fastapi.testclient import TestClient
+
+from openpyxl import Workbook
+
+from app.payroll import PayrollInput, calculate_payroll, calculate_pit, review_workbook
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NAS_ENABLED", "false")
+    from app.config import get_settings
+    from app import db as dbmod
+    from app.auth import ensure_admin_seed
+
+    get_settings.cache_clear()
+    dbmod.reset_engine_for_tests()
+    dbmod.init_db()
+    gen = dbmod.get_session()
+    session = next(gen)
+    ensure_admin_seed(session, get_settings())
+    gen.close()
+    from app.main import app
+
+    return TestClient(app)
 
 
 def _login(client):
@@ -38,6 +63,14 @@ def test_july_meal_allowance_caps_exempt_amount_and_overtime_is_exempt():
     assert result.pit == 135_000
 
 
+def test_meal_allowance_before_july_uses_730k_cap():
+    result = calculate_payroll(PayrollInput(
+        month=date(2026, 6, 1), base_salary=20_000_000, standard_days=22,
+        actual_days=22, meal_allowance=1_000_000,
+    ))
+    assert result.taxable_income_before_deductions == 20_270_000
+
+
 def test_employer_cost_includes_insurance_and_trade_union_fee():
     result = calculate_payroll(
         PayrollInput(
@@ -51,6 +84,27 @@ def test_employer_cost_includes_insurance_and_trade_union_fee():
     assert result.employer_insurance == 2_150_000
     assert result.trade_union_fee == 200_000
     assert result.total_employer_cost == 12_350_000
+
+
+def test_review_legacy_workbook_flags_missing_kpcd_and_july_meal_cap(tmp_path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Thang 7-2026"
+    sheet.cell(15, 2, "NV-DEMO")
+    sheet.cell(15, 3, "Nhan vien mau")
+    sheet.cell(15, 8, 1_500_000)
+    path = tmp_path / "bang-luong-an-danh.xlsx"
+    workbook.save(path)
+
+    review = review_workbook(path)
+    assert review["rows"] == [{"row": 15, "code": "NV-DEMO", "has_name": True}]
+    assert {finding["code"] for finding in review["findings"]} == {"missing_kpcd", "meal_cap"}
+
+    sheet.title = "Thang 8-2026"
+    workbook.save(path)
+    august = review_workbook(path)
+    assert august["month"] == "2026-08"
+    assert any(finding["code"] == "meal_cap" for finding in august["findings"])
 
 
 def test_payroll_period_workflow_and_override_reason(client):

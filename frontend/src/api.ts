@@ -196,6 +196,26 @@ export interface NegStockViolation {
   thieu?: number;
 }
 
+export interface PayrollEmployee {
+  id: number; code: string; name: string; position: string;
+  base_salary: number; insurance_salary: number; meal_allowance: number;
+  phone_allowance: number; fuel_allowance: number; responsibility_allowance: number;
+  dependents: number; active: boolean;
+}
+
+export interface PayrollLine {
+  id: number; employee_id: number; employee: PayrollEmployee;
+  standard_days: number; actual_days: number; overtime_pay: number; bonus: number;
+  other_taxable: number; unpaid_deduction: number;
+  computed: Record<string, number>; overrides: Record<string, number>; override_reason: string;
+}
+
+export interface PayrollPeriod {
+  id: number; month: string; version: number; status: "draft" | "reviewed" | "locked";
+  findings: { level: "do" | "vang"; message: string; employee_code?: string }[];
+  lines: PayrollLine[];
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -1390,6 +1410,33 @@ export const api = {
     if (params.ids) p.set("ids", params.ids);
     return `/api/inv/${kind}/export-${fmt}?${p.toString()}`;
   },
+  payrollEmployees() { return req<PayrollEmployee[]>("/api/payroll/employees"); },
+  payrollCreateEmployee(body: Omit<PayrollEmployee, "id" | "active">) {
+    return req<PayrollEmployee>("/api/payroll/employees", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
+  payrollPeriods() { return req<PayrollPeriod[]>("/api/payroll/periods"); },
+  payrollCreatePeriod(month: string) {
+    return req<PayrollPeriod>("/api/payroll/periods", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
+    });
+  },
+  payrollUpdateLine(periodId: number, lineId: number, body: Record<string, unknown>) {
+    return req<PayrollPeriod>(`/api/payroll/periods/${periodId}/lines/${lineId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
+  payrollReview(periodId: number) {
+    return req<PayrollPeriod>(`/api/payroll/periods/${periodId}/review`, { method: "POST" });
+  },
+  payrollLock(periodId: number) {
+    return req<PayrollPeriod>(`/api/payroll/periods/${periodId}/lock`, { method: "POST" });
+  },
+  payrollSyncDrive() {
+    return req<{ files: string[]; read_only: boolean }>("/api/payroll/sync-drive", { method: "POST" });
+  },
+  payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
 };
 
 // --- Kieu du lieu ton kho ---

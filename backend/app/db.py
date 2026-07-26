@@ -240,6 +240,78 @@ class AuditLog(Base):
     detail: Mapped[str] = mapped_column(String(500), default="")
 
 
+class PayrollEmployee(Base):
+    """Ho so luong nhan vien; thong tin nhay cam chi danh cho admin."""
+
+    __tablename__ = "payroll_employees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    position: Mapped[str] = mapped_column(String(150), default="")
+    base_salary: Mapped[float] = mapped_column(default=0.0)
+    insurance_salary: Mapped[float] = mapped_column(default=0.0)
+    meal_allowance: Mapped[float] = mapped_column(default=0.0)
+    phone_allowance: Mapped[float] = mapped_column(default=0.0)
+    fuel_allowance: Mapped[float] = mapped_column(default=0.0)
+    responsibility_allowance: Mapped[float] = mapped_column(default=0.0)
+    dependents: Mapped[int] = mapped_column(default=0)
+    active: Mapped[bool] = mapped_column(default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PayrollPeriod(Base):
+    __tablename__ = "payroll_periods"
+    __table_args__ = (UniqueConstraint("month", "version", name="uq_payroll_month_version"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    source: Mapped[str] = mapped_column(String(30), default="crm")
+    policy_snapshot: Mapped[str] = mapped_column(Text, default="{}")
+    findings: Mapped[str] = mapped_column(Text, default="[]")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PayrollLine(Base):
+    __tablename__ = "payroll_lines"
+    __table_args__ = (UniqueConstraint("period_id", "employee_id", name="uq_payroll_line"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("payroll_periods.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("payroll_employees.id"), index=True)
+    employee_snapshot: Mapped[str] = mapped_column(Text, default="{}")
+    standard_days: Mapped[float] = mapped_column(default=22.0)
+    actual_days: Mapped[float] = mapped_column(default=0.0)
+    overtime_pay: Mapped[float] = mapped_column(default=0.0)
+    bonus: Mapped[float] = mapped_column(default=0.0)
+    other_taxable: Mapped[float] = mapped_column(default=0.0)
+    unpaid_deduction: Mapped[float] = mapped_column(default=0.0)
+    computed: Mapped[str] = mapped_column(Text, default="{}")
+    overrides: Mapped[str] = mapped_column(Text, default="{}")
+    override_reason: Mapped[str] = mapped_column(String(500), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PayrollImport(Base):
+    __tablename__ = "payroll_imports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    drive_file_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    snapshot: Mapped[str] = mapped_column(Text, default="{}")
+    findings: Mapped[str] = mapped_column(Text, default="[]")
+    imported_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 # ---------------------------------------------------------------------------
 # Ton kho (ke toan kho)
 # ---------------------------------------------------------------------------
