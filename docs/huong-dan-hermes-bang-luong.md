@@ -28,8 +28,9 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 
 - Endpoint: `POST /api/payroll/imports/{import_id}/net-target`.
 - UI nam trong form sua tung nhan vien cua file Excel da sync.
-- Engine `plan_net_target` chi phan bo phan tang qua du dia tien an mien thue va gio lam them thuc te.
-- Gio lam them phai do nguoi dung khai theo bang cham cong/phe duyet; he thong khong tu tao gio.
+- Engine `plan_net_target` tu dua tien an ve dung tran, sau do tu tinh du dia lam them con lai trong gioi han 40 gio/thang.
+- Nguoi dung chi nhap muc thuc linh; khong can tu nhap so gio de he thong lap de xuat.
+- Neu file da co qua 40 gio lam them/thang, he thong canh bao va khong tu cong them gio.
 - Thuong chuyen can, hoan chi dien thoai va xang xe khong duoc tu dong cong de dat muc thuc linh.
 - Neu du dia hop phap khong du, API tra `feasible=false` va `shortfall`; UI khong cho ap dung de tranh tao so lieu khong co can cu.
 - Ket qua luon doi chieu va giu nguyen TNCN, BHXH nguoi lao dong so voi file submit.
@@ -42,9 +43,7 @@ Payload mau:
 ```json
 {
   "row": 15,
-  "target_net": 20000000,
-  "available_weekday_ot_hours": 12,
-  "available_weekend_ot_hours": 8
+  "target_net": 20000000
 }
 ```
 

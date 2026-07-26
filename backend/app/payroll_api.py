@@ -91,8 +91,8 @@ class WorkbookDraftIn(BaseModel):
 class NetTargetIn(BaseModel):
     row: int = Field(ge=15, le=200)
     target_net: float = Field(gt=0, le=1_000_000_000)
-    available_weekday_ot_hours: float = Field(default=0, ge=0, le=400)
-    available_weekend_ot_hours: float = Field(default=0, ge=0, le=400)
+    available_weekday_ot_hours: float | None = Field(default=None, ge=0, le=400)
+    available_weekend_ot_hours: float | None = Field(default=None, ge=0, le=400)
 
 
 def _loads(value: str, default):

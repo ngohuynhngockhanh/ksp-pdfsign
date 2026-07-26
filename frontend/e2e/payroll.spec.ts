@@ -41,7 +41,7 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
           { key: "net", label: "Thực lĩnh", current: 12240000, proposed: 13000000, delta: 760000 },
           { key: "employer_cost", label: "Tổng chi phí công ty", current: 16080000, proposed: 16840000, delta: 760000 },
         ],
-        dependencies: ["Tiền ăn phải có quy chế công ty.", "Giờ làm thêm phải có bảng chấm công và phê duyệt."],
+        dependencies: ["Tiền ăn phải có quy chế công ty.", "Giờ làm thêm phải có bảng chấm công và phê duyệt."], warnings: [],
       }});
     }
     if (path === "/api/payroll/imports/9/draft" && route.request().method() === "POST") {
@@ -97,7 +97,8 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
   await page.getByRole("button", { name: /NV-DEMO/ }).click();
   await page.getByLabel("Thực lĩnh muốn nhận").fill("13000000");
-  await page.getByRole("button", { name: "Tính phương án" }).click();
+  await expect(page.getByLabel("Giờ tăng ca thường có thật")).toHaveCount(0);
+  await page.getByRole("button", { name: "Tự tính phương án" }).click();
   await expect(page.getByText("Đủ dư địa hợp pháp")).toBeVisible();
   await expect(page.getByLabel("So sánh dòng tiền với file đã submit")).toContainText("+760.000");
   await expect(page.locator(".cashflow-row.better", { hasText: "Thực lĩnh" })).toBeVisible();

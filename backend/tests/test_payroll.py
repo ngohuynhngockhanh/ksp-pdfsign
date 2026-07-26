@@ -119,6 +119,26 @@ def test_net_target_rejects_invalid_days_and_negative_actual_overtime():
             current_meal_allowance=0, available_weekday_ot_hours=0,
             available_weekend_ot_hours=0,
         )
+
+
+def test_net_target_automatically_normalizes_meal_and_respects_monthly_overtime_limit():
+    plan = plan_net_target(
+        month=date(2026, 7, 1), current_net=28_687_885, target_net=33_345_678,
+        current_pit=0, current_employee_insurance=577_500,
+        base_salary=5_500_000, standard_days=26, current_meal_allowance=1_500_000,
+        available_weekday_ot_hours=None, available_weekend_ot_hours=None,
+        current_weekday_ot_hours=128, current_weekend_ot_hours=48,
+        current_overtime_pay=7_615_385, current_gross=29_265_385,
+        current_employer_cost=30_447_885,
+    )
+
+    assert plan["feasible"] is False
+    assert plan["proposed"]["meal_allowance"] == 1_200_000
+    assert plan["proposed"]["overtime_weekday_hours"] == 128
+    assert plan["proposed"]["overtime_weekend_hours"] == 48
+    assert plan["proposed_net"] == 28_387_885
+    assert plan["shortfall"] == 4_957_793
+    assert any("176" in warning and "40" in warning for warning in plan["warnings"])
     with pytest.raises(ValueError, match="làm thêm"):
         plan_net_target(
             month=date(2026, 7, 1), current_net=1, target_net=2, current_pit=0,
@@ -355,7 +375,6 @@ def test_import_net_target_returns_comparison_without_changing_workbook(client, 
 
     response = client.post(f"/api/payroll/imports/{imported['id']}/net-target", json={
         "row": 15, "target_net": 13_000_000,
-        "available_weekday_ot_hours": 16, "available_weekend_ot_hours": 8,
     })
 
     assert response.status_code == 200, response.text

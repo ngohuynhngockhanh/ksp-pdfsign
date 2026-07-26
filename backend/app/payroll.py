@@ -55,6 +55,10 @@ def _money(value: float) -> float:
     return float(round(max(value, 0)))
 
 
+def _signed_money(value: float) -> float:
+    return float(round(value))
+
+
 def calculate_pit(taxable_income: float) -> float:
     """Bieu thue luy tien 5 bac ap dung thu nhap tien luong tu nam 2026."""
     remaining = max(taxable_income, 0)
@@ -97,7 +101,8 @@ def calculate_payroll(data: PayrollInput) -> PayrollResult:
 def plan_net_target(*, month: date, current_net: float, target_net: float,
                     current_pit: float, current_employee_insurance: float,
                     base_salary: float, standard_days: float, current_meal_allowance: float,
-                    available_weekday_ot_hours: float, available_weekend_ot_hours: float,
+                    available_weekday_ot_hours: float | None,
+                    available_weekend_ot_hours: float | None,
                     current_weekday_ot_hours: float = 0,
                     current_weekend_ot_hours: float = 0,
                     current_overtime_pay: float = 0, current_gross: float = 0,
@@ -105,7 +110,9 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
     """Lập đề xuất thực lĩnh bảo thủ, chỉ dùng dư địa tiền ăn và giờ OT có thật."""
     if standard_days <= 0:
         raise ValueError("Ngày công chuẩn phải lớn hơn 0")
-    if min(available_weekday_ot_hours, available_weekend_ot_hours) < 0:
+    supplied_hours = [value for value in (available_weekday_ot_hours,
+                                           available_weekend_ot_hours) if value is not None]
+    if supplied_hours and min(supplied_hours) < 0:
         raise ValueError("Số giờ làm thêm thực tế không được âm")
     values = (current_net, target_net, current_pit, current_employee_insurance,
               base_salary, current_meal_allowance, current_overtime_pay,
@@ -113,50 +120,65 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
     if min(values) < 0:
         raise ValueError("Dữ liệu tiền lương không được âm")
 
-    requested = max(_money(target_net) - _money(current_net), 0)
-    remaining = requested
     meal_cap = 1_200_000 if month >= date(2026, 7, 1) else 730_000
-    meal_room = max(meal_cap - current_meal_allowance, 0)
+    compliant_meal = min(current_meal_allowance, meal_cap)
+    meal_compliance_delta = compliant_meal - current_meal_allowance
+    remaining = max(_money(target_net) - _money(current_net + meal_compliance_delta), 0)
+    meal_room = max(meal_cap - compliant_meal, 0)
     meal_increase = min(remaining, meal_room)
     remaining -= meal_increase
+    meal_delta = meal_compliance_delta + meal_increase
 
     hourly_rate = base_salary / standard_days / 8
     weekday_rate = hourly_rate * 1.5
     weekend_rate = hourly_rate * 2
-    weekday_hours = min(available_weekday_ot_hours,
+    current_total_hours = current_weekday_ot_hours + current_weekend_ot_hours
+    legal_hours_room = max(40 - current_total_hours, 0)
+    weekday_capacity = legal_hours_room if available_weekday_ot_hours is None else min(available_weekday_ot_hours, legal_hours_room)
+    weekend_capacity = max(legal_hours_room - weekday_capacity, 0)
+    if available_weekend_ot_hours is not None:
+        weekend_capacity = min(available_weekend_ot_hours, weekend_capacity)
+    weekday_hours = min(weekday_capacity,
                         remaining / weekday_rate if weekday_rate else 0)
     weekday_increase = min(remaining, _money(weekday_hours * weekday_rate))
     remaining -= weekday_increase
-    weekend_hours = min(available_weekend_ot_hours,
+    weekend_hours = min(weekend_capacity,
                         remaining / weekend_rate if weekend_rate else 0)
     weekend_increase = min(remaining, _money(weekend_hours * weekend_rate))
     remaining -= weekend_increase
 
-    increase = requested - remaining
-    proposed_net = _money(current_net + increase)
+    overtime_increase = weekday_increase + weekend_increase
+    total_delta = meal_delta + overtime_increase
+    proposed_net = _money(current_net + total_delta)
     shortfall = _money(max(target_net - proposed_net, 0))
-    proposed_meal = _money(current_meal_allowance + meal_increase)
+    proposed_meal = _money(current_meal_allowance + meal_delta)
     total_weekday_hours = round(current_weekday_ot_hours + weekday_hours, 4)
     total_weekend_hours = round(current_weekend_ot_hours + weekend_hours, 4)
     cashflows = [
         {"key": "meal", "label": "Tiền ăn", "current": _money(current_meal_allowance),
-         "proposed": proposed_meal, "delta": _money(meal_increase)},
+         "proposed": proposed_meal, "delta": _signed_money(meal_delta)},
         {"key": "overtime", "label": "Tiền làm thêm hợp lệ", "current": _money(current_overtime_pay),
          "proposed": _money(current_overtime_pay + weekday_increase + weekend_increase),
          "delta": _money(weekday_increase + weekend_increase)},
         {"key": "gross", "label": "Tổng thu nhập (gross)", "current": _money(current_gross),
-         "proposed": _money(current_gross + increase), "delta": _money(increase)},
+         "proposed": _money(current_gross + total_delta), "delta": _signed_money(total_delta)},
         {"key": "pit", "label": "Thuế TNCN", "current": _money(current_pit),
          "proposed": _money(current_pit), "delta": 0},
         {"key": "insurance", "label": "BHXH người lao động",
          "current": _money(current_employee_insurance),
          "proposed": _money(current_employee_insurance), "delta": 0},
         {"key": "net", "label": "Thực lĩnh", "current": _money(current_net),
-         "proposed": proposed_net, "delta": _money(increase)},
+         "proposed": proposed_net, "delta": _signed_money(total_delta)},
         {"key": "employer_cost", "label": "Tổng chi phí công ty",
          "current": _money(current_employer_cost),
-         "proposed": _money(current_employer_cost + increase), "delta": _money(increase)},
+         "proposed": _money(current_employer_cost + total_delta), "delta": _signed_money(total_delta)},
     ]
+    warnings = []
+    if current_meal_allowance > meal_cap:
+        cap_text = f"{int(meal_cap):,}".replace(",", ".")
+        warnings.append(f"Tiền ăn hiện tại vượt trần; tự điều chỉnh về {cap_text} đồng.")
+    if current_total_hours > 40:
+        warnings.append(f"File đang có {current_total_hours:g} giờ làm thêm, vượt giới hạn 40 giờ/tháng; không đề xuất cộng thêm.")
     return {
         "feasible": shortfall == 0,
         "current_net": _money(current_net), "target_net": _money(target_net),
@@ -171,6 +193,7 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
             "attendance_bonus": None,
         },
         "cashflows": cashflows,
+        "warnings": warnings,
         "dependencies": [
             "Tiền ăn phải được quy định trong hợp đồng lao động, thỏa ước hoặc quy chế công ty.",
             "Giờ làm thêm chỉ áp dụng theo bảng chấm công và phê duyệt làm thêm thực tế.",

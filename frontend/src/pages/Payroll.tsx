@@ -22,8 +22,6 @@ export function Payroll() {
   const [draftChanges, setDraftChanges] = useState<Record<number, PayrollWorkbookChange>>({});
   const [draftBusy, setDraftBusy] = useState(false);
   const [targetNet, setTargetNet] = useState("");
-  const [weekdayHours, setWeekdayHours] = useState("");
-  const [weekendHours, setWeekendHours] = useState("");
   const [netPlan, setNetPlan] = useState<PayrollNetTargetPlan | null>(null);
 
   function openFinding(cell = "") {
@@ -61,8 +59,6 @@ export function Payroll() {
       setDraftBusy(true); setMessage("");
       setNetPlan(await api.payrollNetTarget(importDetail.id, {
         row: editRow, target_net: Number(targetNet),
-        available_weekday_ot_hours: Number(weekdayHours || 0),
-        available_weekend_ot_hours: Number(weekendHours || 0),
       }));
     } catch (error) { setMessage((error as Error).message); }
     finally { setDraftBusy(false); }
@@ -196,7 +192,7 @@ export function Payroll() {
         <div className="payroll-edit-people">{importDetail.snapshot.grid.slice(14).map((row, index) => ({ row, excelRow: index + 15 })).filter(({ row }) => row[1] || row[2]).map(({ row, excelRow }) =>
           <button key={excelRow} className={editRow === excelRow ? "active" : ""} onClick={() => {
             setEditRow(excelRow);
-            setNetPlan(null); setTargetNet(row[35] || ""); setWeekdayHours(""); setWeekendHours("");
+            setNetPlan(null); setTargetNet(row[35] || "");
             if (!draftChanges[excelRow]) updateDraftChange(excelRow, { meal_allowance: numberValue(row[8]), attendance_bonus: numberValue(row[12]) });
           }}><strong>{row[1]}</strong><span>{row[2]}</span></button>)}</div>
         {editRow && (() => {
@@ -210,12 +206,10 @@ export function Payroll() {
             <label className="edit-reason">Lý do điều chỉnh<textarea aria-label="Lý do điều chỉnh" value={change.reason || ""} onChange={(e) => updateDraftChange(editRow, { reason: e.target.value })} /></label>
             <section className="net-target-panel">
               <div><p className="eyebrow">TÍNH NHANH HỢP PHÁP</p><h4>Thực lĩnh mục tiêu</h4>
-                <p>Chỉ dùng dư địa tiền ăn và giờ làm thêm có bảng chấm công. Không tự tăng thưởng hoặc khoản hoàn chi chưa có chứng từ.</p></div>
+                <p>Chỉ cần nhập thực lĩnh. Hệ thống tự sửa tiền ăn đúng trần và tự tính dư địa làm thêm trong giới hạn tháng.</p></div>
               <div className="net-target-inputs">
                 <label>Thực lĩnh muốn nhận<input aria-label="Thực lĩnh muốn nhận" type="number" min="1" value={targetNet} onChange={(e) => setTargetNet(e.target.value)} /></label>
-                <label>Giờ tăng ca thường có thật<input aria-label="Giờ tăng ca thường có thật" type="number" min="0" max="400" value={weekdayHours} onChange={(e) => setWeekdayHours(e.target.value)} /></label>
-                <label>Giờ tăng ca cuối tuần có thật<input aria-label="Giờ tăng ca cuối tuần có thật" type="number" min="0" max="400" value={weekendHours} onChange={(e) => setWeekendHours(e.target.value)} /></label>
-                <button type="button" disabled={draftBusy} onClick={calculateTargetNet}>Tính phương án</button>
+                <button type="button" disabled={draftBusy} onClick={calculateTargetNet}>Tự tính phương án</button>
               </div>
               {netPlan && <div className="net-target-result" aria-live="polite">
                 <div className={`net-target-status ${netPlan.feasible ? "ok" : "short"}`}>
@@ -225,16 +219,19 @@ export function Payroll() {
                 <div className="cashflow-table" aria-label="So sánh dòng tiền với file đã submit">
                   <div className="cashflow-head"><span>Khoản</span><span>File submit</span><span>Đề xuất</span><span>Chênh lệch</span></div>
                   {netPlan.cashflows.map((row) => {
-                    const beneficial = row.key === "net" || row.key === "meal" || row.key === "overtime";
-                    const tone = row.delta === 0 ? "same" : beneficial ? "better" : "worse";
+                    const employeeIncome = row.key === "net" || row.key === "meal" || row.key === "overtime";
+                    const companyOutflow = row.key === "employer_cost";
+                    const better = employeeIncome ? row.delta > 0 : companyOutflow ? row.delta < 0 : row.delta < 0;
+                    const tone = row.delta === 0 ? "same" : better ? "better" : "worse";
                     return <div className={`cashflow-row ${tone}`} key={row.key}>
                       <strong>{row.label}</strong><span>{money(row.current)}</span><span>{money(row.proposed)}</span>
                       <b>{row.delta > 0 ? "+" : ""}{money(row.delta)}</b>
                     </div>;
                   })}
                 </div>
+                {netPlan.warnings.map((warning) => <div className="net-target-warning" key={warning}>{warning}</div>)}
                 <div className="net-dependencies"><strong>Hồ sơ phụ thuộc</strong>{netPlan.dependencies.map((item) => <p key={item}>• {item}</p>)}</div>
-                <button type="button" disabled={!netPlan.feasible} onClick={applyTargetNetPlan}>Áp dụng đề xuất vào bản nháp</button>
+                <button type="button" onClick={applyTargetNetPlan}>{netPlan.feasible ? "Áp dụng đề xuất vào bản nháp" : "Áp dụng phần điều chỉnh hợp lệ"}</button>
               </div>}
             </section>
           </div>;

@@ -243,7 +243,7 @@ export interface PayrollNetTargetPlan {
   proposed: { meal_allowance: number; overtime_weekday_hours: number;
     overtime_weekend_hours: number; attendance_bonus: null };
   cashflows: { key: string; label: string; current: number; proposed: number; delta: number }[];
-  dependencies: string[];
+  dependencies: string[]; warnings: string[];
 }
 
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
@@ -1476,8 +1476,7 @@ export const api = {
   payrollLatestDraft(importId: number) {
     return req<{ draft: PayrollWorkbookDraft | null }>(`/api/payroll/imports/${importId}/draft`);
   },
-  payrollNetTarget(importId: number, body: { row: number; target_net: number;
-    available_weekday_ot_hours: number; available_weekend_ot_hours: number }) {
+  payrollNetTarget(importId: number, body: { row: number; target_net: number }) {
     return req<PayrollNetTargetPlan>(`/api/payroll/imports/${importId}/net-target`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
