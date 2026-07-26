@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test("admin creates, reviews and locks an anonymized payroll period", async ({ page }) => {
+test("admin creates, reviews and locks an anonymized payroll period", async ({ page }, testInfo) => {
   let period: any = null;
   let syncPolls = 0;
   await page.route("**/api/**", async (route) => {
@@ -21,8 +21,9 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     if (path === "/api/payroll/imports/9") {
       return route.fulfill({ json: { id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
         imported_at: new Date().toISOString(), findings: [{ level: "do", code: "missing_kpcd", message: "Cột KPCĐ 2% đang trống." }],
-        snapshot: { sheet: "Tháng 7-2026", month: "2026-07", ncols: 3,
-          grid: [["BẢNG LƯƠNG THÁNG 7/2026", "", ""], ["STT", "Mã NV", "Họ tên"], ["1", "NV-DEMO", "Nhân viên mẫu"]] } } });
+        snapshot: { sheet: "Tháng 7-2026", month: "2026-07", ncols: 40,
+          grid: [...Array.from({ length: 14 }, () => Array(40).fill("")),
+            ["1", "NV-DEMO", "Nhân viên mẫu", "12000000", "22", "22", "12000000", "1500000", "", "", "", "", "", "", "", "", "13500000", "12000000", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "0", "", "", "12240000", "16080000", "", "", ""]] } } });
     }
     if (path === "/api/payroll/periods" && route.request().method() === "POST") {
       const body = route.request().postDataJSON();
@@ -62,7 +63,13 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
 
   await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
-  await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toContainText("NV-DEMO");
+  if (testInfo.project.name === "mobile") {
+    await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");
+    await expect(page.getByText("12.240.000")).toBeVisible();
+    await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeHidden();
+  } else {
+    await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toContainText("NV-DEMO");
+  }
 
   await page.getByRole("button", { name: "Sync Drive" }).click();
   await expect(page.getByRole("progressbar", { name: "Tiến độ đồng bộ Drive" })).toHaveAttribute("aria-valuenow", "100", { timeout: 5000 });

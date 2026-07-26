@@ -71,7 +71,7 @@ def calculate_pit(taxable_income: float) -> float:
 
 def calculate_payroll(data: PayrollInput) -> PayrollResult:
     if data.standard_days <= 0 or data.actual_days < 0:
-        raise ValueError("Ngay cong khong hop le")
+        raise ValueError("Ngày công không hợp lệ")
     salary = data.base_salary * min(data.actual_days, data.standard_days) / data.standard_days
     gross = salary + data.meal_allowance + data.phone_allowance + data.fuel_allowance
     gross += data.responsibility_allowance + data.overtime_pay + data.bonus + data.other_taxable
@@ -108,10 +108,12 @@ def review_workbook(path: Path) -> dict[str, Any]:
     """Doc bo cuc Excel cu va tra ve snapshot toi thieu, khong luu ten NV vao log."""
     workbook = load_workbook(path, data_only=False, read_only=True)
     sheet = workbook[workbook.sheetnames[0]]
+    value_workbook = load_workbook(path, data_only=True, read_only=True)
+    value_sheet = value_workbook[value_workbook.sheetnames[0]]
     findings: list[dict[str, str]] = []
     max_row = sheet.max_row or 0
     if max_row >= 15 and all(sheet.cell(row, 19).value in (None, "") for row in range(15, max_row + 1)):
-        findings.append({"level": "do", "code": "missing_kpcd", "message": "Cot KPCD 2% dang trong."})
+        findings.append({"level": "do", "code": "missing_kpcd", "message": "Cột KPCĐ 2% đang trống."})
     month = detect_month(sheet.title, path.name)
     rows = []
     for row in range(15, min(max_row, 200) + 1):
@@ -122,9 +124,9 @@ def review_workbook(path: Path) -> dict[str, Any]:
         rows.append({"row": row, "code": str(code or ""), "has_name": bool(name)})
         meal = sheet.cell(row, 8).value
         if month >= "2026-07" and isinstance(meal, (int, float)) and meal > 1_200_000:
-            findings.append({"level": "vang", "code": "meal_cap", "message": "Tien an vuot 1,2 trieu tu 01/07/2026."})
+            findings.append({"level": "vang", "code": "meal_cap", "message": "Tiền ăn vượt 1,2 triệu đồng từ ngày 01/07/2026."})
     grid: list[list[str]] = []
-    for row in sheet.iter_rows(min_row=1, max_row=min(max_row, 200), max_col=min(sheet.max_column or 1, 40)):
+    for row in value_sheet.iter_rows(min_row=1, max_row=min(max_row, 200), max_col=min(value_sheet.max_column or 1, 40)):
         grid.append(["" if cell.value is None else str(cell.value) for cell in row])
     return {"sheet": sheet.title, "month": month, "rows": rows,
             "grid": grid, "ncols": max((len(row) for row in grid), default=0),

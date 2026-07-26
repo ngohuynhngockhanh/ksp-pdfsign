@@ -53,7 +53,7 @@ class LineIn(BaseModel):
     @model_validator(mode="after")
     def require_reason(self):
         if self.override_net is not None and not self.override_reason.strip():
-            raise ValueError("Override phai co ly do")
+            raise ValueError("Giá trị ghi đè phải có lý do")
         return self
 
 
@@ -112,7 +112,7 @@ def list_employees(db: Session = Depends(get_session), _: CurrentUser = Depends(
 @router.post("/employees")
 def create_employee(payload: EmployeeIn, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
     if db.scalar(select(PayrollEmployee).where(PayrollEmployee.code == payload.code.strip())):
-        raise HTTPException(409, "Ma nhan vien da ton tai")
+        raise HTTPException(409, "Mã nhân viên đã tồn tại")
     values = payload.model_dump()
     values.update(code=payload.code.strip(), name=payload.name.strip())
     row = PayrollEmployee(**values)
@@ -146,16 +146,16 @@ def create_period(payload: PeriodIn, db: Session = Depends(get_session), user: C
 
 def _get_period(db: Session, period_id: int):
     row = db.get(PayrollPeriod, period_id)
-    if not row: raise HTTPException(404, "Khong tim thay ky luong")
+    if not row: raise HTTPException(404, "Không tìm thấy kỳ lương")
     return row
 
 
 @router.put("/periods/{period_id}/lines/{line_id}")
 def update_line(period_id: int, line_id: int, payload: LineIn, db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
     period = _get_period(db, period_id)
-    if period.status == "locked": raise HTTPException(409, "Ky luong da khoa")
+    if period.status == "locked": raise HTTPException(409, "Kỳ lương đã khóa")
     line = db.get(PayrollLine, line_id)
-    if not line or line.period_id != period.id: raise HTTPException(404, "Khong tim thay dong luong")
+    if not line or line.period_id != period.id: raise HTTPException(404, "Không tìm thấy dòng lương")
     for field in ("standard_days", "actual_days", "overtime_pay", "bonus", "other_taxable", "unpaid_deduction"):
         value = getattr(payload, field)
         if value is not None: setattr(line, field, value)
@@ -172,16 +172,16 @@ def update_line(period_id: int, line_id: int, payload: LineIn, db: Session = Dep
 @router.post("/periods/{period_id}/review")
 def review_period(period_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
     row = _get_period(db, period_id)
-    if row.status == "locked": raise HTTPException(409, "Ky luong da khoa")
+    if row.status == "locked": raise HTTPException(409, "Kỳ lương đã khóa")
     lines = db.scalars(select(PayrollLine).where(PayrollLine.period_id == row.id)).all()
     findings = []
-    if not lines: findings.append({"level": "do", "message": "Ky luong chua co nhan vien."})
+    if not lines: findings.append({"level": "do", "message": "Kỳ lương chưa có nhân viên."})
     for line in lines:
         employee = _loads(line.employee_snapshot, {})
         stable = employee.get("responsibility_allowance", 0)
         if stable and employee.get("insurance_salary", 0) <= employee.get("base_salary", 0):
             findings.append({"level": "vang", "employee_code": employee.get("code"),
-                             "message": "Kiem tra phu cap trach nhiem on dinh trong nen BHXH."})
+                             "message": "Kiểm tra phụ cấp trách nhiệm ổn định trong nền đóng BHXH."})
     row.findings = json.dumps(findings, ensure_ascii=False); row.status = "reviewed"
     row.reviewed_at = datetime.now(timezone.utc); db.commit()
     return _period(db, row)
@@ -190,9 +190,9 @@ def review_period(period_id: int, db: Session = Depends(get_session), _: Current
 @router.post("/periods/{period_id}/lock")
 def lock_period(period_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
     row = _get_period(db, period_id)
-    if row.status != "reviewed": raise HTTPException(409, "Phai review truoc khi khoa")
+    if row.status != "reviewed": raise HTTPException(409, "Phải review trước khi khóa")
     if any(x.get("level") == "do" for x in _loads(row.findings, [])):
-        raise HTTPException(409, "Con loi muc do do")
+        raise HTTPException(409, "Vẫn còn lỗi mức độ đỏ")
     row.status = "locked"; row.locked_at = datetime.now(timezone.utc); db.commit()
     return _period(db, row)
 
@@ -200,7 +200,7 @@ def lock_period(period_id: int, db: Session = Depends(get_session), _: CurrentUs
 @router.post("/imports")
 async def upload_import(file: UploadFile = File(...), db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
     data = await file.read()
-    if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400, "Chi nhan XLSX")
+    if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400, "Chỉ chấp nhận tệp XLSX")
     root = get_settings().data_path / "payroll_imports"; root.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(data).hexdigest(); path = root / f"{digest}.xlsx"; path.write_bytes(data)
     snapshot = review_workbook(path)
@@ -223,7 +223,7 @@ def list_imports(db: Session = Depends(get_session), _: CurrentUser = Depends(re
 def get_import(import_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
     row = db.get(PayrollImport, import_id)
     if not row:
-        raise HTTPException(404, "Khong tim thay file bang luong")
+        raise HTTPException(404, "Không tìm thấy tệp bảng lương")
     return {"id": row.id, "month": row.month, "filename": row.filename,
             "findings": _loads(row.findings, []), "snapshot": _loads(row.snapshot, {})}
 
@@ -263,15 +263,15 @@ def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> d
     local_rclone = Path.home() / ".local" / "bin" / "rclone"
     rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
     if not rclone:
-        raise HTTPException(503, "Khong tim thay rclone tren may chu")
+        raise HTTPException(503, "Không tìm thấy rclone trên máy chủ")
     command = [rclone, "copy", "vnmap-drive:", str(target), "--drive-root-folder-id",
                "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI", "--include", "*.xlsx", "--max-depth", "1",
                "--bind", "0.0.0.0"]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
     except subprocess.TimeoutExpired as exc:
-        raise HTTPException(504, "Dong bo Drive qua thoi gian cho") from exc
-    if result.returncode: raise HTTPException(502, f"Dong bo Drive loi: {result.stderr[-300:]}")
+        raise HTTPException(504, "Đồng bộ Drive vượt quá thời gian chờ") from exc
+    if result.returncode: raise HTTPException(502, f"Đồng bộ Drive gặp lỗi: {result.stderr[-300:]}")
     if job:
         _update_job(db, job, phase="reviewing", progress=55, message="Đang kiểm tra các file Excel")
     imported = 0
@@ -283,7 +283,7 @@ def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> d
             snapshot = review_workbook(path)
         except Exception as exc:  # File loi khong duoc lam hong ca dot sync.
             summaries.append({"filename": path.name, "findings": 0,
-                              "error": f"Khong doc duoc Excel: {type(exc).__name__}"})
+                              "error": f"Không đọc được tệp Excel: {type(exc).__name__}"})
             continue
         summaries.append({"filename": path.name, "findings": len(snapshot["findings"])})
         existing = db.scalar(select(PayrollImport).where(PayrollImport.sha256 == digest))
@@ -334,7 +334,7 @@ def drive_sync_status(db: Session = Depends(get_session), _: CurrentUser = Depen
 def export_period(period_id: int, db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
     period = _get_period(db, period_id); data = _period(db, period)
     workbook = Workbook(); sheet = workbook.active; sheet.title = period.month
-    sheet.append(["Ma NV", "Ho ten", "Luong co ban", "Ngay cong", "Tong thu nhap", "BH NV", "TNCN", "Thuc linh", "Chi phi DN"])
+    sheet.append(["Mã NV", "Họ tên", "Lương cơ bản", "Ngày công", "Tổng thu nhập", "BH NV", "TNCN", "Thực lĩnh", "Chi phí DN"])
     for line in data["lines"]:
         emp, calc = line["employee"], line["computed"]
         sheet.append([emp["code"], emp["name"], emp["base_salary"], line["actual_days"], calc["gross_income"], calc["employee_insurance"], calc["pit"], calc["net_income"], calc["total_employer_cost"]])

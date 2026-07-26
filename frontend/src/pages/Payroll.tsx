@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { api, PayrollImportDetail, PayrollImportItem, PayrollPeriod } from "../api";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
+const excelMoney = (value = "") => {
+  const parsed = Number(String(value).replace(/[,.\s]/g, ""));
+  return Number.isFinite(parsed) && parsed !== 0 ? new Intl.NumberFormat("vi-VN").format(parsed) : value || "—";
+};
 
 export function Payroll() {
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
@@ -11,6 +15,7 @@ export function Payroll() {
   const [syncJob, setSyncJob] = useState<Awaited<ReturnType<typeof api.payrollSyncStatus>>["job"]>(null);
   const [imports, setImports] = useState<PayrollImportItem[]>([]);
   const [importDetail, setImportDetail] = useState<PayrollImportDetail | null>(null);
+  const [showRawMobile, setShowRawMobile] = useState(false);
 
   async function load(preferred?: number) {
     const [rows, imported] = await Promise.all([api.payrollPeriods(), api.payrollImports()]);
@@ -86,13 +91,27 @@ export function Payroll() {
       <header><div><p className="eyebrow">EXCEL ĐÃ SYNC</p><h2>Bảng lương từ Google Drive</h2></div><span>{imports.length} file</span></header>
       {!imports.length ? <p className="muted">Chưa có file. Bấm Sync Drive để tải danh sách.</p> :
         <div className="payroll-import-list">{imports.map((item) => <button key={item.id} onClick={async () => {
-          try { setImportDetail(await api.payrollImportDetail(item.id)); } catch (error) { setMessage((error as Error).message); }
+          try { setImportDetail(await api.payrollImportDetail(item.id)); setShowRawMobile(false); } catch (error) { setMessage((error as Error).message); }
         }}><strong>{item.month || "Chưa rõ tháng"}</strong><span>{item.filename}</span><small>{item.findings.length} cảnh báo · Xem bảng →</small></button>)}</div>}
     </section>
     {importDetail && <section className="payroll-import-view">
       <header><div><p className="eyebrow">{importDetail.snapshot.sheet}</p><h2>{importDetail.filename}</h2></div><button className="secondary" onClick={() => setImportDetail(null)}>Đóng</button></header>
       {importDetail.findings.map((finding, index) => <div className={`finding ${finding.level}`} key={index}>{finding.message}</div>)}
-      <div className="excel-grid" tabIndex={0} aria-label={`Nội dung bảng lương ${importDetail.month}`}>
+      <div className="payroll-mobile-excel" aria-label={`Tóm tắt bảng lương ${importDetail.month}`}>
+        {importDetail.snapshot.grid.slice(14).filter((row) => row[1] || row[2]).map((row, index) => <article key={index}>
+          <header><div><strong>{row[1] || `Dòng ${index + 15}`}</strong><span>{row[2] || "Chưa có tên"}</span></div><b>{excelMoney(row[35])}<small>Thực lĩnh</small></b></header>
+          <div className="mobile-salary-grid">
+            <span><small>Lương cơ bản</small><strong>{excelMoney(row[3])}</strong></span>
+            <span><small>Ngày công</small><strong>{row[5] || "—"}</strong></span>
+            <span><small>Gross</small><strong>{excelMoney(row[16])}</strong></span>
+            <span><small>Nền BHXH</small><strong>{excelMoney(row[17])}</strong></span>
+            <span><small>TNCN</small><strong>{excelMoney(row[32])}</strong></span>
+            <span><small>Chi phí DN</small><strong>{excelMoney(row[36])}</strong></span>
+          </div>
+        </article>)}
+        <button className="secondary raw-excel-toggle" onClick={() => setShowRawMobile((value) => !value)}>{showRawMobile ? "Ẩn bảng gốc" : "Xem bảng Excel gốc"}</button>
+      </div>
+      <div className={`excel-grid${showRawMobile ? " mobile-open" : ""}`} tabIndex={0} aria-label={`Nội dung bảng lương ${importDetail.month}`}>
         <table><tbody>{importDetail.snapshot.grid.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, colIndex) =>
           <td key={colIndex} className={rowIndex >= 14 && colIndex >= 1 ? "payroll-data" : ""}>{cell}</td>)}</tr>)}</tbody></table>
       </div>
