@@ -229,8 +229,15 @@ def sync_drive(db: Session = Depends(get_session), user: CurrentUser = Depends(r
     imported = 0
     summaries = []
     for path in sorted(target.glob("*.xlsx")):
+        if path.name.startswith("~$"):
+            continue
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        snapshot = review_workbook(path)
+        try:
+            snapshot = review_workbook(path)
+        except Exception as exc:  # File loi khong duoc lam hong ca dot sync.
+            summaries.append({"filename": path.name, "findings": 0,
+                              "error": f"Khong doc duoc Excel: {type(exc).__name__}"})
+            continue
         summaries.append({"filename": path.name, "findings": len(snapshot["findings"])})
         if db.scalar(select(PayrollImport).where(PayrollImport.sha256 == digest)):
             continue

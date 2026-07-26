@@ -109,11 +109,12 @@ def review_workbook(path: Path) -> dict[str, Any]:
     workbook = load_workbook(path, data_only=False, read_only=True)
     sheet = workbook[workbook.sheetnames[0]]
     findings: list[dict[str, str]] = []
-    if all(sheet.cell(row, 19).value in (None, "") for row in range(15, sheet.max_row + 1)):
+    max_row = sheet.max_row or 0
+    if max_row >= 15 and all(sheet.cell(row, 19).value in (None, "") for row in range(15, max_row + 1)):
         findings.append({"level": "do", "code": "missing_kpcd", "message": "Cot KPCD 2% dang trong."})
     month = detect_month(sheet.title, path.name)
     rows = []
-    for row in range(15, min(sheet.max_row, 200) + 1):
+    for row in range(15, min(max_row, 200) + 1):
         code = sheet.cell(row, 2).value
         name = sheet.cell(row, 3).value
         if not code and not name:

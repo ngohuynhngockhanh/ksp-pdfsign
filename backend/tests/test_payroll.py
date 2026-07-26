@@ -107,6 +107,15 @@ def test_review_legacy_workbook_flags_missing_kpcd_and_july_meal_cap(tmp_path):
     assert any(finding["code"] == "meal_cap" for finding in august["findings"])
 
 
+def test_review_empty_workbook_does_not_crash(tmp_path):
+    workbook = Workbook()
+    path = tmp_path / "empty.xlsx"
+    workbook.save(path)
+    review = review_workbook(path)
+    assert review["rows"] == []
+    assert review["findings"] == []
+
+
 def test_payroll_period_workflow_and_override_reason(client):
     _login(client)
     employee = client.post(
