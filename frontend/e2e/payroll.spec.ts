@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test("admin creates, reviews and locks an anonymized payroll period", async ({ page }, testInfo) => {
+test("admin reviews an anonymized payroll parsed from Excel", async ({ page }, testInfo) => {
   let period: any = null;
   let workbookDraft: any = null;
   let syncPolls = 0;
@@ -128,6 +128,8 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
 
   await page.goto("/bang-luong");
   await expect(page.getByRole("heading", { name: "Bảng lương & kiểm soát tuân thủ" })).toBeVisible();
+  await expect(page.getByText("Nguồn chuẩn là file Excel đã sync và parse từ Google Drive.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tạo tháng" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Bức tranh HR năm 2026" })).toBeVisible();
   await expect(page.getByLabel("Tổng quan thanh toán và thuế năm")).toContainText("49.525.770");
   await expect(page.getByRole("heading", { name: "Biểu đồ lương và thuế" })).toBeVisible();
@@ -150,14 +152,6 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     name: "uy-nhiem-chi.pdf", mimeType: "application/pdf", buffer: Buffer.from("demo"),
   });
   await expect(page.getByText("Đã đối chiếu", { exact: true })).toBeVisible();
-  await page.getByLabel("Tháng lương").fill("2026-07");
-  await page.getByRole("button", { name: "Tạo tháng" }).click();
-  await expect(page.getByText("NV-DEMO")).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByText("reviewed", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Khóa sổ" }).click();
-  await expect(page.getByText("locked", { exact: true })).toBeVisible();
-
   await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
   await page.getByRole("button", { name: /NV-DEMO/ }).click();
