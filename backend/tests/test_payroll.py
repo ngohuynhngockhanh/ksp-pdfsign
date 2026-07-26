@@ -12,6 +12,7 @@ from app.payroll import (
     apply_workbook_changes,
     calculate_payroll,
     calculate_pit,
+    plan_net_target,
     review_workbook,
 )
 
@@ -75,6 +76,56 @@ def test_meal_allowance_before_july_uses_730k_cap():
         actual_days=22, meal_allowance=1_000_000,
     ))
     assert result.taxable_income_before_deductions == 20_270_000
+
+
+def test_net_target_uses_lawful_meal_room_then_actual_overtime_without_more_tax_or_insurance():
+    plan = plan_net_target(
+        month=date(2026, 7, 1), current_net=15_000_000, target_net=17_700_000,
+        current_pit=350_000, current_employee_insurance=1_260_000,
+        base_salary=12_000_000, standard_days=22, current_meal_allowance=500_000,
+        available_weekday_ot_hours=16, available_weekend_ot_hours=8,
+    )
+
+    assert plan["feasible"] is True
+    assert plan["proposed"]["meal_allowance"] == 1_200_000
+    assert plan["proposed"]["overtime_weekday_hours"] > 0
+    assert plan["proposed"]["overtime_weekend_hours"] == 0
+    assert plan["proposed_net"] == 17_700_000
+    assert plan["proposed_pit"] == plan["current_pit"] == 350_000
+    assert plan["proposed_employee_insurance"] == plan["current_employee_insurance"] == 1_260_000
+    assert any(row["key"] == "net" and row["delta"] == 2_700_000 for row in plan["cashflows"])
+
+
+def test_net_target_reports_shortfall_and_does_not_invent_unproven_allowances():
+    plan = plan_net_target(
+        month=date(2026, 6, 1), current_net=10_000_000, target_net=20_000_000,
+        current_pit=0, current_employee_insurance=1_050_000,
+        base_salary=10_000_000, standard_days=22, current_meal_allowance=700_000,
+        available_weekday_ot_hours=0, available_weekend_ot_hours=0,
+    )
+
+    assert plan["feasible"] is False
+    assert plan["proposed"]["meal_allowance"] == 730_000
+    assert plan["shortfall"] == 9_970_000
+    assert plan["proposed"]["attendance_bonus"] is None
+    assert "chứng từ" in " ".join(plan["dependencies"]).lower()
+
+
+def test_net_target_rejects_invalid_days_and_negative_actual_overtime():
+    with pytest.raises(ValueError, match="Ngày công chuẩn"):
+        plan_net_target(
+            month=date(2026, 7, 1), current_net=1, target_net=2, current_pit=0,
+            current_employee_insurance=0, base_salary=1, standard_days=0,
+            current_meal_allowance=0, available_weekday_ot_hours=0,
+            available_weekend_ot_hours=0,
+        )
+    with pytest.raises(ValueError, match="làm thêm"):
+        plan_net_target(
+            month=date(2026, 7, 1), current_net=1, target_net=2, current_pit=0,
+            current_employee_insurance=0, base_salary=1, standard_days=22,
+            current_meal_allowance=0, available_weekday_ot_hours=-1,
+            available_weekend_ot_hours=0,
+        )
 
 
 def test_employer_cost_includes_insurance_and_trade_union_fee():
@@ -275,3 +326,48 @@ def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
     assert uploaded.status_code == 200, uploaded.text
     assert uploaded.json()["status"] == "uploaded"
     assert "- đã review - bản " in uploaded.json()["drive_filename"]
+
+
+def test_import_net_target_returns_comparison_without_changing_workbook(client, monkeypatch):
+    from app.config import get_settings
+    from app import payroll_api
+
+    target = get_settings().data_path / "payroll_drive"
+    target.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Tháng 7-2026"
+    values = {"B15": "NV-DEMO", "C15": "Nhân viên mẫu", "D15": 12_000_000,
+              "E15": 22, "I15": 500_000, "Q15": 13_000_000, "R15": 12_000_000,
+              "AG15": 350_000, "AJ15": 11_390_000, "AK15": 15_820_000}
+    for cell, value in values.items():
+        sheet[cell] = value
+    workbook.save(target / "payroll-target-demo.xlsx")
+    monkeypatch.setattr(
+        payroll_api.subprocess, "run",
+        lambda *args, **kwargs: payroll_api.subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    _login(client)
+    client.post("/api/payroll/sync-drive")
+    imported = next(row for row in client.get("/api/payroll/imports").json()
+                    if row["filename"] == "payroll-target-demo.xlsx")
+
+    response = client.post(f"/api/payroll/imports/{imported['id']}/net-target", json={
+        "row": 15, "target_net": 13_000_000,
+        "available_weekday_ot_hours": 16, "available_weekend_ot_hours": 8,
+    })
+
+    assert response.status_code == 200, response.text
+    assert response.json()["current_net"] == 11_390_000
+    assert response.json()["proposed_pit"] == 350_000
+    assert response.json()["proposed_employee_insurance"] == 1_260_000
+    assert response.json()["proposed"]["meal_allowance"] == 1_200_000
+
+
+def test_import_net_target_validates_employee_row(client):
+    _login(client)
+    response = client.post("/api/payroll/imports/999/net-target", json={
+        "row": 15, "target_net": 13_000_000,
+        "available_weekday_ot_hours": 0, "available_weekend_ot_hours": 0,
+    })
+    assert response.status_code == 404
