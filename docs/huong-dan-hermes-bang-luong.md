@@ -31,9 +31,11 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 - Engine `plan_net_target` tu dua tien an ve dung tran, sau do tu tinh du dia lam them con lai trong gioi han 40 gio/thang.
 - Nguoi dung chi nhap muc thuc linh; khong can tu nhap so gio de he thong lap de xuat.
 - Neu file da co qua 40 gio lam them/thang, he thong canh bao va khong tu cong them gio.
+- Che do tu dong dua file vuot tran ve mau 32 gio ngay thuong + 8 gio ngay nghi hang tuan; ke toan van phai doi chieu bang cham cong that.
+- Tuy chon `allow_taxable_bonus` gross-up phan thieu bang thuong hieu qua kinh doanh chiu TNCN de khop thuc linh; khong lam tang nen BHXH neu khoan thuong bien dong co KPI/quyet dinh rieng.
 - Thuong chuyen can, hoan chi dien thoai va xang xe khong duoc tu dong cong de dat muc thuc linh.
 - Neu du dia hop phap khong du, API tra `feasible=false` va `shortfall`; UI khong cho ap dung de tranh tao so lieu khong co can cu.
-- Ket qua luon doi chieu va giu nguyen TNCN, BHXH nguoi lao dong so voi file submit.
+- Che do mac dinh giu nguyen TNCN va BHXH; che do thuong chiu thue hien ro phan TNCN tang, con BHXH giu nguyen theo gia dinh thuong KPI bien dong co ho so hop le.
 - Bang `cashflows` tom tat tien an, lam them, gross, TNCN, BHXH, thuc linh va tong chi phi cong ty.
 - Mau xanh la khoan co loi cho nguoi lao dong; mau do la chi phi cong ty tang; mau trung tinh la khoan khong doi.
 - Nut ap dung chi dien de xuat vao form. Nguoi dung van phai luu nhap, chay review, sau do moi gui ban moi len Drive.
@@ -43,7 +45,8 @@ Payload mau:
 ```json
 {
   "row": 15,
-  "target_net": 20000000
+  "target_net": 20000000,
+  "allow_taxable_bonus": true
 }
 ```
 

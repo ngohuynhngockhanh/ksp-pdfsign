@@ -22,6 +22,7 @@ export function Payroll() {
   const [draftChanges, setDraftChanges] = useState<Record<number, PayrollWorkbookChange>>({});
   const [draftBusy, setDraftBusy] = useState(false);
   const [targetNet, setTargetNet] = useState("");
+  const [allowTaxableBonus, setAllowTaxableBonus] = useState(false);
   const [netPlan, setNetPlan] = useState<PayrollNetTargetPlan | null>(null);
 
   function openFinding(cell = "") {
@@ -58,7 +59,7 @@ export function Payroll() {
     try {
       setDraftBusy(true); setMessage("");
       setNetPlan(await api.payrollNetTarget(importDetail.id, {
-        row: editRow, target_net: Number(targetNet),
+        row: editRow, target_net: Number(targetNet), allow_taxable_bonus: allowTaxableBonus,
       }));
     } catch (error) { setMessage((error as Error).message); }
     finally { setDraftBusy(false); }
@@ -71,6 +72,7 @@ export function Payroll() {
       meal_allowance: netPlan.proposed.meal_allowance,
       overtime_weekday_hours: netPlan.proposed.overtime_weekday_hours,
       overtime_weekend_hours: netPlan.proposed.overtime_weekend_hours,
+      attendance_bonus: netPlan.proposed.attendance_bonus ?? draftChanges[editRow]?.attendance_bonus,
       reason: "Điều chỉnh theo thực lĩnh mục tiêu, giờ làm thêm thực tế và hồ sơ hợp lệ",
     };
     const nextChanges = { ...draftChanges, [editRow]: nextChange };
@@ -201,7 +203,7 @@ export function Payroll() {
         <div className="payroll-edit-people">{importDetail.snapshot.grid.slice(14).map((row, index) => ({ row, excelRow: index + 15 })).filter(({ row }) => row[1] || row[2]).map(({ row, excelRow }) =>
           <button key={excelRow} className={editRow === excelRow ? "active" : ""} onClick={() => {
             setEditRow(excelRow);
-            setNetPlan(null); setTargetNet(row[35] || "");
+            setNetPlan(null); setTargetNet(row[35] || ""); setAllowTaxableBonus(false);
             if (!draftChanges[excelRow]) updateDraftChange(excelRow, { meal_allowance: numberValue(row[8]), attendance_bonus: numberValue(row[12]) });
           }}><strong>{row[1]}</strong><span>{row[2]}</span></button>)}</div>
         {editRow && (() => {
@@ -213,6 +215,16 @@ export function Payroll() {
             <label>Giờ làm thêm trong tuần<input aria-label="Giờ làm thêm trong tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekday_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekday_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
             <label>Giờ làm thêm cuối tuần<input aria-label="Giờ làm thêm cuối tuần" type="number" min="0" max="400" placeholder="Để trống nếu giữ nguyên" value={change.overtime_weekend_hours ?? ""} onChange={(e) => updateDraftChange(editRow, { overtime_weekend_hours: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
             <label className="edit-reason">Lý do điều chỉnh<textarea aria-label="Lý do điều chỉnh" value={change.reason || ""} onChange={(e) => updateDraftChange(editRow, { reason: e.target.value })} /></label>
+            <aside className="payroll-legal-guide" aria-label="Quy định ghi nhận lương và làm thêm từ 01/07/2026">
+              <header><div><p className="eyebrow">CĂN CỨ & CÁCH GHI</p><h4>Kiểm tra trước khi lưu lương</h4></div><span>Điều 98, 107 · BLLĐ 2019</span></header>
+              <div className="payroll-rule-grid">
+                <article><b>12 giờ/ngày không phải 12 giờ tăng ca</b><p>Thông thường là 8 giờ làm việc + tối đa 4 giờ làm thêm. Không quá 40 giờ làm thêm trong tháng.</p></article>
+                <article><b>Đúng hệ số trả lương</b><p>Ngày thường 150% · Ngày nghỉ hằng tuần 200% · Ngày lễ, Tết 300%; làm ban đêm có phần cộng thêm.</p></article>
+                <article><b>Ghi đúng giờ đã làm</b><p>Không sửa giảm giờ đã làm thực tế để làm đẹp hồ sơ. Giờ vượt giới hạn vẫn phải trả đủ và được cảnh báo tuân thủ.</p></article>
+                <article><b>Thưởng hiệu quả kinh doanh</b><p>Thưởng hiệu quả kinh doanh chịu thuế TNCN. Khoản biến động theo KPI thường không vào nền BHXH khi có quy chế và quyết định riêng.</p></article>
+              </div>
+              <footer><strong>Từ 01/07/2026:</strong> tiền ăn tối đa 1.200.000 đồng/tháng theo chính sách đang cấu hình. Hoàn chi điện thoại, xăng xe, công tác chỉ ghi khi có quy chế và chứng từ thật.</footer>
+            </aside>
             <section className="net-target-panel">
               <div><p className="eyebrow">TÍNH NHANH HỢP PHÁP</p><h4>Thực lĩnh mục tiêu</h4>
                 <p>Chỉ cần nhập thực lĩnh. Hệ thống tự sửa tiền ăn đúng trần và tự tính dư địa làm thêm trong giới hạn tháng.</p></div>
@@ -220,10 +232,13 @@ export function Payroll() {
                 <label>Thực lĩnh muốn nhận<input aria-label="Thực lĩnh muốn nhận" type="number" min="1" value={targetNet} onChange={(e) => setTargetNet(e.target.value)} /></label>
                 <button type="button" disabled={draftBusy} onClick={calculateTargetNet}>Tự tính phương án</button>
               </div>
+              <label className="taxable-bonus-toggle"><input type="checkbox" checked={allowTaxableBonus} onChange={(e) => { setAllowTaxableBonus(e.target.checked); setNetPlan(null); }} />
+                <span><b>Khớp thực lĩnh bằng thưởng hiệu quả chịu thuế</b><small>Chỉ bật khi chấp nhận TNCN tăng; BHXH giữ nguyên nếu thưởng biến động có KPI và quyết định riêng.</small></span>
+              </label>
               {netPlan && <div className="net-target-result" aria-live="polite">
                 <div className={`net-target-status ${netPlan.feasible ? "ok" : "short"}`}>
                   <strong>{netPlan.feasible ? "Đủ dư địa hợp pháp" : `Còn thiếu ${money(netPlan.shortfall)} đồng`}</strong>
-                  <span>Thuế TNCN và BHXH người lao động đều giữ nguyên.</span>
+                  <span>{netPlan.proposed_pit === netPlan.current_pit ? "Thuế TNCN và BHXH người lao động đều giữ nguyên." : `Thuế TNCN tăng ${money(netPlan.proposed_pit - netPlan.current_pit)} đồng; BHXH giữ nguyên.`}</span>
                 </div>
                 <div className="cashflow-table" aria-label="So sánh dòng tiền với file đã submit">
                   <div className="cashflow-head"><span>Khoản</span><span>File submit</span><span>Đề xuất</span><span>Chênh lệch</span></div>

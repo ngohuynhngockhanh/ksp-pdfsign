@@ -30,10 +30,12 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
       return route.fulfill({ json: { draft: workbookDraft } });
     }
     if (path === "/api/payroll/imports/9/net-target") {
+      const taxableBonus = route.request().postDataJSON().allow_taxable_bonus === true;
       return route.fulfill({ json: {
         feasible: true, current_net: 12240000, target_net: 13000000, proposed_net: 13000000, shortfall: 0,
-        current_pit: 0, proposed_pit: 0, current_employee_insurance: 1260000, proposed_employee_insurance: 1260000,
-        proposed: { meal_allowance: 760000, overtime_weekday_hours: 0, overtime_weekend_hours: 0, attendance_bonus: null },
+        current_pit: 0, proposed_pit: taxableBonus ? 50000 : 0, current_employee_insurance: 1260000, proposed_employee_insurance: 1260000,
+        proposed: { meal_allowance: 760000, overtime_weekday_hours: 0, overtime_weekend_hours: 0,
+          attendance_bonus: taxableBonus ? 3050000 : null, performance_bonus: taxableBonus ? 3050000 : 0 },
         cashflows: [
           { key: "meal", label: "Tiền ăn", current: 0, proposed: 760000, delta: 760000 },
           { key: "pit", label: "Thuế TNCN", current: 0, proposed: 0, delta: 0 },
@@ -96,6 +98,13 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await page.getByRole("button", { name: /Bang-luong-07-2026\.xlsx/ }).click();
   await expect(page.getByRole("heading", { name: "Bang-luong-07-2026.xlsx" })).toBeVisible();
   await page.getByRole("button", { name: /NV-DEMO/ }).click();
+  const legalGuide = page.getByLabel("Quy định ghi nhận lương và làm thêm từ 01/07/2026");
+  await expect(legalGuide).toContainText("Không quá 40 giờ làm thêm trong tháng");
+  await expect(legalGuide).toContainText("Ngày thường 150%");
+  await expect(legalGuide).toContainText("Ngày nghỉ hằng tuần 200%");
+  await expect(legalGuide).toContainText("Ngày lễ, Tết 300%");
+  await expect(legalGuide).toContainText("Thưởng hiệu quả kinh doanh chịu thuế TNCN");
+  await expect(legalGuide).toContainText("Không sửa giảm giờ đã làm thực tế");
   await page.getByLabel("Thực lĩnh muốn nhận").fill("13000000");
   await expect(page.getByLabel("Giờ tăng ca thường có thật")).toHaveCount(0);
   await page.getByRole("button", { name: "Tự tính phương án" }).click();
@@ -103,6 +112,9 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByLabel("So sánh dòng tiền với file đã submit")).toContainText("+760.000");
   await expect(page.locator(".cashflow-row.better", { hasText: "Thực lĩnh" })).toBeVisible();
   await expect(page.locator(".cashflow-row.worse", { hasText: "Tổng chi phí công ty" })).toBeVisible();
+  await page.getByText("Khớp thực lĩnh bằng thưởng hiệu quả chịu thuế").click();
+  await page.getByRole("button", { name: "Tự tính phương án" }).click();
+  await expect(page.getByText("Thuế TNCN tăng 50.000 đồng; BHXH giữ nguyên.")).toBeVisible();
   await page.getByRole("button", { name: "Áp dụng và lưu bản nháp" }).click();
   await expect(page.getByLabel("Tiền ăn")).toHaveValue("760000");
   await expect(page.getByText("Đã áp dụng và lưu bản nháp.")).toBeVisible();

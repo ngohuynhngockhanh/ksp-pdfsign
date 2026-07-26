@@ -96,6 +96,7 @@ class NetTargetIn(BaseModel):
     target_net: float = Field(gt=0, le=1_000_000_000)
     available_weekday_ot_hours: float | None = Field(default=None, ge=0, le=400)
     available_weekend_ot_hours: float | None = Field(default=None, ge=0, le=400)
+    allow_taxable_bonus: bool = False
 
 
 def _rclone_binary() -> str:
@@ -357,6 +358,9 @@ def import_net_target(import_id: int, payload: NetTargetIn,
             current_weekend_ot_hours=_formula_hours(formulas.cell(row, 15).value),
             current_overtime_pay=number(14) + number(15), current_gross=number(17),
             current_employer_cost=number(37),
+            allow_taxable_bonus=payload.allow_taxable_bonus,
+            current_performance_bonus=number(13), pit_taxable_income=number(32),
+            pit_zero_headroom=max(number(27) + number(28) + number(30) - number(31), 0),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

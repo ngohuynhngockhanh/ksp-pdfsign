@@ -241,7 +241,7 @@ export interface PayrollNetTargetPlan {
   current_pit: number; proposed_pit: number;
   current_employee_insurance: number; proposed_employee_insurance: number;
   proposed: { meal_allowance: number; overtime_weekday_hours: number;
-    overtime_weekend_hours: number; attendance_bonus: null };
+    overtime_weekend_hours: number; attendance_bonus: number | null; performance_bonus: number };
   cashflows: { key: string; label: string; current: number; proposed: number; delta: number }[];
   dependencies: string[]; warnings: string[];
 }
@@ -1476,7 +1476,7 @@ export const api = {
   payrollLatestDraft(importId: number) {
     return req<{ draft: PayrollWorkbookDraft | null }>(`/api/payroll/imports/${importId}/draft`);
   },
-  payrollNetTarget(importId: number, body: { row: number; target_net: number }) {
+  payrollNetTarget(importId: number, body: { row: number; target_net: number; allow_taxable_bonus: boolean }) {
     return req<PayrollNetTargetPlan>(`/api/payroll/imports/${importId}/net-target`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });

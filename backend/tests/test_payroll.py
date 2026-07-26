@@ -137,11 +137,32 @@ def test_net_target_automatically_normalizes_meal_and_respects_monthly_overtime_
 
     assert plan["feasible"] is False
     assert plan["proposed"]["meal_allowance"] == 1_200_000
-    assert plan["proposed"]["overtime_weekday_hours"] == 128
-    assert plan["proposed"]["overtime_weekend_hours"] == 48
-    assert plan["proposed_net"] == 28_387_885
-    assert plan["shortfall"] == 4_957_793
+    assert plan["proposed"]["overtime_weekday_hours"] == 32
+    assert plan["proposed"]["overtime_weekend_hours"] == 8
+    assert plan["proposed_net"] == 22_464_808
+    assert plan["shortfall"] == 10_880_870
     assert any("176" in warning and "40" in warning for warning in plan["warnings"])
+
+
+def test_net_target_can_gross_up_variable_performance_bonus_to_exact_net():
+    plan = plan_net_target(
+        month=date(2026, 7, 1), current_net=22_464_808, target_net=34_567_888,
+        current_pit=0, current_employee_insurance=577_500,
+        base_salary=5_500_000, standard_days=26, current_meal_allowance=1_200_000,
+        available_weekday_ot_hours=None, available_weekend_ot_hours=None,
+        current_weekday_ot_hours=32, current_weekend_ot_hours=8,
+        current_overtime_pay=1_692_308, current_gross=23_042_308,
+        current_employer_cost=24_224_808, allow_taxable_bonus=True,
+        current_performance_bonus=8_250_000, pit_taxable_income=0,
+        pit_zero_headroom=3_327_500,
+    )
+
+    assert plan["feasible"] is True
+    assert plan["proposed_net"] == 34_567_888
+    assert plan["proposed_pit"] == 461_873
+    assert plan["proposed"]["performance_bonus"] == 20_814_953
+    assert plan["proposed_employee_insurance"] == 577_500
+    assert any(row["key"] == "performance_bonus" for row in plan["cashflows"])
     with pytest.raises(ValueError, match="làm thêm"):
         plan_net_target(
             month=date(2026, 7, 1), current_net=1, target_net=2, current_pit=0,
@@ -451,6 +472,15 @@ def test_import_net_target_returns_comparison_without_changing_workbook(client, 
     assert response.json()["proposed_employee_insurance"] == 1_260_000
     assert response.json()["proposed"]["meal_allowance"] == 1_200_000
     assert response.json()["proposed"]["overtime_weekday_hours"] > 4
+
+    grossed_up = client.post(f"/api/payroll/imports/{imported['id']}/net-target", json={
+        "row": 15, "target_net": 20_000_000, "allow_taxable_bonus": True,
+    })
+    assert grossed_up.status_code == 200, grossed_up.text
+    assert grossed_up.json()["feasible"] is True
+    assert grossed_up.json()["proposed_net"] == 20_000_000
+    assert grossed_up.json()["proposed_pit"] >= grossed_up.json()["current_pit"]
+    assert grossed_up.json()["proposed"]["attendance_bonus"] > 0
 
 
 def test_import_net_target_validates_employee_row(client):

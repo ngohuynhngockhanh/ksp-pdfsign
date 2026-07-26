@@ -135,7 +135,9 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
                     current_weekday_ot_hours: float = 0,
                     current_weekend_ot_hours: float = 0,
                     current_overtime_pay: float = 0, current_gross: float = 0,
-                    current_employer_cost: float = 0) -> dict[str, Any]:
+                    current_employer_cost: float = 0, allow_taxable_bonus: bool = False,
+                    current_performance_bonus: float = 0, pit_taxable_income: float = 0,
+                    pit_zero_headroom: float = 0) -> dict[str, Any]:
     """Lập đề xuất thực lĩnh bảo thủ, chỉ dùng dư địa tiền ăn và giờ OT có thật."""
     if standard_days <= 0:
         raise ValueError("Ngày công chuẩn phải lớn hơn 0")
@@ -145,7 +147,8 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
         raise ValueError("Số giờ làm thêm thực tế không được âm")
     values = (current_net, target_net, current_pit, current_employee_insurance,
               base_salary, current_meal_allowance, current_overtime_pay,
-              current_gross, current_employer_cost)
+              current_gross, current_employer_cost, current_performance_bonus,
+              pit_taxable_income, pit_zero_headroom)
     if min(values) < 0:
         raise ValueError("Dữ liệu tiền lương không được âm")
 
@@ -162,7 +165,17 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
     weekday_rate = hourly_rate * 1.5
     weekend_rate = hourly_rate * 2
     current_total_hours = current_weekday_ot_hours + current_weekend_ot_hours
-    legal_hours_room = max(40 - current_total_hours, 0)
+    proposed_weekday_base = current_weekday_ot_hours
+    proposed_weekend_base = current_weekend_ot_hours
+    overtime_compliance_delta = 0.0
+    if available_weekday_ot_hours is None and available_weekend_ot_hours is None and current_total_hours > 40:
+        proposed_weekday_base = min(current_weekday_ot_hours, 32 if current_weekend_ot_hours > 0 else 40)
+        proposed_weekend_base = min(current_weekend_ot_hours, 40 - proposed_weekday_base)
+        compliant_overtime_pay = _money(proposed_weekday_base * weekday_rate + proposed_weekend_base * weekend_rate)
+        overtime_compliance_delta = compliant_overtime_pay - current_overtime_pay
+        remaining = max(remaining - overtime_compliance_delta, 0)
+    proposed_base_hours = proposed_weekday_base + proposed_weekend_base
+    legal_hours_room = max(40 - proposed_base_hours, 0)
     weekday_capacity = legal_hours_room if available_weekday_ot_hours is None else min(available_weekday_ot_hours, legal_hours_room)
     weekend_capacity = max(legal_hours_room - weekday_capacity, 0)
     if available_weekend_ot_hours is not None:
@@ -177,30 +190,58 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
     remaining -= weekend_increase
 
     overtime_increase = weekday_increase + weekend_increase
-    total_delta = meal_delta + overtime_increase
-    proposed_net = _money(current_net + total_delta)
+    overtime_delta = overtime_compliance_delta + overtime_increase
+    bonus_increase = 0.0
+    proposed_pit = _money(current_pit)
+    if allow_taxable_bonus and remaining > 0:
+        def bonus_net(gross_bonus: int) -> float:
+            taxable = pit_taxable_income + max(gross_bonus - pit_zero_headroom, 0)
+            return gross_bonus - max(calculate_pit(taxable) - current_pit, 0)
+
+        low, high = 0, int(max(remaining * 2, 1_000_000))
+        while bonus_net(high) < remaining:
+            high *= 2
+        while low < high:
+            middle = (low + high) // 2
+            if bonus_net(middle) >= remaining:
+                high = middle
+            else:
+                low = middle + 1
+        bonus_increase = float(low)
+        taxable = pit_taxable_income + max(bonus_increase - pit_zero_headroom, 0)
+        proposed_pit = max(_money(current_pit), calculate_pit(taxable))
+
+    pit_increase = max(proposed_pit - current_pit, 0)
+    total_gross_delta = meal_delta + overtime_delta + bonus_increase
+    total_net_delta = total_gross_delta - pit_increase
+    proposed_net = _money(current_net + total_net_delta)
     shortfall = _money(max(target_net - proposed_net, 0))
     proposed_meal = _money(current_meal_allowance + meal_delta)
-    total_weekday_hours = round(current_weekday_ot_hours + weekday_hours, 4)
-    total_weekend_hours = round(current_weekend_ot_hours + weekend_hours, 4)
+    total_weekday_hours = round(proposed_weekday_base + weekday_hours, 4)
+    total_weekend_hours = round(proposed_weekend_base + weekend_hours, 4)
     cashflows = [
         {"key": "meal", "label": "Tiền ăn", "current": _money(current_meal_allowance),
          "proposed": proposed_meal, "delta": _signed_money(meal_delta)},
         {"key": "overtime", "label": "Tiền làm thêm hợp lệ", "current": _money(current_overtime_pay),
-         "proposed": _money(current_overtime_pay + weekday_increase + weekend_increase),
-         "delta": _money(weekday_increase + weekend_increase)},
+         "proposed": _money(current_overtime_pay + overtime_delta),
+         "delta": _signed_money(overtime_delta)},
+        {"key": "performance_bonus", "label": "Thưởng hiệu quả kinh doanh",
+         "current": _money(current_performance_bonus),
+         "proposed": _money(current_performance_bonus + bonus_increase),
+         "delta": _money(bonus_increase)},
         {"key": "gross", "label": "Tổng thu nhập (gross)", "current": _money(current_gross),
-         "proposed": _money(current_gross + total_delta), "delta": _signed_money(total_delta)},
+         "proposed": _money(current_gross + total_gross_delta), "delta": _signed_money(total_gross_delta)},
         {"key": "pit", "label": "Thuế TNCN", "current": _money(current_pit),
-         "proposed": _money(current_pit), "delta": 0},
+         "proposed": _money(proposed_pit), "delta": _signed_money(pit_increase)},
         {"key": "insurance", "label": "BHXH người lao động",
          "current": _money(current_employee_insurance),
          "proposed": _money(current_employee_insurance), "delta": 0},
         {"key": "net", "label": "Thực lĩnh", "current": _money(current_net),
-         "proposed": proposed_net, "delta": _signed_money(total_delta)},
+         "proposed": proposed_net, "delta": _signed_money(total_net_delta)},
         {"key": "employer_cost", "label": "Tổng chi phí công ty",
          "current": _money(current_employer_cost),
-         "proposed": _money(current_employer_cost + total_delta), "delta": _signed_money(total_delta)},
+         "proposed": _money(current_employer_cost + total_gross_delta),
+         "delta": _signed_money(total_gross_delta)},
     ]
     warnings = []
     if current_meal_allowance > meal_cap:
@@ -212,14 +253,15 @@ def plan_net_target(*, month: date, current_net: float, target_net: float,
         "feasible": shortfall == 0,
         "current_net": _money(current_net), "target_net": _money(target_net),
         "proposed_net": proposed_net, "shortfall": shortfall,
-        "current_pit": _money(current_pit), "proposed_pit": _money(current_pit),
+        "current_pit": _money(current_pit), "proposed_pit": _money(proposed_pit),
         "current_employee_insurance": _money(current_employee_insurance),
         "proposed_employee_insurance": _money(current_employee_insurance),
         "proposed": {
             "meal_allowance": proposed_meal,
             "overtime_weekday_hours": total_weekday_hours,
             "overtime_weekend_hours": total_weekend_hours,
-            "attendance_bonus": None,
+            "attendance_bonus": _money(current_performance_bonus + bonus_increase) if allow_taxable_bonus else None,
+            "performance_bonus": _money(current_performance_bonus + bonus_increase),
         },
         "cashflows": cashflows,
         "warnings": warnings,
