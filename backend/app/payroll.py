@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 import re
+from itertools import islice
 from typing import Any
 
 from openpyxl import load_workbook
@@ -108,9 +109,13 @@ def review_workbook(path: Path) -> dict[str, Any]:
     """Doc bo cuc Excel cu va tra ve snapshot toi thieu, khong luu ten NV vao log."""
     workbook = load_workbook(path, data_only=False, read_only=True)
     sheet = workbook[workbook.sheetnames[0]]
-    value_workbook = load_workbook(path, data_only=True, read_only=True)
+    # Chế độ read-only tin vào dimension khai báo trong file; file tháng 1 khai báo
+    # sai A1:A1000 nên phải mở bản giá trị bình thường để phục hồi đủ cột.
+    value_workbook = load_workbook(path, data_only=True, read_only=False)
     value_sheet = value_workbook[value_workbook.sheetnames[0]]
     findings: list[dict[str, str]] = []
+    if sheet.max_row is None or sheet.max_column is None:
+        sheet.calculate_dimension(force=True)
     max_row = sheet.max_row or 0
     month = detect_month(sheet.title, path.name)
     rows = []
@@ -137,10 +142,8 @@ def review_workbook(path: Path) -> dict[str, Any]:
     # Đọc theo tọa độ của sheet công thức để vẫn lấy đủ bảng, nhưng giới hạn 200x40.
     row_limit = min(max_row, 200)
     col_limit = min(max(sheet.max_column or 1, 40), 40)
-    for row_index in range(1, row_limit + 1):
-        grid.append(["" if value_sheet.cell(row_index, col).value is None
-                     else str(value_sheet.cell(row_index, col).value)
-                     for col in range(1, col_limit + 1)])
+    for row in islice(value_sheet.iter_rows(min_row=1, max_col=col_limit), row_limit):
+        grid.append(["" if cell.value is None else str(cell.value) for cell in row])
     return {"sheet": sheet.title, "month": month, "rows": rows,
             "grid": grid, "ncols": max((len(row) for row in grid), default=0),
             "findings": findings}
