@@ -5,6 +5,8 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   let period: any = null;
   let workbookDraft: any = null;
   let syncPolls = 0;
+  let hrPaid = 0;
+  let hrHasEvidence = false;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -18,6 +20,36 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     if (path === "/api/payroll/imports" && route.request().method() === "GET") {
       return route.fulfill({ json: [{ id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
         imported_at: new Date().toISOString(), findings: [{ level: "vang", code: "meal_cap", message: "Tiền ăn vượt mức miễn thuế.", cells: ["H15"] }] }] });
+    }
+    if (path === "/api/payroll/hr-summary") {
+      return route.fulfill({ json: { year: 2026, totals: {
+        net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid,
+        pit_withheld: 0, annual_pit: 0,
+      }, employees: [{ employee_id: 2, code: "HR-DEMO", name: "Huỳnh Đức Nhâm", position: "NV",
+        net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid, gross_income: 21715385,
+        tax: { withheld: 0, annual_pit: 0, annual_taxable_income: 0, balance: 0,
+          self_deduction: 186000000, dependent_deduction: 0, education_deduction: 0,
+          basis: "Dữ liệu thu nhập do công ty quản lý" },
+        months: [{ month: "2026-07", statement_id: 5, source_import_id: 9,
+          gross_income: 21715385, employee_insurance: 577500, pit_withheld: 0,
+          net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid,
+          reconciliation_status: hrPaid ? (hrHasEvidence ? "paid" : "missing_evidence") : "unpaid",
+          payments: hrPaid ? [{ id: 7, employee_id: 2, month: "2026-07", amount: hrPaid,
+            status: "completed", paid_at: new Date().toISOString(), bank_name: "", transaction_ref: "",
+            note: "Đã chuyển", evidence_name: hrHasEvidence ? "uy-nhiem-chi.pdf" : "",
+            evidence_missing: !hrHasEvidence, cancel_reason: "" }] : [] }] }] } });
+    }
+    if (path === "/api/payroll/payments" && route.request().method() === "POST") {
+      hrPaid = route.request().postDataJSON().amount;
+      return route.fulfill({ json: { id: 7, employee_id: 2, month: "2026-07", amount: hrPaid,
+        status: "completed", paid_at: new Date().toISOString(), bank_name: "", transaction_ref: "",
+        note: "Đã chuyển", evidence_name: "", evidence_missing: true, cancel_reason: "" } });
+    }
+    if (path === "/api/payroll/payments/7/evidence") {
+      hrHasEvidence = true;
+      return route.fulfill({ json: { id: 7, employee_id: 2, month: "2026-07", amount: hrPaid,
+        status: "completed", paid_at: new Date().toISOString(), bank_name: "", transaction_ref: "",
+        note: "Đã chuyển", evidence_name: "uy-nhiem-chi.pdf", evidence_missing: false, cancel_reason: "" } });
     }
     if (path === "/api/payroll/imports/9") {
       return route.fulfill({ json: { id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
@@ -87,6 +119,16 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
 
   await page.goto("/bang-luong");
   await expect(page.getByRole("heading", { name: "Bảng lương & kiểm soát tuân thủ" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bức tranh HR năm 2026" })).toBeVisible();
+  await expect(page.getByLabel("Tổng quan thanh toán và thuế năm")).toContainText("21.137.885");
+  await page.getByRole("button", { name: /Huỳnh Đức Nhâm/ }).click();
+  await page.getByLabel("Số tiền đã chuyển").fill("21137885");
+  await page.getByRole("button", { name: "Ghi nhận đã chuyển" }).click();
+  await expect(page.getByText("Thiếu chứng từ", { exact: true })).toBeVisible();
+  await page.getByLabel("Chứng từ chuyển khoản").setInputFiles({
+    name: "uy-nhiem-chi.pdf", mimeType: "application/pdf", buffer: Buffer.from("demo"),
+  });
+  await expect(page.getByText("Đã đối chiếu", { exact: true })).toBeVisible();
   await page.getByLabel("Tháng lương").fill("2026-07");
   await page.getByRole("button", { name: "Tạo tháng" }).click();
   await expect(page.getByText("NV-DEMO")).toBeVisible();
