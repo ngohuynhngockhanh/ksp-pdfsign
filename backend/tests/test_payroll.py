@@ -7,7 +7,13 @@ from fastapi.testclient import TestClient
 
 from openpyxl import Workbook
 
-from app.payroll import PayrollInput, calculate_payroll, calculate_pit, review_workbook
+from app.payroll import (
+    PayrollInput,
+    apply_workbook_changes,
+    calculate_payroll,
+    calculate_pit,
+    review_workbook,
+)
 
 
 @pytest.fixture
@@ -197,3 +203,74 @@ def test_drive_sync_runs_as_job_and_reports_progress(client, monkeypatch):
     detail = client.get(f"/api/payroll/imports/{imports.json()[0]['id']}")
     assert detail.status_code == 200
     assert detail.json()["snapshot"]["grid"][14][1] == "NV-DEMO"
+
+
+def test_apply_workbook_changes_updates_meal_bonus_and_overtime_formulas(tmp_path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Tháng 7"
+    sheet["B15"] = "NV-DEMO"
+    sheet["C15"] = "Nhân viên mẫu"
+    sheet["D15"] = 12_000_000
+    sheet["E15"] = 26
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "draft.xlsx"
+    workbook.save(source)
+
+    apply_workbook_changes(source, output, [{
+        "row": 15,
+        "meal_allowance": 1_200_000,
+        "attendance_bonus": 2_000_000,
+        "overtime_weekday_hours": 12,
+        "overtime_weekend_hours": 8,
+    }])
+
+    changed = load_workbook(output, data_only=False).active
+    assert changed["I15"].value == 1_200_000
+    assert changed["M15"].value == 2_000_000
+    assert changed["N15"].value == "=(D15/E15/8)*1.5*12"
+    assert changed["O15"].value == "=(D15/E15/8)*2*8"
+
+
+def test_import_draft_workflow_save_review_and_upload(client, monkeypatch):
+    from app.config import get_settings
+    from app import payroll_api
+
+    target = get_settings().data_path / "payroll_drive"
+    target.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Tháng 7"
+    sheet["B15"] = "NV-DEMO"
+    sheet["C15"] = "Nhân viên mẫu"
+    sheet["D15"] = 12_000_000
+    sheet["E15"] = 26
+    sheet["I15"] = 1_500_000
+    workbook.save(target / "payroll-edit-demo.xlsx")
+    monkeypatch.setattr(
+        payroll_api.subprocess, "run",
+        lambda *args, **kwargs: payroll_api.subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+    _login(client)
+    client.post("/api/payroll/sync-drive")
+    imported = next(row for row in client.get("/api/payroll/imports").json()
+                    if row["filename"] == "payroll-edit-demo.xlsx")
+
+    saved = client.post(f"/api/payroll/imports/{imported['id']}/draft", json={"changes": [{
+        "row": 15, "meal_allowance": 1_200_000, "attendance_bonus": 2_000_000,
+        "overtime_weekday_hours": 12, "overtime_weekend_hours": 8,
+        "reason": "Tháng có nhiều hợp đồng",
+    }]})
+    assert saved.status_code == 200, saved.text
+    draft_id = saved.json()["id"]
+    assert saved.json()["status"] == "draft"
+
+    reviewed = client.post(f"/api/payroll/drafts/{draft_id}/review")
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["status"] == "reviewed"
+    assert not any(f["code"] == "meal_cap" for f in reviewed.json()["findings"])
+
+    uploaded = client.post(f"/api/payroll/drafts/{draft_id}/upload-drive")
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json()["status"] == "uploaded"
+    assert uploaded.json()["drive_filename"].endswith("- da review.xlsx")
