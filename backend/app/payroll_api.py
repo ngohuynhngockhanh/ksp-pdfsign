@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -213,10 +214,17 @@ async def upload_import(file: UploadFile = File(...), db: Session = Depends(get_
 @router.post("/sync-drive")
 def sync_drive(db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
     target = get_settings().data_path / "payroll_drive"; target.mkdir(parents=True, exist_ok=True)
-    command = ["rclone", "copy", "vnmap-drive:", str(target), "--drive-root-folder-id",
+    local_rclone = Path.home() / ".local" / "bin" / "rclone"
+    rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
+    if not rclone:
+        raise HTTPException(503, "Khong tim thay rclone tren may chu")
+    command = [rclone, "copy", "vnmap-drive:", str(target), "--drive-root-folder-id",
                "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI", "--include", "*.xlsx", "--max-depth", "1",
                "--bind", "0.0.0.0"]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(504, "Dong bo Drive qua thoi gian cho") from exc
     if result.returncode: raise HTTPException(502, f"Dong bo Drive loi: {result.stderr[-300:]}")
     imported = 0
     summaries = []
