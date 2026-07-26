@@ -59,7 +59,7 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 - TNCN nam hien ba lop: da khau tru, nghia vu tam tinh nam va chenh lech du kien. So nay chi dua tren du lieu cong ty dang quan ly.
 - Chung tu toi da 10 MB, kiem tra phan mo rong, MIME va chu ky tep; chi admin duoc tai len hoac tai xuong.
 - Khu vuc `Bieu do luong va thue` cho phep chon nhieu nhan vien cung luc; mac dinh hien tat ca.
-- Moi nhan vien co hai bieu do theo thang: tong thu nhap/thuc linh va BHXH nguoi lao dong/TNCN.
+- Moi nhan vien co hai bieu do theo thang: tong thu nhap/thuc linh va BHXH nguoi lao dong/BHXH cong ty dong/TNCN.
 - Tren dien thoai, hai bieu do xep doc va chi vung bieu do cuon ngang; bang so chi tiet van hien gia tri 0 de tranh hieu nham la thieu du lieu.
 
 Payload mau:

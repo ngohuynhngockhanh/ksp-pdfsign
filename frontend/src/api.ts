@@ -255,7 +255,7 @@ export interface PayrollPayment {
 
 export interface PayrollHrMonth {
   month: string; statement_id: number; source_import_id: number;
-  gross_income: number; employee_insurance: number; pit_withheld: number;
+  gross_income: number; employee_insurance: number; employer_insurance: number; pit_withheld: number;
   net_payable: number; paid: number; outstanding: number;
   reconciliation_status: "pending_revision" | "missing_evidence" | "paid" | "partial" | "unpaid";
   payments: PayrollPayment[];

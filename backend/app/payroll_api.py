@@ -22,7 +22,8 @@ from .config import get_settings
 from .db import (JobRun, PayrollEmployee, PayrollEmployeeAlias, PayrollImport,
                  PayrollLine, PayrollPayment, PayrollPeriod, PayrollStatement,
                  PayrollWorkbookDraft, get_session)
-from .payroll import (COL_MEAL, DEPENDENT_DEDUCTION, SELF_DEDUCTION, TRADE_UNION_RATE,
+from .payroll import (COL_MEAL, DEPENDENT_DEDUCTION, EMPLOYEE_INSURANCE_RATE,
+                      EMPLOYER_INSURANCE_RATE, SELF_DEDUCTION, TRADE_UNION_RATE,
                       PayrollInput, apply_workbook_changes, calculate_annual_pit,
                       calculate_payroll,
                       insurance_base_cap, plan_net_target, review_workbook)
@@ -476,6 +477,10 @@ def hr_summary(year: int = 2026, db: Session = Depends(get_session),
                 "source_import_id": statement.source_import_id,
                 "gross_income": statement.gross_income,
                 "employee_insurance": statement.employee_insurance,
+                "employer_insurance": round(
+                    statement.employee_insurance / EMPLOYEE_INSURANCE_RATE
+                    * EMPLOYER_INSURANCE_RATE
+                ) if statement.employee_insurance else 0,
                 "pit_withheld": statement.pit_withheld,
                 "net_payable": statement.net_payable, "paid": paid,
                 "outstanding": outstanding, "reconciliation_status": reconciliation,

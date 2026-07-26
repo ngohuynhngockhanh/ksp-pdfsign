@@ -47,3 +47,4 @@ cd frontend && npm run test:e2e
 - Mac dinh chon tat ca; co nut `Chon tat ca`, `Bo chon` va thong bao tieng Viet khi danh sach rong.
 - SVG khong them thu vien ngoai; vung bieu do cuon ngang rieng tren dien thoai.
 - Playwright desktop/mobile kiem tra chon nhieu nguoi, so tien, bo chon, khoi phuc lua chon va axe WCAG A/AA.
+- Bieu do bao hiem co them cot BHXH cong ty dong theo thang, tinh tren cung nen dong bao hiem voi ty le doanh nghiep 21,5%.

@@ -8,7 +8,7 @@ interface Props {
 }
 
 interface Series {
-  key: keyof Pick<PayrollHrMonth, "gross_income" | "net_payable" | "employee_insurance" | "pit_withheld">;
+  key: keyof Pick<PayrollHrMonth, "gross_income" | "net_payable" | "employee_insurance" | "employer_insurance" | "pit_withheld">;
   label: string;
   className: string;
 }
@@ -20,6 +20,7 @@ const salarySeries: Series[] = [
 
 const deductionSeries: Series[] = [
   { key: "employee_insurance", label: "BHXH người lao động", className: "insurance" },
+  { key: "employer_insurance", label: "BHXH công ty đóng", className: "employer-insurance" },
   { key: "pit_withheld", label: "Thuế TNCN", className: "pit" },
 ];
 
@@ -76,12 +77,16 @@ function EmployeeChartRow({ employee }: { employee: PayrollHrEmployee }) {
       <strong>{months.length} tháng có dữ liệu</strong></header>
     <div className="hr-chart-pair">
       <PayrollBarChart title="Thu nhập: tổng thu nhập và thực lĩnh" months={months} series={salarySeries} />
-      <PayrollBarChart title="Khấu trừ: bảo hiểm và thuế TNCN" months={months} series={deductionSeries} />
+      <PayrollBarChart title="Bảo hiểm và thuế TNCN"
+        accessibilityLabel={`Khấu trừ và nghĩa vụ bảo hiểm của ${employee.name}`}
+        months={months} series={deductionSeries} />
     </div>
   </article>;
 }
 
-function PayrollBarChart({ title, months, series }: { title: string; months: PayrollHrMonth[]; series: Series[] }) {
+function PayrollBarChart({ title, accessibilityLabel = title, months, series }: {
+  title: string; accessibilityLabel?: string; months: PayrollHrMonth[]; series: Series[];
+}) {
   const width = Math.max(520, months.length * 92 + 76);
   const height = 230;
   const chartTop = 24;
@@ -91,7 +96,7 @@ function PayrollBarChart({ title, months, series }: { title: string; months: Pay
   const groupWidth = (width - 76) / Math.max(1, months.length);
   const barWidth = Math.min(24, (groupWidth - 18) / series.length);
 
-  return <section className="hr-chart-card" aria-label={title}>
+  return <section className="hr-chart-card" aria-label={accessibilityLabel}>
     <header><h5>{title}</h5><div className="hr-chart-legend">{series.map((item) =>
       <span key={item.key}><i className={item.className} />{item.label}</span>)}</div></header>
     <div className="hr-chart-scroll" tabIndex={0} aria-label={`${title}, cuộn ngang để xem đủ các tháng`}>

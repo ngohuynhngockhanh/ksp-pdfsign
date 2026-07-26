@@ -2674,3 +2674,4 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
 @media(max-width:760px){.hr-chart-pair{grid-template-columns:1fr}.hr-chart-scroll svg{width:auto}.hr-chart-values{grid-template-columns:repeat(auto-fit,minmax(135px,1fr))}}
 @media(max-width:520px){.hr-charts{margin-inline:-4px;padding:12px}.hr-charts-head,.hr-chart-row>header{display:grid}.hr-chart-actions{width:100%}.hr-chart-actions button{flex:1}.hr-chart-selector{display:grid}.hr-chart-row{padding:10px}.hr-chart-values{display:flex;overflow-x:auto}.hr-chart-values>div{flex:0 0 155px}}
 .hr-cancel-payment{padding:2px 5px;border:0;color:#9b3e24;background:transparent;font-size:10px;font-weight:800}
+.hr-chart-bar.employer-insurance,.hr-chart-legend i.employer-insurance{fill:#a66f12;background:#a66f12}
