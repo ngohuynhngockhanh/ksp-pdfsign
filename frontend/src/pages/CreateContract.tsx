@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, Customer } from "../api";
+import { api, ContractDraft, Customer, DocRecord } from "../api";
 
 type Party = {
   name: string; mst: string; address: string; email: string;
@@ -22,10 +22,18 @@ export function CreateContract() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.contractGenerate>> | null>(null);
+  const [drafts, setDrafts] = useState<ContractDraft[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<number | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftFilter, setDraftFilter] = useState(0);
+  const [defaultTerms, setDefaultTerms] = useState("");
+  const [existingContracts, setExistingContracts] = useState<DocRecord[]>([]);
 
   useEffect(() => {
-    Promise.all([api.listCustomers(), api.contractDefaults()]).then(([cs, d]) => {
+    Promise.all([api.listCustomers(), api.contractDefaults(), api.contractDrafts(), api.listDocuments({ perPage: 200 })]).then(([cs, d, saved, docs]) => {
       setCustomers(cs); setBenA(d.ben_a); setBank(d.bank); setTerms(d.dieu_khoan);
+      setDefaultTerms(d.dieu_khoan); setDrafts(saved);
+      setExistingContracts(docs.items.filter((doc) => doc.doc_type === "hop_dong"));
       const found = cs.find((c) => c.tax_code === d.baotoan.mst);
       setParty(found ? fromCustomer(found) : { ...emptyParty, ...d.baotoan });
     }).catch((e) => setError((e as Error).message));
@@ -65,6 +73,43 @@ export function CreateContract() {
     try { setResult(await api.contractGenerate(payload)); }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   }
+  const selectedCustomer = customers.find((c) => c.tax_code === party.mst);
+  const visibleDrafts = draftFilter ? drafts.filter((d) => d.customer_id === draftFilter) : drafts;
+  function newDraft() {
+    setActiveDraftId(null); setDraftTitle(""); setParty(emptyParty); setTerms(defaultTerms);
+    setNumber(`01/${new Date().getFullYear()}/HĐPM-INUT`); setDate(new Date().toISOString().slice(0, 10));
+    setResult(null); setError("");
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); }
+  }
+  function openDraft(draft: ContractDraft) {
+    const p = draft.payload as any;
+    setActiveDraftId(draft.id); setDraftTitle(draft.title); setNumber(p.so || "");
+    if (p.ngay) setDate(`${p.ngay.year}-${String(p.ngay.month).padStart(2, "0")}-${String(p.ngay.day).padStart(2, "0")}`);
+    setParty({ ...emptyParty, ...(p.ben_b || {}) }); setTerms(p.dieu_khoan || defaultTerms);
+    setResult(null); setError("");
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); }
+  }
+  async function saveDraft() {
+    if (!selectedCustomer) { setError("Hãy chọn một khách hàng trong CRM trước khi lưu bản đang soạn."); return; }
+    setBusy("save"); setError("");
+    try {
+      const saved = await api.saveContractDraft({
+        customer_id: selectedCustomer.id,
+        title: draftTitle.trim() || number || `Hợp đồng ${selectedCustomer.name}`,
+        payload,
+      }, activeDraftId || undefined);
+      setActiveDraftId(saved.id); setDraftTitle(saved.title);
+      setDrafts((old) => [saved, ...old.filter((d) => d.id !== saved.id)]);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  }
+  async function removeDraft(draft: ContractDraft) {
+    if (!window.confirm(`Xóa bản đang soạn “${draft.title}”?`)) return;
+    try {
+      await api.deleteContractDraft(draft.id);
+      setDrafts((old) => old.filter((d) => d.id !== draft.id));
+      if (activeDraftId === draft.id) newDraft();
+    } catch (e) { setError((e as Error).message); }
+  }
   async function copy(text: string) { await navigator.clipboard.writeText(text); }
 
   return <div className="contract-page">
@@ -73,9 +118,26 @@ export function CreateContract() {
       <div className="contract-value"><small>Giá trị năm đầu</small><strong>10.000.000đ</strong><span>Phần mềm · Không chịu VAT</span></div>
     </div>
     {error && <div className="error-box">{error}</div>}
+    <section className="contract-draft-manager">
+      <div className="contract-draft-toolbar">
+        <div><span className="eyebrow">BẢN ĐANG SOẠN</span><h2>Hợp đồng theo khách hàng</h2><p>Mỗi khách có thể lưu nhiều hợp đồng và mở lại để tiếp tục chỉnh sửa.</p></div>
+        <div className="contract-draft-controls">
+          <select value={draftFilter} onChange={(e) => setDraftFilter(Number(e.target.value))}><option value={0}>Tất cả khách hàng</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <button onClick={newDraft}>+ Hợp đồng mới</button>
+        </div>
+      </div>
+      {visibleDrafts.length ? <div className="contract-draft-list">{visibleDrafts.map((d) => <article key={d.id} className={activeDraftId === d.id ? "active" : ""}>
+        <button className="contract-draft-open" onClick={() => openDraft(d)}><small>{d.customer_name}</small><strong>{d.title}</strong><span>Cập nhật {new Date(d.updated_at).toLocaleString("vi-VN")}</span></button>
+        <button className="contract-draft-delete" onClick={() => removeDraft(d)} title="Xóa bản đang soạn">×</button>
+      </article>)}</div> : <div className="contract-draft-empty">Chưa có hợp đồng đang soạn trong nhóm này.</div>}
+      {existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).length > 0 && <div className="contract-issued-block"><h3>Hợp đồng đã tạo</h3><div className="contract-draft-list">{existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).map((doc) => <article key={doc.id}>
+        <a className="contract-draft-open" href={doc.download_url} target="_blank" rel="noreferrer"><small>{doc.customer_name || "Chưa gắn khách hàng"}</small><strong>{doc.filename}</strong><span>{doc.note || "Hồ sơ hợp đồng"} · {new Date(doc.created_at).toLocaleString("vi-VN")}</span></a>
+      </article>)}</div></div>}
+    </section>
     <div className="contract-grid">
       <section className="contract-card">
         <h2>Thông tin hợp đồng</h2>
+        <label>Tên bản đang soạn<input placeholder="Ví dụ: Hợp đồng triển khai Pymid đợt 1" value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} /></label>
         <div className="form-row"><label>Số hợp đồng<input value={number} onChange={(e) => setNumber(e.target.value)} /></label><label>Ngày ký<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label></div>
         <div className="party-a"><b>Bên A · INUT</b><span>{benA.company}</span><small>MST {benA.mst} · Đại diện {benA.rep}</small><small>STK {bank.account_number} · {bank.bank_name}</small></div>
         <h2>Bên B</h2>
@@ -92,7 +154,7 @@ export function CreateContract() {
         <textarea value={terms} onChange={(e) => setTerms(e.target.value)} />
       </section>
     </div>
-    <div className="contract-actions"><button className="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Đang tạo…" : "Xem trước PDF"}</button><button className="primary" onClick={generate} disabled={!!busy}>{busy === "generate" ? "Đang phát hành…" : "Lưu hợp đồng & tạo link"}</button></div>
+    <div className="contract-actions"><button className="secondary save-draft" onClick={saveDraft} disabled={!!busy}>{busy === "save" ? "Đang lưu…" : activeDraftId ? "Lưu thay đổi" : "Lưu bản đang soạn"}</button><button className="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Đang tạo…" : "Xem trước PDF"}</button><button className="primary" onClick={generate} disabled={!!busy}>{busy === "generate" ? "Đang phát hành…" : "Lưu hợp đồng & tạo link"}</button></div>
     {previewUrl && <iframe className="contract-preview" src={previewUrl} title="Xem trước hợp đồng" />}
     {result && <section className="share-result"><div><span>Đã tạo {result.is_draft ? "bản nháp" : "hợp đồng"}</span><h2>{result.filename}</h2><p>Hồ sơ đã được gắn vào khách hàng và các hóa đơn cùng MST.</p></div><div className="share-links"><button onClick={() => copy(result.share_url)}>Copy link hợp đồng 7 ngày</button><button onClick={() => copy(result.login_url)}>Copy link đăng nhập nhanh</button><a href={result.share_url} target="_blank" rel="noreferrer">Mở link</a></div>{result.temporary_password && <div className="credential">Tài khoản mới: <b>{result.username}</b> · Mật khẩu tạm: <b>{result.temporary_password}</b></div>}</section>}
   </div>;

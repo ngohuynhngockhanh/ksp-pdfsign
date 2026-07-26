@@ -29,6 +29,8 @@ export function Settings() {
   const [ihoadonPass, setIhoadonPass] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
   const [aiTestMsg, setAiTestMsg] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("Trả lời đúng một từ: OK");
+  const [aiReply, setAiReply] = useState("");
   const [nasTestMsg, setNasTestMsg] = useState("");
   const [ihoadonTestMsg, setIhoadonTestMsg] = useState("");
   const [syncStatus, setSyncStatus] = useState<Awaited<ReturnType<typeof api.ihoadonCustomerSyncStatus>> | null>(null);
@@ -64,7 +66,7 @@ export function Settings() {
   }
 
   async function save() {
-    if (!s) return;
+    if (!s) return false;
     setBusy(true);
     setErr("");
     setMsg("");
@@ -103,18 +105,23 @@ export function Settings() {
       setIhoadonPass("");
       setSmtpPass("");
       await load();
+      return true;
     } catch (e) {
       setErr((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   async function testAi() {
-    setAiTestMsg("⏳ Đang gọi thử AI…");
+    setAiTestMsg("⏳ Đang lưu cấu hình và gọi thử AI…");
+    setAiReply("");
     try {
-      const r = await api.aiTest();
+      if (!(await save())) return;
+      const r = await api.aiTest(aiPrompt);
       setAiTestMsg((r.ok ? "✅ " : "❌ ") + r.message);
+      setAiReply(r.reply || "");
     } catch (e) {
       setAiTestMsg("❌ " + (e as Error).message);
     }
@@ -238,11 +245,15 @@ export function Settings() {
             />
           </label>
         </div>
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="btn-sm" onClick={testAi}>
-            🧪 Test AI
-          </button>
-          {aiTestMsg && <span className="muted">{aiTestMsg}</span>}
+        <div className="ai-test-console">
+          <div className="ai-test-samples"><span>Lệnh mẫu:</span>
+            <button type="button" onClick={() => setAiPrompt("Trả lời đúng một từ: OK")}>Ping</button>
+            <button type="button" onClick={() => setAiPrompt("Tóm tắt trong 3 gạch đầu dòng lợi ích của hệ thống CRM cho doanh nghiệp nhỏ.")}>Tóm tắt</button>
+            <button type="button" onClick={() => setAiPrompt("Trả về đúng JSON hợp lệ gồm hai khóa: status là ok và model là tên model bạn đang chạy.")}>Test JSON</button>
+          </div>
+          <label>Prompt chạy thử<textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Nhập câu hỏi hoặc lệnh muốn thử với LLM…" /></label>
+          <div className="ai-test-run"><button className="btn-sm" disabled={busy || !aiPrompt.trim()} onClick={testAi}>{busy ? "Đang gọi…" : "🧪 Lưu & chạy prompt"}</button>{aiTestMsg && <span className="muted">{aiTestMsg}</span>}</div>
+          {aiReply && <pre className="ai-test-reply">{aiReply}</pre>}
         </div>
       </section>
 

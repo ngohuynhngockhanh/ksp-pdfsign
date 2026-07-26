@@ -407,3 +407,43 @@ def test_customer_merge(client):
     finally:
         gen.close()
     assert total_customers == 1  # khong sinh khach hang moi tu B
+
+
+def test_contract_drafts_are_independent_per_customer(client):
+    _login(client)
+    customer = client.post("/api/customers", json={
+        "name": "Cong Ty Hop Dong", "tax_code": "0312345678",
+    })
+    assert customer.status_code == 200, customer.text
+    cid = customer.json()["id"]
+
+    def payload(number: str):
+        return {
+            "customer_id": cid,
+            "title": f"Hop dong {number}",
+            "payload": {
+                "so": number,
+                "ngay": {"day": 23, "month": 7, "year": 2026},
+                "ben_b": {"name": "Cong Ty Hop Dong", "mst": "0312345678"},
+            },
+        }
+
+    first = client.post("/api/contract/drafts", json=payload("01/2026"))
+    second = client.post("/api/contract/drafts", json=payload("02/2026"))
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["id"] != second.json()["id"]
+
+    rows = client.get("/api/contract/drafts", params={"customer_id": cid}).json()
+    assert {row["title"] for row in rows} == {"Hop dong 01/2026", "Hop dong 02/2026"}
+
+    changed = payload("01A/2026")
+    changed["title"] = "Hop dong da sua"
+    updated = client.put(f"/api/contract/drafts/{first.json()['id']}", json=changed)
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["payload"]["so"] == "01A/2026"
+
+    deleted = client.delete(f"/api/contract/drafts/{second.json()['id']}")
+    assert deleted.status_code == 200
+    rows = client.get("/api/contract/drafts", params={"customer_id": cid}).json()
+    assert [row["id"] for row in rows] == [first.json()["id"]]

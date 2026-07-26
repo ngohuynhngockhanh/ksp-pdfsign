@@ -163,6 +163,22 @@ class LoginLink(Base):
     user: Mapped["User"] = relationship()
 
 
+class ContractDraft(Base):
+    """Ban hop dong dang soan, luu rieng theo tung khach hang."""
+
+    __tablename__ = "contract_drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    payload: Mapped[str] = mapped_column(Text, default="{}")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+    customer: Mapped["Customer"] = relationship()
+
+
 class IhoadonInvoice(Base):
     """Hoa don da phat hanh dong bo tu iHOADON de cap cho cong khach hang."""
 

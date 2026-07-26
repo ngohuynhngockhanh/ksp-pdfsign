@@ -299,6 +299,12 @@ class ContractAIRequest(BaseModel):
     yeu_cau: str = ""
 
 
+class ContractDraftSave(BaseModel):
+    customer_id: int
+    title: str = ""
+    payload: ContractGenerate
+
+
 class OrderCreate(BaseModel):
     name: str
     customer_id: int | None = None

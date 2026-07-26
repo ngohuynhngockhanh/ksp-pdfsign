@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, ihoadon, inv_export, inv_import, inventory, money, nas, storage, tax
+from . import ai, audit, customs, ihoadon, ihoadon_sync, inv_export, inv_import, inventory, money, nas, storage, tax
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -22,6 +22,7 @@ from .db import (
     InvCustomsLine,
     InvIssue,
     InvIssueLine,
+    IhoadonInvoice,
     InvItem,
     InvMove,
     InvProduction,
@@ -1515,6 +1516,58 @@ async def sale_import_url(
             results.append(_import_one_sale(db, user, sub_name, sub_content))
     _audit(db, user, "inv_sale_import_url", body.url[:255], f"{len(results)} file")
     return {"results": results}
+
+
+@router.post("/sale/sync-ihoadon")
+def sale_sync_ihoadon(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Dong bo hoa don da xuat va nap cac XML chua co vao so ban ra."""
+    from_date = "2026-01-01"
+    job = ihoadon_sync.run_sync(db, settings, from_date=from_date)
+    if job.status == "failed":
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, job.error or "Đồng bộ iHOADON thất bại")
+
+    existing = {
+        (inv.ky_hieu.strip(), inventory.normalize_so_hd(inv.so_hd))
+        for inv in db.scalars(select(InvSale))
+        if inv.ky_hieu.strip() and inventory.normalize_so_hd(inv.so_hd)
+    }
+    imported = skipped = errors = 0
+    details = []
+    rows = db.scalars(
+        select(IhoadonInvoice)
+        .where(IhoadonInvoice.invoice_date >= from_date)
+        .order_by(IhoadonInvoice.invoice_date, IhoadonInvoice.id)
+    )
+    for source in rows:
+        key = (source.invoice_series.strip(), inventory.normalize_so_hd(source.invoice_number))
+        if key[0] and key[1] and key in existing:
+            skipped += 1
+            continue
+        if not source.xml_doc_id:
+            errors += 1
+            details.append(f"HĐ {source.invoice_number or source.external_id}: chưa có XML")
+            continue
+        try:
+            content = storage.read_doc(source.xml_doc_id, ".xml")
+            result = _import_one_sale(db, user, source.xml_filename or "ihoadon.xml", content)
+            if result.get("ok"):
+                imported += 1
+                existing.add(key)
+            else:
+                errors += 1
+                details.append(f"HĐ {source.invoice_number}: {result.get('error', 'không nạp được')}")
+        except Exception as exc:  # noqa: BLE001
+            errors += 1
+            details.append(f"HĐ {source.invoice_number}: {exc}")
+    _audit(db, user, "inv_sale_sync_ihoadon", "Bán ra", f"{imported} mới, {skipped} đã có, {errors} lỗi")
+    return {
+        "imported": imported, "skipped": skipped, "errors": errors,
+        "details": details[:20], "sync_status": job.status, "from_date": from_date,
+    }
 
 
 @router.get("/sale", response_model=list[InvSaleOut])

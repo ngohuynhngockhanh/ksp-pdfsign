@@ -263,6 +263,20 @@ export function SalesInvoice() {
     }
   }
 
+  async function syncIhoadon() {
+    setBusy(true); setErr("");
+    try {
+      const r = await api.invSaleSyncIhoadon();
+      await load();
+      const warning = r.errors ? `\n${r.errors} hóa đơn lỗi hoặc chưa có XML.` : "";
+      window.alert(`Đồng bộ từ 01/01/2026 xong: ${r.imported} hóa đơn mới, ${r.skipped} hóa đơn đã có. PDF/XML đã lưu vào CRM.${warning}`);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function open(id: number) {
     try {
       setCur(await api.invSale(id));
@@ -694,6 +708,9 @@ export function SalesInvoice() {
           />
           <button className="btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
             {busy ? "Đang xử lý…" : "📥 Nạp hóa đơn (XML/PDF/ZIP/Excel)"}
+          </button>
+          <button className="btn-sm" disabled={busy} onClick={syncIhoadon}>
+            {busy ? "Đang đồng bộ…" : "↻ Sync iHOADON từ 01/01/2026"}
           </button>
           <button className="btn-sm" onClick={() => setUrlOpen(true)}>
             🔗 Từ link

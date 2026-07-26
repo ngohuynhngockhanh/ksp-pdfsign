@@ -80,6 +80,16 @@ export interface Customer {
   aliases: string[];
 }
 
+export interface ContractDraft {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  title: string;
+  payload: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DocRecord {
   id: number;
   doc_id: string;
@@ -500,8 +510,12 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  async aiTest() {
-    return req<{ ok: boolean; message: string }>("/api/ai/test", { method: "POST" });
+  async aiTest(prompt = "") {
+    return req<{ ok: boolean; message: string; reply: string }>("/api/ai/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
   },
   async taxCaptcha() {
     return req<{ key: string; svg: string }>("/api/tax/captcha");
@@ -779,6 +793,20 @@ export const api = {
       baotoan: { name: string; mst: string; address: string; email: string };
     }>("/api/contract/defaults");
   },
+  async contractDrafts(customerId?: number) {
+    const q = customerId ? `?customer_id=${customerId}` : "";
+    return req<ContractDraft[]>(`/api/contract/drafts${q}`);
+  },
+  async saveContractDraft(body: { customer_id: number; title: string; payload: unknown }, draftId?: number) {
+    return req<ContractDraft>(draftId ? `/api/contract/drafts/${draftId}` : "/api/contract/drafts", {
+      method: draftId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteContractDraft(draftId: number) {
+    return req<{ ok: boolean }>(`/api/contract/drafts/${draftId}`, { method: "DELETE" });
+  },
   async contractPreview(body: unknown): Promise<Blob> {
     const res = await fetch("/api/contract/preview", {
       method: "POST", credentials: "include",
@@ -1010,6 +1038,11 @@ export const api = {
     return req<{ results: { filename: string; ok: boolean; sale_id?: number; error?: string; dup_of?: number | null }[] }>(
       "/api/inv/sale/import-url",
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) },
+    );
+  },
+  async invSaleSyncIhoadon() {
+    return req<{ imported: number; skipped: number; errors: number; details: string[]; sync_status: string; from_date: string }>(
+      "/api/inv/sale/sync-ihoadon", { method: "POST" },
     );
   },
   async invSales(statusF = "", filters: { tu?: string; den?: string } = {}) {

@@ -110,14 +110,14 @@ def _upsert_metadata(db: Session, source: dict, matches: dict[str, list[int]]) -
     return row, created
 
 
-def run_sync(db: Session, settings) -> JobRun:
+def run_sync(db: Session, settings, from_date: str = "") -> JobRun:
     """Quet metadata toan bo; chi tai file moi, thay doi hoac con thieu."""
     with sync_lock(settings.data_path):
         job = JobRun(kind="ihoadon_customer_sync", status="running")
         db.add(job)
         db.commit()
         db.refresh(job)
-        stats = {"seen": 0, "created": 0, "updated": 0, "files": 0, "errors": 0, "unmatched": 0}
+        stats = {"seen": 0, "created": 0, "updated": 0, "files": 0, "errors": 0, "unmatched": 0, "skipped_before": 0}
         try:
             matches = _customer_matches(db)
             with Client(settings) as client:
@@ -127,6 +127,10 @@ def run_sync(db: Session, settings) -> JobRun:
                     invoices = list(data.get("invoices") or [])
                     for source in invoices:
                         stats["seen"] += 1
+                        invoice_date = _date(str(source.get("invoice_date") or ""))
+                        if from_date and invoice_date and invoice_date < from_date:
+                            stats["skipped_before"] += 1
+                            continue
                         external_id = str(source.get("id") or "")
                         existing = db.scalar(
                             select(IhoadonInvoice).where(IhoadonInvoice.external_id == external_id)

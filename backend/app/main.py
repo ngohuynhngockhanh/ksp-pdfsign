@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import (
     BackgroundTasks,
+    Body,
     Depends,
     FastAPI,
     File,
@@ -69,6 +70,7 @@ from .db import (
     AuditLog,
     Customer,
     CustomerAlias,
+    ContractDraft,
     Document,
     InvIssue,
     IhoadonInvoice,
@@ -105,6 +107,7 @@ from .schemas import (
     CustomerOut,
     CustomerUpdate,
     ContractAIRequest,
+    ContractDraftSave,
     ContractGenerate,
     DocumentOut,
     DocumentsPage,
@@ -1780,6 +1783,95 @@ def contract_defaults(
     }
 
 
+def _contract_draft_out(row: ContractDraft) -> dict:
+    try:
+        payload = json.loads(row.payload)
+    except (TypeError, ValueError):
+        payload = {}
+    return {
+        "id": row.id,
+        "customer_id": row.customer_id,
+        "customer_name": row.customer.name if row.customer else "",
+        "title": row.title,
+        "payload": payload,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+    }
+
+
+@app.get("/api/contract/drafts")
+def contract_drafts(
+    customer_id: int | None = None,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    q = select(ContractDraft).order_by(ContractDraft.updated_at.desc())
+    if customer_id is not None:
+        q = q.where(ContractDraft.customer_id == customer_id)
+    return [_contract_draft_out(row) for row in db.scalars(q)]
+
+
+@app.post("/api/contract/drafts")
+def contract_draft_create(
+    body: ContractDraftSave,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    customer = db.get(Customer, body.customer_id)
+    if not customer:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
+    title = body.title.strip() or body.payload.so.strip() or "Hợp đồng chưa đặt tên"
+    row = ContractDraft(
+        customer_id=customer.id, title=title,
+        payload=json.dumps(body.payload.model_dump(), ensure_ascii=False),
+        created_by=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    _audit(db, user, "contract_draft_create", title, customer.name)
+    return _contract_draft_out(row)
+
+
+@app.put("/api/contract/drafts/{draft_id}")
+def contract_draft_update(
+    draft_id: int,
+    body: ContractDraftSave,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(ContractDraft, draft_id)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy bản hợp đồng đang soạn")
+    customer = db.get(Customer, body.customer_id)
+    if not customer:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
+    row.customer_id = customer.id
+    row.title = body.title.strip() or body.payload.so.strip() or "Hợp đồng chưa đặt tên"
+    row.payload = json.dumps(body.payload.model_dump(), ensure_ascii=False)
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    _audit(db, user, "contract_draft_update", row.title, customer.name)
+    return _contract_draft_out(row)
+
+
+@app.delete("/api/contract/drafts/{draft_id}")
+def contract_draft_delete(
+    draft_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(ContractDraft, draft_id)
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy bản hợp đồng đang soạn")
+    title = row.title
+    db.delete(row)
+    db.commit()
+    _audit(db, user, "contract_draft_delete", title)
+    return {"ok": True}
+
+
 @app.post("/api/contract/preview")
 def contract_preview(
     body: ContractGenerate,
@@ -2089,21 +2181,33 @@ def save_app_settings(
 
 
 @app.post("/api/ai/test")
-def ai_test(user: CurrentUser = Depends(require_admin), settings: Settings = Depends(get_settings)):
-    """Goi thu AI 1 cau ngan de kiem tra endpoint/cau hinh (test tu web)."""
+def ai_test(
+    body: dict = Body(default={}),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Goi prompt tu do de kiem tra endpoint/cau hinh AI tu trang Cai dat."""
     if not settings.ai_enabled:
-        return {"ok": False, "message": "AI đang tắt (bật 'ai_enabled' trước)"}
+        return {"ok": False, "message": "AI đang tắt (bật AI rồi lưu cấu hình trước)", "reply": ""}
+    prompt = str(body.get("prompt") or "Trả lời đúng một từ: OK").strip()
+    if not prompt:
+        prompt = "Trả lời đúng một từ: OK"
+    if len(prompt) > 4000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Prompt thử tối đa 4.000 ký tự")
     try:
         reply = ai.chat(
             settings,
-            [{"role": "user", "content": "Trả lời đúng một từ: OK"}],
+            [
+                {"role": "system", "content": "Bạn đang chạy trong màn hình kiểm tra cấu hình. Trả lời rõ ràng, ngắn gọn bằng tiếng Việt."},
+                {"role": "user", "content": prompt},
+            ],
             temperature=0,
         )
-        return {"ok": True, "message": f"Model {settings.ai_model} phản hồi: {reply[:120]}"}
+        return {"ok": True, "message": f"Model {settings.ai_model} phản hồi thành công", "reply": reply}
     except ai.AINotConfigured as e:
-        return {"ok": False, "message": str(e)}
+        return {"ok": False, "message": str(e), "reply": ""}
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "message": f"{type(e).__name__}: {e}"}
+        return {"ok": False, "message": f"{type(e).__name__}: {e}", "reply": ""}
 
 
 # ---------------------------------------------------------------------------
