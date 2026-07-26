@@ -7,7 +7,7 @@ import subprocess
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from openpyxl import Workbook
 from pydantic import BaseModel, Field, model_validator
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, require_admin
 from .config import get_settings
-from .db import PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod, get_session
+from .db import JobRun, PayrollEmployee, PayrollImport, PayrollLine, PayrollPeriod, get_session
 from .payroll import PayrollInput, calculate_payroll, review_workbook
 from . import audit
 
@@ -211,8 +211,37 @@ async def upload_import(file: UploadFile = File(...), db: Session = Depends(get_
     return {"id": row.id, "filename": row.filename, **snapshot}
 
 
-@router.post("/sync-drive")
-def sync_drive(db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
+def _update_job(db: Session, job: JobRun, **stats) -> None:
+    current = _loads(job.stats, {})
+    current.update(stats)
+    job.stats = json.dumps(current, ensure_ascii=False)
+    db.commit()
+
+
+def _run_drive_sync(job_id: int, user_id: int) -> None:
+    gen = get_session()
+    db = next(gen)
+    job = db.get(JobRun, job_id)
+    if not job:
+        gen.close()
+        return
+    try:
+        _update_job(db, job, phase="connecting", progress=10, message="Đang kết nối Google Drive")
+        result = _sync_drive_files(db, user_id, job)
+        job.status = "success"
+        job.stats = json.dumps({**result, "phase": "done", "progress": 100,
+                                "message": f"Hoàn tất {len(result['files'])} file"}, ensure_ascii=False)
+    except Exception as exc:
+        db.rollback()
+        job = db.get(JobRun, job_id)
+        job.status = "failed"
+        job.error = str(exc)[:1000]
+    job.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    gen.close()
+
+
+def _sync_drive_files(db: Session, user_id: int, job: JobRun | None = None) -> dict:
     target = get_settings().data_path / "payroll_drive"; target.mkdir(parents=True, exist_ok=True)
     local_rclone = Path.home() / ".local" / "bin" / "rclone"
     rclone = shutil.which("rclone") or (str(local_rclone) if local_rclone.is_file() else "")
@@ -226,11 +255,12 @@ def sync_drive(db: Session = Depends(get_session), user: CurrentUser = Depends(r
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(504, "Dong bo Drive qua thoi gian cho") from exc
     if result.returncode: raise HTTPException(502, f"Dong bo Drive loi: {result.stderr[-300:]}")
+    if job:
+        _update_job(db, job, phase="reviewing", progress=55, message="Đang kiểm tra các file Excel")
     imported = 0
     summaries = []
-    for path in sorted(target.glob("*.xlsx")):
-        if path.name.startswith("~$"):
-            continue
+    paths = [path for path in sorted(target.glob("*.xlsx")) if not path.name.startswith("~$")]
+    for index, path in enumerate(paths, 1):
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         try:
             snapshot = review_workbook(path)
@@ -244,11 +274,38 @@ def sync_drive(db: Session = Depends(get_session), user: CurrentUser = Depends(r
         db.add(PayrollImport(month=snapshot["month"], filename=path.name, drive_file_id=path.name,
                              sha256=digest, snapshot=json.dumps(snapshot, ensure_ascii=False),
                              findings=json.dumps(snapshot["findings"], ensure_ascii=False),
-                             imported_by=user.id))
+                             imported_by=user_id))
         imported += 1
+        if job:
+            _update_job(db, job, phase="reviewing", progress=55 + round(index / max(len(paths), 1) * 40),
+                        message=f"Đang kiểm tra file {index}/{len(paths)}")
     db.commit()
     return {"files": [x["filename"] for x in summaries], "summaries": summaries,
             "imported": imported, "read_only": True}
+
+
+@router.post("/sync-drive")
+def start_drive_sync(background: BackgroundTasks, db: Session = Depends(get_session),
+                     user: CurrentUser = Depends(require_admin)):
+    running = db.scalar(select(JobRun).where(JobRun.kind == "payroll_drive_sync",
+                                               JobRun.status == "running").order_by(JobRun.id.desc()))
+    if running:
+        return {"job_id": running.id, "status": running.status}
+    job = JobRun(kind="payroll_drive_sync", status="running",
+                 stats=json.dumps({"phase": "queued", "progress": 2, "message": "Đã xếp hàng đồng bộ"}))
+    db.add(job); db.commit(); db.refresh(job)
+    background.add_task(_run_drive_sync, job.id, user.id)
+    return {"job_id": job.id, "status": job.status}
+
+
+@router.get("/sync-drive/status")
+def drive_sync_status(db: Session = Depends(get_session), _: CurrentUser = Depends(require_admin)):
+    job = db.scalar(select(JobRun).where(JobRun.kind == "payroll_drive_sync").order_by(JobRun.id.desc()))
+    if not job:
+        return {"job": None}
+    return {"job": {"id": job.id, "status": job.status, "stats": _loads(job.stats, {}),
+                    "error": job.error, "started_at": job.started_at.isoformat(),
+                    "finished_at": job.finished_at.isoformat() if job.finished_at else ""}}
 
 
 @router.get("/periods/{period_id}/export")

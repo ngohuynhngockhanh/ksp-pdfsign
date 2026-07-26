@@ -160,3 +160,33 @@ def test_payroll_period_workflow_and_override_reason(client):
         json={"actual_days": 21, "standard_days": 22},
     )
     assert rejected.status_code == 409
+
+
+def test_drive_sync_runs_as_job_and_reports_progress(client, monkeypatch):
+    from app.config import get_settings
+    from app import payroll_api
+
+    target = get_settings().data_path / "payroll_drive"
+    target.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Thang 7-2026"
+    sheet.cell(15, 2, "NV-DEMO")
+    workbook.save(target / "payroll-demo.xlsx")
+    monkeypatch.setattr(
+        payroll_api.subprocess,
+        "run",
+        lambda *args, **kwargs: payroll_api.subprocess.CompletedProcess(args[0], 0, "", ""),
+    )
+
+    _login(client)
+    started = client.post("/api/payroll/sync-drive")
+    assert started.status_code == 200, started.text
+    assert started.json()["job_id"] > 0
+
+    status = client.get("/api/payroll/sync-drive/status")
+    assert status.status_code == 200
+    job = status.json()["job"]
+    assert job["status"] == "success"
+    assert job["stats"]["progress"] == 100
+    assert job["stats"]["files"] == ["payroll-demo.xlsx"]

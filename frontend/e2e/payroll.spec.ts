@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 test("admin creates, reviews and locks an anonymized payroll period", async ({ page }) => {
   let period: any = null;
+  let syncPolls = 0;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -22,6 +24,17 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
       }]};
       return route.fulfill({ json: period });
     }
+    if (path === "/api/payroll/sync-drive" && route.request().method() === "POST") {
+      return route.fulfill({ json: { job_id: 4, status: "running" } });
+    }
+    if (path === "/api/payroll/sync-drive/status") {
+      syncPolls += 1;
+      const done = syncPolls >= 3;
+      return route.fulfill({ json: { job: { id: 4, status: done ? "success" : "running", error: "",
+        started_at: new Date().toISOString(), finished_at: done ? new Date().toISOString() : "",
+        stats: { progress: done ? 100 : 55, message: done ? "Hoàn tất 7 file" : "Đang kiểm tra các file Excel",
+          files: done ? Array(7).fill("demo.xlsx") : [], imported: done ? 7 : 0 } } } });
+    }
     if (path.endsWith("/review")) { period.status = "reviewed"; return route.fulfill({ json: period }); }
     if (path.endsWith("/lock")) { period.status = "locked"; return route.fulfill({ json: period }); }
     return route.fulfill({ json: {} });
@@ -36,4 +49,17 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(page.getByText("reviewed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Khóa sổ" }).click();
   await expect(page.getByText("locked", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Sync Drive" }).click();
+  await expect(page.getByRole("progressbar", { name: "Tiến độ đồng bộ Drive" })).toHaveAttribute("aria-valuenow", "100", { timeout: 5000 });
+  await expect(page.getByText("7 file · 7 file mới")).toBeVisible();
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+
+  const accessibility = await new AxeBuilder({ page })
+    .include(".payroll-page")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
 });

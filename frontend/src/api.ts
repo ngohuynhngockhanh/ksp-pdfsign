@@ -1434,7 +1434,12 @@ export const api = {
     return req<PayrollPeriod>(`/api/payroll/periods/${periodId}/lock`, { method: "POST" });
   },
   payrollSyncDrive() {
-    return req<{ files: string[]; read_only: boolean }>("/api/payroll/sync-drive", { method: "POST" });
+    return req<{ job_id: number; status: string }>("/api/payroll/sync-drive", { method: "POST" });
+  },
+  payrollSyncStatus() {
+    return req<{ job: null | { id: number; status: string; error: string; started_at: string;
+      finished_at: string; stats: { progress?: number; phase?: string; message?: string;
+        files?: string[]; imported?: number; summaries?: { filename: string; findings: number; error?: string }[] } } }>("/api/payroll/sync-drive/status");
   },
   payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
 };
