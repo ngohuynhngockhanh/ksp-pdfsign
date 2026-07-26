@@ -40,6 +40,15 @@ Review code va du lieu gia lap. Khong doc, ghi nho, trich xuat ten nhan vien, ta
 - Mau xanh la khoan co loi cho nguoi lao dong; mau do la chi phi cong ty tang; mau trung tinh la khoan khong doi.
 - Nut ap dung chi dien de xuat vao form. Nguoi dung van phai luu nhap, chay review, sau do moi gui ban moi len Drive.
 
+## Quyet toan TNCN cuoi nam
+
+- Thue TNCN khau tru theo tung thang la so tam tinh, khong phai nghia vu cuoi cung cua ca nam.
+- Cuoi nam phai cong thu nhap chiu thue, cac khoan giam tru va so thue da khau tru de xac dinh nop them hoac xu ly so nop thua.
+- Cong ty chi quyet toan thay khi nguoi lao dong du dieu kien va co uy quyen theo quy dinh.
+- Neu ca nhan yeu cau giam tru chi phi giao duc thi ca nhan tu quyet toan; bang luong thang khong tu dong tru khoan nay.
+- Giam tru giao duc toi da 24 trieu dong/nam, theo chi phi thuc te co hoa don, chung tu tai co so giao duc trong nuoc va khong duoc nguon khac hoan tra.
+- Doi chieu file da sync tu thang 1 den thang 7/2026: hai nhan vien duoc kiem tra dang co thue TNCN tam khau tru 0 dong va chua thay thieu thue theo tong thu nhap hien co. Can tinh lai khi co du thu nhap, thuong va giam tru tu thang 8 den thang 12.
+
 Payload mau:
 
 ```json

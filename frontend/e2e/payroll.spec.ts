@@ -105,6 +105,10 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await expect(legalGuide).toContainText("Ngày lễ, Tết 300%");
   await expect(legalGuide).toContainText("Thưởng hiệu quả kinh doanh chịu thuế TNCN");
   await expect(legalGuide).toContainText("Không sửa giảm giờ đã làm thực tế");
+  await expect(legalGuide).toContainText("Công ty quyết toán thay");
+  await expect(legalGuide).toContainText("Cá nhân tự quyết toán");
+  await expect(legalGuide).toContainText("24 triệu đồng/năm");
+  await expect(legalGuide).toContainText("không tự trừ vào thuế tháng");
   await page.getByLabel("Thực lĩnh muốn nhận").fill("13000000");
   await expect(page.getByLabel("Giờ tăng ca thường có thật")).toHaveCount(0);
   await page.getByRole("button", { name: "Tự tính phương án" }).click();

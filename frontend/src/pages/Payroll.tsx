@@ -222,6 +222,8 @@ export function Payroll() {
                 <article><b>Đúng hệ số trả lương</b><p>Ngày thường 150% · Ngày nghỉ hằng tuần 200% · Ngày lễ, Tết 300%; làm ban đêm có phần cộng thêm.</p></article>
                 <article><b>Ghi đúng giờ đã làm</b><p>Không sửa giảm giờ đã làm thực tế để làm đẹp hồ sơ. Giờ vượt giới hạn vẫn phải trả đủ và được cảnh báo tuân thủ.</p></article>
                 <article><b>Thưởng hiệu quả kinh doanh</b><p>Thưởng hiệu quả kinh doanh chịu thuế TNCN. Khoản biến động theo KPI thường không vào nền BHXH khi có quy chế và quyết định riêng.</p></article>
+                <article><b>Quyết toán TNCN cuối năm</b><p>Thuế khấu trừ từng tháng là tạm tính. Công ty quyết toán thay khi người lao động đủ điều kiện và có ủy quyền; cuối năm đối chiếu để nộp thêm hoặc xử lý số nộp thừa.</p></article>
+                <article><b>Giảm trừ giáo dục</b><p>Tối đa 24 triệu đồng/năm theo chi phí thực tế có hóa đơn tại cơ sở trong nước. Cá nhân tự quyết toán nếu yêu cầu khoản này; công ty không tự trừ vào thuế tháng.</p></article>
               </div>
               <footer><strong>Từ 01/07/2026:</strong> tiền ăn tối đa 1.200.000 đồng/tháng theo chính sách đang cấu hình. Hoàn chi điện thoại, xăng xe, công tác chỉ ghi khi có quy chế và chứng từ thật.</footer>
             </aside>
