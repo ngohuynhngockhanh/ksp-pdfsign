@@ -13,6 +13,7 @@ from app.payroll import (
     apply_workbook_changes,
     calculate_payroll,
     calculate_pit,
+    calculate_annual_pit,
     insurance_base_cap,
     plan_net_target,
     review_workbook,
@@ -53,6 +54,32 @@ def test_pit_2026_uses_five_bands_and_new_family_deductions():
     assert calculate_pit(60_000_000) == 8_500_000
     assert calculate_pit(100_000_000) == 20_500_000
     assert calculate_pit(110_000_000) == 24_000_000
+
+
+def test_annual_pit_uses_annualized_bands_and_full_year_self_deduction():
+    result = calculate_annual_pit(
+        taxable_income_before_deductions=240_000_000,
+        employee_insurance=12_000_000,
+        dependent_months=0,
+        education_deduction=0,
+    )
+
+    assert result["self_deduction"] == 186_000_000
+    assert result["annual_taxable_income"] == 42_000_000
+    assert result["annual_pit"] == 2_100_000
+
+
+def test_annual_pit_caps_education_deduction_and_never_goes_negative():
+    result = calculate_annual_pit(
+        taxable_income_before_deductions=210_000_000,
+        employee_insurance=10_000_000,
+        dependent_months=0,
+        education_deduction=50_000_000,
+    )
+
+    assert result["education_deduction"] == 24_000_000
+    assert result["annual_taxable_income"] == 0
+    assert result["annual_pit"] == 0
 
 
 def test_july_meal_allowance_caps_exempt_amount_and_overtime_is_exempt():
@@ -490,3 +517,93 @@ def test_import_net_target_validates_employee_row(client):
         "available_weekday_ot_hours": 0, "available_weekend_ot_hours": 0,
     })
     assert response.status_code == 404
+
+
+def test_hr_summary_tracks_paid_outstanding_and_annual_tax(client, tmp_path):
+    _login(client)
+
+    def upload_month(month: int, net: int, pit: int, taxable_before: int):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = f"Tháng {month}-2026"
+        sheet["B15"] = "Huỳnh Đức Nhâm"
+        sheet["C15"] = "NV"
+        sheet["Q15"] = net + 577_500 + pit
+        sheet["AA15"] = 577_500
+        sheet["AE15"] = taxable_before
+        sheet["AF15"] = max(taxable_before - 577_500 - 15_500_000, 0)
+        sheet["AG15"] = pit
+        sheet["AJ15"] = net
+        sheet["AK15"] = net + 1_760_000
+        path = tmp_path / f"luong-{month}.xlsx"
+        workbook.save(path)
+        with path.open("rb") as handle:
+            response = client.post(
+                "/api/payroll/imports",
+                files={"file": (path.name, handle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            )
+        assert response.status_code == 200, response.text
+
+    upload_month(6, 14_637_885, 0, 15_215_385)
+    upload_month(7, 21_137_885, 0, 21_715_385)
+
+    summary = client.get("/api/payroll/hr-summary?year=2026")
+    assert summary.status_code == 200, summary.text
+    employee = summary.json()["employees"][0]
+    assert employee["name"] == "Huỳnh Đức Nhâm"
+    assert employee["net_payable"] == 35_775_770
+    assert employee["paid"] == 0
+    assert employee["outstanding"] == 35_775_770
+    assert employee["tax"]["withheld"] == 0
+    assert employee["tax"]["annual_pit"] == 0
+
+    paid = client.post("/api/payroll/payments", json={
+        "employee_id": employee["employee_id"],
+        "month": "2026-07",
+        "amount": 21_137_885,
+        "status": "completed",
+        "note": "Đã chuyển lương tháng 7; chờ bổ sung chứng từ",
+    })
+    assert paid.status_code == 200, paid.text
+    assert paid.json()["evidence_missing"] is True
+
+    after = client.get("/api/payroll/hr-summary?year=2026").json()["employees"][0]
+    assert after["paid"] == 21_137_885
+    assert after["outstanding"] == 14_637_885
+    july = next(row for row in after["months"] if row["month"] == "2026-07")
+    assert july["paid"] == 21_137_885
+    assert july["outstanding"] == 0
+    assert july["reconciliation_status"] == "missing_evidence"
+
+    overpayment = client.post("/api/payroll/payments", json={
+        "employee_id": employee["employee_id"], "month": "2026-07",
+        "amount": 1, "status": "completed",
+    })
+    assert overpayment.status_code == 409
+
+
+def test_hr_summary_merges_normalized_names_and_ignores_older_month_version(client, tmp_path):
+    _login(client)
+
+    for index, (name, net) in enumerate((("Ngô Huỳnh Ngọc Khánh", 20_000_000),
+                                         ("  NGÔ HUỲNH NGỌC KHÁNH  ", 22_000_000)), 1):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Tháng 7-2026"
+        sheet["B15"] = name
+        sheet["C15"] = "GĐ"
+        sheet["Q15"] = net + 577_500
+        sheet["AA15"] = 577_500
+        sheet["AE15"] = net + 577_500
+        sheet["AJ15"] = net
+        sheet["AK15"] = net + 1_760_000
+        path = tmp_path / f"luong-7-v{index}.xlsx"
+        workbook.save(path)
+        with path.open("rb") as handle:
+            response = client.post("/api/payroll/imports", files={"file": (path.name, handle)})
+        assert response.status_code == 200, response.text
+
+    employees = client.get("/api/payroll/hr-summary?year=2026").json()["employees"]
+    assert len(employees) == 1
+    assert employees[0]["net_payable"] == 22_000_000
+    assert len(employees[0]["months"]) == 1
