@@ -16,11 +16,11 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     }
     if (path === "/api/payroll/imports" && route.request().method() === "GET") {
       return route.fulfill({ json: [{ id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
-        imported_at: new Date().toISOString(), findings: [{ level: "do", code: "missing_kpcd", message: "Cột KPCĐ 2% đang trống." }] }] });
+        imported_at: new Date().toISOString(), findings: [{ level: "vang", code: "meal_cap", message: "Tiền ăn vượt mức miễn thuế.", cells: ["H15"] }] }] });
     }
     if (path === "/api/payroll/imports/9") {
       return route.fulfill({ json: { id: 9, month: "2026-07", filename: "Bang-luong-07-2026.xlsx",
-        imported_at: new Date().toISOString(), findings: [{ level: "do", code: "missing_kpcd", message: "Cột KPCĐ 2% đang trống." }],
+        imported_at: new Date().toISOString(), findings: [{ level: "vang", code: "meal_cap", message: "Tiền ăn vượt mức miễn thuế.", cells: ["H15"] }],
         snapshot: { sheet: "Tháng 7-2026", month: "2026-07", ncols: 40,
           grid: [...Array.from({ length: 14 }, () => Array(40).fill("")),
             ["1", "NV-DEMO", "Nhân viên mẫu", "12000000", "22", "22", "12000000", "1500000", "", "", "", "", "", "", "", "", "13500000", "12000000", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "0", "", "", "12240000", "16080000", "", "", ""]] } } });
@@ -67,6 +67,9 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");
     await expect(page.getByText("12.240.000")).toBeVisible();
     await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeHidden();
+    await page.getByRole("button", { name: /Xem ô H15/ }).click();
+    await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeVisible();
+    await expect(page.locator("#payroll-cell-9-H15")).toHaveClass(/cell-focus/);
   } else {
     await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toContainText("NV-DEMO");
   }

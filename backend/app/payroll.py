@@ -112,22 +112,35 @@ def review_workbook(path: Path) -> dict[str, Any]:
     value_sheet = value_workbook[value_workbook.sheetnames[0]]
     findings: list[dict[str, str]] = []
     max_row = sheet.max_row or 0
-    if max_row >= 15 and all(sheet.cell(row, 19).value in (None, "") for row in range(15, max_row + 1)):
-        findings.append({"level": "do", "code": "missing_kpcd", "message": "Cột KPCĐ 2% đang trống."})
     month = detect_month(sheet.title, path.name)
     rows = []
+    employee_rows: list[int] = []
     for row in range(15, min(max_row, 200) + 1):
         code = sheet.cell(row, 2).value
         name = sheet.cell(row, 3).value
         if not code and not name:
             continue
+        employee_rows.append(row)
         rows.append({"row": row, "code": str(code or ""), "has_name": bool(name)})
         meal = sheet.cell(row, 8).value
         if month >= "2026-07" and isinstance(meal, (int, float)) and meal > 1_200_000:
-            findings.append({"level": "vang", "code": "meal_cap", "message": "Tiền ăn vượt 1,2 triệu đồng từ ngày 01/07/2026."})
+            findings.append({"level": "vang", "code": "meal_cap",
+                             "message": "Tiền ăn vượt 1,2 triệu đồng từ ngày 01/07/2026.",
+                             "cells": [f"H{row}"]})
+    missing_kpcd = [row for row in employee_rows if sheet.cell(row, 19).value in (None, "")]
+    if employee_rows and len(missing_kpcd) == len(employee_rows):
+        findings.insert(0, {"level": "do", "code": "missing_kpcd",
+                            "message": "Cột KPCĐ 2% đang trống ở các dòng nhân viên.",
+                            "cells": [f"S{row}" for row in missing_kpcd]})
     grid: list[list[str]] = []
-    for row in value_sheet.iter_rows(min_row=1, max_row=min(max_row, 200), max_col=min(value_sheet.max_column or 1, 40)):
-        grid.append(["" if cell.value is None else str(cell.value) for cell in row])
+    # Một số file Excel khai báo sai dimension (ví dụ A1:A1000 dù dữ liệu có 40 cột).
+    # Đọc theo tọa độ của sheet công thức để vẫn lấy đủ bảng, nhưng giới hạn 200x40.
+    row_limit = min(max_row, 200)
+    col_limit = min(max(sheet.max_column or 1, 40), 40)
+    for row_index in range(1, row_limit + 1):
+        grid.append(["" if value_sheet.cell(row_index, col).value is None
+                     else str(value_sheet.cell(row_index, col).value)
+                     for col in range(1, col_limit + 1)])
     return {"sheet": sheet.title, "month": month, "rows": rows,
             "grid": grid, "ncols": max((len(row) for row in grid), default=0),
             "findings": findings}

@@ -218,7 +218,7 @@ export interface PayrollPeriod {
 
 export interface PayrollImportItem {
   id: number; month: string; filename: string; imported_at: string;
-  findings: { level: "do" | "vang"; code: string; message: string }[];
+  findings: { level: "do" | "vang"; code: string; message: string; cells?: string[] }[];
 }
 
 export interface PayrollImportDetail extends PayrollImportItem {
