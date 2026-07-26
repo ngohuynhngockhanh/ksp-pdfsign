@@ -23,8 +23,8 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
     }
     if (path === "/api/payroll/hr-summary") {
       return route.fulfill({ json: { year: 2026, totals: {
-        net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid,
-        pit_withheld: 0, annual_pit: 0,
+        net_payable: 49525770, paid: 28387885 + hrPaid, outstanding: 21137885 - hrPaid,
+        pit_withheld: 142176, annual_pit: 0,
       }, employees: [{ employee_id: 2, code: "HR-DEMO", name: "Huỳnh Đức Nhâm", position: "NV",
         net_payable: 21137885, paid: hrPaid, outstanding: 21137885 - hrPaid, gross_income: 21715385,
         tax: { withheld: 0, annual_pit: 0, annual_taxable_income: 0, balance: 0,
@@ -37,7 +37,16 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
           payments: hrPaid ? [{ id: 7, employee_id: 2, month: "2026-07", amount: hrPaid,
             status: "completed", paid_at: new Date().toISOString(), bank_name: "", transaction_ref: "",
             note: "Đã chuyển", evidence_name: hrHasEvidence ? "uy-nhiem-chi.pdf" : "",
-            evidence_missing: !hrHasEvidence, cancel_reason: "" }] : [] }] }] } });
+            evidence_missing: !hrHasEvidence, cancel_reason: "" }] : [] }] },
+        { employee_id: 3, code: "HR-KHANH", name: "Ngô Huỳnh Ngọc Khánh", position: "GĐ",
+          net_payable: 28387885, paid: 28387885, outstanding: 0, gross_income: 29107561,
+          tax: { withheld: 142176, annual_pit: 0, annual_taxable_income: 0, balance: -142176,
+            self_deduction: 186000000, dependent_deduction: 43400000, education_deduction: 0,
+            basis: "Dữ liệu thu nhập do công ty quản lý" },
+          months: [{ month: "2026-07", statement_id: 6, source_import_id: 9,
+            gross_income: 29107561, employee_insurance: 577500, pit_withheld: 142176,
+            net_payable: 28387885, paid: 28387885, outstanding: 0,
+            reconciliation_status: "missing_evidence", payments: [] }] }] } });
     }
     if (path === "/api/payroll/payments" && route.request().method() === "POST") {
       hrPaid = route.request().postDataJSON().amount;
@@ -120,7 +129,17 @@ test("admin creates, reviews and locks an anonymized payroll period", async ({ p
   await page.goto("/bang-luong");
   await expect(page.getByRole("heading", { name: "Bảng lương & kiểm soát tuân thủ" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bức tranh HR năm 2026" })).toBeVisible();
-  await expect(page.getByLabel("Tổng quan thanh toán và thuế năm")).toContainText("21.137.885");
+  await expect(page.getByLabel("Tổng quan thanh toán và thuế năm")).toContainText("49.525.770");
+  await expect(page.getByRole("heading", { name: "Biểu đồ lương và thuế" })).toBeVisible();
+  await expect(page.getByLabel("Biểu đồ của Huỳnh Đức Nhâm")).toContainText("21.137.885");
+  await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toContainText("28.387.885");
+  await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toContainText("142.176");
+  await page.getByLabel("Hiển thị Ngô Huỳnh Ngọc Khánh").uncheck();
+  await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toHaveCount(0);
+  await page.getByRole("button", { name: "Bỏ chọn" }).click();
+  await expect(page.getByText("Chọn ít nhất một nhân viên để xem biểu đồ.")).toBeVisible();
+  await page.getByRole("button", { name: "Chọn tất cả" }).click();
+  await expect(page.getByLabel("Biểu đồ của Ngô Huỳnh Ngọc Khánh")).toBeVisible();
   await page.getByRole("button", { name: /Huỳnh Đức Nhâm/ }).click();
   await page.getByLabel("Số tiền đã chuyển").fill("21137885");
   await page.getByRole("button", { name: "Ghi nhận đã chuyển" }).click();
