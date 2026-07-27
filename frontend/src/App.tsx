@@ -90,6 +90,7 @@ interface Me {
   default_location: string;
   using_default_secrets: boolean;
   must_change_password: boolean;
+  training_access: boolean;
 }
 
 async function changePassword() {
@@ -167,7 +168,7 @@ export function App() {
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training",
             ] as Tab[])
-          : (["mine", "verify"] as Tab[]);
+          : (["mine", "verify", ...(m.training_access ? ["training" as Tab] : [])] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
           ? fromPath
@@ -240,6 +241,9 @@ export function App() {
     ],
   ];
   const groups = isAdmin ? adminGroups : custGroups;
+  if (!isAdmin && me.training_access) {
+    groups.unshift(["Trợ lý", [["training", "iNut Training", "✦"]]]);
+  }
 
   return (
     <div className="app">
@@ -309,7 +313,7 @@ export function App() {
 
         <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
-        {tab === "training" && isAdmin && <Training />}
+        {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}

@@ -22,6 +22,7 @@ class CurrentUser:
     username: str
     role: str
     customer_id: int | None
+    training_access: bool = False
     ip: str = ""
 
     @property
@@ -89,6 +90,7 @@ def require_user(
         username=str(p.get("sub", "")),
         role=str(p.get("role", "customer")),
         customer_id=p.get("cid"),
+        training_access=bool(user.training_access),
         ip=request.client.host if request.client else "",
     )
 
@@ -96,4 +98,10 @@ def require_user(
 def require_admin(user: CurrentUser = Depends(require_user)) -> CurrentUser:
     if not user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Chi admin duoc phep")
+    return user
+
+
+def require_training(user: CurrentUser = Depends(require_user)) -> CurrentUser:
+    if not user.is_admin and not user.training_access:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tai khoan chua duoc cap quyen iNut Training")
     return user

@@ -64,6 +64,7 @@ from .auth import (
     create_token,
     ensure_admin_seed,
     require_admin,
+    require_training,
     require_user,
 )
 from .config import REPO_ROOT, Settings, get_settings
@@ -356,6 +357,7 @@ def me(
         "default_location": settings.default_location,
         "using_default_secrets": settings.using_default_secrets,
         "must_change_password": bool(db_user and db_user.must_change_password),
+        "training_access": bool(db_user and (db_user.role == "admin" or db_user.training_access)),
     }
 
 
@@ -1332,7 +1334,7 @@ def _share_url(settings: Settings, token: str) -> str:
 @app.get("/api/training/search")
 def training_search(
     q: str,
-    _user: CurrentUser = Depends(require_admin),
+    _user: CurrentUser = Depends(require_training),
     settings: Settings = Depends(get_settings),
 ):
     try:
@@ -1353,7 +1355,7 @@ def training_archived_help(settings: Settings = Depends(get_settings)):
 @app.post("/api/training/ask")
 def training_ask(
     body: dict = Body(...),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_training),
     settings: Settings = Depends(get_settings),
 ):
     question = str(body.get("question", ""))
@@ -1368,7 +1370,7 @@ def training_ask(
 @app.post("/api/training/share")
 def training_share_create(
     body: dict = Body(...),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_training),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
@@ -1601,8 +1603,25 @@ def list_users(user: CurrentUser = Depends(require_admin), db: Session = Depends
         out.append(UserOut(
             id=u.id, username=u.username, role=u.role, customer_id=u.customer_id,
             customer_name=u.customer.name if u.customer else None,
+            training_access=u.role == "admin" or bool(u.training_access),
         ))
     return out
+
+
+@app.patch("/api/users/{uid}/training-access")
+def set_user_training_access(
+    uid: int, body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session),
+):
+    target = db.get(User, uid)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay user")
+    if target.role == "admin":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Admin luon co quyen Training")
+    target.training_access = bool(body.get("enabled"))
+    db.commit()
+    _audit(db, user, "training_access", target.username, "bat" if target.training_access else "tat")
+    return {"ok": True, "training_access": target.training_access}
 
 
 @app.post("/api/users/{uid}/password")

@@ -173,6 +173,7 @@ class UserOut(BaseModel):
     role: str
     customer_id: int | None
     customer_name: str | None = None
+    training_access: bool = False
 
 
 class ShareRequest(BaseModel):

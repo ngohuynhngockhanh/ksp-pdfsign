@@ -76,6 +76,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     session_version: Mapped[int] = mapped_column(default=1)
     must_change_password: Mapped[bool] = mapped_column(default=False)
+    training_access: Mapped[bool] = mapped_column(default=False)
 
     customer: Mapped["Customer | None"] = relationship(back_populates="users")
 
@@ -968,6 +969,7 @@ def _migrate_add_columns() -> None:
         "users": {
             "session_version": "INTEGER DEFAULT 1",
             "must_change_password": "BOOLEAN DEFAULT 0",
+            "training_access": "BOOLEAN DEFAULT 0",
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",

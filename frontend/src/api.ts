@@ -373,6 +373,7 @@ export const api = {
       default_location: string;
       using_default_secrets: boolean;
       must_change_password: boolean;
+      training_access: boolean;
     }>("/api/me");
   },
   async upload(file: File) {
@@ -760,8 +761,15 @@ export const api = {
   },
   async listUsers() {
     return req<
-      { id: number; username: string; role: string; customer_name: string | null }[]
+      { id: number; username: string; role: string; customer_name: string | null; training_access: boolean }[]
     >("/api/users");
+  },
+  async setTrainingAccess(uid: number, enabled: boolean) {
+    return req<{ ok: boolean; training_access: boolean }>(`/api/users/${uid}/training-access`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
   },
   async adminResetPassword(uid: number, newPassword: string) {
     return req<{ ok: boolean; username: string }>(`/api/users/${uid}/password`, {

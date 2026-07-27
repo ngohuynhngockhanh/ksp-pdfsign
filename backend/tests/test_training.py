@@ -69,6 +69,35 @@ def test_training_api_requires_admin(client):
     assert client.post("/api/training/share", json={"question": "frpc", "answer": {}}).status_code == 401
 
 
+def test_training_access_can_be_granted_per_customer_account(client, monkeypatch):
+    from app import db as dbmod
+    from app.db import User
+    from app.security import hash_password
+
+    generator = dbmod.get_session()
+    db = next(generator)
+    denied = User(username="training_denied", password_hash=hash_password("matkhau12345"), role="customer")
+    allowed = User(username="training_allowed", password_hash=hash_password("matkhau12345"), role="customer", training_access=True)
+    db.add_all([denied, allowed])
+    db.commit()
+    denied_id = denied.id
+    generator.close()
+
+    client.post("/api/login", json={"username": "training_denied", "password": "matkhau12345"})
+    assert client.get("/api/training/search?q=frpc").status_code == 403
+    client.post("/api/logout")
+
+    client.post("/api/login", json={"username": "training_allowed", "password": "matkhau12345"})
+    monkeypatch.setattr(training, "search", lambda settings, query: [{"title": "FRPC"}])
+    assert client.get("/api/training/search?q=frpc").status_code == 200
+    client.post("/api/logout")
+
+    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+    changed = client.patch(f"/api/users/{denied_id}/training-access", json={"enabled": True})
+    assert changed.status_code == 200
+    assert changed.json()["training_access"] is True
+
+
 def test_public_training_share_escapes_content_and_filters_unsafe_links(client):
     from app import db as dbmod
     from app.db import TrainingShare

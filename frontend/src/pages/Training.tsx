@@ -24,7 +24,9 @@ function EvidenceList({ title, items }: { title: string; items?: TrainingEvidenc
   );
 }
 
-export function Training() {
+type AccessUser = Awaited<ReturnType<typeof api.listUsers>>[number];
+
+export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [answer, setAnswer] = useState<TrainingAnswer | null>(null);
@@ -32,6 +34,16 @@ export function Training() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [accessUsers, setAccessUsers] = useState<AccessUser[]>([]);
+
+  async function loadAccessUsers() {
+    if (isAdmin) setAccessUsers(await api.listUsers());
+  }
+
+  async function toggleAccess(user: AccessUser) {
+    await api.setTrainingAccess(user.id, !user.training_access);
+    await loadAccessUsers();
+  }
 
   async function ask(event?: FormEvent) {
     event?.preventDefault();
@@ -89,6 +101,18 @@ export function Training() {
       <div className="training-quick">
         {QUICK_QUESTIONS.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
       </div>
+      {isAdmin && (
+        <section className="training-access-panel">
+          <div><span>PHÂN QUYỀN</span><h2>Tài khoản được dùng Training</h2><p>{accessUsers.filter((user) => user.training_access).length} tài khoản đang có quyền.</p></div>
+          <button onClick={loadAccessUsers}>{accessUsers.length ? "Làm mới" : "Xem tài khoản"}</button>
+          {accessUsers.length > 0 && <div className="training-access-list">{accessUsers.map((user) => (
+            <label key={user.id}>
+              <input type="checkbox" checked={user.training_access} disabled={user.role === "admin"} onChange={() => toggleAccess(user)} />
+              <span><strong>{user.customer_name || user.username}</strong><small>{user.username} · {user.role}</small></span>
+            </label>
+          ))}</div>}
+        </section>
+      )}
       {error && <div className="error">{error}</div>}
 
       {answer && (
