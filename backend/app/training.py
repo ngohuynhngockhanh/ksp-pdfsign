@@ -40,6 +40,20 @@ def search(settings: Settings, query: str) -> list[dict[str, Any]]:
         raise TrainingError("Khong ket noi duoc kho Training") from exc
 
 
+def archived_help(settings: Settings) -> bytes:
+    try:
+        response = httpx.get(
+            f"{settings.training_base_url.rstrip('/')}/help",
+            timeout=min(settings.training_timeout, 30),
+        )
+        response.raise_for_status()
+        if len(response.content) > 16 * 1024 * 1024:
+            raise TrainingError("Ban Help luu tru vuot qua gioi han")
+        return response.content
+    except httpx.HTTPError as exc:
+        raise TrainingError("Khong doc duoc ban Help luu tru") from exc
+
+
 def ask(settings: Settings, question: str, session_id: str = "") -> dict[str, Any]:
     question = question.strip()
     if not question or len(question) > 2000:

@@ -29,6 +29,14 @@ def test_search_returns_upstream_results(monkeypatch):
     assert training.search(_settings(), " cài frpc lỗi giờ sao ") == [{"title": "FRPC"}]
 
 
+def test_archived_help_is_fetched_from_training_service(monkeypatch):
+    def fake_get(url, **kwargs):
+        return httpx.Response(200, request=httpx.Request("GET", url), content=b"<html>archived</html>")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert training.archived_help(_settings()) == b"<html>archived</html>"
+
+
 def test_ask_logs_in_server_side_and_never_returns_password(monkeypatch):
     requests: list[httpx.Request] = []
 

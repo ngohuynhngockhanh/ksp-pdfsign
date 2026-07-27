@@ -1341,6 +1341,15 @@ def training_search(
         raise _training_error(exc) from exc
 
 
+@app.get("/training/help", response_class=HTMLResponse)
+def training_archived_help(settings: Settings = Depends(get_settings)):
+    try:
+        content = training.archived_help(settings)
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.post("/api/training/ask")
 def training_ask(
     body: dict = Body(...),
