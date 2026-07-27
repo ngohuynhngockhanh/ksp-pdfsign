@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api, TrainingAnswer, TrainingEvidence, TrainingSearchResult } from "../api";
 
 const QUICK_QUESTIONS = [
@@ -39,6 +39,10 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   async function loadAccessUsers() {
     if (isAdmin) setAccessUsers(await api.listUsers());
   }
+
+  useEffect(() => {
+    loadAccessUsers().catch((caught) => setError((caught as Error).message));
+  }, [isAdmin]);
 
   async function toggleAccess(user: AccessUser) {
     await api.setTrainingAccess(user.id, !user.training_access);
