@@ -148,6 +148,20 @@ class Share(Base):
     document: Mapped["Document"] = relationship()
 
 
+class TrainingShare(Base):
+    """Cau tra loi Training chia se cong khai bang token ngau nhien, co han."""
+
+    __tablename__ = "training_shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    question: Mapped[str] = mapped_column(String(2000))
+    answer_json: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class LoginLink(Base):
     """Bearer link co han de khach mo va dang nhap ma khong go mat khau."""
 

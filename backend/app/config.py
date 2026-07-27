@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     ai_max_tokens: int = 3500
     ai_timeout: float = 120.0
 
+    # iNut Training proxy. Mat khau chi dung server-to-server, UI khong hoi lai.
+    training_base_url: str = "http://127.0.0.1:8090"
+    training_password: str = ""
+    training_timeout: float = 100.0
+    training_share_days: int = 30
+
     # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
     nas_enabled: bool = True
     nas_host: str = "172.32.0.100"

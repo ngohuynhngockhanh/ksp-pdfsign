@@ -52,6 +52,7 @@ from . import (
     tax_ops,
     tax_policy,
     tax_review,
+    training,
     storage,
     token_backend,
     verify,
@@ -82,6 +83,7 @@ from .db import (
     Share,
     TaxReviewUpload,
     TaxReport,
+    TrainingShare,
     User,
     get_session,
     init_db,
@@ -132,6 +134,10 @@ from .payroll_api import router as payroll_router  # noqa: E402
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
 app.include_router(payroll_router)
+
+
+def _training_error(exc: training.TrainingError) -> HTTPException:
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
 
 
 @app.middleware("http")
@@ -1318,6 +1324,101 @@ def bulk_delete(
 # ---------------------------------------------------------------------------
 def _share_url(settings: Settings, token: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/s/{token}"
+
+
+# ---------------------------------------------------------------------------
+# iNut Training: proxy noi bo + chia se cau tra loi public
+# ---------------------------------------------------------------------------
+@app.get("/api/training/search")
+def training_search(
+    q: str,
+    _user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return {"results": training.search(settings, q)}
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@app.post("/api/training/ask")
+def training_ask(
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    question = str(body.get("question", ""))
+    session_id = str(body.get("session_id", ""))
+    try:
+        data = training.ask(settings, question, session_id)
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    return data
+
+
+@app.post("/api/training/share")
+def training_share_create(
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    question = str(body.get("question", "")).strip()
+    answer = body.get("answer")
+    try:
+        days = int(body.get("days") or settings.training_share_days)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thoi han chia se khong hop le") from exc
+    if not question or len(question) > 2000 or not isinstance(answer, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Noi dung chia se khong hop le")
+    answer_json = json.dumps(answer, ensure_ascii=False)
+    if len(answer_json.encode("utf-8")) > 250_000:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Cau tra loi qua lon de chia se")
+    days = max(1, min(days, 365))
+    token = secrets.token_urlsafe(18)
+    expires = datetime.utcnow() + timedelta(days=days)
+    db.add(TrainingShare(
+        token=token, question=question,
+        answer_json=answer_json,
+        created_by=user.id, expires_at=expires,
+    ))
+    db.commit()
+    _audit(db, user, "training_share", question[:120], f"{days} ngay")
+    return {
+        "url": f"{settings.public_base_url.rstrip('/')}/t/{token}",
+        "expires_at": expires.isoformat(),
+    }
+
+
+@app.get("/t/{token}", response_class=HTMLResponse)
+def training_share_page(token: str, db: Session = Depends(get_session)):
+    share = db.scalar(select(TrainingShare).where(TrainingShare.token == token))
+    if not share:
+        return HTMLResponse("<h1>Link không tồn tại</h1>", status_code=404)
+    if datetime.utcnow() > share.expires_at:
+        return HTMLResponse("<h1>Link đã hết hạn</h1>", status_code=410)
+    try:
+        answer = json.loads(share.answer_json)
+    except ValueError:
+        answer = {}
+    evidence = []
+    for item in list(answer.get("documentationEvidence") or []) + list(answer.get("videoEvidence") or []):
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url", ""))
+        parsed = urlsplit(raw_url)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        title = html.escape(str(item.get("title", "Nguồn")))
+        url = html.escape(raw_url, quote=True)
+        quote_text = html.escape(str(item.get("quote", "")))
+        evidence.append(f'<li><a href="{url}" target="_blank" rel="noopener">{title}</a><p>{quote_text}</p></li>')
+    question = html.escape(share.question)
+    answer_text = html.escape(str(answer.get("answer", "")))
+    guidance = html.escape(str(answer.get("generalGuidance", "")))
+    sources = "".join(evidence) or "<li>Không có nguồn đính kèm</li>"
+    page = f"""<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iNut Training</title><style>body{{font-family:system-ui;max-width:820px;margin:40px auto;padding:0 20px;color:#172033}}main{{background:#f4f8f6;padding:28px;border-radius:18px}}h1{{color:#0c6b58}}blockquote{{border-left:4px solid #ef9f31;padding-left:16px}}li{{margin:14px 0}}a{{color:#075ea8}}small{{color:#667085}}</style></head><body><main><small>iNut Training · chia sẻ bởi KSP</small><h1>{question}</h1><blockquote>{answer_text}</blockquote><h2>Hướng dẫn bổ sung</h2><p>{guidance}</p><h2>Nguồn kiểm chứng</h2><ul>{sources}</ul><small>Link hết hạn: {share.expires_at.strftime('%d/%m/%Y')}</small></main></body></html>"""
+    return HTMLResponse(page)
 
 
 @app.post("/api/documents/{doc_pk}/share", response_model=ShareResponse)

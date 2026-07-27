@@ -24,6 +24,7 @@ import { TaxSync } from "./pages/TaxSync";
 import { TaxReview } from "./pages/TaxReview";
 import { Operations } from "./pages/Operations";
 import { Payroll } from "./pages/Payroll";
+import { Training } from "./pages/Training";
 
 type Tab =
   | "home"
@@ -48,7 +49,8 @@ type Tab =
   | "settings"
   | "payroll"
   | "verify"
-  | "mine";
+  | "mine"
+  | "training";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -74,6 +76,7 @@ const ROUTES: Record<Tab, string> = {
   payroll: "/bang-luong",
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
+  training: "/training",
 };
 const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
   Object.entries(ROUTES).map(([t, p]) => [p, t as Tab]),
@@ -162,7 +165,7 @@ export function App() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "payroll", "verify",
+              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training",
             ] as Tab[])
           : (["mine", "verify"] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
@@ -189,6 +192,7 @@ export function App() {
   // Menu gom nhom, hien o sidebar trai
   const adminGroups: [string, [Tab, string, string][]][] = [
     ["Tổng quan", [["home", "Trung tâm vận hành", "◉"]]],
+    ["Trợ lý", [["training", "iNut Training", "✦"]]],
     [
       "Hóa đơn & Thuế",
       [
@@ -305,6 +309,7 @@ export function App() {
 
         <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
+        {tab === "training" && isAdmin && <Training />}
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}

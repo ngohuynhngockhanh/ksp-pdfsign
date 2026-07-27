@@ -276,6 +276,34 @@ export interface PayrollHrSummary {
     pit_withheld: number; annual_pit: number };
 }
 
+export interface TrainingEvidence {
+  title: string;
+  url: string;
+  quote?: string;
+  timestamp?: string;
+}
+
+export interface TrainingAnswer {
+  answer: string;
+  sourceBasis?: string;
+  generalGuidance?: string;
+  warnings?: string[];
+  followUps?: string[];
+  videoEvidence?: TrainingEvidence[];
+  documentationEvidence?: TrainingEvidence[];
+}
+
+export interface TrainingSearchResult {
+  sourceType: "video" | "help" | "website";
+  sourceId: string;
+  sourceTitle: string;
+  videoTitle?: string;
+  timestamp?: string;
+  text: string;
+  citationUrl: string;
+  score: number;
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -308,6 +336,23 @@ async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  async trainingSearch(query: string) {
+    return req<{ results: TrainingSearchResult[] }>(`/api/training/search?q=${encodeURIComponent(query)}`);
+  },
+  async trainingAsk(question: string, sessionId = "") {
+    return req<{ sessionId: string; answer: TrainingAnswer }>("/api/training/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, session_id: sessionId }),
+    });
+  },
+  async trainingShare(question: string, answer: TrainingAnswer, days = 30) {
+    return req<{ url: string; expires_at: string }>("/api/training/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, answer, days }),
+    });
+  },
   async login(username: string, password: string) {
     return req<{ ok: boolean; username: string }>("/api/login", {
       method: "POST",
