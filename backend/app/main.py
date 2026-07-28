@@ -59,6 +59,7 @@ from . import (
     verify,
 )
 from .customs_drive_api import router as customs_drive_router
+from .pymid_api import router as pymid_router
 from .auth import (
     COOKIE_NAME,
     CurrentUser,
@@ -140,6 +141,7 @@ app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
 app.include_router(payroll_router)
 app.include_router(customs_drive_router)
+app.include_router(pymid_router)
 
 
 def _training_error(exc: training.TrainingError) -> HTTPException:

@@ -274,6 +274,44 @@ class Product(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class PymidCoopProduct(Base):
+    """Bảng giá hợp tác riêng giữa INUT và PYMID."""
+
+    __tablename__ = "pymid_coop_products"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(500))
+    unit: Mapped[str] = mapped_column(String(50), default="Cái")
+    source_price: Mapped[float] = mapped_column(default=0.0)
+    category: Mapped[str] = mapped_column(String(20), default="hardware")
+    level: Mapped[int | None] = mapped_column(nullable=True)
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    valid_from: Mapped[str] = mapped_column(String(10), default="2026-07-29")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PymidCoopOrder(Base):
+    __tablename__ = "pymid_coop_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    level: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    document_date: Mapped[str] = mapped_column(String(10), default="")
+    customer_reference: Mapped[str] = mapped_column(String(255), default="")
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    policy_code: Mapped[str] = mapped_column(String(50), default="")
+    items_json: Mapped[str] = mapped_column(Text, default="[]")
+    invoice_lines_json: Mapped[str] = mapped_column(Text, default="[]")
+    total_net: Mapped[float] = mapped_column(default=0.0)
+    total_tax: Mapped[float] = mapped_column(default=0.0)
+    total_gross: Mapped[float] = mapped_column(default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class AuditLog(Base):
     """Nhat ky thao tac de truy vet."""
 
@@ -1035,6 +1073,7 @@ def init_db() -> None:
     _migrate_add_columns()
     _seed_warehouses()
     _seed_customs_drive_sources()
+    _seed_pymid_catalog()
 
 
 def _seed_warehouses() -> None:
@@ -1055,6 +1094,17 @@ def _seed_customs_drive_sources() -> None:
         if db.scalar(select(InvCustomsDriveSource).where(InvCustomsDriveSource.year == 2026)) is None:
             db.add(InvCustomsDriveSource(year=2026,
                                          folder_id="1yg_TqCrWS4dDx-O-bYYhfktFq1OdNk9z"))
+            db.commit()
+
+
+def _seed_pymid_catalog() -> None:
+    from .pymid import CATALOG
+
+    with _SessionLocal() as db:
+        existing = set(db.scalars(select(PymidCoopProduct.code)))
+        rows = [PymidCoopProduct(**item) for item in CATALOG if item["code"] not in existing]
+        if rows:
+            db.add_all(rows)
             db.commit()
 
 
