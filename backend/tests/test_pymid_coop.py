@@ -119,3 +119,47 @@ def test_only_admin_can_approve_order(app_env):
     assert approved.status_code == 200
     assert approved.json()["status"] == "approved"
 
+
+def test_draft_can_be_updated_but_submitted_order_is_locked(app_env):
+    login(app_env, "pymid", "PymidTest123@")
+    rows = app_env.get("/api/pymid/catalog?document_date=2026-07-29").json()["items"]
+    base = next(row for row in rows if row["code"] == "PMC01")
+    relay = next(row for row in rows if row["code"] == "RS485-RELAY4")
+    created = app_env.post("/api/pymid/orders", json={
+        "level": 1,
+        "document_date": "2026-07-29",
+        "customer_reference": "Bản nháp đầu",
+        "items": [{"product_id": base["id"], "quantity": 1}],
+    }).json()
+
+    updated = app_env.put(f"/api/pymid/orders/{created['id']}", json={
+        "level": 1,
+        "document_date": "2026-07-29",
+        "customer_reference": "Nhà yến đã sửa",
+        "note": "Thêm relay",
+        "items": [
+            {"product_id": base["id"], "quantity": 1},
+            {"product_id": relay["id"], "quantity": 2},
+        ],
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["customer_reference"] == "Nhà yến đã sửa"
+    assert len(updated.json()["items"]) == 2
+
+    app_env.post(f"/api/pymid/orders/{created['id']}/submit")
+    locked = app_env.put(f"/api/pymid/orders/{created['id']}", json={
+        "level": 1,
+        "items": [{"product_id": base["id"], "quantity": 1}],
+    })
+    assert locked.status_code == 409
+    assert locked.json()["detail"] == "Đơn đã gửi duyệt nên không thể sửa"
+
+
+def test_catalog_excel_is_available_to_pymid(app_env):
+    login(app_env, "pymid", "PymidTest123@")
+    exported = app_env.get("/api/pymid/catalog.xlsx?document_date=2026-07-29")
+    assert exported.status_code == 200, exported.text
+    workbook = load_workbook(BytesIO(exported.content), data_only=True)
+    assert {"Danh mục giá", "Nhanh.vn"}.issubset(workbook.sheetnames)
+    assert workbook["Danh mục giá"].max_row == 24
+    assert workbook["Danh mục giá"]["J2"].value == "VAT 8%"
