@@ -9,6 +9,7 @@ import {
   InvWarehouse,
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { CustomsDriveDossiers } from "../components/CustomsDriveDossiers";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -326,12 +327,13 @@ export function CustomsDecl() {
 
   return (
     <div className="docs-page">
+      <CustomsDriveDossiers />
       <div className="docs-toolbar">
         <h3>
           🛃 Tờ khai nhập khẩu <span className="count">{list.length}</span>
         </h3>
         <div className="tb-group">
-          <select className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+          <select aria-label="Trạng thái tờ khai" className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
             <option value="draft">Nháp</option>
             <option value="posted">Đã ghi sổ</option>

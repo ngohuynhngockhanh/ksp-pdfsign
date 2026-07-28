@@ -1541,6 +1541,30 @@ export const api = {
       { method: "POST", body: fd },
     );
   },
+  async customsDriveSources() {
+    return req<CustomsDriveSource[]>("/api/inv/customs-drive/sources");
+  },
+  async customsDriveSaveSource(body: { year: number; folder_id: string }) {
+    return req<CustomsDriveSource>("/api/inv/customs-drive/sources", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  },
+  async customsDriveSync(year: number) {
+    return req<{ job_id: number; status: string; stats: Record<string, number | string> }>(
+      `/api/inv/customs-drive/sync/${year}`, { method: "POST" },
+    );
+  },
+  async customsDriveFolders(year?: number) {
+    return req<CustomsDriveFolder[]>(`/api/inv/customs-drive/folders${year ? `?year=${year}` : ""}`);
+  },
+  async customsDriveAssign(folderId: number, customsId: number) {
+    return req<CustomsDriveFolder>(`/api/inv/customs-drive/folders/${folderId}/assign`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customs_id: customsId }),
+    });
+  },
+  async customsDriveReview(folderId: number) {
+    return req<CustomsDriveFolder>(`/api/inv/customs-drive/folders/${folderId}/review`, { method: "POST" });
+  },
   invCustomsFileUrl(id: number) {
     return `/api/inv/customs/${id}/file`;
   },
@@ -1721,6 +1745,24 @@ export interface InvCustomsDecl {
   tong_costs: number;
   lines: InvCustomsLine[];
   costs: InvCustomsCost[];
+}
+
+export interface CustomsDriveDocument {
+  id: number; name: string; path: string; kind: string; mime_type: string;
+  size: number; parse_error: string; file_url: string;
+}
+
+export interface CustomsDriveFolder {
+  id: number; year: number; drive_folder_id: string; name: string; path: string;
+  drive_url: string; customs_id: number | null; link_status: string;
+  dossier_status: string; match_reason: string;
+  checklist: Record<string, { state: string }>;
+  findings: { level: string; code: string; message: string }[];
+  synced_at: string; documents: CustomsDriveDocument[];
+}
+
+export interface CustomsDriveSource {
+  id: number; year: number; folder_id: string; enabled: boolean; last_synced_at: string;
 }
 
 export interface CustomsKhoanNop {
