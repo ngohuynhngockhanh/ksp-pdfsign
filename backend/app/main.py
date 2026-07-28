@@ -1372,6 +1372,15 @@ def training_archived_pc_ui_help(settings: Settings = Depends(get_settings)):
     return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.get("/training/eval-report", response_class=HTMLResponse)
+def training_eval_report(settings: Settings = Depends(get_settings)):
+    try:
+        content = training.archived_eval_report(settings)
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    return HTMLResponse(content=content, headers={"Cache-Control": "no-cache"})
+
+
 @app.post("/api/training/ask")
 def training_ask(
     body: dict = Body(...),

@@ -80,6 +80,18 @@ def archived_pc_ui_help(settings: Settings) -> bytes:
         raise TrainingError("Khong doc duoc ban iNut PC UI luu tru") from exc
 
 
+def archived_eval_report(settings: Settings) -> bytes:
+    try:
+        response = httpx.get(
+            f"{settings.training_base_url.rstrip('/')}/eval-report",
+            timeout=min(settings.training_timeout, 30),
+        )
+        response.raise_for_status()
+        return response.content
+    except httpx.HTTPError as exc:
+        raise TrainingError("Khong doc duoc bao cao Hermes") from exc
+
+
 def ask(settings: Settings, question: str, session_id: str = "") -> dict[str, Any]:
     question = question.strip()
     if not question or len(question) > 2000:

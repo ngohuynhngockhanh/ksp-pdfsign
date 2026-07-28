@@ -49,6 +49,14 @@ def test_archived_pc_ui_help_is_fetched_from_training_service(monkeypatch):
     assert requested == ["http://training.internal:8090/pc-ui-help"]
 
 
+def test_archived_eval_report_is_fetched_from_training_service(monkeypatch):
+    def fake_get(url, **kwargs):
+        return httpx.Response(200, request=httpx.Request("GET", url), content=b"<html>eval</html>")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert training.archived_eval_report(_settings()) == b"<html>eval</html>"
+
+
 def test_ask_logs_in_server_side_and_never_returns_password(monkeypatch):
     requests: list[httpx.Request] = []
 
