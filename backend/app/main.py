@@ -1363,6 +1363,15 @@ def training_archived_opc_help(settings: Settings = Depends(get_settings)):
     return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.get("/training/pc-ui-help", response_class=HTMLResponse)
+def training_archived_pc_ui_help(settings: Settings = Depends(get_settings)):
+    try:
+        content = training.archived_pc_ui_help(settings)
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.post("/api/training/ask")
 def training_ask(
     body: dict = Body(...),

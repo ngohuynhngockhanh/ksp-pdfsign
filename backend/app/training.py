@@ -68,6 +68,18 @@ def archived_opc_help(settings: Settings) -> bytes:
         raise TrainingError("Khong doc duoc ban OPC Help luu tru") from exc
 
 
+def archived_pc_ui_help(settings: Settings) -> bytes:
+    try:
+        response = httpx.get(
+            f"{settings.training_base_url.rstrip('/')}/pc-ui-help",
+            timeout=min(settings.training_timeout, 30),
+        )
+        response.raise_for_status()
+        return response.content
+    except httpx.HTTPError as exc:
+        raise TrainingError("Khong doc duoc ban iNut PC UI luu tru") from exc
+
+
 def ask(settings: Settings, question: str, session_id: str = "") -> dict[str, Any]:
     question = question.strip()
     if not question or len(question) > 2000:
@@ -102,13 +114,13 @@ def ask(settings: Settings, question: str, session_id: str = "") -> dict[str, An
 def _safe_fallback(question: str) -> dict[str, Any]:
     if "speedtest" in question.casefold() or "speed test" in question.casefold():
         return {
-            "answer": "Để kiểm tra tốc độ mạng trên iNut PC, trước hết xác định thiết bị có Internet và bạn có quyền SSH. Sau đó chạy công cụ speedtest đã có sẵn; nếu máy chưa cài, hãy nhờ quản trị viên cài gói phù hợp với hệ điều hành của thiết bị. Nên đo 2-3 lần, ghi lại ping, download và upload, đồng thời thử riêng LAN và 4G/WiFi để khoanh vùng đường truyền.",
-            "sourceBasis": "general-only",
+            "answer": "iNut PC có Speedtest trực tiếp trên Web UI. Vào Cài đặt iNut, mở tab Chẩn Đoán Hệ Thống, tìm panel ⚡ SPEEDTEST rồi bấm RUN SPEEDTEST. Kết quả được chạy nền và hiển thị trực tiếp trong khung TRẠNG THÁI PING & SPEEDTEST.",
+            "sourceBasis": "documentation-only",
             "videoEvidence": [],
-            "documentationEvidence": [],
-            "generalGuidance": "Kiểm tra nhanh trước bằng ping tới gateway và một địa chỉ Internet. Không tự ý cài package hoặc thay cấu hình mạng trên thiết bị đang vận hành sản xuất.",
-            "warnings": ["Kho Training hiện chưa có hướng dẫn Speedtest chính thức có trích dẫn; nội dung này là quy trình chẩn đoán chung."],
-            "followUps": ["iNut PC đang dùng LAN, WiFi hay 4G?", "Bạn có SSH vào thiết bị được không?"],
+            "documentationEvidence": [{"title": "Chẩn Đoán Hệ Thống — Speedtest trực tiếp trên iNut PC", "url": "https://ksp-pdf-signer.p2p.inut.io.vn/training/pc-ui-help#diagnostics-speedtest", "quote": "Đo tốc độ mạng internet của thiết bị gateway — bấm RUN SPEEDTEST."}],
+            "generalGuidance": "Nếu kết quả thấp, chạy thêm Ping và thử từng đường LAN/WiFi/4G để khoanh vùng.",
+            "warnings": [],
+            "followUps": ["Bạn đang đo qua LAN, WiFi hay 4G?"],
         }
     return {
         "answer": "Hermes chưa tổng hợp được câu trả lời có nguồn cho câu hỏi này. Hãy thử nêu rõ thiết bị, giao thức hoặc lỗi đang thấy.",

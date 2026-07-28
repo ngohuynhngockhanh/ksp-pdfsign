@@ -37,6 +37,18 @@ def test_archived_help_is_fetched_from_training_service(monkeypatch):
     assert training.archived_help(_settings()) == b"<html>archived</html>"
 
 
+def test_archived_pc_ui_help_is_fetched_from_training_service(monkeypatch):
+    requested: list[str] = []
+
+    def fake_get(url, **kwargs):
+        requested.append(url)
+        return httpx.Response(200, request=httpx.Request("GET", url), content=b"<html>speedtest</html>")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert training.archived_pc_ui_help(_settings()) == b"<html>speedtest</html>"
+    assert requested == ["http://training.internal:8090/pc-ui-help"]
+
+
 def test_ask_logs_in_server_side_and_never_returns_password(monkeypatch):
     requests: list[httpx.Request] = []
 
@@ -67,8 +79,8 @@ def test_ask_replaces_raw_tool_call_with_safe_speedtest_guidance(monkeypatch):
 
     monkeypatch.setattr(training, "_transport", lambda: httpx.MockTransport(handler))
     result = training.ask(_settings(), "Speedtest iNut làm sao")
-    assert result["answer"]["sourceBasis"] == "general-only"
-    assert "tốc độ mạng" in result["answer"]["answer"]
+    assert result["answer"]["sourceBasis"] == "documentation-only"
+    assert "RUN SPEEDTEST" in result["answer"]["answer"]
 
 
 def test_invalid_training_inputs_fail_before_network():
