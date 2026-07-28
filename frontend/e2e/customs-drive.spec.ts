@@ -22,6 +22,9 @@ test("quản trị bộ hồ sơ Drive và hàng chờ tờ khai", async ({ page
 
   await page.goto("/to-khai-nk");
   await expect(page.getByRole("heading", { name: "Bộ hồ sơ theo tờ khai" })).toBeVisible();
+  await expect(page.getByText("COO: China", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sao chép ghi chú nhà cung cấp" }).click();
+  await expect(page.getByText("Đã sao chép ghi chú gửi nhà cung cấp.")).toBeVisible();
   await page.getByRole("button", { name: "Đồng bộ Drive" }).click();
   await expect(page.getByText("Đã đồng bộ 2 folder")).toBeVisible();
   await expect(page.getByRole("button", { name: "Chờ tờ khai" })).toBeVisible();

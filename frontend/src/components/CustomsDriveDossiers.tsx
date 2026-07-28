@@ -9,6 +9,15 @@ const kindLabel: Record<string, string> = {
   customs_declaration: "Tờ khai", ci: "CI", pl: "PL", coo: "C/O", bill_of_lading: "Vận đơn",
   tax_receipt: "Giấy nộp thuế", payment: "Thanh toán", contract_po: "Hợp đồng/PO", other: "Khác",
 };
+const supplierNote = `BUYER / IMPORTER INFORMATION
+Company: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY
+Tax code: 4401053694
+Address: 161 Truong Chinh Street, Tuy Hoa Ward, Dak Lak Province, Vietnam 56122
+
+LABEL REQUIREMENT - PLEASE ATTACH THIS LABEL TO THE PRODUCT / PACKAGE
+Product name: [PRODUCT NAME]
+COO: China
+Quantity: 1 | Importer: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY`;
 
 export function CustomsDriveDossiers() {
   const [year, setYear] = useState(2026);
@@ -48,6 +57,22 @@ export function CustomsDriveDossiers() {
     try { setBusy(true); await api.customsDriveReview(folderId); await load(); setMessage("Đã kiểm tra lại checklist hồ sơ."); }
     catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
+  async function copySupplierNote() {
+    try {
+      await navigator.clipboard.writeText(supplierNote);
+      setMessage("Đã sao chép ghi chú gửi nhà cung cấp.");
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = supplierNote;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      setMessage(copied ? "Đã sao chép ghi chú gửi nhà cung cấp." : "Không thể sao chép tự động. Hãy chọn nội dung ghi chú và sao chép thủ công.");
+    }
+  }
 
   const counts = useMemo(() => folders.reduce<Record<string, number>>((all, row) => {
     all[row.link_status] = (all[row.link_status] ?? 0) + 1;
@@ -67,6 +92,14 @@ export function CustomsDriveDossiers() {
     <div className="customs-drive-source"><label>Folder Drive năm {year}<input aria-label={`Folder Drive năm ${year}`} value={sourceId} placeholder="Dán folder ID Google Drive" onChange={(e) => setSourceId(e.target.value)} /></label><button className="secondary" disabled={busy || !sourceId.trim()} onClick={saveSource}>Lưu nguồn</button>
       {source && <a href={`https://drive.google.com/drive/folders/${source.folder_id}`} target="_blank" rel="noreferrer">Mở folder Drive ↗</a>}
     </div>
+    <details className="customs-supplier-note" open>
+      <summary>Ghi chú gửi nhà cung cấp và mẫu nhãn hàng</summary>
+      <div className="customs-supplier-note-body">
+        <div><b>INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY</b><span>Tax code: 4401053694</span><span>161 Truong Chinh Street, Tuy Hoa Ward, Dak Lak Province, Vietnam 56122</span></div>
+        <div className="customs-label-preview"><span>Product name: [PRODUCT NAME]</span><span>COO: China</span><span>Quantity: 1 | Importer: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY</span></div>
+        <button className="secondary" aria-label="Sao chép ghi chú nhà cung cấp" onClick={copySupplierNote}>Sao chép để gửi NCC</button>
+      </div>
+    </details>
     <div className="customs-drive-stats"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><b>{folders.length}</b><span>Tổng folder</span></button><button className={filter === "linked" ? "active" : ""} onClick={() => setFilter("linked")}><b>{counts.linked ?? 0}</b><span>Đã liên kết</span></button><button className={filter === "waiting_declaration" ? "active" : ""} onClick={() => setFilter("waiting_declaration")}><b>{counts.waiting_declaration ?? 0}</b><span>Chờ tờ khai</span></button><button className={filter === "ambiguous" ? "active" : ""} onClick={() => setFilter("ambiguous")}><b>{counts.ambiguous ?? 0}</b><span>Chờ gán</span></button><button className={filter === "missing_documents" ? "active" : ""} onClick={() => setFilter("missing_documents")}><b>{counts.missing_documents ?? 0}</b><span>Thiếu chứng từ</span></button></div>
     {!visible.length ? <p className="muted customs-drive-empty">Chưa có dữ liệu. Hãy kiểm tra folder ID rồi bấm Đồng bộ Drive.</p> : <div className="customs-drive-list">{visible.map((row) => <article key={row.id} className={`customs-drive-card ${row.link_status}`}>
       <header><div><strong>{row.name}</strong><small>{row.path}</small></div><div className="customs-drive-badges"><span className={`chip sm ${row.link_status === "linked" ? "green" : "amber"}`}>{statusLabel[row.link_status] ?? row.link_status}</span><span className={`chip sm ${row.dossier_status === "complete" ? "green" : row.dossier_status === "missing_documents" ? "red" : "amber"}`}>{statusLabel[row.dossier_status] ?? row.dossier_status}</span></div></header>
