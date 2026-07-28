@@ -163,3 +163,26 @@ def test_catalog_excel_is_available_to_pymid(app_env):
     assert {"Danh mục giá", "Nhanh.vn"}.issubset(workbook.sheetnames)
     assert workbook["Danh mục giá"].max_row == 24
     assert workbook["Danh mục giá"]["J2"].value == "VAT 8%"
+
+
+def test_order_rejects_mismatched_level_and_duplicate_products(app_env):
+    login(app_env, "pymid", "PymidTest123@")
+    rows = app_env.get("/api/pymid/catalog").json()["items"]
+    level_one = next(row for row in rows if row["code"] == "PMC01")
+
+    mismatched = app_env.post("/api/pymid/orders", json={
+        "level": 2,
+        "items": [{"product_id": level_one["id"], "quantity": 1}],
+    })
+    assert mismatched.status_code == 400
+    assert mismatched.json()["detail"] == "Cấu hình phải có đúng bộ trung tâm của Level đã chọn"
+
+    duplicated = app_env.post("/api/pymid/orders", json={
+        "level": 1,
+        "items": [
+            {"product_id": level_one["id"], "quantity": 1},
+            {"product_id": level_one["id"], "quantity": 1},
+        ],
+    })
+    assert duplicated.status_code == 400
+    assert duplicated.json()["detail"] == "Mỗi hạng mục chỉ được xuất hiện một lần"
