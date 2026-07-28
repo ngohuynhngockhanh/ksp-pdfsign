@@ -118,6 +118,43 @@ def catalog(document_date: date = date.today(), db: Session = Depends(get_sessio
     return {"policy": policy, "items": [_catalog_row(row, policy) for row in rows]}
 
 
+def _catalog_workbook(rows: list[dict]) -> bytes:
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "Danh mục giá"
+    sheet.append(["Mã", "Tên sản phẩm", "Loại", "ĐVT", "Level", "Giá cũ", "Giá trước thuế",
+                  "Tiền thuế", "Giá hợp tác", "Thuế áp dụng"])
+    for row in rows:
+        sheet.append([row["code"], row["name"], row["category"], row["unit"], row["level"],
+                      row["source_price"], row["net_price"], row["tax_amount"], row["gross_price"],
+                      row["vat_label"]])
+    _style_sheet(sheet)
+
+    nhanh = wb.create_sheet("Nhanh.vn")
+    nhanh.append(["Tên sản phẩm", "Mã sản phẩm", "Đơn vị tính", "Giá bán", "VAT", "Ghi chú"])
+    for row in rows:
+        nhanh.append([row["name"], row["code"], row["unit"], row["gross_price"], row["vat_label"],
+                      "Giá hợp tác INUT - PYMID, đã tăng 15%"])
+    _style_sheet(nhanh)
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
+@router.get("/catalog.xlsx")
+def export_catalog(document_date: date = date.today(), db: Session = Depends(get_session),
+                   user: CurrentUser = Depends(require_user)):
+    _authorize(db, user)
+    policy = pymid.vat_policy(document_date)
+    products = list(db.scalars(select(PymidCoopProduct).where(
+        PymidCoopProduct.enabled.is_(True)).order_by(PymidCoopProduct.id)))
+    rows = [_catalog_row(row, policy) for row in products]
+    filename = f"INUT-PYMID-Danh-muc-{document_date.isoformat()}.xlsx"
+    return Response(_catalog_workbook(rows),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.get("/orders")
 def orders(db: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):
     customer = _authorize(db, user)
@@ -150,6 +187,31 @@ def _get_order(db: Session, order_id: int, user: CurrentUser) -> PymidCoopOrder:
     if not row or row.customer_id != customer.id:
         raise HTTPException(404, "Không tìm thấy đơn hàng PYMID")
     return row
+
+
+@router.put("/orders/{order_id}")
+def update_order(order_id: int, body: OrderIn, db: Session = Depends(get_session),
+                 user: CurrentUser = Depends(require_user)):
+    row = _get_order(db, order_id, user)
+    if row.status != "draft":
+        raise HTTPException(409, "Đơn đã gửi duyệt nên không thể sửa")
+    policy, items, lines = _build_snapshot(db, body)
+    row.level = body.level
+    row.document_date = body.document_date.isoformat()
+    row.customer_reference = body.customer_reference.strip()
+    row.note = body.note.strip()
+    row.policy_code = policy["code"]
+    row.items_json = json.dumps(items, ensure_ascii=False)
+    row.invoice_lines_json = json.dumps(lines, ensure_ascii=False)
+    row.total_net = sum(item["net_amount"] for item in lines)
+    row.total_tax = sum(item["tax_amount"] for item in lines)
+    row.total_gross = sum(item["gross_amount"] for item in lines)
+    row.updated_at = datetime.now()
+    db.commit()
+    db.refresh(row)
+    audit.record(db, user.username, user.role, user.ip, "pymid_order_update", f"order:{row.id}",
+                 f"Level {row.level} · {round(row.total_gross):,}đ")
+    return _order_out(row)
 
 
 @router.post("/orders/{order_id}/submit")
