@@ -5,7 +5,9 @@ Them mau moi: bo 1 file .html vao templates_bbbg/ va dang ky vao TEMPLATES.
 from __future__ import annotations
 
 import base64
+import html
 from pathlib import Path
+import re
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from weasyprint import HTML
@@ -36,6 +38,8 @@ QUOTE_TEMPLATES: dict[str, dict] = {
 }
 
 CONTRACT_TEMPLATE = "hop_dong_phan_mem.html"
+_CONTRACT_SOURCE_DIR = Path(__file__).parent / "contract_templates"
+_BAOTOAN_REV2_PATH = _CONTRACT_SOURCE_DIR / "baotoantech_iot_rev2.md"
 
 DEFAULT_CONTRACT_TERMS = """ĐIỀU 1. PHẠM VI CUNG CẤP
 1. INUT thiết lập ứng dụng “Baotoantech IOT” theo nhận diện và logo hợp pháp do Bên B cung cấp. Ứng dụng bao gồm các tính năng điều khiển, giám sát IoT mặc định tương đương nền tảng SecoHome, áp dụng cho các thiết bị do INUT sản xuất và xác nhận tương thích.
@@ -75,6 +79,24 @@ DEFAULT_CONTRACT_TERMS = """ĐIỀU 1. PHẠM VI CUNG CẤP
 ĐIỀU 9. ĐIỀU KHOẢN CHUNG
 1. Phụ lục, biên bản nghiệm thu và văn bản được người có thẩm quyền hai Bên xác nhận là bộ phận không tách rời của Hợp đồng.
 2. Hợp đồng có hiệu lực từ ngày ký, được lập thành 02 bản có giá trị pháp lý như nhau, mỗi Bên giữ 01 bản."""
+
+
+def _load_contract_terms(path: Path, fallback: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return fallback
+
+
+BAOTOAN_CONTRACT_TERMS_REV2 = _load_contract_terms(
+    _BAOTOAN_REV2_PATH, DEFAULT_CONTRACT_TERMS
+)
+
+
+def _contract_terms_html(text: str) -> str:
+    """Render the editable ==highlight== convention without allowing raw HTML."""
+    escaped = html.escape(text)
+    return re.sub(r"==(.+?)==", r'<mark class="revision">\1</mark>', escaped, flags=re.DOTALL)
 
 # Dieu kien bao hanh mac dinh in tren BBNT (sua duoc tren form)
 BBNT_DIEU_KHOAN_MAC_DINH = """*Điều kiện bảo hành:
@@ -241,7 +263,10 @@ def render_contract(settings: Settings, data: dict) -> bytes:
         "ngay": {k: int(ngay.get(k, 1)) for k in ("day", "month", "year")},
         "ben_a": default_ben_a(settings),
         "ben_b": ben_b,
-        "dieu_khoan": (data.get("dieu_khoan") or DEFAULT_CONTRACT_TERMS).strip(),
+        "dieu_khoan": (data.get("dieu_khoan") or BAOTOAN_CONTRACT_TERMS_REV2).strip(),
+        "dieu_khoan_html": _contract_terms_html(
+            (data.get("dieu_khoan") or BAOTOAN_CONTRACT_TERMS_REV2).strip()
+        ),
         "is_draft": not (ben_b.get("dai_dien") or "").strip(),
         "logo_data_uri": _logo_data_uri(settings),
         "email": settings.dntt_email,

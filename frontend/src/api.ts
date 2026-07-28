@@ -1284,6 +1284,13 @@ export const api = {
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
     );
   },
+  async ihoadonCreateDraftDelivery(body: IhoadonDraftDelivery) {
+    return req<IhoadonDraftDeliveryResult>("/api/inv/ihoadon/drafts/deliver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   async invSaleDraftSuggestStart(mo_ta: string, context = "") {
     return req<{ job_id: string }>("/api/inv/sale-draft/suggest-lines/start", {
       method: "POST",
@@ -2082,6 +2089,27 @@ export interface IhoadonDraftCreate {
   payment_method_name: string;
   note: string;
   lines: SaleDraftLine[];
+}
+
+export interface IhoadonDraftDelivery extends IhoadonDraftCreate {
+  expected_issue_date: string;
+  share_days: number;
+}
+
+export interface IhoadonDraftDeliveryResult {
+  draft_id: string;
+  status: string;
+  template_code: string;
+  invoice_series: string;
+  document_id: number;
+  customer_id: number | null;
+  share_token: string;
+  share_url: string;
+  share_expires_at: string;
+  zip_url: string;
+  zip_filename: string;
+  web_url: string;
+  stock_warnings: string[];
 }
 
 export interface SaleDraftLine {

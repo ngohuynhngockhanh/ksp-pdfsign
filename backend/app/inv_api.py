@@ -3,20 +3,23 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import threading as _threading
 import time as _time
 import uuid as _uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, ihoadon, ihoadon_sync, inv_export, inv_import, inventory, money, nas, storage, tax
+from . import ai, audit, customs, ihoadon, ihoadon_delivery, ihoadon_sync, inv_export, inv_import, inventory, money, nas, storage, tax
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
     Customer,
+    Document,
     InvCustomsCost,
     InvCustomsDecl,
     InvCustomsLine,
@@ -34,6 +37,7 @@ from .db import (
     InvSale,
     InvSaleLine,
     InvWarehouse,
+    Share,
     get_session,
 )
 from .inventory import NegativeStockError, PostError, normalize_name
@@ -48,6 +52,7 @@ from .schemas import (
     InvCustomsUpdate,
     InvImportUrlIn,
     IhoadonDraftIn,
+    IhoadonDraftDeliveryIn,
     InvIssueIn,
     InvIssueLineOut,
     InvIssueOut,
@@ -2172,13 +2177,7 @@ def _vat_value(name: str) -> str:
     return m.group(1).replace(",", ".") if m else "0"
 
 
-@router.post("/ihoadon/drafts")
-def ihoadon_create_draft(
-    body: IhoadonDraftIn,
-    user: CurrentUser = Depends(require_admin),
-    settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_session),
-):
+def _build_ihoadon_draft(body: IhoadonDraftIn, db: Session) -> tuple[dict, list[str]]:
     lines = [ln for ln in body.lines if ln.ten.strip()]
     if not lines:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có dòng hàng hóa/dịch vụ")
@@ -2241,6 +2240,18 @@ def ihoadon_create_draft(
         "total_payment": round(amount + total_vat),
         "invoice_products": products,
     }
+    return invoice, stock_warnings
+
+
+@router.post("/ihoadon/drafts")
+def ihoadon_create_draft(
+    body: IhoadonDraftIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    invoice, stock_warnings = _build_ihoadon_draft(body, db)
+    other_id = invoice["other_id"]
     try:
         with _ihoadon_client(settings) as client:
             result = client.create_draft(invoice)
@@ -2250,6 +2261,96 @@ def ihoadon_create_draft(
         result["stock_warnings"] = stock_warnings
     _audit(db, user, "ihoadon_create_draft", body.customer_name, f"{other_id}; cảnh báo kho={len(stock_warnings)}")
     return result
+
+
+@router.post("/ihoadon/drafts/deliver")
+def ihoadon_create_draft_delivery(
+    body: IhoadonDraftDeliveryIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    invoice, stock_warnings = _build_ihoadon_draft(body, db)
+    issue_date = body.expected_issue_date.strftime("%d/%m/%Y")
+    date_note = f"Ngày xuất dự kiến: {issue_date}."
+    invoice["note"] = " ".join(x for x in (date_note, invoice["note"]) if x).strip()
+    try:
+        with _ihoadon_client(settings) as client:
+            result = client.create_draft(invoice)
+            if result.get("status") != "GHI_TAM" or not result.get("id"):
+                raise ihoadon.IhoadonError("iHOADON không xác nhận trạng thái GHI_TAM")
+            _remote_name, source_pdf = client.invoice_pdf(str(result["id"]))
+    except ihoadon.IhoadonError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {exc}") from exc
+
+    tax_code = ihoadon_sync.normalize_tax_code(body.buyer_tax_code)
+    customer = next(
+        (
+            row for row in db.scalars(select(Customer))
+            if ihoadon_sync.normalize_tax_code(row.tax_code) == tax_code
+        ),
+        None,
+    ) if tax_code else None
+    safe_customer = re.sub(r"[^a-z0-9]+", "-", normalize_name(body.customer_name))
+    basename = f"hoa-don-nhap-{safe_customer[:60].strip('-') or 'khach-hang'}-{body.expected_issue_date.isoformat()}"
+    try:
+        bundle = ihoadon_delivery.build_delivery_bundle(
+            source_pdf,
+            expected_issue_date=body.expected_issue_date.isoformat(),
+            basename=basename,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    pdf_doc_id = storage.save_upload(bundle.pdf, suffix=".pdf")
+    zip_doc_id = storage.save_upload(bundle.zip_bytes, suffix=".zip")
+    document = Document(
+        doc_id=pdf_doc_id,
+        filename=bundle.pdf_filename,
+        signed=False,
+        note=f"iHOADON GHI_TAM · dự kiến xuất {issue_date}",
+        customer_id=customer.id if customer else None,
+        doc_type="hoa_don",
+    )
+    db.add(document)
+    db.flush()
+    token = secrets.token_urlsafe(16)
+    expires = datetime.now(timezone.utc) + timedelta(days=body.share_days)
+    db.add(Share(token=token, document_id=document.id, expires_at=expires))
+    db.commit()
+    _audit(
+        db, user, "ihoadon_create_draft_delivery", body.customer_name,
+        f"{result['id']}; {issue_date}; cảnh báo kho={len(stock_warnings)}",
+    )
+    return {
+        "draft_id": result["id"],
+        "status": result["status"],
+        "template_code": result.get("template_code", ""),
+        "invoice_series": result.get("invoice_series", ""),
+        "document_id": document.id,
+        "customer_id": document.customer_id,
+        "share_token": token,
+        "share_url": f"{settings.public_base_url.rstrip('/')}/s/{token}",
+        "share_expires_at": expires.isoformat(),
+        "zip_url": f"/api/inv/ihoadon/deliveries/{zip_doc_id}.zip",
+        "zip_filename": bundle.zip_filename,
+        "web_url": result.get("web_url", ""),
+        "stock_warnings": stock_warnings,
+    }
+
+
+@router.get("/ihoadon/deliveries/{zip_doc_id}.zip")
+def ihoadon_delivery_zip(
+    zip_doc_id: str,
+    _user: CurrentUser = Depends(require_admin),
+):
+    if not storage.exists(zip_doc_id, suffix=".zip"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy ZIP hóa đơn nháp")
+    return Response(
+        content=storage.read_doc(zip_doc_id, suffix=".zip"),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="hoa-don-nhap-ihoadon.zip"'},
+    )
 
 
 def _stock_items_for_ai(db: Session, ngay: str = "") -> list[dict]:

@@ -44,12 +44,12 @@ export function CreateContract() {
   const payload = useMemo(() => {
     const d = new Date(`${date}T00:00:00`);
     return {
-      so: number, ngay: { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() },
+      so: number, revision: "REVISION 2", ngay: { day: d.getDate(), month: d.getMonth() + 1, year: d.getFullYear() },
       noi_lap: "Đắk Lắk", ben_b: party, ten_ung_dung: "Baotoantech IOT",
       ten_mien_p2p: "baotoantech.io.vn", phi_nam_dau: 10000000,
-      phi_van_hanh_nam: 3000000, vat_van_hanh: 10, tien_do_ngay: 30,
+      phi_van_hanh_nam: 3000000, vat_van_hanh: 0, tien_do_ngay: 60,
       thoi_han_thang: 12, dieu_khoan: terms,
-      filename: `hop-dong-baotoantech-iot-${date}.pdf`,
+      filename: `hop-dong-baotoantech-iot-revision-2-${date}.pdf`,
     };
   }, [number, date, party, terms]);
 

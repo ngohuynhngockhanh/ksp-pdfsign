@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, IhoadonDashboard, IhoadonDraft, InvItem, SaleDraftLine, TaxPolicy } from "../api";
+import { api, IhoadonDashboard, IhoadonDraft, IhoadonDraftDeliveryResult, InvItem, SaleDraftLine, TaxPolicy } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
 
 function vnd(n: number): string {
@@ -60,6 +60,9 @@ export function SaleDraft() {
   const [stockBusy, setStockBusy] = useState(false);
   const [stockCheckedAt, setStockCheckedAt] = useState("");
   const [policy, setPolicy] = useState<TaxPolicy | null>(null);
+  const [expectedIssueDate, setExpectedIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [deliveryResult, setDeliveryResult] = useState<IhoadonDraftDeliveryResult | null>(null);
+  const [copied, setCopied] = useState(false);
   const [customer, setCustomer] = useState({
     customer_name: "", buyer_tax_code: "", buyer_name: "", buyer_email: "",
     buyer_address: "", payment_method_name: "TM/CK", note: "",
@@ -79,14 +82,10 @@ export function SaleDraft() {
   }
 
   async function pushDraft() {
-    const valid = lines.filter((l) => l.ten.trim()).map((l) => ({ ...l, tien_thue: tienThue(l) }));
+    const valid = preparedLines();
     if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
-    const stockProblems = valid.filter((l) => !l.is_dich_vu && (!l.ma_hang || stockByCode[l.ma_hang] == null || stockByCode[l.ma_hang] < l.so_luong));
-    if (stockProblems.length && !window.confirm(
-      `${stockProblems.length} dòng chưa map kho hoặc không đủ tồn. Vẫn tạo bản GHI_TẠM trên iHOADON?\n\n` +
-      stockProblems.map((l) => `• ${l.ma_hang || "Chưa có mã"} · cần ${l.so_luong}, tồn ${l.ma_hang && stockByCode[l.ma_hang] != null ? stockByCode[l.ma_hang] : "chưa rõ"}`).join("\n")
-    )) return;
+    if (!confirmStockProblems(valid)) return;
     setBusy(true);
     setErr("");
     try {
@@ -98,6 +97,63 @@ export function SaleDraft() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function preparedLines() {
+    return lines.filter((line) => line.ten.trim()).map((line) => ({ ...line, tien_thue: tienThue(line) }));
+  }
+
+  function confirmStockProblems(valid: SaleDraftLine[]): boolean {
+    const problems = valid.filter((line) => !line.is_dich_vu && (!line.ma_hang || stockByCode[line.ma_hang] == null || stockByCode[line.ma_hang] < line.so_luong));
+    if (!problems.length) return true;
+    return window.confirm(
+      `${problems.length} dòng chưa map kho hoặc không đủ tồn. Vẫn tạo bản GHI_TẠM trên iHOADON?\n\n` +
+      problems.map((line) => `• ${line.ma_hang || "Chưa có mã"} · cần ${line.so_luong}, tồn ${line.ma_hang && stockByCode[line.ma_hang] != null ? stockByCode[line.ma_hang] : "chưa rõ"}`).join("\n"),
+    );
+  }
+
+  async function createDelivery() {
+    const valid = preparedLines();
+    if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
+    if (!valid.length) return setErr("Chưa có dòng hàng nào.");
+    if (!expectedIssueDate) return setErr("Chưa chọn ngày dự kiến xuất hóa đơn.");
+    if (!confirmStockProblems(valid)) return;
+    setBusy(true);
+    setErr("");
+    setCopied(false);
+    setDeliveryResult(null);
+    try {
+      const result = await api.ihoadonCreateDraftDelivery({
+        ...customer,
+        lines: valid,
+        expected_issue_date: expectedIssueDate,
+        share_days: 7,
+      });
+      setDeliveryResult(result);
+      setAiNote(`Đã tạo ${result.status}, đóng dấu bản nháp và tạo link gửi khách.`);
+      await syncIhoadon();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyDeliveryLink() {
+    if (!deliveryResult) return;
+    try {
+      await navigator.clipboard.writeText(deliveryResult.share_url);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = deliveryResult.share_url;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    setCopied(true);
   }
 
   useEffect(() => {
@@ -338,6 +394,23 @@ export function SaleDraft() {
         </button>
         <span className="stock-check-time">{stockCheckedAt ? `Kho kiểm tra lúc ${stockCheckedAt}` : "Kho chưa được kiểm tra"}</span>
       </div>
+      <section className="draft-delivery-card">
+        <div className="draft-delivery-copy">
+          <span>WORKFLOW GỬI KHÁCH</span>
+          <h3>Tạo nháp, đóng dấu và lấy link trong một lần</h3>
+          <p>Hệ thống chỉ tạo trạng thái GHI_TAM, tải PDF từ iHOADON rồi đóng dấu “BẢN NHÁP”. Không ký số và không phát hành hóa đơn.</p>
+        </div>
+        <label>Ngày dự kiến xuất<input type="date" value={expectedIssueDate} onChange={(event) => setExpectedIssueDate(event.target.value)} /></label>
+        <button className="draft-delivery-submit" disabled={busy} onClick={createDelivery}>{busy ? "Đang tạo bộ hồ sơ…" : "Tạo nháp & lấy link gửi khách"}</button>
+      </section>
+      {deliveryResult && <section className="draft-delivery-result" aria-live="polite">
+        <div><span className="draft-status-dot" /><div><b>{deliveryResult.status} · {deliveryResult.template_code}/{deliveryResult.invoice_series}</b><small>Link hết hạn {dateTime(deliveryResult.share_expires_at)} · PDF đã lưu vào hồ sơ khách hàng</small></div></div>
+        <div className="draft-delivery-actions">
+          <a href={deliveryResult.share_url} target="_blank" rel="noreferrer">Xem PDF</a>
+          <button onClick={copyDeliveryLink}>{copied ? "Đã copy" : "Copy link"}</button>
+          <a href={deliveryResult.zip_url} download={deliveryResult.zip_filename}>Tải ZIP</a>
+        </div>
+      </section>}
       {stockWarnings.length > 0 && <div className="stock-warning-strip">
         <strong>Kiểm tra tồn kho trước khi tạo nháp</strong>
         <div>{stockWarnings.map((w, i) => <span key={i} className={`stock-check ${w.level}`}>{w.line.ma_hang || w.line.ten}: {w.text}</span>)}</div>

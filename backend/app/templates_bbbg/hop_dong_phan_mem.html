@@ -19,6 +19,8 @@
   .party .key { width: 19%; font-weight: bold; }
   .party .sep { width: 2%; }
   .terms { margin-top: 9px; }
+  mark.revision { background: #fff19b; color: inherit; padding: 0 .08em; }
+  .revision-label { text-align: center; margin-bottom: 8px; font-size: 10px; font-weight: bold; color: #7a5a00; }
   .bank { margin: 8px 0; padding: 7px 10px; background: #f1f6f9; border-left: 3px solid #174b72; }
   .signs { display: flex; justify-content: space-between; text-align: center; margin-top: 22px; page-break-inside: avoid; }
   .sign { width: 47%; }
@@ -39,6 +41,7 @@
 
   <h1>HỢP ĐỒNG CUNG CẤP VÀ VẬN HÀNH PHẦN MỀM</h1>
   <div class="number">Số: {{ so or "…/2026/HĐPM-INUT" }}</div>
+  {% if revision %}<div class="revision-label">{{ revision }} · Nội dung thay đổi được tô màu vàng</div>{% endif %}
   <div class="basis">Căn cứ Bộ luật Dân sự, Luật Thương mại, Luật Giao dịch điện tử, pháp luật về sở hữu trí tuệ, công nghệ thông tin và các quy định pháp luật Việt Nam có liên quan;
 Căn cứ nhu cầu và khả năng của các Bên;
 Hôm nay, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }}, tại {{ noi_lap }}, chúng tôi gồm:</div>
@@ -59,7 +62,7 @@ Hôm nay, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month
   </table>
 
   <div>Hai Bên thống nhất ký kết Hợp đồng cung cấp và vận hành phần mềm <b>{{ ten_ung_dung }}</b> với các điều khoản sau:</div>
-  <div class="terms">{{ dieu_khoan }}</div>
+  <div class="terms">{{ dieu_khoan_html|safe }}</div>
   <div class="bank"><b>Thông tin thanh toán của INUT:</b> Số tài khoản <b>{{ bank.account_number }}</b> · {{ bank.bank_name }} · Chủ tài khoản: {{ bank.account_name }}.</div>
 
   <div class="signs">

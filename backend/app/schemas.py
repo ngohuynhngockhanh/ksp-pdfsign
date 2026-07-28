@@ -1,6 +1,8 @@
 """Cac model du lieu vao/ra cho API."""
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -280,6 +282,7 @@ class QuoteGenerate(BaseModel):
 # --- Hop dong phan mem / van hanh ---
 class ContractGenerate(BaseModel):
     so: str = ""
+    revision: str = ""
     ngay: BBBGDate
     noi_lap: str = "Đắk Lắk"
     ben_b: BBBGBenB
@@ -287,8 +290,8 @@ class ContractGenerate(BaseModel):
     ten_mien_p2p: str = "baotoantech.io.vn"
     phi_nam_dau: float = 10_000_000
     phi_van_hanh_nam: float = 3_000_000
-    vat_van_hanh: float = 10
-    tien_do_ngay: int = 30
+    vat_van_hanh: float = 0
+    tien_do_ngay: int = 60
     thoi_han_thang: int = 12
     dieu_khoan: str = ""
     filename: str = "hop-dong-baotoantech-iot.pdf"
@@ -635,6 +638,11 @@ class IhoadonDraftIn(BaseModel):
     payment_method_name: str = "TM/CK"
     note: str = ""
     lines: list[SaleDraftLineIn] = Field(default_factory=list)
+
+
+class IhoadonDraftDeliveryIn(IhoadonDraftIn):
+    expected_issue_date: date
+    share_days: int = Field(default=7, ge=1, le=30)
 
 
 class SuggestInvoiceLinesIn(BaseModel):
