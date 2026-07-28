@@ -152,6 +152,7 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
         file_entries = [item for item in files if str(item.get("Path", "")).startswith(folder_path + "/")]
         dossier_files = []
         declaration_numbers = customs_drive.extract_declaration_numbers(folder_path)
+        declaration_file_numbers: set[str] = set()
         declaration_content: tuple[str, bytes] | None = None
         for item in file_entries:
             path = _safe_drive_path(str(item.get("Path") or ""))
@@ -168,6 +169,11 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
             document.size = int(item.get("Size") or 0)
             document.modified_time = str(item.get("ModTime") or "")
             document.synced_at = datetime.now(timezone.utc)
+            if document.size < 0:
+                document.parse_error = "File Google native chưa hỗ trợ tải bản sao; vẫn giữ liên kết Drive."
+                document.kind = customs_drive.classify_customs_document(document.name, "")
+                dossier_files.append({"kind": document.kind, "text": ""})
+                continue
             try:
                 content = _rclone_download(source.folder_id, path)
                 suffix = Path(document.name).suffix.lower() or ".bin"
@@ -178,6 +184,9 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
                 document.parse_error = ""
                 declaration_numbers |= customs_drive.extract_declaration_numbers(document.name + " " + document.extracted_text)
                 if document.kind == "customs_declaration":
+                    numbers_in_name = customs_drive.extract_declaration_numbers(document.name)
+                    declaration_file_numbers |= numbers_in_name or customs_drive.extract_declaration_numbers(
+                        document.extracted_text)
                     declaration_content = (document.name, content)
             except Exception as exc:
                 document.parse_error = f"Không đọc được file: {type(exc).__name__}"
@@ -185,23 +194,24 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
             dossier_files.append({"kind": document.kind, "text": document.extracted_text})
 
         customs_row = None
-        if len(declaration_numbers) == 1:
-            number = next(iter(declaration_numbers))
+        match_numbers = declaration_file_numbers or declaration_numbers
+        if len(match_numbers) == 1:
+            number = next(iter(match_numbers))
             customs_row = db.scalar(select(InvCustomsDecl).where(InvCustomsDecl.so_to_khai == number))
         if not customs_row and declaration_content:
             from .inv_api import _import_one_customs_file
             result = _import_one_customs_file(db, user, declaration_content[0], declaration_content[1])
             if result.get("ok"):
                 customs_row = db.get(InvCustomsDecl, result["customs_id"]); imported += 1
-            elif len(declaration_numbers) == 1:
+            elif len(match_numbers) == 1:
                 customs_row = db.scalar(select(InvCustomsDecl).where(
-                    InvCustomsDecl.so_to_khai == next(iter(declaration_numbers))))
+                    InvCustomsDecl.so_to_khai == next(iter(match_numbers))))
         if customs_row:
             folder.customs_id = customs_row.id
             folder.link_status = "linked"
             folder.match_reason = "Khớp số tờ khai 12 chữ số trong folder hoặc chứng từ."
             linked += 1
-        elif len(declaration_numbers) > 1:
+        elif len(match_numbers) > 1:
             folder.customs_id = None; folder.link_status = "ambiguous"
             folder.match_reason = "Phát hiện nhiều số tờ khai; cần gán thủ công."
             waiting += 1

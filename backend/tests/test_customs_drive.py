@@ -83,10 +83,11 @@ def test_drive_sync_auto_imports_declaration_and_queues_unmatched_folder(client,
         {"Path": "108286660050/Packing List.txt", "Name": "Packing List.txt", "ID": "pl-a", "IsDir": False, "Size": 20},
         {"Path": "Chua co to khai", "Name": "Chua co to khai", "ID": "folder-b", "IsDir": True},
         {"Path": "Chua co to khai/Commercial Invoice.txt", "Name": "Commercial Invoice.txt", "ID": "ci-b", "IsDir": False, "Size": 20},
+        {"Path": "Chua co to khai/Ghi chu Google.docx", "Name": "Ghi chu Google.docx", "ID": "native-b", "IsDir": False, "Size": -1},
     ]
     contents = {
         "108286660050/ToKhaiHQ7N_108286660050.xlsx": declaration,
-        "108286660050/Commercial Invoice Origin China.txt": b"COMMERCIAL INVOICE ORIGIN: CHINA",
+        "108286660050/Commercial Invoice Origin China.txt": b"COMMERCIAL INVOICE ORIGIN: CHINA PAYMENT REF 178421125810",
         "108286660050/Packing List.txt": b"PACKING LIST",
         "Chua co to khai/Commercial Invoice.txt": b"COMMERCIAL INVOICE",
     }
@@ -107,6 +108,8 @@ def test_drive_sync_auto_imports_declaration_and_queues_unmatched_folder(client,
     assert linked["customs_id"] > 0
     assert linked["dossier_status"] == "needs_review"
     assert waiting["link_status"] == "waiting_declaration"
+    native = next(item for item in waiting["documents"] if item["name"] == "Ghi chu Google.docx")
+    assert native["parse_error"] == "File Google native chưa hỗ trợ tải bản sao; vẫn giữ liên kết Drive."
 
     declarations = client.get("/api/inv/customs").json()
     assert any(item["so_to_khai"] == "108286660050" and item["status"] == "draft" for item in declarations)
