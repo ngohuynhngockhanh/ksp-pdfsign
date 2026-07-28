@@ -27,7 +27,7 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="inut-training"
 _ttl_seconds = 30 * 60
 
 
-def start(owner: str, settings: Settings, question: str, session_id: str = "") -> str:
+def start(owner: str, settings: Settings, question: str, session_id: str = "", personal_context: str = "") -> str:
     question = question.strip()
     if not question or len(question) > 2000:
         raise training.TrainingError("Cau hoi phai tu 1 den 2000 ky tu")
@@ -35,7 +35,7 @@ def start(owner: str, settings: Settings, question: str, session_id: str = "") -
     with _lock:
         _cleanup_locked(time.monotonic())
         _jobs[job_id] = _Job(owner=owner, started_at=time.monotonic())
-    _executor.submit(_run, job_id, settings, question, session_id)
+    _executor.submit(_run, job_id, settings, question, session_id, personal_context)
     return job_id
 
 
@@ -54,9 +54,12 @@ def get(owner: str, job_id: str) -> dict[str, Any] | None:
         return payload
 
 
-def _run(job_id: str, settings: Settings, question: str, session_id: str) -> None:
+def _run(job_id: str, settings: Settings, question: str, session_id: str, personal_context: str) -> None:
     try:
-        result = training.ask(settings, question, session_id)
+        if personal_context:
+            result = training.ask(settings, question, session_id, personal_context)
+        else:
+            result = training.ask(settings, question, session_id)
     except training.TrainingError:
         with _lock:
             job = _jobs.get(job_id)

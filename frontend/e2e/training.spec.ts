@@ -21,6 +21,10 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/training/stats", (route) => route.fulfill({ json: {
     totals: { questions: 3, tokens: 420, successful: 3 }, users: [], recent: [], tokenNote: "Token ước tính",
   }}));
+  await page.route("**/api/training/history", (route) => route.fulfill({ json: {
+    items: [{ jobId: "old-job", question: "Câu hỏi cũ của tôi", status: "done", answer: { answer: "Trả lời cũ", sourceBasis: "documentation-only", documentationEvidence: [] }, createdAt: "2026-07-28T10:00:00Z", completedAt: "2026-07-28T10:00:03Z", durationMs: 3000 }],
+  }}));
+  await page.route("**/api/training/knowledge", (route) => route.fulfill({ json: { items: [] } }));
   await page.route("**/api/training/search?*", (route) => route.fulfill({ json: { results: [{
     sourceType: "help", sourceId: "help:frpc", sourceTitle: "9.2 Kết Nối P2P / FRPC Tunnel",
     text: "Cấu hình FRPC multiuser bằng user và meta_token.", citationUrl: "https://inut.vn/help#frpc", score: 12,
@@ -32,6 +36,8 @@ test.beforeEach(async ({ page }) => {
 
 test("admin asks Hermes and creates a customer link", async ({ page }) => {
   await page.goto("/training");
+  await expect(page.getByText("Mọi câu hỏi và câu trả lời đều được lưu vào lịch sử")).toBeVisible();
+  await expect(page.getByText("Câu hỏi cũ của tôi")).toBeVisible();
   await page.getByLabel("Câu hỏi cho iNut Training").fill("cài frpc lỗi giờ sao");
   await page.getByRole("button", { name: "Hỏi Hermes" }).click();
 

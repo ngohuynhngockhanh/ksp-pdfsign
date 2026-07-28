@@ -42,6 +42,8 @@ function NarrativeAnswer({ text }: { text: string }) {
 
 type AccessUser = Awaited<ReturnType<typeof api.listUsers>>[number];
 type TrainingStats = Awaited<ReturnType<typeof api.trainingStats>>;
+type TrainingHistory = Awaited<ReturnType<typeof api.trainingHistory>>["items"];
+type TrainingKnowledge = Awaited<ReturnType<typeof api.trainingKnowledge>>["items"];
 
 export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
@@ -54,6 +56,11 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [shareUrl, setShareUrl] = useState("");
   const [accessUsers, setAccessUsers] = useState<AccessUser[]>([]);
   const [stats, setStats] = useState<TrainingStats | null>(null);
+  const [history, setHistory] = useState<TrainingHistory>([]);
+  const [knowledge, setKnowledge] = useState<TrainingKnowledge>([]);
+  const [knowledgeUserId, setKnowledgeUserId] = useState(0);
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeContent, setKnowledgeContent] = useState("");
 
   async function loadAccessUsers() {
     if (isAdmin) {
@@ -65,6 +72,9 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
 
   useEffect(() => {
     loadAccessUsers().catch((caught) => setError((caught as Error).message));
+    Promise.all([api.trainingHistory(), api.trainingKnowledge()]).then(([past, notes]) => {
+      setHistory(past.items); setKnowledge(notes.items);
+    }).catch((caught) => setError((caught as Error).message));
   }, [isAdmin]);
 
   async function toggleAccess(user: AccessUser) {
@@ -95,12 +105,30 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       setAnswer(chat.answer);
       setSessionId(chat.sessionId);
       setResults(search.results);
+      const past = await api.trainingHistory();
+      setHistory(past.items);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
       setBusy(false);
       setThinkingStep("");
     }
+  }
+
+  async function addKnowledge(event: FormEvent) {
+    event.preventDefault();
+    if (!knowledgeUserId || !knowledgeTitle.trim() || !knowledgeContent.trim()) return;
+    await api.createTrainingKnowledge(knowledgeUserId, knowledgeTitle.trim(), knowledgeContent.trim());
+    setKnowledgeTitle(""); setKnowledgeContent("");
+    const notes = await api.trainingKnowledge(knowledgeUserId);
+    setKnowledge(notes.items);
+    setError("");
+  }
+
+  async function removeKnowledge(id: number) {
+    await api.deleteTrainingKnowledge(id);
+    const notes = await api.trainingKnowledge(knowledgeUserId || undefined);
+    setKnowledge(notes.items);
   }
 
   async function share() {
@@ -133,6 +161,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <textarea aria-label="Câu hỏi cho iNut Training" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Khách đang hỏi gì? Ví dụ: cài frpc lỗi giờ sao..." maxLength={2000} />
         <div className="training-prompt-foot"><small>Giá và chính sách cần đối chiếu nguồn tại thời điểm trả lời.</small><button disabled={busy || !question.trim()}>{busy ? "Đang tra cứu…" : "Hỏi Hermes →"}</button></div>
       </form>
+      <div className="training-audit-notice"><strong>Lưu ý an toàn</strong><span>Mọi câu hỏi và câu trả lời đều được lưu vào lịch sử. Quản trị viên KSP có thể kiểm tra khi phát hiện yêu cầu gọi tool, chạy lệnh hoặc truy cập trái phép.</span></div>
 
       {busy && <section className="training-thinking" role="status" aria-live="polite"><span className="training-thinking-pulse" /><div><strong>Hermes đang làm việc</strong><p>{thinkingStep}</p></div><small>Câu hỏi khó có thể cần đến 3 phút. Bạn có thể giữ nguyên trang này.</small></section>}
 
@@ -151,6 +180,12 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
           ))}</div>}
         </section>
       )}
+      {isAdmin && accessUsers.length > 0 && <section className="training-knowledge-admin">
+        <div><span>KIẾN THỨC RIÊNG</span><h2>Training theo từng tài khoản</h2><p>Ghi chú chỉ được đưa vào ngữ cảnh của đúng người dùng và luôn bị coi là dữ liệu, không phải lệnh.</p></div>
+        <form onSubmit={addKnowledge}><select aria-label="Tài khoản nhận kiến thức" value={knowledgeUserId} onChange={async (e) => { const id = Number(e.target.value); setKnowledgeUserId(id); const notes = await api.trainingKnowledge(id || undefined); setKnowledge(notes.items); }}><option value={0}>Chọn tài khoản</option>{accessUsers.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}</select><input aria-label="Tiêu đề kiến thức" value={knowledgeTitle} onChange={(e) => setKnowledgeTitle(e.target.value)} maxLength={160} placeholder="Ví dụ: Quy trình riêng của Bảo Toàn" /><textarea aria-label="Nội dung kiến thức" value={knowledgeContent} onChange={(e) => setKnowledgeContent(e.target.value)} maxLength={12000} placeholder="Dán ghi chú đã kiểm duyệt..." /><button>Gán kiến thức</button></form>
+        {knowledgeUserId > 0 && <div className="training-knowledge-list">{knowledge.map((note) => <article key={note.id}><div><strong>{note.title}</strong><p>{note.content}</p></div><button onClick={() => removeKnowledge(note.id)}>Xóa</button></article>)}</div>}
+      </section>}
+      <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (
         <section className="training-stats">
           <div className="training-stat-head"><span>USAGE</span><h2>Nhịp sử dụng Training</h2><p>{stats.tokenNote}</p></div>

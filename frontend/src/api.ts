@@ -369,6 +369,19 @@ export const api = {
       tokenNote: string;
     }>("/api/training/stats");
   },
+  async trainingHistory() {
+    return req<{ items: { jobId: string; question: string; status: string; answer: TrainingAnswer; createdAt: string; completedAt: string | null; durationMs: number }[] }>("/api/training/history");
+  },
+  async trainingKnowledge(userId?: number) {
+    const query = userId ? `?user_id=${userId}` : "";
+    return req<{ items: { id: number; userId: number; title: string; content: string; enabled: boolean; updatedAt: string }[] }>(`/api/training/knowledge${query}`);
+  },
+  async createTrainingKnowledge(userId: number, title: string, content: string) {
+    return req<{ id: number }>("/api/training/knowledge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, title, content }) });
+  },
+  async deleteTrainingKnowledge(id: number) {
+    return req<{ ok: boolean }>(`/api/training/knowledge/${id}`, { method: "DELETE" });
+  },
   async trainingShare(question: string, answer: TrainingAnswer, days = 30) {
     return req<{ url: string; expires_at: string }>("/api/training/share", {
       method: "POST",

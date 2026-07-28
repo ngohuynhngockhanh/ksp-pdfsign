@@ -87,6 +87,7 @@ from .db import (
     TaxReport,
     TrainingShare,
     TrainingQuery,
+    TrainingKnowledge,
     User,
     get_session,
     init_db,
@@ -1386,11 +1387,12 @@ def training_ask(
     body: dict = Body(...),
     user: CurrentUser = Depends(require_training),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
 ):
     question = str(body.get("question", ""))
     session_id = str(body.get("session_id", ""))
     try:
-        data = training.ask(settings, question, session_id)
+        data = training.ask(settings, question, session_id, _training_personal_context(db, user.id))
     except training.TrainingError as exc:
         raise _training_error(exc) from exc
     return data
@@ -1404,11 +1406,13 @@ def training_job_start(
     db: Session = Depends(get_session),
 ):
     try:
+        personal_context = _training_personal_context(db, user.id)
         job_id = training_jobs.start(
             user.username,
             settings,
             str(body.get("question", "")),
             str(body.get("session_id", "")),
+            personal_context,
         )
     except training.TrainingError as exc:
         raise _training_error(exc) from exc
@@ -1438,8 +1442,119 @@ def training_job_status(
         record.duration_ms = max(0, int((record.completed_at-record.created_at.replace(tzinfo=timezone.utc)).total_seconds()*1000))
         if job.get("result"):
             record.output_tokens_est = _estimated_tokens(json.dumps(job["result"], ensure_ascii=False))
+            record.answer_json = json.dumps(job["result"].get("answer", {}), ensure_ascii=False)
         db.commit()
     return job
+
+
+def _training_personal_context(db: Session, user_id: int) -> str:
+    notes = db.scalars(select(TrainingKnowledge).where(
+        TrainingKnowledge.user_id == user_id,
+        TrainingKnowledge.enabled.is_(True),
+    ).order_by(TrainingKnowledge.updated_at.desc()).limit(20))
+    return "\n\n".join(f"[{note.title}]\n{note.content}" for note in notes)
+
+
+@app.get("/api/training/history")
+def training_history(
+    limit: int = 50,
+    user: CurrentUser = Depends(require_training),
+    db: Session = Depends(get_session),
+):
+    limit = max(1, min(limit, 100))
+    rows = list(db.scalars(select(TrainingQuery).where(
+        TrainingQuery.username == user.username,
+    ).order_by(TrainingQuery.created_at.desc()).limit(limit)))
+    return {"items": [{
+        "jobId": row.job_id,
+        "question": row.question,
+        "status": row.status,
+        "answer": json.loads(row.answer_json or "{}"),
+        "createdAt": row.created_at.isoformat(),
+        "completedAt": row.completed_at.isoformat() if row.completed_at else None,
+        "durationMs": row.duration_ms,
+    } for row in rows]}
+
+
+@app.get("/api/training/knowledge")
+def training_knowledge_self(
+    user_id: int | None = None,
+    user: CurrentUser = Depends(require_training),
+    db: Session = Depends(get_session),
+):
+    target_id = user_id if user.is_admin and user_id else user.id
+    rows = db.scalars(select(TrainingKnowledge).where(
+        TrainingKnowledge.user_id == target_id,
+    ).order_by(TrainingKnowledge.updated_at.desc()))
+    return {"items": [_knowledge_out(row) for row in rows]}
+
+
+def _knowledge_out(row: TrainingKnowledge) -> dict:
+    return {"id": row.id, "userId": row.user_id, "title": row.title,
+            "content": row.content, "enabled": row.enabled,
+            "updatedAt": row.updated_at.isoformat()}
+
+
+@app.post("/api/training/knowledge")
+def training_knowledge_create(
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    try:
+        target_id = int(body.get("user_id"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tài khoản không hợp lệ") from exc
+    title, content = str(body.get("title", "")).strip(), str(body.get("content", "")).strip()
+    if not title or len(title) > 160 or not content or len(content) > 12000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tiêu đề hoặc nội dung kiến thức không hợp lệ")
+    if db.get(User, target_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tài khoản")
+    row = TrainingKnowledge(user_id=target_id, title=title, content=content,
+                            enabled=bool(body.get("enabled", True)), created_by=user.id)
+    db.add(row)
+    db.commit()
+    _audit(db, user, "training_knowledge_create", str(target_id), title)
+    return _knowledge_out(row)
+
+
+@app.patch("/api/training/knowledge/{knowledge_id}")
+def training_knowledge_update(
+    knowledge_id: int,
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(TrainingKnowledge, knowledge_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy kiến thức")
+    if "title" in body:
+        row.title = str(body["title"]).strip()
+    if "content" in body:
+        row.content = str(body["content"]).strip()
+    if "enabled" in body:
+        row.enabled = bool(body["enabled"])
+    if not row.title or len(row.title) > 160 or not row.content or len(row.content) > 12000:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tiêu đề hoặc nội dung kiến thức không hợp lệ")
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    _audit(db, user, "training_knowledge_update", str(row.user_id), row.title)
+    return _knowledge_out(row)
+
+
+@app.delete("/api/training/knowledge/{knowledge_id}")
+def training_knowledge_delete(
+    knowledge_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(TrainingKnowledge, knowledge_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy kiến thức")
+    db.delete(row)
+    db.commit()
+    _audit(db, user, "training_knowledge_delete", str(row.user_id), row.title)
+    return {"ok": True}
 
 
 def _estimated_tokens(value: str) -> int:
@@ -1988,7 +2103,7 @@ def quote_generate(
 # Hop dong phan mem + chia se cho khach hang
 # ---------------------------------------------------------------------------
 _CONTRACT_REQUIRED = (
-    "10.000.000", "3.000.000", "50%", "30 ngày", "12 tháng",
+    "10.000.000", "3.000.000", "50%", "60 ngày", "12 tháng",
     "mã nguồn", "phụ lục", "không chịu thuế GTGT",
 )
 
@@ -2009,7 +2124,7 @@ def contract_defaults(
 ):
     return {
         "ben_a": bbbg.default_ben_a(settings),
-        "dieu_khoan": bbbg.DEFAULT_CONTRACT_TERMS,
+        "dieu_khoan": bbbg.BAOTOAN_CONTRACT_TERMS_REV2,
         "bank": {
             "account_name": settings.bank_account_name,
             "account_number": settings.bank_account_number,

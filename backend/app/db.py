@@ -172,12 +172,28 @@ class TrainingQuery(Base):
     job_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(150), index=True)
     question: Mapped[str] = mapped_column(String(2000))
+    answer_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[str] = mapped_column(String(20), default="running", index=True)
     input_tokens_est: Mapped[int] = mapped_column(default=0)
     output_tokens_est: Mapped[int] = mapped_column(default=0)
     duration_ms: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TrainingKnowledge(Base):
+    """Admin-managed notes scoped to one CRM user; never executable instructions."""
+
+    __tablename__ = "training_knowledge"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160))
+    content: Mapped[str] = mapped_column(String(12000))
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class LoginLink(Base):
@@ -987,6 +1003,9 @@ def _migrate_add_columns() -> None:
             "session_version": "INTEGER DEFAULT 1",
             "must_change_password": "BOOLEAN DEFAULT 0",
             "training_access": "BOOLEAN DEFAULT 0",
+        },
+        "training_queries": {
+            "answer_json": "TEXT DEFAULT '{}'",
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",
