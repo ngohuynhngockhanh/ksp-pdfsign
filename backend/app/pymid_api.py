@@ -77,10 +77,15 @@ def _order_out(row: PymidCoopOrder) -> dict:
 def _build_snapshot(db: Session, body: OrderIn) -> tuple[dict, list[dict], list[dict]]:
     policy = pymid.vat_policy(body.document_date)
     ids = [item.product_id for item in body.items]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(400, "Mỗi hạng mục chỉ được xuất hiện một lần")
     products = {row.id: row for row in db.scalars(select(PymidCoopProduct).where(
         PymidCoopProduct.id.in_(ids), PymidCoopProduct.enabled.is_(True)))}
-    if len(products) != len(set(ids)):
+    if len(products) != len(ids):
         raise HTTPException(400, "Có hạng mục không tồn tại hoặc đã ngừng sử dụng")
+    level_products = [product for product in products.values() if product.level is not None]
+    if len(level_products) != 1 or level_products[0].level != body.level:
+        raise HTTPException(400, "Cấu hình phải có đúng bộ trung tâm của Level đã chọn")
     snapshots = []
     for item in body.items:
         product = products[item.product_id]
