@@ -23,6 +23,9 @@ test("quản trị bộ hồ sơ Drive và hàng chờ tờ khai", async ({ page
   await page.goto("/to-khai-nk");
   await expect(page.getByRole("heading", { name: "Bộ hồ sơ theo tờ khai" })).toBeVisible();
   await expect(page.getByText("COO: China", { exact: true })).toBeVisible();
+  await expect(page.getByText("Contact: Ngo Huynh Ngoc Khanh", { exact: true })).toBeVisible();
+  await expect(page.getByText("Phone number: +84 97 276 8491", { exact: true })).toBeVisible();
+  await expect(page.getByText("<Your company> / <Product Model>", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Sao chép ghi chú nhà cung cấp" }).click();
   await expect(page.getByText("Đã sao chép ghi chú gửi nhà cung cấp.")).toBeVisible();
   await page.getByRole("button", { name: "Đồng bộ Drive" }).click();

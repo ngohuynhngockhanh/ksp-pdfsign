@@ -9,15 +9,17 @@ const kindLabel: Record<string, string> = {
   customs_declaration: "Tờ khai", ci: "CI", pl: "PL", coo: "C/O", bill_of_lading: "Vận đơn",
   tax_receipt: "Giấy nộp thuế", payment: "Thanh toán", contract_po: "Hợp đồng/PO", other: "Khác",
 };
-const supplierNote = `BUYER / IMPORTER INFORMATION
+const supplierNote = `CONSIGNEE
 Company: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY
 Tax code: 4401053694
 Address: 161 Truong Chinh Street, Tuy Hoa Ward, Dak Lak Province, Vietnam 56122
+Contact: Ngo Huynh Ngoc Khanh
+Phone number: +84 97 276 8491
 
 LABEL REQUIREMENT - PLEASE ATTACH THIS LABEL TO THE PRODUCT / PACKAGE
-Product name: [PRODUCT NAME]
+<Your company> / <Product Model>
 COO: China
-Quantity: 1 | Importer: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY`;
+Quantity: 1`;
 
 export function CustomsDriveDossiers() {
   const [year, setYear] = useState(2026);
@@ -95,8 +97,8 @@ export function CustomsDriveDossiers() {
     <details className="customs-supplier-note" open>
       <summary>Ghi chú gửi nhà cung cấp và mẫu nhãn hàng</summary>
       <div className="customs-supplier-note-body">
-        <div><b>INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY</b><span>Tax code: 4401053694</span><span>161 Truong Chinh Street, Tuy Hoa Ward, Dak Lak Province, Vietnam 56122</span></div>
-        <div className="customs-label-preview"><span>Product name: [PRODUCT NAME]</span><span>COO: China</span><span>Quantity: 1 | Importer: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY</span></div>
+        <div><strong>CONSIGNEE</strong><b>INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY</b><span>Tax code: 4401053694</span><span>161 Truong Chinh Street, Tuy Hoa Ward, Dak Lak Province, Vietnam 56122</span><span>Contact: Ngo Huynh Ngoc Khanh</span><span>Phone number: +84 97 276 8491</span></div>
+        <div className="customs-label-preview"><span>&lt;Your company&gt; / &lt;Product Model&gt;</span><span>COO: China</span><span>Quantity: 1</span></div>
         <button className="secondary" aria-label="Sao chép ghi chú nhà cung cấp" onClick={copySupplierNote}>Sao chép để gửi NCC</button>
       </div>
     </details>
