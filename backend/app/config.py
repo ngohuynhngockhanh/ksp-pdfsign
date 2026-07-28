@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     payroll_drive_folder_id: str = "1FSWhB8T_yWB2MD6ig181qgM_NnEX3GvI"
     payroll_rclone_bind: str = "0.0.0.0"
 
+    # Ho so nhap khau: Drive chi doc, folder ID luu theo nam trong DB.
+    customs_drive_remote: str = "vnmap-drive:"
+    customs_drive_bind: str = "0.0.0.0"
+
     # iHOADON - chi dong bo va tao hoa don GHI_TAM, khong ky/phat hanh.
     ihoadon_enabled: bool = False
     ihoadon_base_url: str = "https://ihoadon.com.vn"

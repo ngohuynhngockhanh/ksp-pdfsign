@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    select,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -873,6 +874,72 @@ class InvCustomsCost(Base):
     decl: Mapped["InvCustomsDecl"] = relationship(back_populates="costs")
 
 
+class InvCustomsDriveSource(Base):
+    """Folder Drive goc cua tung nam, chi duoc dong bo mot chieu ve CRM."""
+
+    __tablename__ = "inv_customs_drive_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(unique=True, index=True)
+    folder_id: Mapped[str] = mapped_column(String(255), unique=True)
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    folders: Mapped[list["InvCustomsDriveFolder"]] = relationship(
+        back_populates="source", cascade="all, delete-orphan"
+    )
+
+
+class InvCustomsDriveFolder(Base):
+    __tablename__ = "inv_customs_drive_folders"
+    __table_args__ = (
+        UniqueConstraint("source_id", "drive_folder_id", name="uq_customs_drive_folder"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_drive_sources.id"), index=True)
+    drive_folder_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(500), default="")
+    path: Mapped[str] = mapped_column(String(1000), default="")
+    customs_id: Mapped[int | None] = mapped_column(ForeignKey("inv_customs_decls.id"), nullable=True, index=True)
+    link_status: Mapped[str] = mapped_column(String(30), default="waiting_declaration", index=True)
+    dossier_status: Mapped[str] = mapped_column(String(30), default="missing_documents", index=True)
+    match_reason: Mapped[str] = mapped_column(String(500), default="")
+    checklist: Mapped[str] = mapped_column(Text, default="{}")
+    findings: Mapped[str] = mapped_column(Text, default="[]")
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    source: Mapped["InvCustomsDriveSource"] = relationship(back_populates="folders")
+    documents: Mapped[list["InvCustomsDriveDocument"]] = relationship(
+        back_populates="folder", cascade="all, delete-orphan"
+    )
+
+
+class InvCustomsDriveDocument(Base):
+    __tablename__ = "inv_customs_drive_documents"
+    __table_args__ = (
+        UniqueConstraint("folder_id", "drive_file_id", name="uq_customs_drive_document"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_drive_folders.id"), index=True)
+    drive_file_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(500), default="")
+    path: Mapped[str] = mapped_column(String(1000), default="")
+    mime_type: Mapped[str] = mapped_column(String(150), default="")
+    size: Mapped[int] = mapped_column(default=0)
+    modified_time: Mapped[str] = mapped_column(String(50), default="")
+    kind: Mapped[str] = mapped_column(String(30), default="other", index=True)
+    doc_id: Mapped[str] = mapped_column(String(64), default="")
+    doc_suffix: Mapped[str] = mapped_column(String(20), default="")
+    extracted_text: Mapped[str] = mapped_column(Text, default="")
+    parse_error: Mapped[str] = mapped_column(String(500), default="")
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    folder: Mapped["InvCustomsDriveFolder"] = relationship(back_populates="documents")
+
+
 class TaxReviewUpload(Base):
     """File BCT (to khai GTGT) ke toan up len -> he thong cham loi + xem online.
 
@@ -967,6 +1034,7 @@ def init_db() -> None:
     Base.metadata.create_all(_engine)
     _migrate_add_columns()
     _seed_warehouses()
+    _seed_customs_drive_sources()
 
 
 def _seed_warehouses() -> None:
@@ -978,6 +1046,15 @@ def _seed_warehouses() -> None:
                 InvWarehouse(code="NVL", name="Nguyên vật liệu"),
                 InvWarehouse(code="TP", name="Thành phẩm"),
             ])
+            db.commit()
+
+
+def _seed_customs_drive_sources() -> None:
+    """Cau hinh san folder ho so nhap khau nam 2026 da duoc phe duyet."""
+    with _SessionLocal() as db:
+        if db.scalar(select(InvCustomsDriveSource).where(InvCustomsDriveSource.year == 2026)) is None:
+            db.add(InvCustomsDriveSource(year=2026,
+                                         folder_id="1yg_TqCrWS4dDx-O-bYYhfktFq1OdNk9z"))
             db.commit()
 
 
