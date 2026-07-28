@@ -53,6 +53,7 @@ from . import (
     tax_policy,
     tax_review,
     training,
+    training_jobs,
     storage,
     token_backend,
     verify,
@@ -85,6 +86,7 @@ from .db import (
     TaxReviewUpload,
     TaxReport,
     TrainingShare,
+    TrainingQuery,
     User,
     get_session,
     init_db,
@@ -1352,6 +1354,15 @@ def training_archived_help(settings: Settings = Depends(get_settings)):
     return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.get("/training/opc-help", response_class=HTMLResponse)
+def training_archived_opc_help(settings: Settings = Depends(get_settings)):
+    try:
+        content = training.archived_opc_help(settings)
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    return HTMLResponse(content=content, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.post("/api/training/ask")
 def training_ask(
     body: dict = Body(...),
@@ -1365,6 +1376,87 @@ def training_ask(
     except training.TrainingError as exc:
         raise _training_error(exc) from exc
     return data
+
+
+@app.post("/api/training/jobs", status_code=status.HTTP_202_ACCEPTED)
+def training_job_start(
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_training),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    try:
+        job_id = training_jobs.start(
+            user.username,
+            settings,
+            str(body.get("question", "")),
+            str(body.get("session_id", "")),
+        )
+    except training.TrainingError as exc:
+        raise _training_error(exc) from exc
+    db.add(TrainingQuery(
+        job_id=job_id,
+        username=user.username,
+        question=str(body.get("question", "")).strip(),
+        input_tokens_est=_estimated_tokens(str(body.get("question", ""))),
+    ))
+    db.commit()
+    return {"jobId": job_id, "status": "running", "stage": "Đang tìm trong kho iNut"}
+
+
+@app.get("/api/training/jobs/{job_id}")
+def training_job_status(
+    job_id: str,
+    user: CurrentUser = Depends(require_training),
+    db: Session = Depends(get_session),
+):
+    job = training_jobs.get(user.username, job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lượt tra cứu")
+    record = db.scalar(select(TrainingQuery).where(TrainingQuery.job_id == job_id))
+    if record is not None and record.status == "running" and job["status"] != "running":
+        record.status = job["status"]
+        record.completed_at = datetime.now(timezone.utc)
+        record.duration_ms = max(0, int((record.completed_at-record.created_at.replace(tzinfo=timezone.utc)).total_seconds()*1000))
+        if job.get("result"):
+            record.output_tokens_est = _estimated_tokens(json.dumps(job["result"], ensure_ascii=False))
+        db.commit()
+    return job
+
+
+def _estimated_tokens(value: str) -> int:
+    return max(1, (len(value.strip()) + 3) // 4)
+
+
+@app.get("/api/training/stats")
+def training_stats(
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    rows = list(db.scalars(select(TrainingQuery).order_by(TrainingQuery.created_at.desc()).limit(1000)))
+    users: dict[str, dict] = {}
+    for row in rows:
+        item = users.setdefault(row.username, {"username": row.username, "questions": 0, "tokens": 0, "durationMs": 0})
+        item["questions"] += 1
+        item["tokens"] += row.input_tokens_est + row.output_tokens_est
+        item["durationMs"] += row.duration_ms
+    return {
+        "totals": {
+            "questions": len(rows),
+            "tokens": sum(row.input_tokens_est+row.output_tokens_est for row in rows),
+            "successful": sum(row.status == "done" for row in rows),
+        },
+        "users": sorted(users.values(), key=lambda item: item["questions"], reverse=True),
+        "recent": [{
+            "username": row.username,
+            "question": row.question,
+            "status": row.status,
+            "tokens": row.input_tokens_est+row.output_tokens_est,
+            "durationMs": row.duration_ms,
+            "createdAt": row.created_at.isoformat(),
+        } for row in rows[:30]],
+        "tokenNote": "Token ước tính từ độ dài câu hỏi và câu trả lời; Hermes CLI chưa trả usage chuẩn.",
+    }
 
 
 @app.post("/api/training/share")

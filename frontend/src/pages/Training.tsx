@@ -24,7 +24,24 @@ function EvidenceList({ title, items }: { title: string; items?: TrainingEvidenc
   );
 }
 
+function NarrativeAnswer({ text }: { text: string }) {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const steps = lines.filter((line) => /^\d+[.)]\s+/.test(line));
+  const prose = lines.filter((line) => !/^\d+[.)]\s+/.test(line));
+  return (
+    <div className="training-narrative">
+      {prose.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+      {steps.length > 0 && <ol>{steps.map((line, index) => {
+        const content = line.replace(/^\d+[.)]\s+/, "");
+        const [heading, ...rest] = content.split(":");
+        return <li key={`${line}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{heading}</strong>{rest.length > 0 && <p>{rest.join(":").trim()}</p>}</div></li>;
+      })}</ol>}
+    </div>
+  );
+}
+
 type AccessUser = Awaited<ReturnType<typeof api.listUsers>>[number];
+type TrainingStats = Awaited<ReturnType<typeof api.trainingStats>>;
 
 export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
@@ -32,12 +49,18 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [answer, setAnswer] = useState<TrainingAnswer | null>(null);
   const [results, setResults] = useState<TrainingSearchResult[]>([]);
   const [busy, setBusy] = useState(false);
+  const [thinkingStep, setThinkingStep] = useState("");
   const [error, setError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
   const [accessUsers, setAccessUsers] = useState<AccessUser[]>([]);
+  const [stats, setStats] = useState<TrainingStats | null>(null);
 
   async function loadAccessUsers() {
-    if (isAdmin) setAccessUsers(await api.listUsers());
+    if (isAdmin) {
+      const [users, usage] = await Promise.all([api.listUsers(), api.trainingStats()]);
+      setAccessUsers(users);
+      setStats(usage);
+    }
   }
 
   useEffect(() => {
@@ -56,11 +79,19 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     setBusy(true);
     setError("");
     setShareUrl("");
+    setThinkingStep("Đang gửi câu hỏi tới Hermes");
     try {
-      const [chat, search] = await Promise.all([
-        api.trainingAsk(value, sessionId),
-        api.trainingSearch(value).catch(() => ({ results: [] })),
-      ]);
+      const searchPromise = api.trainingSearch(value).catch(() => ({ results: [] }));
+      const job = await api.trainingJobStart(value, sessionId);
+      setThinkingStep(job.stage);
+      let status = await api.trainingJobStatus(job.jobId);
+      while (status.status === "running") {
+        setThinkingStep(status.stage);
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        status = await api.trainingJobStatus(job.jobId);
+      }
+      if (status.status === "failed" || !status.result) throw new Error(status.error || "Hermes chưa thể hoàn tất câu trả lời");
+      const [chat, search] = await Promise.all([Promise.resolve(status.result), searchPromise]);
       setAnswer(chat.answer);
       setSessionId(chat.sessionId);
       setResults(search.results);
@@ -68,6 +99,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       setError((caught as Error).message);
     } finally {
       setBusy(false);
+      setThinkingStep("");
     }
   }
 
@@ -102,6 +134,8 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="training-prompt-foot"><small>Giá và chính sách cần đối chiếu nguồn tại thời điểm trả lời.</small><button disabled={busy || !question.trim()}>{busy ? "Đang tra cứu…" : "Hỏi Hermes →"}</button></div>
       </form>
 
+      {busy && <section className="training-thinking" role="status" aria-live="polite"><span className="training-thinking-pulse" /><div><strong>Hermes đang làm việc</strong><p>{thinkingStep}</p></div><small>Câu hỏi khó có thể cần đến 3 phút. Bạn có thể giữ nguyên trang này.</small></section>}
+
       <div className="training-quick">
         {QUICK_QUESTIONS.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
       </div>
@@ -117,13 +151,24 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
           ))}</div>}
         </section>
       )}
+      {isAdmin && stats && (
+        <section className="training-stats">
+          <div className="training-stat-head"><span>USAGE</span><h2>Nhịp sử dụng Training</h2><p>{stats.tokenNote}</p></div>
+          <div className="training-stat-cards"><div><strong>{stats.totals.questions}</strong><span>Câu hỏi</span></div><div><strong>{stats.totals.tokens.toLocaleString("vi-VN")}</strong><span>Token ước tính</span></div><div><strong>{stats.totals.successful}</strong><span>Đã hoàn tất</span></div></div>
+          <div className="training-user-chart">{stats.users.map((item) => {
+            const maximum = Math.max(...stats.users.map((user) => user.questions), 1);
+            return <div key={item.username}><label><strong>{item.username}</strong><small>{item.questions} câu · {item.tokens.toLocaleString("vi-VN")} token</small></label><span><i style={{ width: `${Math.max(7, item.questions / maximum * 100)}%` }} /></span></div>;
+          })}</div>
+          <div className="training-recent"><h3>Câu hỏi gần đây</h3>{stats.recent.map((item, index) => <article key={`${item.createdAt}-${index}`}><span>{item.username}</span><strong>{item.question}</strong><small>{item.status === "done" ? "Hoàn tất" : item.status === "failed" ? "Lỗi" : "Đang chạy"} · {item.tokens} token ước tính · {(item.durationMs / 1000).toFixed(1)} giây</small></article>)}</div>
+        </section>
+      )}
       {error && <div className="error">{error}</div>}
 
       {answer && (
         <div className="training-grid">
           <article className="training-answer">
             <div className="training-answer-head"><span>TRẢ LỜI CÓ NGUỒN</span><div><button onClick={copyAnswer}>Copy nội dung</button><button className="training-share" onClick={share}>Tạo link gửi khách</button></div></div>
-            <p className="training-main-answer">{answer.answer}</p>
+            <NarrativeAnswer text={answer.answer} />
             {answer.generalGuidance && <section><h3>Hướng dẫn thêm</h3><p>{answer.generalGuidance}</p></section>}
             {!!answer.warnings?.length && <section className="training-warning"><h3>Lưu ý</h3><p>{answer.warnings.join("\n")}</p></section>}
             <EvidenceList title="Tài liệu iNut" items={answer.documentationEvidence} />

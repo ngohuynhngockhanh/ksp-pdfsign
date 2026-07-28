@@ -346,6 +346,29 @@ export const api = {
       body: JSON.stringify({ question, session_id: sessionId }),
     });
   },
+  async trainingJobStart(question: string, sessionId = "") {
+    return req<{ jobId: string; status: string; stage: string }>("/api/training/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, session_id: sessionId }),
+    });
+  },
+  async trainingJobStatus(jobId: string) {
+    return req<{
+      status: "running" | "done" | "failed";
+      stage: string;
+      error?: string;
+      result?: { sessionId: string; answer: TrainingAnswer };
+    }>(`/api/training/jobs/${encodeURIComponent(jobId)}`);
+  },
+  async trainingStats() {
+    return req<{
+      totals: { questions: number; tokens: number; successful: number };
+      users: { username: string; questions: number; tokens: number; durationMs: number }[];
+      recent: { username: string; question: string; status: string; tokens: number; durationMs: number; createdAt: string }[];
+      tokenNote: string;
+    }>("/api/training/stats");
+  },
   async trainingShare(question: string, answer: TrainingAnswer, days = 30) {
     return req<{ url: string; expires_at: string }>("/api/training/share", {
       method: "POST",

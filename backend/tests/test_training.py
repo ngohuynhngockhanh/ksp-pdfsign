@@ -6,7 +6,7 @@ import json
 import httpx
 import pytest
 
-from app import training
+from app import training, training_jobs
 from app.config import Settings
 
 
@@ -56,6 +56,21 @@ def test_ask_logs_in_server_side_and_never_returns_password(monkeypatch):
     assert "service-secret" not in json.dumps(result)
 
 
+def test_ask_replaces_raw_tool_call_with_safe_speedtest_guidance(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={"data": {"sessionId": "s1", "answer": {
+            "answer": "call:default_api:mcp__inut_knowledge__search_inut_knowledge{query:speedtest}",
+            "sourceBasis": "unstructured",
+        }}})
+
+    monkeypatch.setattr(training, "_transport", lambda: httpx.MockTransport(handler))
+    result = training.ask(_settings(), "Speedtest iNut làm sao")
+    assert result["answer"]["sourceBasis"] == "general-only"
+    assert "tốc độ mạng" in result["answer"]["answer"]
+
+
 def test_invalid_training_inputs_fail_before_network():
     with pytest.raises(training.TrainingError):
         training.search(_settings(), "")
@@ -67,6 +82,32 @@ def test_training_api_requires_admin(client):
     assert client.get("/api/training/search?q=frpc").status_code == 401
     assert client.post("/api/training/ask", json={"question": "frpc"}).status_code == 401
     assert client.post("/api/training/share", json={"question": "frpc", "answer": {}}).status_code == 401
+    assert client.post("/api/training/jobs", json={"question": "frpc"}).status_code == 401
+
+
+def test_training_background_job_reports_progress_and_result(monkeypatch):
+    monkeypatch.setattr(
+        training,
+        "ask",
+        lambda settings, question, session_id="": {
+            "sessionId": "hermes-session",
+            "answer": {"answer": f"Kết quả: {question}"},
+        },
+    )
+    job_id = training_jobs.start("iot", _settings(), "Speedtest iNut làm sao")
+
+    deadline = datetime.datetime.now().timestamp() + 2
+    payload = training_jobs.get("iot", job_id)
+    while payload and payload["status"] == "running" and datetime.datetime.now().timestamp() < deadline:
+        import time
+
+        time.sleep(0.01)
+        payload = training_jobs.get("iot", job_id)
+
+    assert payload is not None
+    assert payload["status"] == "done"
+    assert payload["result"]["answer"]["answer"] == "Kết quả: Speedtest iNut làm sao"
+    assert training_jobs.get("other-user", job_id) is None
 
 
 def test_training_access_can_be_granted_per_customer_account(client, monkeypatch):

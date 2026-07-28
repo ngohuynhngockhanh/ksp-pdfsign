@@ -6,15 +6,20 @@ test.beforeEach(async ({ page }) => {
     agent_default_ip: "127.0.0.1", default_location: "Đắk Lắk",
     using_default_secrets: false, must_change_password: false,
   }}));
-  await page.route("**/api/training/ask", (route) => route.fulfill({ json: {
-    sessionId: "e2e-session",
-    answer: {
+  await page.route("**/api/training/jobs", (route) => route.fulfill({ status: 202, json: {
+    jobId: "e2e-job", status: "running", stage: "Đang tìm trong kho iNut",
+  }}));
+  await page.route("**/api/training/jobs/e2e-job", (route) => route.fulfill({ json: {
+    status: "done", stage: "Hoàn tất câu trả lời có nguồn", result: { sessionId: "e2e-session", answer: {
       answer: "Kiểm tra trạng thái FRPC, log kết nối và meta_token trước.",
       sourceBasis: "mixed",
       generalGuidance: "Xác nhận mạng ra Internet và đồng hồ hệ thống.",
       documentationEvidence: [{ title: "9.2 Kết Nối P2P / FRPC Tunnel", url: "https://inut.vn/help#frpc", quote: "Kiểm tra user và meta_token." }],
       videoEvidence: [{ title: "Thực hành iNut PC", url: "https://youtube.com/watch?v=test&t=42s", timestamp: "00:42", quote: "Mở trang cấu hình tunnel." }],
-    },
+    } },
+  }}));
+  await page.route("**/api/training/stats", (route) => route.fulfill({ json: {
+    totals: { questions: 3, tokens: 420, successful: 3 }, users: [], recent: [], tokenNote: "Token ước tính",
   }}));
   await page.route("**/api/training/search?*", (route) => route.fulfill({ json: { results: [{
     sourceType: "help", sourceId: "help:frpc", sourceTitle: "9.2 Kết Nối P2P / FRPC Tunnel",

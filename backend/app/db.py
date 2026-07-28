@@ -163,6 +163,23 @@ class TrainingShare(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class TrainingQuery(Base):
+    """Usage telemetry for admin reporting; token counts are explicit estimates."""
+
+    __tablename__ = "training_queries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(150), index=True)
+    question: Mapped[str] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    input_tokens_est: Mapped[int] = mapped_column(default=0)
+    output_tokens_est: Mapped[int] = mapped_column(default=0)
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class LoginLink(Base):
     """Bearer link co han de khach mo va dang nhap ma khong go mat khau."""
 
