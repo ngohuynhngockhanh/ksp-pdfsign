@@ -17,6 +17,11 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
       orders = [{ id: 7, level: 1, status: "draft", document_date: "2026-07-29", customer_reference: "Nhà yến Hòa Bình", note: "", policy_code: "NQ204_2025_VAT8", items: [], invoice_lines: [{ name: "iNut Nebi - Bộ giải pháp nhà yến", unit: "Bộ", quantity: 1, tax_treatment: "taxable", vat_rate: 8, vat_label: "VAT 8%", net_amount: 3200000, tax_amount: 256000, gross_amount: 3456000 }, { name: "iNut Nebi Software: License Phun sương", unit: "Gói", quantity: 1, tax_treatment: "exempt", vat_rate: null, vat_label: "KCT", net_amount: 632500, tax_amount: 0, gross_amount: 632500 }], total_net: 3832500, total_tax: 256000, total_gross: 4088500, created_at: "", updated_at: "" }];
       return route.fulfill({ json: orders[0] });
     }
+    if (url.pathname === "/api/pymid/orders/7" && route.request().method() === "PUT") {
+      const body = route.request().postDataJSON();
+      orders[0] = { ...orders[0], customer_reference: body.customer_reference };
+      return route.fulfill({ json: orders[0] });
+    }
     if (url.pathname === "/api/pymid/orders/7/submit") { orders[0].status = "submitted"; return route.fulfill({ json: orders[0] }); }
     if (url.pathname === "/api/pymid/orders/7/xlsx") return route.fulfill({ body: "xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     return route.fulfill({ json: {} });
@@ -31,6 +36,11 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
   await page.getByRole("button", { name: "Lưu nháp" }).click();
   await expect(page.getByText("Đã lưu đơn nháp #7")).toBeVisible();
   await expect(page.getByText("iNut Nebi Software: License Phun sương")).toBeVisible();
+  await page.getByRole("button", { name: "Sửa nháp" }).click();
+  await page.getByLabel("Tham chiếu công trình").fill("Nhà yến Hòa Bình - đã sửa");
+  await page.getByRole("button", { name: "Cập nhật nháp" }).click();
+  await expect(page.getByText("Đã cập nhật đơn nháp #7")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tải danh mục giá" })).toBeVisible();
   await page.getByRole("button", { name: "Gửi INUT duyệt" }).click();
   await expect(page.getByText("Đã gửi INUT duyệt")).toBeVisible();
   await expect(page.getByRole("link", { name: "Tải Excel" })).toBeVisible();
@@ -38,4 +48,3 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
   const accessibility = await new AxeBuilder({ page }).include(".pymid-coop-page").withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(accessibility.violations).toEqual([]);
 });
-
