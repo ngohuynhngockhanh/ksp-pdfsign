@@ -867,6 +867,31 @@ export const api = {
   async quoteTemplates() {
     return req<{ templates: { key: string; label: string }[] }>("/api/quote/templates");
   },
+  async pymidCatalog(documentDate?: string) {
+    const query = documentDate ? `?document_date=${encodeURIComponent(documentDate)}` : "";
+    return req<PymidCatalog>(`/api/pymid/catalog${query}`);
+  },
+  async pymidOrders() {
+    return req<PymidOrder[]>("/api/pymid/orders");
+  },
+  async pymidCreateOrder(body: { level: number; document_date: string; customer_reference: string; note: string; items: { product_id: number; quantity: number }[] }) {
+    return req<PymidOrder>("/api/pymid/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  },
+  async pymidUpdateOrder(id: number, body: { level: number; document_date: string; customer_reference: string; note: string; items: { product_id: number; quantity: number }[] }) {
+    return req<PymidOrder>(`/api/pymid/orders/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  },
+  async pymidSubmitOrder(id: number) {
+    return req<PymidOrder>(`/api/pymid/orders/${id}/submit`, { method: "POST" });
+  },
+  async pymidApproveOrder(id: number) {
+    return req<PymidOrder>(`/api/pymid/orders/${id}/approve`, { method: "POST" });
+  },
+  pymidOrderXlsxUrl(id: number) {
+    return `/api/pymid/orders/${id}/xlsx`;
+  },
+  pymidCatalogXlsxUrl(documentDate: string) {
+    return `/api/pymid/catalog.xlsx?document_date=${encodeURIComponent(documentDate)}`;
+  },
   // --- Đơn hàng (gom bộ hồ sơ) ---
   async listOrders(opts: { customerId?: number; search?: string } = {}) {
     const p = new URLSearchParams();
@@ -2326,4 +2351,36 @@ export interface SuggestBomResult {
     actual_gia_ban: number;
     actual_margin_pct: number | null;
   };
+}
+
+export interface PymidCatalogItem {
+  id: number; code: string; name: string; unit: string; source_price: number;
+  category: "hardware" | "software"; level: number | null; valid_from: string;
+  net_price: number; tax_amount: number; gross_price: number;
+  vat_rate: number | null; vat_label: string; tax_treatment: "taxable" | "exempt";
+}
+
+export interface PymidCatalog {
+  policy: { code: string; vat_rate: number; label: string; valid_to: string };
+  items: PymidCatalogItem[];
+}
+
+export interface PymidOrderLine {
+  name: string; unit: string; quantity: number; tax_treatment: "taxable" | "exempt";
+  vat_rate: number | null; vat_label: string; net_amount: number; tax_amount: number; gross_amount: number;
+}
+
+export interface PymidOrderItem extends PymidCatalogItem {
+  product_id: number;
+  quantity: number;
+  net_amount: number;
+  tax_amount: number;
+  gross_amount: number;
+}
+
+export interface PymidOrder {
+  id: number; customer_id: number; level: number; status: string; document_date: string;
+  customer_reference: string; note: string; policy_code: string; items: PymidOrderItem[];
+  invoice_lines: PymidOrderLine[]; total_net: number; total_tax: number; total_gross: number;
+  created_at: string; updated_at: string;
 }

@@ -25,6 +25,7 @@ import { TaxReview } from "./pages/TaxReview";
 import { Operations } from "./pages/Operations";
 import { Payroll } from "./pages/Payroll";
 import { Training } from "./pages/Training";
+import { PymidCoop } from "./pages/PymidCoop";
 
 type Tab =
   | "home"
@@ -50,7 +51,8 @@ type Tab =
   | "payroll"
   | "verify"
   | "mine"
-  | "training";
+  | "training"
+  | "pymidcoop";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -77,6 +79,7 @@ const ROUTES: Record<Tab, string> = {
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
   training: "/training",
+  pymidcoop: "/pymid-coop",
 };
 const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
   Object.entries(ROUTES).map(([t, p]) => [p, t as Tab]),
@@ -167,8 +170,14 @@ export function App() {
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training",
+              "pymidcoop",
             ] as Tab[])
-          : (["mine", "verify", ...(m.training_access ? ["training" as Tab] : [])] as Tab[]);
+          : ([
+              "mine",
+              "verify",
+              ...(m.training_access ? ["training" as Tab] : []),
+              ...(m.customer_name?.toLocaleLowerCase("vi").includes("pymid") ? ["pymidcoop" as Tab] : []),
+            ] as Tab[]);
         const fromPath = PATH_TO_TAB[window.location.pathname];
         const initial = fromPath && allowed.includes(fromPath)
           ? fromPath
@@ -190,9 +199,11 @@ export function App() {
   if (!authed || !me) return <Login onLogin={() => location.reload()} />;
 
   const isAdmin = me.role === "admin";
+  const isPymid = me.customer_name?.toLocaleLowerCase("vi").includes("pymid") ?? false;
   // Menu gom nhom, hien o sidebar trai
   const adminGroups: [string, [Tab, string, string][]][] = [
     ["Tổng quan", [["home", "Trung tâm vận hành", "◉"]]],
+    ["Hợp tác", [["pymidcoop", "INUT – PYMID CO.OP", "◆"]]],
     ["Trợ lý", [["training", "iNut Training", "✦"]]],
     [
       "Hóa đơn & Thuế",
@@ -243,6 +254,9 @@ export function App() {
   const groups = isAdmin ? adminGroups : custGroups;
   if (!isAdmin && me.training_access) {
     groups.unshift(["Trợ lý", [["training", "iNut Training", "✦"]]]);
+  }
+  if (!isAdmin && isPymid) {
+    groups.unshift(["Hợp tác", [["pymidcoop", "INUT – PYMID CO.OP", "◆"]]]);
   }
 
   return (
@@ -314,6 +328,7 @@ export function App() {
         <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
+        {tab === "pymidcoop" && (isAdmin || isPymid) && <PymidCoop isAdmin={isAdmin} />}
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}
