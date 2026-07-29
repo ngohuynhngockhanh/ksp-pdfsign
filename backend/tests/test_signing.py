@@ -129,6 +129,9 @@ def test_sign_and_verify_roundtrip(tmp_path, monkeypatch):
     assert sig.intact is True
     assert sig.valid is True
     assert sig.trusted is True
+    assert sig.certificate_issuer
+    assert sig.certificate_valid_from
+    assert sig.certificate_valid_to
 
     # Sua 1 byte -> phai bao khong toan ven
     tampered = bytearray(signed_bytes)

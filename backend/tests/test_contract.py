@@ -51,3 +51,18 @@ def test_signed_ready_contract_has_no_draft_watermark():
         "ben_b": {"name": "BẢO TOÀN", "mst": "0314360282", "dai_dien": "NGUYỄN VĂN A"},
     })
     assert "BẢN NHÁP" not in _text(pdf)
+
+
+def test_final_contract_keeps_inut_watermark_and_baotoan_representative():
+    pdf = bbbg.render_contract(get_settings(), {
+        "ngay": {"day": 29, "month": 7, "year": 2026},
+        "ben_b": {
+            "name": "BẢO TOÀN TECH",
+            "mst": "0314360282",
+            "dai_dien": "HUỲNH TOÀN",
+        },
+    })
+    text = _text(pdf)
+    assert "HUỲNH TOÀN" in text
+    assert "INUT" in text
+    assert "BẢN NHÁP" not in text
