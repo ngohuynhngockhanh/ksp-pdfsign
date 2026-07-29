@@ -70,6 +70,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(150), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="customer")  # admin|customer
     customer_id: Mapped[int | None] = mapped_column(
@@ -1129,6 +1130,7 @@ def _migrate_add_columns() -> None:
             "logo_url": "VARCHAR(1000) DEFAULT ''",
         },
         "users": {
+            "display_name": "VARCHAR(150) DEFAULT ''",
             "session_version": "INTEGER DEFAULT 1",
             "must_change_password": "BOOLEAN DEFAULT 0",
             "training_access": "BOOLEAN DEFAULT 0",

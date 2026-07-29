@@ -29,6 +29,18 @@ class CurrentUser:
     def is_admin(self) -> bool:
         return self.role == "admin"
 
+    @property
+    def portal_scope(self) -> str:
+        return "pymid_coop" if self.role == "pymid_staff" else "full"
+
+
+def require_full_portal(user: CurrentUser) -> None:
+    if user.portal_scope != "full":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Tài khoản nhân viên PYMID chỉ được truy cập INUT - PYMID CO.OP",
+        )
+
 
 def ensure_admin_seed(db: Session, settings: Settings) -> None:
     """Tao/dong bo tai khoan admin tu .env khi khoi dong."""

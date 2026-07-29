@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime
 from io import BytesIO
 
@@ -15,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from . import audit, pymid
 from .auth import CurrentUser, require_user
-from .db import Customer, PymidCoopOrder, PymidCoopProduct, get_session
+from .db import Customer, PymidCoopOrder, PymidCoopProduct, User, get_session
+from .security import hash_password
 
 router = APIRouter(prefix="/api/pymid", tags=["pymid-coop"])
 PYMID_TAX_CODE = "0313610275"
@@ -34,6 +36,12 @@ class OrderIn(BaseModel):
     items: list[OrderItemIn] = Field(min_length=1, max_length=100)
 
 
+class StaffAccountIn(BaseModel):
+    username: str = Field(min_length=4, max_length=50)
+    display_name: str = Field(min_length=1, max_length=150)
+    password: str = Field(min_length=10, max_length=128)
+
+
 def _pymid_customer(db: Session) -> Customer:
     row = db.scalar(select(Customer).where(Customer.tax_code == PYMID_TAX_CODE))
     if not row:
@@ -46,6 +54,63 @@ def _authorize(db: Session, user: CurrentUser) -> Customer:
     if user.is_admin or user.customer_id == customer.id:
         return customer
     raise HTTPException(403, "Tài khoản không có quyền truy cập INUT - PYMID CO.OP")
+
+
+def _authorize_staff_manager(db: Session, user: CurrentUser) -> Customer:
+    customer = _authorize(db, user)
+    if user.is_admin or user.role == "customer":
+        return customer
+    raise HTTPException(403, "Chỉ tài khoản chính PYMID được quản lý nhân viên")
+
+
+def _staff_out(row: User) -> dict:
+    return {
+        "id": row.id,
+        "username": row.username,
+        "display_name": row.display_name,
+        "role": row.role,
+    }
+
+
+@router.get("/staff")
+def list_staff(db: Session = Depends(get_session),
+               user: CurrentUser = Depends(require_user)):
+    customer = _authorize_staff_manager(db, user)
+    rows = db.scalars(select(User).where(
+        User.customer_id == customer.id,
+        User.role == "pymid_staff",
+    ).order_by(User.username))
+    return [_staff_out(row) for row in rows]
+
+
+@router.post("/staff", status_code=201)
+def create_staff(body: StaffAccountIn, db: Session = Depends(get_session),
+                 user: CurrentUser = Depends(require_user)):
+    customer = _authorize_staff_manager(db, user)
+    username = body.username.strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,48}[a-z0-9]", username):
+        raise HTTPException(
+            400,
+            "Tài khoản chỉ gồm chữ thường không dấu, số, dấu chấm, gạch ngang hoặc gạch dưới",
+        )
+    if db.scalar(select(User).where(User.username == username)):
+        raise HTTPException(409, "Tên tài khoản đã tồn tại")
+    row = User(
+        username=username,
+        display_name=body.display_name.strip(),
+        password_hash=hash_password(body.password),
+        role="pymid_staff",
+        customer_id=customer.id,
+        must_change_password=True,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    audit.record(
+        db, user.username, user.role, user.ip, "pymid_staff_create",
+        f"user:{row.id}", row.username,
+    )
+    return _staff_out(row)
 
 
 def _loads(value: str) -> list:

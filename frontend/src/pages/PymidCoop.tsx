@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, PymidCatalog, PymidOrder } from "../api";
+import { api, PymidCatalog, PymidOrder, PymidStaffAccount } from "../api";
 
 const money = (value: number) => Math.round(value || 0).toLocaleString("vi-VN") + "đ";
 const today = new Date().toISOString().slice(0, 10);
 const statusName: Record<string, string> = { draft: "Nháp", submitted: "Chờ INUT duyệt", approved: "Đã duyệt" };
 
-export function PymidCoop({ isAdmin }: { isAdmin: boolean }) {
+export function PymidCoop({ isAdmin, canManageStaff }: { isAdmin: boolean; canManageStaff: boolean }) {
   const [catalog, setCatalog] = useState<PymidCatalog | null>(null);
   const [orders, setOrders] = useState<PymidOrder[]>([]);
   const [level, setLevel] = useState(1);
@@ -16,6 +16,10 @@ export function PymidCoop({ isAdmin }: { isAdmin: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [staff, setStaff] = useState<PymidStaffAccount[]>([]);
+  const [staffName, setStaffName] = useState("");
+  const [staffUsername, setStaffUsername] = useState("");
+  const [staffPassword, setStaffPassword] = useState("");
 
   async function load(date = documentDate) {
     const [catalogData, orderData] = await Promise.all([api.pymidCatalog(date), api.pymidOrders()]);
@@ -27,6 +31,22 @@ export function PymidCoop({ isAdmin }: { isAdmin: boolean }) {
     });
   }
   useEffect(() => { load().catch((error) => setMessage((error as Error).message)); }, []);
+  useEffect(() => {
+    if (canManageStaff) api.pymidStaff().then(setStaff).catch((error) => setMessage((error as Error).message));
+  }, [canManageStaff]);
+
+  async function createStaff(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      setBusy(true); setMessage("");
+      const created = await api.pymidCreateStaff({
+        username: staffUsername.trim(), display_name: staffName.trim(), password: staffPassword,
+      });
+      setStaff((rows) => [...rows, created].sort((a, b) => a.username.localeCompare(b.username)));
+      setStaffName(""); setStaffUsername(""); setStaffPassword("");
+      setMessage(`Đã tạo tài khoản ${created.username}. Nhân viên chỉ được vào khu vực CO.OP.`);
+    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
 
   async function changeDate(value: string) {
     setDocumentDate(value);
@@ -90,5 +110,6 @@ export function PymidCoop({ isAdmin }: { isAdmin: boolean }) {
       <aside className="pymid-summary"><span>BƯỚC 2</span><h2>Bảng kê xuất hóa đơn</h2>{preview.hardware.length > 0 && <div className="pymid-invoice-line"><b>iNut Nebi - Bộ giải pháp nhà yến</b><small>Model Level {level} · Bộ × 1 · {catalog?.policy.label}</small><strong>{money(preview.hardwareGross)}</strong></div>}{preview.software.map((item) => <div className="pymid-invoice-line software" key={item.id}><b>iNut Nebi Software: License {item.name}</b><small>Gói × {item.quantity} · KCT</small><strong>{money(item.gross_price * item.quantity)}</strong></div>)}<div className="pymid-total"><span>Tổng thanh toán</span><b>{money(preview.total)}</b></div><label>Ghi chú<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Yêu cầu tùy chỉnh của khách hàng" /></label><button disabled={busy || !selected.length} onClick={saveDraft}>{editingId ? "Cập nhật nháp" : "Lưu nháp"}</button><a className="pymid-catalog-download" href={api.pymidCatalogXlsxUrl(documentDate)} download>Tải danh mục giá</a></aside>
     </div>
     <section className="pymid-orders"><header><div><span>BƯỚC 3</span><h2>Đơn hàng và file bàn giao</h2></div></header>{!orders.length ? <p className="muted">Chưa có đơn hàng nào.</p> : orders.map((order) => <article key={order.id}><div><b>Đơn #{order.id} · Nebi Level {order.level}</b><span>{order.customer_reference || "Chưa có tham chiếu"} · {order.document_date}</span></div><strong>{money(order.total_gross)}</strong><span className={`pymid-status ${order.status}`}>{statusName[order.status] ?? order.status}</span><div className="pymid-order-actions"><a href={api.pymidOrderXlsxUrl(order.id)} download>Tải Excel</a>{order.status === "draft" && <button disabled={busy} onClick={() => editDraft(order)}>Sửa nháp</button>}{order.status === "draft" && <button disabled={busy} onClick={() => submit(order)}>Gửi INUT duyệt</button>}{isAdmin && order.status !== "approved" && <button disabled={busy} onClick={() => approve(order)}>INUT duyệt</button>}</div><div className="pymid-order-lines">{order.invoice_lines.map((line, index) => <small key={index}>{line.name} · {line.vat_label} · {money(line.gross_amount)}</small>)}</div></article>)}</section>
+    {canManageStaff && <section className="pymid-staff"><header><div><span>PHÂN QUYỀN</span><h2>Tài khoản nhân viên PYMID</h2><p>Nhân viên chỉ xem và thao tác trong INUT – PYMID CO.OP, không truy cập hồ sơ hoặc hóa đơn.</p></div></header><form onSubmit={createStaff}><label>Tên nhân viên<input required maxLength={150} value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder="Ví dụ: Nguyễn Văn An" /></label><label>Tên đăng nhập<input required minLength={4} maxLength={50} value={staffUsername} onChange={(e) => setStaffUsername(e.target.value)} placeholder="pymid.nguyenvanan" /></label><label>Mật khẩu tạm<input required type="password" minLength={10} maxLength={128} value={staffPassword} onChange={(e) => setStaffPassword(e.target.value)} placeholder="Tối thiểu 10 ký tự" /></label><button disabled={busy}>Tạo tài khoản nhân viên</button></form><div className="pymid-staff-list">{staff.length ? staff.map((row) => <article key={row.id}><div><b>{row.display_name}</b><span>{row.username}</span></div><small>Chỉ CO.OP</small></article>) : <p className="muted">Chưa có tài khoản nhân viên.</p>}</div></section>}
   </div>;
 }

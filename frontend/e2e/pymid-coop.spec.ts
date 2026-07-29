@@ -13,6 +13,8 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
     if (url.pathname === "/api/me") return route.fulfill({ json: { username: "pymid", role: "customer", customer_id: 9, customer_name: "CÔNG TY TNHH PYMID", agent_default_ip: "", default_location: "", using_default_secrets: false, must_change_password: false, training_access: false } });
     if (url.pathname === "/api/pymid/catalog") return route.fulfill({ json: { policy: { code: "NQ204_2025_VAT8", vat_rate: 8, label: "VAT 8%", valid_to: "2026-12-31" }, items } });
     if (url.pathname === "/api/pymid/orders" && route.request().method() === "GET") return route.fulfill({ json: orders });
+    if (url.pathname === "/api/pymid/staff" && route.request().method() === "GET") return route.fulfill({ json: [] });
+    if (url.pathname === "/api/pymid/staff" && route.request().method() === "POST") return route.fulfill({ status: 201, json: { id: 12, username: "pymid.nhanvien01", display_name: "Nhân viên 01", role: "pymid_staff" } });
     if (url.pathname === "/api/pymid/orders" && route.request().method() === "POST") {
       orders = [{ id: 7, level: 1, status: "draft", document_date: "2026-07-29", customer_reference: "Nhà yến Hòa Bình", note: "", policy_code: "NQ204_2025_VAT8", items: [{ ...items[0], product_id: 1, quantity: 1, net_amount: 2614120, gross_amount: 2823250 }, { ...items[1], product_id: 2, quantity: 2, net_amount: 1171296, gross_amount: 1265000 }, { ...items[2], product_id: 3, quantity: 1, net_amount: 632500, gross_amount: 632500 }], invoice_lines: [{ name: "iNut Nebi - Bộ giải pháp nhà yến", unit: "Bộ", quantity: 1, tax_treatment: "taxable", vat_rate: 8, vat_label: "VAT 8%", net_amount: 3200000, tax_amount: 256000, gross_amount: 3456000 }, { name: "iNut Nebi Software: License Phun sương", unit: "Gói", quantity: 1, tax_treatment: "exempt", vat_rate: null, vat_label: "KCT", net_amount: 632500, tax_amount: 0, gross_amount: 632500 }], total_net: 3832500, total_tax: 256000, total_gross: 4088500, created_at: "", updated_at: "" }];
       return route.fulfill({ json: orders[0] });
@@ -43,6 +45,12 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
   await expect(page.getByRole("link", { name: "Tải danh mục giá" })).toBeVisible();
   await page.getByRole("button", { name: "Gửi INUT duyệt" }).click();
   await expect(page.getByText("Đã gửi INUT duyệt")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tài khoản nhân viên PYMID" })).toBeVisible();
+  await page.getByLabel("Tên nhân viên").fill("Nhân viên 01");
+  await page.getByLabel("Tên đăng nhập").fill("pymid.nhanvien01");
+  await page.getByLabel("Mật khẩu tạm").fill("PymidStaff123@");
+  await page.getByRole("button", { name: "Tạo tài khoản nhân viên" }).click();
+  await expect(page.getByText("pymid.nhanvien01", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tải Excel" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   const accessibility = await new AxeBuilder({ page }).include(".pymid-coop-page").withTags(["wcag2a", "wcag2aa"]).analyze();

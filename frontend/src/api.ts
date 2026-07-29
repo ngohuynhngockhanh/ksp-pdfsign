@@ -407,6 +407,7 @@ export const api = {
     return req<{
       username: string;
       role: string;
+      portal_scope: string;
       customer_id: number | null;
       customer_name: string | null;
       agent_default_ip: string;
@@ -877,6 +878,16 @@ export const api = {
   },
   async pymidOrders() {
     return req<PymidOrder[]>("/api/pymid/orders");
+  },
+  async pymidStaff() {
+    return req<PymidStaffAccount[]>("/api/pymid/staff");
+  },
+  async pymidCreateStaff(body: { username: string; display_name: string; password: string }) {
+    return req<PymidStaffAccount>("/api/pymid/staff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   },
   async pymidCreateOrder(body: { level: number; document_date: string; customer_reference: string; note: string; items: { product_id: number; quantity: number }[] }) {
     return req<PymidOrder>("/api/pymid/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -2367,6 +2378,13 @@ export interface PymidCatalogItem {
 export interface PymidCatalog {
   policy: { code: string; vat_rate: number; label: string; valid_to: string };
   items: PymidCatalogItem[];
+}
+
+export interface PymidStaffAccount {
+  id: number;
+  username: string;
+  display_name: string;
+  role: "pymid_staff";
 }
 
 export interface PymidOrderLine {

@@ -18,6 +18,7 @@ ACTION_LABELS = {
     "contract_draft_create": "Tạo bản hợp đồng đang soạn",
     "contract_draft_update": "Lưu bản hợp đồng đang soạn",
     "contract_draft_delete": "Xóa bản hợp đồng đang soạn",
+    "pymid_staff_create": "Tạo tài khoản nhân viên PYMID",
     "inv_sale_sync_ihoadon": "Đồng bộ hóa đơn bán từ iHOADON",
     "ai_contract": "AI soạn hợp đồng",
     "upload_signed": "Tải bản đã ký",

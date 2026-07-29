@@ -67,6 +67,7 @@ from .auth import (
     create_token,
     ensure_admin_seed,
     require_admin,
+    require_full_portal,
     require_training,
     require_user,
 )
@@ -358,6 +359,7 @@ def me(
     return {
         "username": user.username,
         "role": user.role,
+        "portal_scope": user.portal_scope,
         "customer_id": user.customer_id,
         "customer_name": customer_name,
         "agent_default_ip": settings.agent_default_ip,
@@ -512,6 +514,7 @@ def verify_upload(
     user: CurrentUser = Depends(require_user),
     settings: Settings = Depends(get_settings),
 ):
+    require_full_portal(user)
     content = file.file.read()
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
@@ -906,6 +909,7 @@ def delete_document(doc_pk: int, user: CurrentUser = Depends(require_admin), db:
 
 @app.get("/api/my/documents", response_model=list[DocumentOut])
 def my_documents(user: CurrentUser = Depends(require_user), db: Session = Depends(get_session)):
+    require_full_portal(user)
     if user.is_admin:
         # Admin xem tat ca ho so da phan loai
         q = select(Document).order_by(Document.created_at.desc())
@@ -922,6 +926,7 @@ def my_documents(user: CurrentUser = Depends(require_user), db: Session = Depend
 def download_document(
     doc_pk: int, user: CurrentUser = Depends(require_user), db: Session = Depends(get_session)
 ):
+    require_full_portal(user)
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
@@ -978,6 +983,7 @@ def download_signed_upload(
     user: CurrentUser = Depends(require_user),
     db: Session = Depends(get_session),
 ):
+    require_full_portal(user)
     d = db.get(Document, doc_pk)
     if not d or not d.signed_upload_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Chua co ban da ky tai len")
@@ -1030,6 +1036,7 @@ def my_ihoadon_invoices(
     tu: str = "", den: str = "", q: str = "",
     user: CurrentUser = Depends(require_user), db: Session = Depends(get_session),
 ):
+    require_full_portal(user)
     stmt = select(IhoadonInvoice)
     for cond in _invoice_scope(user):
         stmt = stmt.where(cond)
@@ -1049,6 +1056,7 @@ def my_ihoadon_invoices(
 
 
 def _owned_invoice(db: Session, iid: int, user: CurrentUser) -> IhoadonInvoice:
+    require_full_portal(user)
     row = db.get(IhoadonInvoice, iid)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
@@ -1096,6 +1104,7 @@ def my_portal_zip(
     tu: str = "", den: str = "", user: CurrentUser = Depends(require_user),
     db: Session = Depends(get_session),
 ):
+    require_full_portal(user)
     inv_stmt = select(IhoadonInvoice)
     for cond in _invoice_scope(user):
         inv_stmt = inv_stmt.where(cond)
@@ -1209,6 +1218,7 @@ def verify_document_record(
     db: Session = Depends(get_session),
 ):
     """Kiem tra chu ky cua mot ho so da luu (admin bat ky / khach hang cua minh)."""
+    require_full_portal(user)
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
@@ -1670,6 +1680,7 @@ def create_share(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
+    require_full_portal(user)
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")

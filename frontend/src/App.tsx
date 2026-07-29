@@ -88,6 +88,7 @@ const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
 interface Me {
   username: string;
   role: string;
+  portal_scope: string;
   customer_name: string | null;
   agent_default_ip: string;
   default_location: string;
@@ -166,13 +167,16 @@ export function App() {
         setMe(m as Me);
         setAuthed(true);
         const isAdmin = m.role === "admin";
+        const isPymidStaff = m.portal_scope === "pymid_coop";
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training",
               "pymidcoop",
             ] as Tab[])
-          : ([
+          : isPymidStaff
+            ? (["pymidcoop"] as Tab[])
+            : ([
               "mine",
               "verify",
               ...(m.training_access ? ["training" as Tab] : []),
@@ -183,7 +187,7 @@ export function App() {
           ? fromPath
           : isAdmin
             ? "home"
-            : "mine";
+            : isPymidStaff ? "pymidcoop" : "mine";
         const verifyPk = initial === "verify" ? Number(new URLSearchParams(window.location.search).get("doc")) : 0;
         if (verifyPk > 0) setVerifyDocPk(verifyPk);
         navigate(initial, true, verifyPk > 0 ? `?doc=${verifyPk}` : "");
@@ -207,6 +211,7 @@ export function App() {
   if (!authed || !me) return <Login onLogin={() => location.reload()} />;
 
   const isAdmin = me.role === "admin";
+  const isPymidStaff = me.portal_scope === "pymid_coop";
   const isPymid = me.customer_name?.toLocaleLowerCase("vi").includes("pymid") ?? false;
   // Menu gom nhom, hien o sidebar trai
   const adminGroups: [string, [Tab, string, string][]][] = [
@@ -259,7 +264,7 @@ export function App() {
       ],
     ],
   ];
-  const groups = isAdmin ? adminGroups : custGroups;
+  const groups = isAdmin ? adminGroups : isPymidStaff ? [] : custGroups;
   if (!isAdmin && me.training_access) {
     groups.unshift(["Trợ lý", [["training", "iNut Training", "✦"]]]);
   }
@@ -336,7 +341,9 @@ export function App() {
         <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
-        {tab === "pymidcoop" && (isAdmin || isPymid) && <PymidCoop isAdmin={isAdmin} />}
+        {tab === "pymidcoop" && (isAdmin || isPymid) && (
+          <PymidCoop isAdmin={isAdmin} canManageStaff={isAdmin || !isPymidStaff} />
+        )}
         {tab === "sign" && isAdmin && (
           <Signer
             defaultIp={me.agent_default_ip}
