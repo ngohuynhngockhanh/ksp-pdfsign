@@ -48,3 +48,28 @@ test("PYMID cấu hình Nebi, lưu nháp và gửi INUT duyệt", async ({ page 
   const accessibility = await new AxeBuilder({ page }).include(".pymid-coop-page").withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(accessibility.violations).toEqual([]);
 });
+
+test("nhân viên PYMID chỉ thấy CO.OP và không thấy hồ sơ", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/me") return route.fulfill({ json: {
+      username: "pymid.nhanvien01", role: "pymid_staff", portal_scope: "pymid_coop",
+      customer_id: 9, customer_name: "CÔNG TY TNHH PYMID", agent_default_ip: "",
+      default_location: "", using_default_secrets: false, must_change_password: false,
+      training_access: false,
+    } });
+    if (url.pathname === "/api/pymid/catalog") return route.fulfill({ json: {
+      policy: { code: "NQ204_2025_VAT8", vat_rate: 8, label: "VAT 8%", valid_to: "2026-12-31" },
+      items: [],
+    } });
+    if (url.pathname === "/api/pymid/orders") return route.fulfill({ json: [] });
+    return route.fulfill({ status: 404, json: { detail: "Không tìm thấy" } });
+  });
+
+  await page.goto("/ho-so-cua-toi");
+  await expect(page).toHaveURL(/\/pymid-coop$/);
+  await expect(page.getByRole("heading", { name: "INUT – PYMID CO.OP" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Hồ sơ của tôi/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Kiểm tra chữ ký/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Tài khoản nhân viên PYMID" })).toHaveCount(0);
+});

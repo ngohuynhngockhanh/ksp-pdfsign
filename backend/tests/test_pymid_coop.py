@@ -186,3 +186,44 @@ def test_order_rejects_mismatched_level_and_duplicate_products(app_env):
     })
     assert duplicated.status_code == 400
     assert duplicated.json()["detail"] == "Mỗi hạng mục chỉ được xuất hiện một lần"
+
+
+def test_pymid_owner_can_create_staff_account_with_coop_only_access(app_env):
+    login(app_env, "pymid", "PymidTest123@")
+    created = app_env.post("/api/pymid/staff", json={
+        "username": "pymid.nhanvien01",
+        "display_name": "Nhân viên kinh doanh 01",
+        "password": "PymidStaff123@",
+    })
+    assert created.status_code == 201, created.text
+    assert created.json() == {
+        "id": created.json()["id"],
+        "username": "pymid.nhanvien01",
+        "display_name": "Nhân viên kinh doanh 01",
+        "role": "pymid_staff",
+    }
+
+    staff_rows = app_env.get("/api/pymid/staff")
+    assert staff_rows.status_code == 200
+    assert [row["username"] for row in staff_rows.json()] == ["pymid.nhanvien01"]
+
+    staff = TestClient(app_env.app)
+    login(staff, "pymid.nhanvien01", "PymidStaff123@")
+    assert staff.get("/api/pymid/catalog").status_code == 200
+    me = staff.get("/api/me").json()
+    assert me["role"] == "pymid_staff"
+    assert me["portal_scope"] == "pymid_coop"
+    assert staff.get("/api/my/documents").status_code == 403
+    assert staff.get("/api/my/invoices").status_code == 403
+    assert staff.get("/api/my/download.zip").status_code == 403
+    assert staff.get("/api/pymid/staff").status_code == 403
+
+
+def test_non_pymid_customer_cannot_create_pymid_staff(app_env):
+    login(app_env, "other", "OtherTest123@")
+    response = app_env.post("/api/pymid/staff", json={
+        "username": "khongduocphep",
+        "display_name": "Không được phép",
+        "password": "OtherStaff123@",
+    })
+    assert response.status_code == 403
