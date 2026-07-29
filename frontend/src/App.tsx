@@ -128,8 +128,8 @@ export function App() {
     } | null
   >(null);
 
-  function navigate(t: Tab, replace = false) {
-    const path = ROUTES[t];
+  function navigate(t: Tab, replace = false, search = "") {
+    const path = ROUTES[t] + search;
     if (replace) history.replaceState({ t }, "", path);
     else history.pushState({ t }, "", path);
     setTabState(t);
@@ -146,7 +146,7 @@ export function App() {
 
   function goVerify(docPk: number) {
     setVerifyDocPk(docPk);
-    navigate("verify");
+    navigate("verify", false, `?doc=${docPk}`);
   }
 
   function goPurchase(purchaseId: number) {
@@ -184,12 +184,20 @@ export function App() {
           : isAdmin
             ? "home"
             : "mine";
-        navigate(initial, true);
+        const verifyPk = initial === "verify" ? Number(new URLSearchParams(window.location.search).get("doc")) : 0;
+        if (verifyPk > 0) setVerifyDocPk(verifyPk);
+        navigate(initial, true, verifyPk > 0 ? `?doc=${verifyPk}` : "");
       })
       .catch(() => setAuthed(false));
     const onPop = () => {
       const t = PATH_TO_TAB[window.location.pathname];
-      if (t) setTabState(t);
+      if (t) {
+        setTabState(t);
+        if (t === "verify") {
+          const docPk = Number(new URLSearchParams(window.location.search).get("doc"));
+          setVerifyDocPk(docPk > 0 ? docPk : null);
+        }
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);

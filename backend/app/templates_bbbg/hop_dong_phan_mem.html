@@ -7,7 +7,9 @@
   * { box-sizing: border-box; }
   body { font-family: "DejaVu Serif", serif; font-size: 12px; line-height: 1.5; color: #111; }
   .watermark { position: fixed; top: 42%; left: 8%; right: 8%; transform: rotate(-28deg); text-align: center; font-size: 44px; font-weight: bold; color: rgba(170,0,0,.11); z-index: -1; }
+  .brand-watermark { position: fixed; top: 35%; left: 27%; width: 46%; opacity: .045; z-index: -2; }
   .head { display: flex; gap: 12px; align-items: center; border-bottom: 2px solid #174b72; padding-bottom: 8px; }
+  .head .partner-logo { margin-left: auto; width: 92px; height: 54px; object-fit: contain; }
   .head img { width: 58px; height: 58px; object-fit: contain; }
   .company { font-weight: bold; text-transform: uppercase; color: #174b72; }
   .small { font-size: 10px; }
@@ -30,6 +32,7 @@
 </head>
 <body>
   {% if is_draft %}<div class="watermark">BẢN NHÁP – CHƯA CÓ HIỆU LỰC</div>{% endif %}
+  {% if logo_data_uri %}<img class="brand-watermark" src="{{ logo_data_uri }}">{% endif %}
   <div class="head">
     {% if logo_data_uri %}<img src="{{ logo_data_uri }}">{% endif %}
     <div>
@@ -37,6 +40,7 @@
       <div class="small">{{ ben_a.address }}</div>
       <div class="small">MST: {{ ben_a.mst }} · {{ website }} · {{ email }}</div>
     </div>
+    {% if ben_b_logo_data_uri %}<img class="partner-logo" src="{{ ben_b_logo_data_uri }}">{% endif %}
   </div>
 
   <h1>HỢP ĐỒNG CUNG CẤP VÀ VẬN HÀNH PHẦN MỀM</h1>

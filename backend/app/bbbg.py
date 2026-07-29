@@ -6,8 +6,12 @@ from __future__ import annotations
 
 import base64
 import html
+import ipaddress
 from pathlib import Path
 import re
+import socket
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from weasyprint import HTML
@@ -133,6 +137,30 @@ def _logo_data_uri(settings: Settings) -> str:
     if p.exists():
         return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode()
     return ""
+
+
+def _remote_logo_data_uri(url: str) -> str:
+    """Tải logo công khai với giới hạn chặt để tránh biến trình render thành proxy tùy ý."""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return ""
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM)}
+        if any(not ipaddress.ip_address(address).is_global for address in addresses):
+            return ""
+        request = Request(url, headers={"User-Agent": "INUT-Contract/1.0"})
+        with urlopen(request, timeout=8) as response:
+            content_type = response.headers.get_content_type()
+            if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+                return ""
+            content = response.read(2 * 1024 * 1024 + 1)
+        if len(content) > 2 * 1024 * 1024:
+            return ""
+        return f"data:{content_type};base64," + base64.b64encode(content).decode()
+    except Exception:
+        return ""
 
 
 def default_ben_a(settings: Settings) -> dict:
@@ -269,6 +297,7 @@ def render_contract(settings: Settings, data: dict) -> bytes:
         ),
         "is_draft": not (ben_b.get("dai_dien") or "").strip(),
         "logo_data_uri": _logo_data_uri(settings),
+        "ben_b_logo_data_uri": _remote_logo_data_uri(ben_b.get("logo_url") or ""),
         "email": settings.dntt_email,
         "website": settings.dntt_website,
         "bank": {

@@ -534,7 +534,7 @@ def _customer_out(db: Session, c: Customer) -> CustomerOut:
     )
     return CustomerOut(
         id=c.id, name=c.name, tax_code=c.tax_code, contact=c.contact,
-        address=c.address or "", email=c.email or "", note=c.note,
+        address=c.address or "", email=c.email or "", logo_url=c.logo_url or "", note=c.note,
         created_at=c.created_at.isoformat(), document_count=doc_count or 0,
         account_usernames=usernames, aliases=aliases,
     )
@@ -547,7 +547,8 @@ def create_customer(
     db: Session = Depends(get_session),
 ):
     c = Customer(
-        name=body.name, tax_code=body.tax_code, contact=body.contact, note=body.note
+        name=body.name, tax_code=body.tax_code, contact=body.contact, note=body.note,
+        logo_url=body.logo_url,
     )
     db.add(c)
     db.flush()
@@ -587,7 +588,7 @@ def update_customer(
     c = db.get(Customer, cid)
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
-    for f in ("name", "tax_code", "contact", "note"):
+    for f in ("name", "tax_code", "contact", "note", "logo_url"):
         v = getattr(body, f)
         if v is not None:
             setattr(c, f, v)

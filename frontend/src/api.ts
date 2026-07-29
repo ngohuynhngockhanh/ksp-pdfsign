@@ -73,6 +73,7 @@ export interface Customer {
   contact: string;
   address: string;
   email: string;
+  logo_url: string;
   note: string;
   created_at: string;
   document_count: number;
@@ -153,6 +154,9 @@ export interface SignatureReport {
   field_name: string;
   signer_name: string;
   signing_time: string | null;
+  certificate_issuer: string;
+  certificate_valid_from: string | null;
+  certificate_valid_to: string | null;
   intact: boolean;
   valid: boolean;
   trusted: boolean;

@@ -3,10 +3,10 @@ import { api, ContractDraft, Customer, DocRecord } from "../api";
 
 type Party = {
   name: string; mst: string; address: string; email: string;
-  dai_dien: string; chuc_vu: string; dien_thoai: string;
+  dai_dien: string; chuc_vu: string; dien_thoai: string; logo_url: string;
 };
 
-const emptyParty: Party = { name: "", mst: "", address: "", email: "", dai_dien: "", chuc_vu: "", dien_thoai: "" };
+const emptyParty: Party = { name: "", mst: "", address: "", email: "", dai_dien: "", chuc_vu: "", dien_thoai: "", logo_url: "" };
 
 export function CreateContract() {
   const now = new Date();
@@ -54,7 +54,7 @@ export function CreateContract() {
   }, [number, date, party, terms]);
 
   function fromCustomer(c: Customer): Party {
-    return { name: c.name, mst: c.tax_code, address: c.address || "", email: c.email || "", dai_dien: "", chuc_vu: "", dien_thoai: c.contact || "" };
+    return { name: c.name, mst: c.tax_code, address: c.address || "", email: c.email || "", dai_dien: "", chuc_vu: "", dien_thoai: c.contact || "", logo_url: c.logo_url || "" };
   }
   function setField<K extends keyof Party>(key: K, value: Party[K]) { setParty((p) => ({ ...p, [key]: value })); }
   async function preview() {
@@ -145,6 +145,7 @@ export function CreateContract() {
         <label>Tên pháp nhân<input value={party.name} onChange={(e) => setField("name", e.target.value)} /></label>
         <div className="form-row"><label>Mã số thuế<input value={party.mst} onChange={(e) => setField("mst", e.target.value)} /></label><label>Email<input value={party.email} onChange={(e) => setField("email", e.target.value)} /></label></div>
         <label>Địa chỉ<input value={party.address} onChange={(e) => setField("address", e.target.value)} /></label>
+        <label>Logo Bên B<input value={party.logo_url} onChange={(e) => setField("logo_url", e.target.value)} placeholder="https://.../logo.jpg" /></label>
         <div className="form-row"><label>Người đại diện<input placeholder="Bổ sung trước khi ký" value={party.dai_dien} onChange={(e) => setField("dai_dien", e.target.value)} /></label><label>Chức vụ<input value={party.chuc_vu} onChange={(e) => setField("chuc_vu", e.target.value)} /></label></div>
         {!party.dai_dien && <div className="draft-note">PDF sẽ có watermark “BẢN NHÁP” đến khi bổ sung người đại diện Bên B.</div>}
       </section>

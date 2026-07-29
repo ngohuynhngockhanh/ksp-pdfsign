@@ -59,6 +59,18 @@ def _one_signature(embedded_sig, vc: ValidationContext) -> SignatureReport:
     except Exception:
         pass
 
+    certificate_issuer = ""
+    certificate_valid_from = None
+    certificate_valid_to = None
+    try:
+        issuer = status.signing_cert.issuer.native
+        certificate_issuer = issuer.get("organization_name") or issuer.get("common_name") or str(issuer)
+        validity = status.signing_cert["tbs_certificate"]["validity"]
+        certificate_valid_from = validity["not_before"].native.isoformat()
+        certificate_valid_to = validity["not_after"].native.isoformat()
+    except Exception:
+        pass
+
     if not intact:
         problems.append("Tai lieu da bi sua sau khi ky (byte-range khong khop).")
     if not trusted:
@@ -81,6 +93,9 @@ def _one_signature(embedded_sig, vc: ValidationContext) -> SignatureReport:
         field_name=getattr(embedded_sig, "field_name", "?"),
         signer_name=signer_name,
         signing_time=signing_time,
+        certificate_issuer=certificate_issuer,
+        certificate_valid_from=certificate_valid_from,
+        certificate_valid_to=certificate_valid_to,
         intact=intact,
         valid=valid,
         trusted=trusted,

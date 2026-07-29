@@ -41,6 +41,7 @@ class Customer(Base):
     contact: Mapped[str] = mapped_column(String(255), default="")
     address: Mapped[str] = mapped_column(String(500), default="")
     email: Mapped[str] = mapped_column(String(255), default="")
+    logo_url: Mapped[str] = mapped_column(String(1000), default="")
     note: Mapped[str] = mapped_column(String(1000), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -1125,6 +1126,7 @@ def _migrate_add_columns() -> None:
         "customers": {
             "address": "VARCHAR(500) DEFAULT ''",
             "email": "VARCHAR(255) DEFAULT ''",
+            "logo_url": "VARCHAR(1000) DEFAULT ''",
         },
         "users": {
             "session_version": "INTEGER DEFAULT 1",

@@ -67,6 +67,9 @@ class SignatureReport(BaseModel):
     field_name: str
     signer_name: str
     signing_time: str | None = None
+    certificate_issuer: str = ""
+    certificate_valid_from: str | None = None
+    certificate_valid_to: str | None = None
     intact: bool           # byte-range con nguyen ven
     valid: bool            # hop le mat ma
     trusted: bool          # chuoi CA tin cay
@@ -90,6 +93,7 @@ class CustomerCreate(BaseModel):
     tax_code: str = ""
     contact: str = ""
     note: str = ""
+    logo_url: str = ""
     # Tao luon tai khoan cho khach hang (tuy chon)
     account_username: str | None = None
     account_password: str | None = None
@@ -100,6 +104,7 @@ class CustomerUpdate(BaseModel):
     tax_code: str | None = None
     contact: str | None = None
     note: str | None = None
+    logo_url: str | None = None
 
 
 class CustomerMerge(BaseModel):
@@ -120,6 +125,7 @@ class CustomerOut(BaseModel):
     contact: str
     address: str = ""
     email: str = ""
+    logo_url: str = ""
     note: str
     created_at: str
     document_count: int = 0
@@ -233,6 +239,7 @@ class BBBGBenB(BaseModel):
     nguoi_nhan: str = ""
     dien_thoai: str = ""
     ten_ngan: str = ""  # ten goi tat trong BBNT (vd "PHE VIET NAM")
+    logo_url: str = ""
 
 
 class BBBGGenerate(BaseModel):

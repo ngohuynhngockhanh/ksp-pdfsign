@@ -90,6 +90,15 @@ export function Verify({
                     <td>{new Date(s.signing_time).toLocaleString("vi-VN")}</td>
                   </tr>
                 )}
+                {s.certificate_issuer && (
+                  <tr><td>Nhà cung cấp chứng thư</td><td>{s.certificate_issuer}</td></tr>
+                )}
+                {s.certificate_valid_from && (
+                  <tr><td>Chứng thư có hiệu lực từ</td><td>{new Date(s.certificate_valid_from).toLocaleString("vi-VN")}</td></tr>
+                )}
+                {s.certificate_valid_to && (
+                  <tr><td>Chứng thư hết hạn</td><td>{new Date(s.certificate_valid_to).toLocaleString("vi-VN")}</td></tr>
+                )}
                 <tr>
                   <td>Phạm vi ký</td>
                   <td>{s.coverage}</td>
