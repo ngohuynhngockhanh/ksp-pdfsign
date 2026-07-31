@@ -121,6 +121,9 @@ def test_delivery_endpoint_creates_share_and_zip(client, monkeypatch):
     assert result["share_url"].endswith(result["share_token"])
     assert "28/07/2026" in calls[0]["note"]
     assert calls[0]["invoice_products"][0]["quantity"] == 2
+    assert calls[0]["total_payment_in_word"] == (
+        "Bảy triệu ba trăm nghìn tám trăm đồng chẵn"
+    )
 
     share_path = "/api/share/" + result["share_token"] + "/download"
     shared = client.get(share_path)
@@ -130,3 +133,83 @@ def test_delivery_endpoint_creates_share_and_zip(client, monkeypatch):
     assert packed.status_code == 200
     with zipfile.ZipFile(io.BytesIO(packed.content)) as archive:
         assert len(archive.namelist()) == 2
+
+
+def test_draft_rejects_incomplete_company_information(client, monkeypatch):
+    login = client.post(
+        "/api/login", json={"username": "admin", "password": "NhapHang123@"}
+    )
+    assert login.status_code == 200
+
+    response = client.post(
+        "/api/inv/ihoadon/drafts",
+        json={
+            "customer_name": "CÔNG TY TNHH PYMID",
+            "buyer_tax_code": "0313610275",
+            "buyer_address": "",
+            "lines": [{"ten": "Camera", "dvt": "Cái", "so_luong": 1, "don_gia": 501000}],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Chưa nhập địa chỉ bên mua"
+
+
+def test_sync_ihoadon_draft_to_crm_is_idempotent_and_preserves_share(client, monkeypatch):
+    login = client.post(
+        "/api/login", json={"username": "admin", "password": "NhapHang123@"}
+    )
+    assert login.status_code == 200
+    source = HTML(string="""
+        <h1>CÔNG TY TNHH PYMID</h1>
+        <p>0313610275</p>
+        <p>234/48 Lê Đức Thọ, Phường An Nhơn, Thành phố Hồ Chí Minh</p>
+        <p>Bốn triệu ba trăm hai mươi mốt nghìn không trăm tám mươi đồng chẵn</p>
+    """).write_pdf()
+
+    class FakeIhoadon:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def invoice_detail(self, invoice_id):
+            assert invoice_id == "pymid-draft-1"
+            return {
+                "id": invoice_id,
+                "status": "GHI_TAM",
+                "customer_name": "CÔNG TY TNHH PYMID",
+                "buyer_tax_code": "0313610275",
+                "buyer_email": "pymid@example.test",
+                "buyer_address": "234/48 Lê Đức Thọ, Phường An Nhơn, Thành phố Hồ Chí Minh",
+                "total_payment": 4_321_080,
+                "total_payment_in_word": "Bốn triệu ba trăm hai mươi mốt nghìn không trăm tám mươi đồng chẵn",
+            }
+
+        def invoice_pdf(self, invoice_id):
+            assert invoice_id == "pymid-draft-1"
+            return "hoa-don-nhap-pymid.pdf", source
+
+    from app import inv_api
+
+    monkeypatch.setattr(inv_api, "_ihoadon_client", lambda _settings: FakeIhoadon())
+
+    first = client.post("/api/inv/ihoadon/drafts/pymid-draft-1/sync-to-crm")
+    assert first.status_code == 200, first.text
+    second = client.post("/api/inv/ihoadon/drafts/pymid-draft-1/sync-to-crm")
+    assert second.status_code == 200, second.text
+
+    assert second.json()["document_id"] == first.json()["document_id"]
+    assert second.json()["share_url"] == first.json()["share_url"]
+    assert second.json()["customer_id"] == first.json()["customer_id"]
+    assert second.json()["checks"] == {
+        "customer_name": True,
+        "buyer_tax_code": True,
+        "buyer_address": True,
+        "total_payment_in_word": True,
+    }
+
+    shared = client.get(first.json()["share_url"].split("/s/")[-1].join(["/api/share/", "/download"]))
+    assert shared.status_code == 200
+    assert "234/48 Lê Đức Thọ" in _text(shared.content)
