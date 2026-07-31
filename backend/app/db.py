@@ -133,6 +133,9 @@ class Document(Base):
     order_id: Mapped[int | None] = mapped_column(
         ForeignKey("orders.id"), nullable=True, index=True
     )
+    source_system: Mapped[str] = mapped_column(String(30), default="", index=True)
+    source_external_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    source_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     customer: Mapped["Customer | None"] = relationship(back_populates="documents")
     order: Mapped["Order | None"] = relationship(back_populates="documents")
@@ -1123,6 +1126,9 @@ def _migrate_add_columns() -> None:
             "signed_upload_name": "VARCHAR(255) DEFAULT ''",
             "signed_upload_at": "DATETIME",
             "order_id": "INTEGER",
+            "source_system": "VARCHAR(30) DEFAULT ''",
+            "source_external_id": "VARCHAR(100) DEFAULT ''",
+            "source_synced_at": "DATETIME",
         },
         "customers": {
             "address": "VARCHAR(500) DEFAULT ''",

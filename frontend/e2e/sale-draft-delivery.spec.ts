@@ -18,6 +18,7 @@ test("admin creates a customer-safe GHI_TAM delivery bundle", async ({ page }) =
       return route.fulfill({ json: { items: [], total: 0 } });
     }
     if (path === "/api/inv/availability") return route.fulfill({ json: { rows: [] } });
+    if (path === "/api/inv/items") return route.fulfill({ json: [] });
     if (path === "/api/tax/policy") return route.fulfill({ json: {
       date: "2026-07-28", standard_eligible_rate: 8, reduction_to: "2026-12-31", legal_basis: ["Nghị định 174/2025/NĐ-CP"],
     }});
@@ -38,7 +39,8 @@ test("admin creates a customer-safe GHI_TAM delivery bundle", async ({ page }) =
   await page.getByLabel("Mã số thuế").fill("0314360282");
   await page.getByLabel("Địa chỉ").fill("TP.HCM");
   await page.getByPlaceholder("gõ ≥2 ký tự để tìm mã kho…").fill("iNut Smartcity - Data Logger");
-  await page.getByText("DV", { exact: true }).getByRole("checkbox").check();
+  await page.locator("table tbody input[type=checkbox]").first().check();
+  await page.getByLabel("Ngày dự kiến xuất").fill("2026-07-28");
   await page.getByRole("button", { name: "Tạo nháp & lấy link gửi khách" }).click();
 
   await expect(page.getByText("GHI_TAM · 1/C26TPK")).toBeVisible();
@@ -83,6 +85,7 @@ test("admin syncs a corrected PYMID draft into the existing CRM record", async (
       }});
     }
     if (path === "/api/inv/availability") return route.fulfill({ json: { rows: [] } });
+    if (path === "/api/inv/items") return route.fulfill({ json: [] });
     if (path === "/api/tax/policy") return route.fulfill({ json: {
       date: "2026-07-31", standard_eligible_rate: 8, reduction_to: "2026-12-31", legal_basis: [],
     }});
@@ -90,6 +93,7 @@ test("admin syncs a corrected PYMID draft into the existing CRM record", async (
   });
 
   await page.goto("/tao-hoa-don-nhap");
+  await page.getByText("Hóa đơn ghi tạm trên iHOADON (1 bản mới nhất)").click();
   await page.getByRole("button", { name: "Đồng bộ vào hồ sơ" }).click();
 
   expect(syncCalls).toBe(1);

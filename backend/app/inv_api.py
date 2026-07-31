@@ -9,6 +9,7 @@ import time as _time
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
+import pypdfium2 as pdfium
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -2183,6 +2184,10 @@ def _build_ihoadon_draft(body: IhoadonDraftIn, db: Session) -> tuple[dict, list[
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có dòng hàng hóa/dịch vụ")
     if not body.customer_name.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập tên khách hàng")
+    if not body.buyer_tax_code.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập mã số thuế bên mua")
+    if not body.buyer_address.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa nhập địa chỉ bên mua")
     products = []
     stock_warnings = []
     item_codes = {x.id: x.ma_hang for x in db.scalars(select(InvItem))}
@@ -2238,9 +2243,141 @@ def _build_ihoadon_draft(body: IhoadonDraftIn, db: Session) -> tuple[dict, list[
         "total_amount_vat": round(total_vat),
         "amount_after_vat": round(amount + total_vat),
         "total_payment": round(amount + total_vat),
+        "total_payment_in_word": money.so_tien_bang_chu(round(amount + total_vat)),
         "invoice_products": products,
     }
     return invoice, stock_warnings
+
+
+def _draft_required_fields(invoice: dict) -> dict[str, bool]:
+    return {
+        "customer_name": bool(str(invoice.get("customer_name") or "").strip()),
+        "buyer_tax_code": bool(str(invoice.get("buyer_tax_code") or "").strip()),
+        "buyer_address": bool(str(invoice.get("buyer_address") or "").strip()),
+        "total_payment_in_word": bool(str(invoice.get("total_payment_in_word") or "").strip()),
+    }
+
+
+def _validate_synced_draft(invoice: dict, pdf: bytes) -> dict[str, bool]:
+    checks = _draft_required_fields(invoice)
+    labels = {
+        "customer_name": "tên công ty bên mua",
+        "buyer_tax_code": "mã số thuế bên mua",
+        "buyer_address": "địa chỉ bên mua",
+        "total_payment_in_word": "số tiền bằng chữ",
+    }
+    missing = [key for key, valid in checks.items() if not valid]
+    if missing:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Hóa đơn nháp thiếu " + ", ".join(labels[key] for key in missing),
+        )
+    if not pdf.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "iHOADON trả file PDF không hợp lệ")
+    try:
+        document = pdfium.PdfDocument(pdf)
+        text = " ".join(
+            document[index].get_textpage().get_text_range() for index in range(len(document))
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Không đọc được PDF nháp từ iHOADON") from exc
+    normalized_text = normalize_name(text)
+    for key in checks:
+        expected = normalize_name(str(invoice.get(key) or ""))
+        if expected and expected not in normalized_text:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"PDF nháp chưa hiển thị đầy đủ {labels[key]}",
+            )
+    return checks
+
+
+def _draft_customer(db: Session, invoice: dict) -> Customer:
+    tax_code = ihoadon_sync.normalize_tax_code(str(invoice.get("buyer_tax_code") or ""))
+    customer = next(
+        (
+            row for row in db.scalars(select(Customer))
+            if ihoadon_sync.normalize_tax_code(row.tax_code) == tax_code
+        ),
+        None,
+    )
+    if customer is None:
+        customer = Customer(
+            name=str(invoice.get("customer_name") or "").strip(),
+            tax_code=str(invoice.get("buyer_tax_code") or "").strip(),
+        )
+        db.add(customer)
+        db.flush()
+    customer.name = str(invoice.get("customer_name") or "").strip()
+    customer.tax_code = str(invoice.get("buyer_tax_code") or "").strip()
+    customer.address = str(invoice.get("buyer_address") or "").strip()
+    customer.email = str(invoice.get("buyer_email") or "").strip()
+    return customer
+
+
+@router.post("/ihoadon/drafts/{invoice_id}/sync-to-crm")
+def ihoadon_sync_draft_to_crm(
+    invoice_id: str,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    try:
+        with _ihoadon_client(settings) as client:
+            invoice = client.invoice_detail(invoice_id)
+            _remote_name, pdf = client.invoice_pdf(invoice_id)
+    except ihoadon.IhoadonError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {exc}") from exc
+    if str(invoice.get("status") or "") != "GHI_TAM":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Chỉ đồng bộ hóa đơn đang ở trạng thái GHI_TAM")
+    checks = _validate_synced_draft(invoice, pdf)
+    customer = _draft_customer(db, invoice)
+    document = db.scalar(select(Document).where(
+        Document.source_system == "ihoadon_draft",
+        Document.source_external_id == invoice_id,
+    ))
+    now = datetime.now(timezone.utc)
+    total_label = f"{round(float(invoice.get('total_payment') or 0)):,.0f}".replace(",", ".")
+    if document is None:
+        doc_id = storage.save_upload(pdf, suffix=".pdf")
+        document = Document(
+            doc_id=doc_id,
+            filename=f"hoa-don-nhap-{normalize_name(customer.name).replace(' ', '-')}.pdf",
+            signed=False,
+            note=f"iHOADON GHI_TAM · {total_label}đ",
+            customer_id=customer.id,
+            doc_type="hoa_don",
+            source_system="ihoadon_draft",
+            source_external_id=invoice_id,
+            source_synced_at=now,
+        )
+        db.add(document)
+        db.flush()
+    else:
+        storage.write_doc(document.doc_id, pdf, suffix=".pdf")
+        document.customer_id = customer.id
+        document.source_synced_at = now
+        document.note = f"iHOADON GHI_TAM · đã đồng bộ · {total_label}đ"
+    share = db.scalar(
+        select(Share).where(Share.document_id == document.id).order_by(Share.expires_at.desc())
+    )
+    if share is None:
+        share = Share(
+            token=secrets.token_urlsafe(16),
+            document_id=document.id,
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
+            + timedelta(days=settings.share_default_days),
+        )
+        db.add(share)
+    db.commit()
+    _audit(db, user, "ihoadon_sync_draft", customer.name, invoice_id)
+    return {
+        "document_id": document.id,
+        "customer_id": customer.id,
+        "share_url": f"{settings.public_base_url.rstrip('/')}/s/{share.token}",
+        "synced_at": document.source_synced_at.isoformat(),
+        "checks": checks,
+    }
 
 
 @router.post("/ihoadon/drafts")
@@ -2311,6 +2448,9 @@ def ihoadon_create_draft_delivery(
         note=f"iHOADON GHI_TAM · dự kiến xuất {issue_date}",
         customer_id=customer.id if customer else None,
         doc_type="hoa_don",
+        source_system="ihoadon_draft",
+        source_external_id=str(result["id"]),
+        source_synced_at=datetime.now(timezone.utc),
     )
     db.add(document)
     db.flush()

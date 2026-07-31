@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, IhoadonDashboard, IhoadonDraft, IhoadonDraftDeliveryResult, InvItem, SaleDraftLine, TaxPolicy } from "../api";
+import { api, IhoadonDashboard, IhoadonDraft, IhoadonDraftDeliveryResult, IhoadonDraftSyncResult, InvItem, SaleDraftLine, TaxPolicy } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
 
 function vnd(n: number): string {
@@ -54,6 +54,8 @@ export function SaleDraft() {
   const [aiNote, setAiNote] = useState("");
   const [ihd, setIhd] = useState<IhoadonDashboard | null>(null);
   const [drafts, setDrafts] = useState<IhoadonDraft[]>([]);
+  const [draftSyncing, setDraftSyncing] = useState("");
+  const [draftSyncResults, setDraftSyncResults] = useState<Record<string, IhoadonDraftSyncResult>>({});
   const [ihdErr, setIhdErr] = useState("");
   const [stockByCode, setStockByCode] = useState<Record<string, number>>({});
   const [stockCatalog, setStockCatalog] = useState<StockInfo[]>([]);
@@ -84,6 +86,8 @@ export function SaleDraft() {
   async function pushDraft() {
     const valid = preparedLines();
     if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
+    if (!customer.buyer_tax_code.trim()) return setErr("Chưa nhập mã số thuế bên mua.");
+    if (!customer.buyer_address.trim()) return setErr("Chưa nhập địa chỉ bên mua.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
     if (!confirmStockProblems(valid)) return;
     setBusy(true);
@@ -115,6 +119,8 @@ export function SaleDraft() {
   async function createDelivery() {
     const valid = preparedLines();
     if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
+    if (!customer.buyer_tax_code.trim()) return setErr("Chưa nhập mã số thuế bên mua.");
+    if (!customer.buyer_address.trim()) return setErr("Chưa nhập địa chỉ bên mua.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
     if (!expectedIssueDate) return setErr("Chưa chọn ngày dự kiến xuất hóa đơn.");
     if (!confirmStockProblems(valid)) return;
@@ -136,6 +142,23 @@ export function SaleDraft() {
       setErr((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function syncDraftToCrm(draft: IhoadonDraft) {
+    setDraftSyncing(draft.id);
+    setErr("");
+    try {
+      const result = await api.ihoadonSyncDraftToCrm(draft.id);
+      setDraftSyncResults((current) => ({ ...current, [draft.id]: result }));
+      const customerLabel = draft.customer_name.toLocaleUpperCase("vi").includes("PYMID")
+        ? "PYMID"
+        : draft.customer_name;
+      setAiNote(`Đã đồng bộ bản nháp ${customerLabel} vào hồ sơ CRM.`);
+    } catch (error) {
+      setErr((error as Error).message);
+    } finally {
+      setDraftSyncing("");
     }
   }
 
@@ -352,7 +375,13 @@ export function SaleDraft() {
                 <td data-label="Mẫu">{d.template_code}/{d.invoice_series}</td>
                 <td data-label="Thanh toán" className="num ihd-draft-total">{vnd(d.total_payment)} đ</td>
                 <td data-label="Ngày tạo" className="ihd-draft-date">{dateTime(d.created_at)}</td>
-                <td className="ihd-draft-action"><a href={ihd?.web_url} target="_blank" rel="noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a></td>
+                <td className="ihd-draft-action">
+                  <button disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
+                    {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
+                  </button>
+                  {draftSyncResults[d.id] && <a href={draftSyncResults[d.id].share_url} target="_blank" rel="noreferrer">Mở PDF trong CRM</a>}
+                  <a href={ihd?.web_url} target="_blank" rel="noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a>
+                </td>
               </tr>)}</tbody>
             </table>
           </div>

@@ -1331,6 +1331,12 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async ihoadonSyncDraftToCrm(invoiceId: string) {
+    return req<IhoadonDraftSyncResult>(
+      `/api/inv/ihoadon/drafts/${encodeURIComponent(invoiceId)}/sync-to-crm`,
+      { method: "POST" },
+    );
+  },
   async invSaleDraftSuggestStart(mo_ta: string, context = "") {
     return req<{ job_id: string }>("/api/inv/sale-draft/suggest-lines/start", {
       method: "POST",
@@ -2192,6 +2198,14 @@ export interface IhoadonDraftDeliveryResult {
   zip_filename: string;
   web_url: string;
   stock_warnings: string[];
+}
+
+export interface IhoadonDraftSyncResult {
+  document_id: number;
+  customer_id: number;
+  share_url: string;
+  synced_at: string;
+  checks: Record<"customer_name" | "buyer_tax_code" | "buyer_address" | "total_payment_in_word", boolean>;
 }
 
 export interface SaleDraftLine {

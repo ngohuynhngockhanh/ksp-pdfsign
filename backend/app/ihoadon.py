@@ -136,6 +136,13 @@ class Client:
             })
         return {"items": rows, "total": int((data.get("meta") or {}).get("total") or 0)}
 
+    def invoice_detail(self, invoice_id: str) -> dict:
+        data = self.get(f"/invoices/{invoice_id}")
+        invoice = data.get("invoice", data) if isinstance(data, dict) else None
+        if not isinstance(invoice, dict):
+            raise IhoadonError("iHOADON không trả chi tiết hóa đơn")
+        return invoice
+
     def issued_page(self, page: int = 1, limit: int = 100) -> dict:
         params = [
             ("limit", str(limit)),
