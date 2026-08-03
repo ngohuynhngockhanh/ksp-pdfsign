@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { api, TrainingAnswer, TrainingEvidence, TrainingSearchResult } from "../api";
+import { api, TrainingAnswer, TrainingEvidence, TrainingSearchResult, TrainingPublicLead, TrainingPublicQuery } from "../api";
 
 const QUICK_QUESTIONS = [
   "Cài FRPC lỗi giờ sao?",
@@ -61,12 +61,18 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [knowledgeUserId, setKnowledgeUserId] = useState(0);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
+  const [publicLeads, setPublicLeads] = useState<TrainingPublicLead[]>([]);
+  const [selectedLead, setSelectedLead] = useState<(TrainingPublicLead & { queries: TrainingPublicQuery[] }) | null>(null);
+  const [leadNote, setLeadNote] = useState("");
+  const [leadStatus, setLeadStatus] = useState("new");
+  const [leadBusy, setLeadBusy] = useState(false);
 
   async function loadAccessUsers() {
     if (isAdmin) {
-      const [users, usage] = await Promise.all([api.listUsers(), api.trainingStats()]);
+      const [users, usage, leads] = await Promise.all([api.listUsers(), api.trainingStats(), api.trainingPublicLeads()]);
       setAccessUsers(users);
       setStats(usage);
+      setPublicLeads(leads.items);
     }
   }
 
@@ -131,6 +137,50 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     setKnowledge(notes.items);
   }
 
+  async function openPublicLead(lead: TrainingPublicLead, reveal = false) {
+    setLeadBusy(true);
+    try {
+      const detail = await api.trainingPublicLead(lead.id, reveal);
+      setSelectedLead(detail);
+      setLeadNote(detail.note || "");
+      setLeadStatus(detail.status);
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setLeadBusy(false);
+    }
+  }
+
+  async function savePublicLead() {
+    if (!selectedLead) return;
+    setLeadBusy(true);
+    try {
+      await api.updateTrainingPublicLead(selectedLead.id, { status: leadStatus, note: leadNote });
+      const leads = await api.trainingPublicLeads();
+      setPublicLeads(leads.items);
+      await openPublicLead(leads.items.find((item) => item.id === selectedLead.id) || selectedLead);
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setLeadBusy(false);
+    }
+  }
+
+  async function deletePublicLead() {
+    if (!selectedLead || !window.confirm("Xóa lead và toàn bộ lịch sử hội thoại này?")) return;
+    setLeadBusy(true);
+    try {
+      await api.deleteTrainingPublicLead(selectedLead.id);
+      setSelectedLead(null);
+      const leads = await api.trainingPublicLeads();
+      setPublicLeads(leads.items);
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setLeadBusy(false);
+    }
+  }
+
   async function share() {
     if (!answer) return;
     try {
@@ -184,6 +234,10 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <div><span>KIẾN THỨC RIÊNG</span><h2>Training theo từng tài khoản</h2><p>Ghi chú chỉ được đưa vào ngữ cảnh của đúng người dùng và luôn bị coi là dữ liệu, không phải lệnh.</p></div>
         <form onSubmit={addKnowledge}><select aria-label="Tài khoản nhận kiến thức" value={knowledgeUserId} onChange={async (e) => { const id = Number(e.target.value); setKnowledgeUserId(id); const notes = await api.trainingKnowledge(id || undefined); setKnowledge(notes.items); }}><option value={0}>Chọn tài khoản</option>{accessUsers.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}</select><input aria-label="Tiêu đề kiến thức" value={knowledgeTitle} onChange={(e) => setKnowledgeTitle(e.target.value)} maxLength={160} placeholder="Ví dụ: Quy trình riêng của Bảo Toàn" /><textarea aria-label="Nội dung kiến thức" value={knowledgeContent} onChange={(e) => setKnowledgeContent(e.target.value)} maxLength={12000} placeholder="Dán ghi chú đã kiểm duyệt..." /><button>Gán kiến thức</button></form>
         {knowledgeUserId > 0 && <div className="training-knowledge-list">{knowledge.map((note) => <article key={note.id}><div><strong>{note.title}</strong><p>{note.content}</p></div><button onClick={() => removeKnowledge(note.id)}>Xóa</button></article>)}</div>}
+      </section>}
+      {isAdmin && <section className="training-public-leads">
+        <div className="training-public-leads-head"><div><span>PUBLIC DESK</span><h2>Lead từ trợ lý iNut.vn</h2><p>Số điện thoại được mã hóa; chỉ admin mới có thể chủ động mở số đầy đủ.</p></div><button type="button" onClick={loadAccessUsers}>Làm mới</button></div>
+        {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{query.answer?.answer && <p>{query.answer.answer}</p>}</article>)}</div></article>}</div>}
       </section>}
       <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (

@@ -187,6 +187,47 @@ class TrainingQuery(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class TrainingPublicSession(Base):
+    """Lead công khai; token và số điện thoại không được lưu plaintext."""
+
+    __tablename__ = "training_public_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    phone_ciphertext: Mapped[str] = mapped_column(Text, default="")
+    phone_hash: Mapped[str] = mapped_column(String(64), index=True)
+    phone_last4: Mapped[str] = mapped_column(String(4), default="")
+    locale: Mapped[str] = mapped_column(String(5), default="vi")
+    consent_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    queries: Mapped[list["TrainingPublicQuery"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class TrainingPublicQuery(Base):
+    """Một câu hỏi công khai, ràng buộc với đúng lead/session."""
+
+    __tablename__ = "training_public_queries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("training_public_sessions.id"), index=True)
+    question: Mapped[str] = mapped_column(String(2000))
+    answer_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
+    stage: Mapped[str] = mapped_column(String(160), default="Đang tìm trong kho iNut")
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    session: Mapped["TrainingPublicSession"] = relationship(back_populates="queries")
+
+
 class TrainingKnowledge(Base):
     """Admin-managed notes scoped to one CRM user; never executable instructions."""
 

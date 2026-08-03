@@ -308,6 +308,30 @@ export interface TrainingSearchResult {
   score: number;
 }
 
+export interface TrainingPublicLead {
+  id: number;
+  phone: string;
+  phoneLast4: string;
+  locale: string;
+  status: string;
+  note: string;
+  createdAt: string;
+  lastSeenAt: string;
+  questionCount: number;
+  lastQuestion: string;
+}
+
+export interface TrainingPublicQuery {
+  jobId: string;
+  question: string;
+  status: string;
+  stage: string;
+  answer: TrainingAnswer;
+  createdAt: string;
+  completedAt: string | null;
+  durationMs: number;
+}
+
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
 export class NegStockError extends Error {
   violations: NegStockViolation[];
@@ -392,6 +416,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, answer, days }),
     });
+  },
+  async trainingPublicLeads() {
+    return req<{ items: TrainingPublicLead[] }>("/api/training/public-leads");
+  },
+  async trainingPublicLead(id: number, reveal = false) {
+    return req<TrainingPublicLead & { queries: TrainingPublicQuery[] }>(`/api/training/public-leads/${id}?reveal=${reveal ? "true" : "false"}`);
+  },
+  async updateTrainingPublicLead(id: number, payload: { status?: string; note?: string }) {
+    return req<TrainingPublicLead>(`/api/training/public-leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  },
+  async deleteTrainingPublicLead(id: number) {
+    return req<{ ok: boolean }>(`/api/training/public-leads/${id}`, { method: "DELETE" });
   },
   async login(username: string, password: string) {
     return req<{ ok: boolean; username: string }>("/api/login", {

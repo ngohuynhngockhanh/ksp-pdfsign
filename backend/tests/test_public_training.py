@@ -11,7 +11,10 @@ def _canonical(method: str, path: str, timestamp: str, nonce: str, body: bytes) 
     return f"{method.upper()}\n{path}\n{timestamp}\n{nonce}\n{digest}".encode()
 
 
-def _signed(client, method: str, path: str, payload=None, secret: str = "public-secret", nonce: str | None = None):
+TEST_SECRET = "public-secret-1234567890-abcdef12"
+
+
+def _signed(client, method: str, path: str, payload=None, secret: str = TEST_SECRET, nonce: str | None = None):
     body = b"" if payload is None else json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
     timestamp = str(int(time.time()))
     nonce = nonce or f"nonce-{timestamp}-{id(body)}"
@@ -27,7 +30,7 @@ def _signed(client, method: str, path: str, payload=None, secret: str = "public-
 
 
 def _configure(monkeypatch):
-    monkeypatch.setenv("PUBLIC_TRAINING_HMAC_SECRET", "public-secret")
+    monkeypatch.setenv("PUBLIC_TRAINING_HMAC_SECRET", TEST_SECRET)
     monkeypatch.setenv("PUBLIC_TRAINING_ENABLED", "true")
     from app.config import get_settings
 
@@ -82,6 +85,16 @@ def test_public_session_rejects_invalid_consent_phone_and_replay(client, monkeyp
     assert second.status_code == 401
 
 
+def test_public_training_rejects_malformed_content_length(client, monkeypatch):
+    _configure(monkeypatch)
+    response = client.post(
+        "/internal/public-training/sessions",
+        content=b"{}",
+        headers={"Content-Length": "not-a-number"},
+    )
+    assert response.status_code == 400
+
+
 def test_public_question_is_scoped_to_session_and_sanitizes_internal_urls(client, monkeypatch):
     _configure(monkeypatch)
     session = _signed(client, "POST", "/internal/public-training/sessions", {
@@ -90,12 +103,12 @@ def test_public_question_is_scoped_to_session_and_sanitizes_internal_urls(client
 
     from app import public_training_jobs
 
-    monkeypatch.setattr(public_training_jobs, "start", lambda **kwargs: "public-job-1")
+    monkeypatch.setattr(public_training_jobs, "start", lambda **kwargs: kwargs["job_id"])
     question = _signed(client, "POST", "/internal/public-training/questions", {
         "sessionToken": session["sessionToken"], "question": "FRPC là gì?", "locale": "vi",
     })
     assert question.status_code == 202, question.text
-    assert question.json()["jobId"] == "public-job-1"
+    job_id = question.json()["jobId"]
 
     from app import public_training_jobs as jobs
 
@@ -112,14 +125,14 @@ def test_public_question_is_scoped_to_session_and_sanitizes_internal_urls(client
             },
         },
     })
-    status = _signed(client, "GET", f"/internal/public-training/questions/public-job-1?sessionToken={session['sessionToken']}")
+    status = _signed(client, "GET", f"/internal/public-training/questions/{job_id}?sessionToken={session['sessionToken']}")
     assert status.status_code == 200
     text = status.text
     assert "ksp-pdf-signer.p2p.inut.io.vn" not in text
     assert "https://inut.vn/help#frpc" in text
 
-    wrong_session = _signed(client, "GET", "/internal/public-training/questions/public-job-1?sessionToken=wrong")
-    assert wrong_session.status_code == 404
+    wrong_session = _signed(client, "GET", f"/internal/public-training/questions/{job_id}?sessionToken=wrong")
+    assert wrong_session.status_code == 401
 
 
 def test_admin_can_manage_public_leads_and_reveal_phone_with_audit(client, monkeypatch):

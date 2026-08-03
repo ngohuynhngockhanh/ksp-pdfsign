@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     training_timeout: float = 180.0
     training_share_days: int = 30
 
+    # Trợ lý công khai trên inut.vn. Secret chỉ dùng server-to-server qua BFF.
+    public_training_enabled: bool = False
+    public_training_hmac_secret: str = ""
+    public_training_client_id: str = "inut-website"
+    public_training_retention_days: int = 365
+    public_training_rate_limit: int = 10
+
     # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
     nas_enabled: bool = True
     nas_host: str = "172.32.0.100"

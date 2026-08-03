@@ -5,6 +5,9 @@ jwt_secret.key), chmod 600. KHONG dung MD5/hash vi can GIAI MA lai de auto-login
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+
 from cryptography.fernet import Fernet
 
 from .config import get_settings
@@ -42,3 +45,11 @@ def decrypt(token: str) -> str:
         return _fernet().decrypt(token.encode("ascii")).decode("utf-8")
     except Exception:  # noqa: BLE001
         return ""
+
+
+def fingerprint(value: str) -> str:
+    """Tạo fingerprint HMAC ổn định để tìm trùng mà không lưu plaintext."""
+    if not value:
+        return ""
+    key = get_settings().effective_jwt_secret().encode("utf-8")
+    return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()

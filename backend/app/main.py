@@ -33,7 +33,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import (
@@ -42,6 +42,7 @@ from . import (
     audit,
     bbbg,
     classify,
+    crypto,
     invoice,
     ihoadon_sync,
     money,
@@ -54,6 +55,8 @@ from . import (
     tax_review,
     training,
     training_jobs,
+    public_training,
+    public_training_jobs,
     storage,
     token_backend,
     verify,
@@ -91,6 +94,8 @@ from .db import (
     TrainingShare,
     TrainingQuery,
     TrainingKnowledge,
+    TrainingPublicSession,
+    TrainingPublicQuery,
     User,
     get_session,
     init_db,
@@ -236,8 +241,20 @@ def _startup():
     db = next(gen)
     try:
         ensure_admin_seed(db, settings)
+        _cleanup_public_training_data(db, settings)
     finally:
         gen.close()
+
+
+def _cleanup_public_training_data(db: Session, settings: Settings) -> None:
+    """Xóa lead/hội thoại công khai quá hạn lưu trữ, không đụng dữ liệu CRM."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, settings.public_training_retention_days))
+    old_ids = list(db.scalars(select(TrainingPublicSession.id).where(TrainingPublicSession.created_at < cutoff)))
+    if not old_ids:
+        return
+    db.execute(delete(TrainingPublicQuery).where(TrainingPublicQuery.session_id.in_(old_ids)))
+    db.execute(delete(TrainingPublicSession).where(TrainingPublicSession.id.in_(old_ids)))
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1349,6 +1366,175 @@ def _share_url(settings: Settings, token: str) -> str:
 # ---------------------------------------------------------------------------
 # iNut Training: proxy noi bo + chia se cau tra loi public
 # ---------------------------------------------------------------------------
+def _public_json(body: bytes) -> dict:
+    try:
+        parsed = json.loads(body or b"{}")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dữ liệu yêu cầu không hợp lệ") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dữ liệu yêu cầu không hợp lệ")
+    return parsed
+
+
+def _public_session_by_token(db: Session, token: str) -> TrainingPublicSession | None:
+    if not isinstance(token, str) or not (24 <= len(token) <= 128):
+        return None
+    token_hash = public_training.public_training_token_hash(token)
+    return db.scalar(select(TrainingPublicSession).where(TrainingPublicSession.token_hash == token_hash))
+
+
+@app.post("/internal/public-training/sessions", status_code=status.HTTP_201_CREATED)
+async def public_training_session_create(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    body = _public_json(await public_training.require_internal_signature(request, settings))
+    try:
+        phone = public_training.normalize_phone(str(body.get("phone", "")))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if body.get("consent") is not True:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cần đồng ý lưu số điện thoại trước khi hỏi")
+    locale = str(body.get("locale", "vi"))[:5]
+    if locale not in {"vi", "en"}:
+        locale = "vi"
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    row = TrainingPublicSession(
+        token_hash=public_training.public_training_token_hash(token),
+        phone_ciphertext=crypto.encrypt(phone),
+        phone_hash=crypto.fingerprint(phone),
+        phone_last4=phone[-4:],
+        locale=locale,
+        consent_at=now,
+        created_at=now,
+        last_seen_at=now,
+    )
+    db.add(row)
+    db.commit()
+    return {"sessionId": row.id, "sessionToken": token, "phoneLast4": row.phone_last4}
+
+
+@app.post("/internal/public-training/questions", status_code=status.HTTP_202_ACCEPTED)
+async def public_training_question_create(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    body = _public_json(await public_training.require_internal_signature(request, settings))
+    token = str(body.get("sessionToken", ""))
+    session = _public_session_by_token(db, token)
+    if session is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phiên hỏi đáp không hợp lệ")
+    try:
+        question = public_training.validate_question(str(body.get("question", "")))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    since = datetime.now(timezone.utc) - timedelta(minutes=15)
+    recent = db.scalar(select(func.count(TrainingPublicQuery.id)).where(
+        TrainingPublicQuery.session_id == session.id,
+        TrainingPublicQuery.created_at >= since,
+    )) or 0
+    if recent >= max(1, settings.public_training_rate_limit):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Bạn đã hỏi quá nhiều lần, hãy thử lại sau")
+    job_id = secrets.token_urlsafe(24)
+    query = TrainingPublicQuery(
+        job_id=job_id,
+        session_id=session.id,
+        question=question,
+        status="running",
+        stage="Đang tìm trong kho iNut",
+    )
+    session.last_seen_at = datetime.now(timezone.utc)
+    db.add(query)
+    db.commit()
+    try:
+        public_training_jobs.start(
+            job_id=job_id,
+            owner_token=token,
+            settings=settings,
+            question=question,
+            hermes_session_id="",
+        )
+    except Exception as exc:  # noqa: BLE001
+        query.status = "failed"
+        query.stage = "Không thể hoàn tất"
+        query.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Hermes Training chưa thể nhận câu hỏi") from exc
+    return {"jobId": job_id, "status": "running", "stage": query.stage}
+
+
+@app.get("/internal/public-training/questions/{job_id}")
+async def public_training_question_status(
+    job_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    await public_training.require_internal_signature(request, settings)
+    token = request.query_params.get("sessionToken", "")
+    session = _public_session_by_token(db, token)
+    row = db.scalar(select(TrainingPublicQuery).where(
+        TrainingPublicQuery.job_id == job_id,
+        TrainingPublicQuery.session_id == session.id if session else False,
+    )) if session else None
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lượt tra cứu")
+    current = public_training_jobs.get(owner_token=token, job_id=job_id)
+    if current is not None:
+        if current.get("result"):
+            current["result"] = public_training.sanitize_public_result(current["result"], settings)
+        return current
+    answer = {}
+    try:
+        answer = json.loads(row.answer_json or "{}")
+    except ValueError:
+        answer = {}
+    payload = {"status": row.status, "stage": row.stage}
+    if row.status == "done":
+        payload["result"] = public_training.sanitize_public_result(answer, settings)
+    if row.status == "failed":
+        payload["error"] = "Hermes Training chưa thể trả lời"
+    return payload
+
+
+@app.get("/internal/public-training/history")
+async def public_training_history_internal(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    await public_training.require_internal_signature(request, settings)
+    token = request.query_params.get("sessionToken", "")
+    session = _public_session_by_token(db, token)
+    if session is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phiên hỏi đáp không hợp lệ")
+    try:
+        limit = max(1, min(int(request.query_params.get("limit", "10")), 20))
+    except ValueError:
+        limit = 10
+    rows = list(db.scalars(select(TrainingPublicQuery).where(
+        TrainingPublicQuery.session_id == session.id,
+    ).order_by(TrainingPublicQuery.created_at.desc()).limit(limit)))
+    items = []
+    for row in rows:
+        try:
+            answer = json.loads(row.answer_json or "{}")
+        except ValueError:
+            answer = {}
+        items.append({
+            "jobId": row.job_id,
+            "question": row.question,
+            "status": row.status,
+            "answer": public_training.sanitize_public_result(answer, settings),
+            "createdAt": row.created_at.isoformat(),
+            "completedAt": row.completed_at.isoformat() if row.completed_at else None,
+        })
+    return {"items": items}
+
+
 @app.get("/api/training/search")
 def training_search(
     q: str,
@@ -1605,6 +1791,116 @@ def training_stats(
         } for row in rows[:30]],
         "tokenNote": "Token ước tính từ độ dài câu hỏi và câu trả lời; Hermes CLI chưa trả usage chuẩn.",
     }
+
+
+def _public_lead_out(row: TrainingPublicSession, *, reveal: bool = False) -> dict:
+    phone = crypto.decrypt(row.phone_ciphertext) if reveal else f"••••••{row.phone_last4}"
+    queries = sorted(row.queries, key=lambda item: item.created_at, reverse=True)
+    return {
+        "id": row.id,
+        "phone": phone,
+        "phoneLast4": row.phone_last4,
+        "locale": row.locale,
+        "status": row.status,
+        "note": row.note,
+        "createdAt": row.created_at.isoformat(),
+        "lastSeenAt": row.last_seen_at.isoformat(),
+        "questionCount": len(queries),
+        "lastQuestion": queries[0].question if queries else "",
+    }
+
+
+def _public_query_out(row: TrainingPublicQuery, settings: Settings) -> dict:
+    try:
+        answer = json.loads(row.answer_json or "{}")
+    except ValueError:
+        answer = {}
+    return {
+        "jobId": row.job_id,
+        "question": row.question,
+        "status": row.status,
+        "stage": row.stage,
+        "answer": public_training.sanitize_public_result(answer, settings),
+        "createdAt": row.created_at.isoformat(),
+        "completedAt": row.completed_at.isoformat() if row.completed_at else None,
+        "durationMs": row.duration_ms,
+    }
+
+
+@app.get("/api/training/public-leads")
+def training_public_leads(
+    limit: int = 50,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    limit = max(1, min(limit, 200))
+    rows = list(db.scalars(select(TrainingPublicSession).order_by(TrainingPublicSession.created_at.desc()).limit(limit)))
+    _audit(db, user, "training_public_leads_list", str(len(rows)))
+    return {"items": [_public_lead_out(row) for row in rows]}
+
+
+@app.get("/api/training/public-leads/{session_id}")
+def training_public_lead_detail(
+    session_id: int,
+    reveal: bool = False,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    row = db.get(TrainingPublicSession, session_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lead")
+    if reveal:
+        _audit(db, user, "training_public_phone_reveal", str(session_id), "reveal phone")
+    queries = list(db.scalars(select(TrainingPublicQuery).where(
+        TrainingPublicQuery.session_id == row.id,
+    ).order_by(TrainingPublicQuery.created_at.desc()).limit(200)))
+    return {
+        **_public_lead_out(row, reveal=reveal),
+        "queries": [_public_query_out(query, settings) for query in queries],
+    }
+
+
+@app.patch("/api/training/public-leads/{session_id}")
+def training_public_lead_update(
+    session_id: int,
+    body: dict = Body(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(TrainingPublicSession, session_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lead")
+    allowed_statuses = {"new", "in_progress", "qualified", "closed", "spam"}
+    if "status" in body:
+        candidate = str(body.get("status", ""))
+        if candidate not in allowed_statuses:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Trạng thái lead không hợp lệ")
+        row.status = candidate
+    if "note" in body:
+        note = str(body.get("note", "")).strip()
+        if len(note) > 1000:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ghi chú quá dài")
+        row.note = note
+    db.commit()
+    _audit(db, user, "training_public_lead_update", str(session_id), row.status)
+    return _public_lead_out(row)
+
+
+@app.delete("/api/training/public-leads/{session_id}")
+def training_public_lead_delete(
+    session_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    row = db.get(TrainingPublicSession, session_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lead")
+    db.execute(delete(TrainingPublicQuery).where(TrainingPublicQuery.session_id == session_id))
+    db.delete(row)
+    db.commit()
+    _audit(db, user, "training_public_lead_delete", str(session_id))
+    return {"ok": True}
 
 
 @app.post("/api/training/share")
