@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { getParam, setParam } from "../util";
@@ -41,6 +41,8 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: "Nhập tay",
 };
 
+type PurchaseSortKey = "date" | "id";
+
 export function PurchaseImport({
   openId,
   onConsumed,
@@ -63,6 +65,10 @@ export function PurchaseImport({
   const [bangKe, setBangKe] = useState<BangKeResult | null>(null);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [listLoaded, setListLoaded] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [dragActive, setDragActive] = useState(false);
+  const [sortBy, setSortBy] = useState<PurchaseSortKey>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const autoHdRef = useRef(false);
 
   function toggleSel(id: number) {
@@ -73,8 +79,22 @@ export function PurchaseImport({
     });
   }
   const dupIds = list.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
-  // Loc VAT o server (list khong tra lines) — `shown` giu ten de render
-  const shown = list;
+  function changeSort(nextKey: PurchaseSortKey) {
+    if (sortBy === nextKey) {
+      setSortDir((dir) => dir === "desc" ? "asc" : "desc");
+      return;
+    }
+    setSortBy(nextKey);
+    setSortDir("desc");
+  }
+
+  // Server returns newest first; the local sort keeps the order stable after filters.
+  const shown = [...list].sort((a, b) => {
+    const direction = sortDir === "desc" ? -1 : 1;
+    if (sortBy === "id") return (a.id - b.id) * direction;
+    const byDate = (a.ngay || "").localeCompare(b.ngay || "");
+    return (byDate || (a.id - b.id)) * direction;
+  });
 
   // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
   function exportParams() {
@@ -123,11 +143,13 @@ export function PurchaseImport({
   }
 
   async function load() {
+    setListLoading(true);
     try {
       setList(await api.invPurchases(statusF, { ...dateRange, vat: vatF }));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
+      setListLoading(false);
       setListLoaded(true);
     }
   }
@@ -175,6 +197,12 @@ export function PurchaseImport({
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    void upload(event.dataTransfer.files);
   }
 
   async function importFromUrl() {
@@ -317,6 +345,11 @@ export function PurchaseImport({
   const isDichVu = cur?.loai === "dich_vu";
   // HD dich vu khong nhap kho -> khong can khop mat hang
   const unmatched = cur && !isDichVu ? cur.lines.filter((ln) => !ln.item_id).length : 0;
+  const draftCount = list.filter((p) => p.status === "draft").length;
+  const postedCount = list.filter((p) => p.status === "posted").length;
+  const warningCount = list.reduce((sum, p) => sum + p.warnings.length, 0);
+  const totalValue = list.reduce((sum, p) => sum + (p.tong_tien || 0), 0);
+  const filtersActive = Boolean(statusF || vatF || dateRange.tu || dateRange.den);
 
   async function toggleLoai() {
     if (!cur) return;
@@ -330,126 +363,179 @@ export function PurchaseImport({
   }
 
   return (
-    <div className="docs-page">
-      <div className="docs-toolbar">
-        <h3>
-          Nhập hàng (HĐ mua vào) <span className="count">{list.length}</span>
-        </h3>
-        <div className="tb-group">
-          <select className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
-            <option value="">Tất cả trạng thái</option>
-            <option value="draft">Nháp chờ duyệt</option>
-            <option value="posted">Đã ghi sổ</option>
-          </select>
-          <DateFilter value={dateRange} onChange={setDateRange} />
-          <select className="tb-select" value={vatF} onChange={(e) => setVatF(e.target.value)} title="Lọc theo thuế suất dòng hàng">
-            <option value="">VAT: tất cả</option>
-            <option value="0">VAT 0% / KCT</option>
-            <option value="5">VAT 5%</option>
-            <option value="8">VAT 8%</option>
-            <option value="10">VAT 10%</option>
-          </select>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.xml,.zip"
-            multiple
-            style={{ display: "none" }}
-            onChange={(e) => upload(e.target.files)}
-          />
-          <button className="btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-            {busy ? "Đang xử lý…" : "📤 Tải hóa đơn (PDF/XML/ZIP)"}
-          </button>
-          <button
-            className="btn-sm ghost"
-            title="Đồng bộ file gốc HĐ mua lên NAS (chỉ file mới/đã đổi — theo checksum)"
-            onClick={async () => {
-              try {
-                const r = await api.invPurchaseSyncNas();
-                window.alert(`NAS: ${r.synced} đồng bộ mới, ${r.skipped} bỏ qua (đã có), ${r.failed} lỗi.`);
-              } catch (e) {
-                window.alert((e as Error).message);
-              }
-            }}
-          >
-            💾 Sync NAS
-          </button>
-          <input
-            className="tb-select"
-            placeholder="🔗 Dán link (Drive/PDF/XML/ZIP)…"
-            value={urlValue}
-            onChange={(e) => setUrlValue(e.target.value)}
-            style={{ minWidth: 260 }}
-          />
-          <button className="btn-sm" disabled={urlBusy || !urlValue.trim()} onClick={importFromUrl}>
-            {urlBusy ? "Đang tải…" : "Tải từ link"}
-          </button>
-          <input
-            ref={bangKeRef}
-            type="file"
-            accept=".xlsx"
-            style={{ display: "none" }}
-            onChange={(e) => uploadBangKe(e.target.files)}
-          />
-          <button className="btn-sm" disabled={bangKeBusy} onClick={() => bangKeRef.current?.click()}>
-            {bangKeBusy ? "Đang đối chiếu…" : "📊 Đối chiếu bảng kê thuế"}
-          </button>
+    <div className="docs-page purchase-workbench">
+      <section className="purchase-hero">
+        <div className="purchase-hero-copy">
+          <h1>Nhập hàng</h1>
+          <p>Đưa hóa đơn vào sổ, kiểm tra thuế và khớp hàng hóa trước khi ghi nhận tồn kho.</p>
+          <div className="purchase-hero-actions">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.xml,.zip"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => upload(e.target.files)}
+            />
+            <button className="purchase-cta" disabled={busy} onClick={() => fileRef.current?.click()}>
+              <span aria-hidden="true">↥</span>{busy ? "Đang xử lý…" : "Tải hóa đơn lên"}
+            </button>
+            <button className="purchase-hero-link" onClick={() => setStatusF("draft")}>
+              Xem nháp cần duyệt <span>{draftCount}</span>
+            </button>
+          </div>
         </div>
-      </div>
+        <div className="purchase-hero-status">
+          <span className="purchase-status-mark" aria-hidden="true">✓</span>
+          <div>
+            <small>SỔ MUA VÀO</small>
+            <strong>{warningCount > 0 ? `${warningCount} điểm cần kiểm tra` : "Đang sạch dữ liệu"}</strong>
+            <p>{list.length ? `${list.length} hóa đơn trong bộ lọc hiện tại` : "Chưa có hóa đơn trong bộ lọc"}</p>
+          </div>
+          <span className={`purchase-status-dot ${warningCount > 0 ? "attention" : "ready"}`} />
+        </div>
+      </section>
+
+      <section className="purchase-intake" aria-labelledby="purchase-intake-title">
+        <div className="purchase-intake-copy">
+          <h2 id="purchase-intake-title">Đưa chứng từ vào sổ</h2>
+          <p>Hệ thống tự nhận diện XML, PDF và ZIP rồi tạo bản nháp để bạn duyệt.</p>
+        </div>
+        <div
+          className={`purchase-dropzone ${dragActive ? "is-dragging" : ""}`}
+          onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDragActive(false); }}
+          onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") fileRef.current?.click(); }}
+        >
+          <span className="purchase-drop-icon" aria-hidden="true">＋</span>
+          <span><b>Kéo thả file vào đây</b><small>hoặc bấm để chọn nhiều PDF / XML / ZIP</small></span>
+          <span className="purchase-drop-hint">Tối đa theo cấu hình máy chủ</span>
+        </div>
+        <div className="purchase-intake-tools">
+          <div className="purchase-link-import">
+            <label htmlFor="purchase-source-url">Nguồn từ link</label>
+            <div>
+              <input
+                id="purchase-source-url"
+                placeholder="Dán link Drive, PDF, XML hoặc ZIP"
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+              />
+              <button className="btn-sm" disabled={urlBusy || !urlValue.trim()} onClick={importFromUrl}>
+                {urlBusy ? "Đang tải…" : "Nhập link"}
+              </button>
+            </div>
+          </div>
+          <div className="purchase-tool-actions">
+            <input
+              ref={bangKeRef}
+              type="file"
+              accept=".xlsx"
+              style={{ display: "none" }}
+              onChange={(e) => uploadBangKe(e.target.files)}
+            />
+            <button className="btn-sm ghost" disabled={bangKeBusy} onClick={() => bangKeRef.current?.click()}>
+              {bangKeBusy ? "Đang đối chiếu…" : "Đối chiếu bảng kê thuế"}
+            </button>
+            <button
+              className="btn-sm ghost"
+              title="Đồng bộ file gốc HĐ mua lên NAS (chỉ file mới/đã đổi — theo checksum)"
+              onClick={async () => {
+                try {
+                  const r = await api.invPurchaseSyncNas();
+                  window.alert(`NAS: ${r.synced} đồng bộ mới, ${r.skipped} bỏ qua (đã có), ${r.failed} lỗi.`);
+                } catch (e) {
+                  window.alert((e as Error).message);
+                }
+              }}
+            >
+              Đồng bộ NAS
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="purchase-summary" aria-label="Tổng quan sổ mua vào">
+        <button className={statusF === "" ? "active" : ""} onClick={() => setStatusF("")}>
+          <span>Tất cả</span><strong>{list.length}</strong><small>{vnd(totalValue)}đ</small>
+        </button>
+        <button className={statusF === "draft" ? "active attention" : "attention"} onClick={() => setStatusF("draft")}>
+          <span>Nháp chờ duyệt</span><strong>{draftCount}</strong><small>Cần kiểm tra trước khi ghi sổ</small>
+        </button>
+        <button className={statusF === "posted" ? "active" : ""} onClick={() => setStatusF("posted")}>
+          <span>Đã ghi sổ</span><strong>{postedCount}</strong><small>Đã cập nhật vào tồn kho</small>
+        </button>
+        <div className="purchase-summary-note">
+          <span className={`purchase-summary-pulse ${warningCount ? "attention" : "ready"}`} />
+          <div><b>{warningCount ? `${warningCount} cảnh báo cần xử lý` : "Không có cảnh báo mới"}</b><small>{warningCount ? "Mở từng hóa đơn để xem lý do và cách sửa." : "Bạn có thể tiếp tục nhập chứng từ mới."}</small></div>
+        </div>
+      </section>
+
       {err && <div className="error">{err}</div>}
       {uploadMsg.length > 0 && (
-        <div className="warn-banner">
+        <div className="purchase-feedback warn-banner">
           {uploadMsg.map((m, i) => (
             <div key={i}>{m}</div>
           ))}
         </div>
       )}
-      <div className="tb-group" style={{ margin: "6px 0", flexWrap: "wrap", gap: 8 }}>
-        <span className="muted">
-          {sel.size > 0 ? `Đã chọn ${sel.size}` : `${shown.length} hóa đơn`}
-          {vatF !== "" && <span className="chip amber sm" style={{ marginLeft: 6 }}>lọc VAT {vatF}%</span>}
-        </span>
+      <section className="purchase-list-panel">
+        <header className="purchase-list-header">
+          <div>
+            <h2>Danh sách hóa đơn</h2>
+            <p>{sel.size > 0 ? `Đã chọn ${sel.size} hóa đơn` : `${shown.length} hóa đơn đang hiển thị`}{filtersActive && " · đang lọc"}</p>
+          </div>
+          <div className="purchase-export-actions">
+            <button
+              className="btn-sm ghost"
+              onClick={() => window.open(api.invExportUrl("purchase", "zip", exportParams()), "_blank")}
+            >
+              ZIP gốc
+            </button>
+            <button
+              className="btn-sm ghost"
+              onClick={() => window.open(api.invExportUrl("purchase", "xlsx", exportParams()), "_blank")}
+            >
+              Excel
+            </button>
+          </div>
+        </header>
+        <div className="purchase-filters">
+          <label>Trạng thái<select className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+            <option value="">Tất cả trạng thái</option><option value="draft">Nháp chờ duyệt</option><option value="posted">Đã ghi sổ</option>
+          </select></label>
+          <label>Khoảng ngày<DateFilter value={dateRange} onChange={setDateRange} /></label>
+          <label>Thuế suất<select className="tb-select" value={vatF} onChange={(e) => setVatF(e.target.value)} title="Lọc theo thuế suất dòng hàng">
+            <option value="">Tất cả VAT</option><option value="0">0% / KCT</option><option value="5">5%</option><option value="8">8%</option><option value="10">10%</option>
+          </select></label>
+          {filtersActive && <button className="purchase-clear-filter" onClick={() => { setStatusF(""); setVatF(""); setDateRange({ tu: "", den: "" }); }}>Xóa bộ lọc</button>}
+        </div>
+        <div className="purchase-bulkbar">
+          <span>{sel.size > 0 ? `Đang chọn ${sel.size}` : "Chọn hóa đơn để thao tác theo lô"}</span>
         {sel.size > 0 && (
           <>
             <button className="btn-sm" disabled={busy} onClick={bulkPost}>
-              ✅ Ghi sổ đã chọn ({sel.size})
+              Ghi sổ đã chọn ({sel.size})
             </button>
             <button className="btn-sm danger" disabled={busy} onClick={() => bulkDelete([...sel], "đã chọn")}>
-              🗑 Xóa đã chọn ({sel.size})
+              Xóa đã chọn ({sel.size})
             </button>
             <button className="btn-sm" onClick={() => setSel(new Set())}>Bỏ chọn</button>
           </>
         )}
         {dupIds.length > 0 && (
           <button className="btn-sm danger" disabled={busy} onClick={() => bulkDelete(dupIds, "TRÙNG")}>
-            🧹 Xóa hết trùng ({dupIds.length})
+            Xóa hết trùng ({dupIds.length})
           </button>
         )}
-        <button
-          className="btn-sm ghost"
-          onClick={() =>
-            window.open(
-              api.invExportUrl("purchase", "zip", exportParams()),
-              "_blank",
-            )
-          }
-        >
-          ⬇ ZIP gốc
-        </button>
-        <button
-          className="btn-sm ghost"
-          onClick={() =>
-            window.open(
-              api.invExportUrl("purchase", "xlsx", exportParams()),
-              "_blank",
-            )
-          }
-        >
-          ⬇ Excel
-        </button>
-      </div>
+        </div>
 
-      <div className="table-wrap">
+      <div className="table-wrap purchase-table-wrap">
         <table className="dt">
           <thead>
             <tr>
@@ -461,8 +547,16 @@ export function PurchaseImport({
                   onChange={(e) => setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
                 />
               </th>
-              <th>#</th>
-              <th>Ngày HĐ</th>
+              <th>
+                <button className="purchase-sort-head" onClick={() => changeSort("id")}>
+                  # <span aria-hidden="true">{sortBy === "id" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                </button>
+              </th>
+              <th>
+                <button className="purchase-sort-head" onClick={() => changeSort("date")}>
+                  Ngày HĐ <span aria-hidden="true">{sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                </button>
+              </th>
               <th>Số HĐ</th>
               <th>Bên bán</th>
               <th style={{ textAlign: "right" }}>Tổng tiền</th>
@@ -504,12 +598,17 @@ export function PurchaseImport({
                 </tr>
               );
             })}
-            {list.length === 0 && (
+            {listLoading && (
+              <tr><td colSpan={8}><div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div></td></tr>
+            )}
+            {!listLoading && list.length === 0 && (
               <tr>
                 <td colSpan={8}>
-                  <div className="empty">
-                    <div className="empty-ic">🧾</div>
-                    <div>Chưa có hóa đơn mua vào nào. Bấm "Tải hóa đơn" để bắt đầu.</div>
+                  <div className="purchase-empty">
+                    <span className="purchase-empty-icon" aria-hidden="true">＋</span>
+                    <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
+                    <p>{filtersActive ? "Thử xóa bộ lọc hoặc chọn khoảng ngày khác." : "Tải PDF, XML hoặc ZIP lên để tạo bản nháp đầu tiên."}</p>
+                    <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
                   </div>
                 </td>
               </tr>
@@ -517,6 +616,7 @@ export function PurchaseImport({
           </tbody>
         </table>
       </div>
+      </section>
 
       {cur && (
         <div className="modal-backdrop" onClick={closeCur}>

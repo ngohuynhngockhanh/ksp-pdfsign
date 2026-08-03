@@ -859,6 +859,19 @@ def test_purchase_list_filter_tu_den(client):
     assert rows[0]["so_hd"] == "A1"
 
 
+def test_purchase_list_defaults_to_latest_invoice_date(client):
+    client.post("/api/inv/purchase", json={
+        "so_hd": "NEW", "mst_ban": "0123456789", "ten_ban": "NCC mới", "ngay": "2026-07-18",
+    })
+    client.post("/api/inv/purchase", json={
+        "so_hd": "OLD", "mst_ban": "0123456789", "ten_ban": "NCC cũ", "ngay": "2026-02-03",
+    })
+    r = client.get("/api/inv/purchase")
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert [row["so_hd"] for row in rows[:2]] == ["NEW", "OLD"]
+
+
 def test_purchase_export_xlsx(client):
     client.post("/api/inv/purchase", json={
         "so_hd": "B1", "mst_ban": "0123456789", "ten_ban": "NCC B1", "ngay": "2026-02-01",

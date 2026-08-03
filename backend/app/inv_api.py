@@ -867,7 +867,8 @@ def purchase_list(
                 )
             )
         )
-    stmt = stmt.order_by(InvPurchase.id.desc()).limit(min(limit, 500))
+    # ISO invoice dates sort naturally; keep the newest business date at the top.
+    stmt = stmt.order_by(InvPurchase.ngay.desc(), InvPurchase.id.desc()).limit(min(limit, 500))
     return [_purchase_out(db, p, with_lines=False) for p in db.scalars(stmt)]
 
 
