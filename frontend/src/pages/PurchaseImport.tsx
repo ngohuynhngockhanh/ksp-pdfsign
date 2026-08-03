@@ -41,7 +41,9 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: "Nhập tay",
 };
 
-type PurchaseSortKey = "date" | "id";
+type PurchaseSortKey = "date" | "id" | "invoice";
+
+const invoiceNumberCollator = new Intl.Collator("vi", { numeric: true, sensitivity: "base" });
 
 export function PurchaseImport({
   openId,
@@ -92,6 +94,7 @@ export function PurchaseImport({
   const shown = [...list].sort((a, b) => {
     const direction = sortDir === "desc" ? -1 : 1;
     if (sortBy === "id") return (a.id - b.id) * direction;
+    if (sortBy === "invoice") return invoiceNumberCollator.compare(a.so_hd || "", b.so_hd || "") * direction;
     const byDate = (a.ngay || "").localeCompare(b.ngay || "");
     return (byDate || (a.id - b.id)) * direction;
   });
@@ -557,7 +560,11 @@ export function PurchaseImport({
                   Ngày HĐ <span aria-hidden="true">{sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
                 </button>
               </th>
-              <th>Số HĐ</th>
+              <th>
+                <button className="purchase-sort-head" onClick={() => changeSort("invoice")}>
+                  Số HĐ <span aria-hidden="true">{sortBy === "invoice" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                </button>
+              </th>
               <th>Bên bán</th>
               <th style={{ textAlign: "right" }}>Tổng tiền</th>
               <th>Nguồn</th>
