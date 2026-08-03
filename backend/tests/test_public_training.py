@@ -62,6 +62,28 @@ def test_public_session_requires_hmac_and_stores_phone_encrypted(client, monkeyp
     gen.close()
 
 
+def test_public_session_can_be_restored_without_revealing_phone(client, monkeypatch):
+    _configure(monkeypatch)
+    created = _signed(client, "POST", "/internal/public-training/sessions", {
+        "phone": "0912345678", "locale": "vi", "consent": True,
+    })
+    session = created.json()
+
+    restored = _signed(
+        client,
+        "GET",
+        f"/internal/public-training/sessions?sessionToken={session['sessionToken']}",
+    )
+
+    assert restored.status_code == 200, restored.text
+    assert restored.json() == {
+        "sessionId": session["sessionId"],
+        "phoneLast4": "5678",
+        "locale": "vi",
+    }
+    assert "0912345678" not in restored.text
+
+
 def test_public_session_rejects_invalid_consent_phone_and_replay(client, monkeypatch):
     _configure(monkeypatch)
     invalid_phone = _signed(client, "POST", "/internal/public-training/sessions", {
