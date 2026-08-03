@@ -124,6 +124,54 @@ def calculate_annual_pit(*, taxable_income_before_deductions: float,
     }
 
 
+def plan_annual_bonus(*, taxable_income_before_deductions: float,
+                      employee_insurance: float, dependent_months: int,
+                      reference_monthly_gross: float) -> dict[str, Any]:
+    """So sánh thưởng biến động theo thuế năm, không giả định khoản miễn thuế."""
+    baseline = calculate_annual_pit(
+        taxable_income_before_deductions=taxable_income_before_deductions,
+        employee_insurance=employee_insurance,
+        dependent_months=dependent_months,
+    )
+    annual_taxable = baseline["annual_taxable_income"]
+    annual_bands = (120_000_000, 360_000_000, 720_000_000, 1_200_000_000)
+    next_ceiling = next((ceiling for ceiling in annual_bands if annual_taxable < ceiling), None)
+    headroom = max((next_ceiling - annual_taxable) if next_ceiling else reference_monthly_gross, 0)
+    reference = _money(reference_monthly_gross)
+    recommended_amount = min(reference, _money(headroom)) if reference > 0 else 0
+
+    def scenario(key: str, label: str, amount: float) -> dict[str, float | str]:
+        gross_bonus = _money(amount)
+        after = calculate_annual_pit(
+            taxable_income_before_deductions=taxable_income_before_deductions + gross_bonus,
+            employee_insurance=employee_insurance,
+            dependent_months=dependent_months,
+        )
+        additional_pit = _money(max(after["annual_pit"] - baseline["annual_pit"], 0))
+        return {
+            "key": key, "label": label, "gross_bonus": gross_bonus,
+            "additional_pit": additional_pit,
+            "net_bonus": _money(gross_bonus - additional_pit),
+            "effective_tax_rate": round(additional_pit / gross_bonus, 4) if gross_bonus else 0,
+        }
+
+    scenarios = [
+        scenario("none", "Không thưởng", 0),
+        scenario("half_month", "0,5 tháng thu nhập", reference * .5),
+        scenario("one_month", "1 tháng thu nhập", reference),
+        scenario("one_half_month", "1,5 tháng thu nhập", reference * 1.5),
+    ]
+    recommended = scenario(
+        "recommended", "Không vượt bậc thuế kế tiếp", recommended_amount,
+    )
+    return {
+        "baseline_annual_pit": baseline["annual_pit"],
+        "next_band_headroom": _money(headroom),
+        "scenarios": scenarios,
+        "recommended": recommended,
+    }
+
+
 def calculate_payroll(data: PayrollInput) -> PayrollResult:
     if data.standard_days <= 0 or data.actual_days < 0:
         raise ValueError("Ngày công không hợp lệ")

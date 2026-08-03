@@ -2461,6 +2461,10 @@ def _contract_draft_out(row: ContractDraft) -> dict:
         "customer_id": row.customer_id,
         "customer_name": row.customer.name if row.customer else "",
         "title": row.title,
+        "version": row.version,
+        "status": row.status,
+        "document_id": row.document_id,
+        "finalized_at": row.finalized_at.isoformat() if row.finalized_at else None,
         "payload": payload,
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
@@ -2489,9 +2493,12 @@ def contract_draft_create(
     if not customer:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
     title = body.title.strip() or body.payload.so.strip() or "Hợp đồng chưa đặt tên"
+    latest_version = db.scalar(select(func.max(ContractDraft.version)).where(
+        ContractDraft.customer_id == customer.id)) or 0
     row = ContractDraft(
         customer_id=customer.id, title=title,
         payload=json.dumps(body.payload.model_dump(), ensure_ascii=False),
+        version=latest_version + 1,
         created_by=user.id,
     )
     db.add(row)
@@ -2511,6 +2518,8 @@ def contract_draft_update(
     row = db.get(ContractDraft, draft_id)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy bản hợp đồng đang soạn")
+    if row.status != "draft":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Phiên hợp đồng đã chốt nên không thể ghi đè")
     customer = db.get(Customer, body.customer_id)
     if not customer:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy khách hàng")
@@ -2533,6 +2542,8 @@ def contract_draft_delete(
     row = db.get(ContractDraft, draft_id)
     if not row:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy bản hợp đồng đang soạn")
+    if row.status != "draft":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Phiên hợp đồng đã chốt phải được giữ lại để đối chiếu")
     title = row.title
     db.delete(row)
     db.commit()
@@ -2564,6 +2575,17 @@ def contract_generate(
 ):
     if not body.ben_b.name.strip() or not body.ben_b.mst.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bên B phải có tên và mã số thuế")
+    draft = None
+    if body.draft_id is not None:
+        draft = db.get(ContractDraft, body.draft_id)
+        if not draft:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy phiên hợp đồng đang soạn")
+        if draft.status != "draft":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Phiên hợp đồng này đã được chốt")
+        draft_mst = re.sub(r"\D", "", draft.customer.tax_code if draft.customer else "")
+        body_mst = re.sub(r"\D", "", body.ben_b.mst)
+        if draft_mst and draft_mst != body_mst:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Khách hàng của phiên soạn không khớp Bên B")
     terms = body.dieu_khoan or bbbg.DEFAULT_CONTRACT_TERMS
     _validate_contract_terms(terms)
     try:
@@ -2591,6 +2613,17 @@ def contract_generate(
     db.add(doc)
     db.flush()
 
+    session_finalized = False
+    session_version = None
+    if draft and body.ben_b.dai_dien.strip():
+        draft.payload = json.dumps(body.model_dump(exclude={"draft_id"}), ensure_ascii=False)
+        draft.status = "finalized"
+        draft.document_id = doc.id
+        draft.finalized_at = datetime.now(timezone.utc)
+        draft.updated_at = draft.finalized_at
+        session_finalized = True
+        session_version = draft.version
+
     share_token = secrets.token_urlsafe(16)
     share_expires = datetime.utcnow() + timedelta(days=settings.share_default_days)
     db.add(Share(token=share_token, document_id=doc.id, expires_at=share_expires))
@@ -2610,6 +2643,8 @@ def contract_generate(
         "customer_id": customer_id,
         "doc_type": "hop_dong",
         "is_draft": not bool(body.ben_b.dai_dien.strip()),
+        "session_finalized": session_finalized,
+        "session_version": session_version,
         "share_url": _share_url(settings, share_token),
         "share_expires_at": share_expires.isoformat(),
         "login_url": f"{settings.public_base_url.rstrip('/')}/api/login-link/{login_token}",

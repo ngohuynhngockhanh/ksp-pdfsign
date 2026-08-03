@@ -28,6 +28,7 @@ export function CreateContract() {
   const [draftFilter, setDraftFilter] = useState(0);
   const [defaultTerms, setDefaultTerms] = useState("");
   const [existingContracts, setExistingContracts] = useState<DocRecord[]>([]);
+  const [finalizedSession, setFinalizedSession] = useState<{ version: number; title: string } | null>(null);
 
   useEffect(() => {
     Promise.all([api.listCustomers(), api.contractDefaults(), api.contractDrafts(), api.listDocuments({ perPage: 200 })]).then(([cs, d, saved, docs]) => {
@@ -70,15 +71,28 @@ export function CreateContract() {
   async function generate() {
     if (!party.name.trim() || !party.mst.trim()) { setError("Cần nhập tên và MST Bên B."); return; }
     setBusy("generate"); setError("");
-    try { setResult(await api.contractGenerate(payload)); }
+    try {
+      const generated = await api.contractGenerate({ ...payload, draft_id: activeDraftId });
+      setResult(generated);
+      if (generated.session_finalized && activeDraftId) {
+        const finalized = drafts.find((draft) => draft.id === activeDraftId);
+        setFinalizedSession({ version: generated.session_version || finalized?.version || 1, title: finalized?.title || draftTitle || number });
+        setDrafts((current) => current.map((draft) => draft.id === activeDraftId ? {
+          ...draft, status: "finalized", document_id: generated.document_id,
+          finalized_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        } : draft));
+        setActiveDraftId(null);
+      }
+    }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   }
   const selectedCustomer = customers.find((c) => c.tax_code === party.mst);
-  const visibleDrafts = draftFilter ? drafts.filter((d) => d.customer_id === draftFilter) : drafts;
+  const editableDrafts = drafts.filter((draft) => draft.status !== "finalized");
+  const visibleDrafts = draftFilter ? editableDrafts.filter((d) => d.customer_id === draftFilter) : editableDrafts;
   function newDraft() {
     setActiveDraftId(null); setDraftTitle(""); setParty(emptyParty); setTerms(defaultTerms);
     setNumber(`01/${new Date().getFullYear()}/HĐPM-INUT`); setDate(new Date().toISOString().slice(0, 10));
-    setResult(null); setError("");
+    setResult(null); setFinalizedSession(null); setError("");
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); }
   }
   function openDraft(draft: ContractDraft) {
@@ -86,7 +100,7 @@ export function CreateContract() {
     setActiveDraftId(draft.id); setDraftTitle(draft.title); setNumber(p.so || "");
     if (p.ngay) setDate(`${p.ngay.year}-${String(p.ngay.month).padStart(2, "0")}-${String(p.ngay.day).padStart(2, "0")}`);
     setParty({ ...emptyParty, ...(p.ben_b || {}) }); setTerms(p.dieu_khoan || defaultTerms);
-    setResult(null); setError("");
+    setResult(null); setFinalizedSession(null); setError("");
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(""); }
   }
   async function saveDraft() {
@@ -127,7 +141,7 @@ export function CreateContract() {
         </div>
       </div>
       {visibleDrafts.length ? <div className="contract-draft-list">{visibleDrafts.map((d) => <article key={d.id} className={activeDraftId === d.id ? "active" : ""}>
-        <button className="contract-draft-open" onClick={() => openDraft(d)}><small>{d.customer_name}</small><strong>{d.title}</strong><span>Cập nhật {new Date(d.updated_at).toLocaleString("vi-VN")}</span></button>
+        <button className="contract-draft-open" onClick={() => openDraft(d)}><small>{d.customer_name} · Phiên v{d.version || 1}</small><strong>{d.title}</strong><span>Cập nhật {new Date(d.updated_at).toLocaleString("vi-VN")}</span></button>
         <button className="contract-draft-delete" onClick={() => removeDraft(d)} title="Xóa bản đang soạn">×</button>
       </article>)}</div> : <div className="contract-draft-empty">Chưa có hợp đồng đang soạn trong nhóm này.</div>}
       {existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).length > 0 && <div className="contract-issued-block"><h3>Hợp đồng đã tạo</h3><div className="contract-draft-list">{existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).map((doc) => <article key={doc.id}>
@@ -157,6 +171,6 @@ export function CreateContract() {
     </div>
     <div className="contract-actions"><button className="secondary save-draft" onClick={saveDraft} disabled={!!busy}>{busy === "save" ? "Đang lưu…" : activeDraftId ? "Lưu thay đổi" : "Lưu bản đang soạn"}</button><button className="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Đang tạo…" : "Xem trước PDF"}</button><button className="primary" onClick={generate} disabled={!!busy}>{busy === "generate" ? "Đang phát hành…" : "Lưu hợp đồng & tạo link"}</button></div>
     {previewUrl && <iframe className="contract-preview" src={previewUrl} title="Xem trước hợp đồng" />}
-    {result && <section className="share-result"><div><span>Đã tạo {result.is_draft ? "bản nháp" : "hợp đồng"}</span><h2>{result.filename}</h2><p>Hồ sơ đã được gắn vào khách hàng và các hóa đơn cùng MST.</p></div><div className="share-links"><button onClick={() => copy(result.share_url)}>Copy link hợp đồng 7 ngày</button><button onClick={() => copy(result.login_url)}>Copy link đăng nhập nhanh</button><a href={result.share_url} target="_blank" rel="noreferrer">Mở link</a></div>{result.temporary_password && <div className="credential">Tài khoản mới: <b>{result.username}</b> · Mật khẩu tạm: <b>{result.temporary_password}</b></div>}</section>}
+    {result && <section className="share-result"><div><span>{finalizedSession ? `Phiên v${finalizedSession.version} đã chốt` : `Đã tạo ${result.is_draft ? "bản nháp" : "hợp đồng"}`}</span><h2>{result.filename}</h2><p>{finalizedSession ? "Phiên này đã khóa để giữ lịch sử. Hãy tạo phiên mới nếu cần soạn hợp đồng tiếp theo." : "Hồ sơ đã được gắn vào khách hàng và các hóa đơn cùng MST."}</p></div><div className="share-links">{finalizedSession && <button onClick={newDraft}>Tạo phiên làm việc mới</button>}<button onClick={() => copy(result.share_url)}>Copy link hợp đồng 7 ngày</button><button onClick={() => copy(result.login_url)}>Copy link đăng nhập nhanh</button><a href={result.share_url} target="_blank" rel="noreferrer">Mở link</a></div>{result.temporary_password && <div className="credential">Tài khoản mới: <b>{result.username}</b> · Mật khẩu tạm: <b>{result.temporary_password}</b></div>}</section>}
   </div>;
 }

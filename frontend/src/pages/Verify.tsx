@@ -50,19 +50,22 @@ export function Verify({
     }
   }
 
+  const validReports = reports?.filter((report) => report.intact && report.valid && report.trusted).length ?? 0;
+
   return (
-    <div className="verify-layout">
+    <div className="verify-layout verify-studio">
       <div className="verify-left">
-        <div className="panel">
-          <h3>Kiểm tra chữ ký số của PDF</h3>
-          {source && <div className="muted">Đang xem: {source}</div>}
-          <input type="file" accept="application/pdf" onChange={onFile} />
-          {busy && <div className="muted">Đang kiểm tra…</div>}
+        <header className="verify-console-head"><span>DIGITAL TRUST CONSOLE</span><h1>Kiểm định chữ ký số.</h1><p>Đọc tính toàn vẹn, chuỗi tin cậy, thu hồi chứng thư và phạm vi ký của từng chữ ký trong PDF.</p></header>
+        <div className="verify-drop-card">
+          <label><input aria-label="PDF cần kiểm tra" type="file" accept="application/pdf" onChange={onFile} /><span>{busy ? "ĐANG KIỂM ĐỊNH" : "PDF NGUỒN"}</span><strong>{busy ? "Đang phân tích chữ ký…" : "Chọn PDF để kiểm tra"}</strong><small>File chỉ được dùng cho phiên kiểm tra hiện tại</small></label>
+          {source && <div className="verify-source"><small>Đang xem</small><b>{source}</b></div>}
           {err && <div className="error">{err}</div>}
         </div>
 
+        {reports && <div className={`verify-verdict ${validReports === reports.length && reports.length ? "pass" : "review"}`}><span>{reports.length ? `${validReports}/${reports.length} chữ ký đạt` : "Không có chữ ký"}</span><b>{reports.length && validReports === reports.length ? "Tài liệu vượt qua kiểm định chính" : "Tài liệu cần xem xét"}</b></div>}
+
         {reports && reports.length === 0 && (
-          <div className="card">Tài liệu không có chữ ký số nào.</div>
+          <div className="card verify-empty">Tài liệu không có chữ ký số nào.</div>
         )}
 
         {reports?.map((s, i) => (

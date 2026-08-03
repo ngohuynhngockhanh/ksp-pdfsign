@@ -86,6 +86,10 @@ export interface ContractDraft {
   customer_id: number;
   customer_name: string;
   title: string;
+  version: number;
+  status: "draft" | "finalized";
+  document_id: number | null;
+  finalized_at: string | null;
   payload: Record<string, any>;
   created_at: string;
   updated_at: string;
@@ -278,6 +282,22 @@ export interface PayrollHrSummary {
   year: number; employees: PayrollHrEmployee[];
   totals: { net_payable: number; paid: number; outstanding: number;
     pit_withheld: number; annual_pit: number };
+}
+
+export interface PayrollBonusScenario {
+  key: string; label: string; gross_bonus: number; additional_pit: number;
+  net_bonus: number; effective_tax_rate: number;
+}
+
+export interface PayrollForecast {
+  year: number; actual_through: string; growth_rate: number;
+  future_months: { month: string; gross_income: number; net_payable: number; pit_estimate: number }[];
+  baseline: { gross_income: number; net_payable: number; annual_pit: number; pit_withheld: number };
+  recommended: PayrollBonusScenario;
+  scenarios: PayrollBonusScenario[];
+  employees: { employee_id: number; name: string; reference_monthly_gross: number;
+    next_band_headroom: number; recommended_bonus: number; additional_pit: number; net_bonus: number }[];
+  assumptions: string[];
 }
 
 export interface TrainingEvidence {
@@ -1068,6 +1088,7 @@ export const api = {
       doc_id: string; document_id: number; filename: string; customer_id: number;
       is_draft: boolean; share_url: string; login_url: string; username: string;
       temporary_password: string; share_expires_at: string; login_expires_at: string;
+      session_finalized: boolean; session_version: number | null;
     }>("/api/contract/generate", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
@@ -1647,6 +1668,11 @@ export const api = {
   async customsDriveReview(folderId: number) {
     return req<CustomsDriveFolder>(`/api/inv/customs-drive/folders/${folderId}/review`, { method: "POST" });
   },
+  async customsDriveSetDocumentKind(documentId: number, kind: string) {
+    return req<CustomsDriveFolder>(`/api/inv/customs-drive/documents/${documentId}/kind`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }),
+    });
+  },
   invCustomsFileUrl(id: number) {
     return `/api/inv/customs/${id}/file`;
   },
@@ -1726,6 +1752,9 @@ export const api = {
   },
   payrollHrSummary(year: number) {
     return req<PayrollHrSummary>(`/api/payroll/hr-summary?year=${year}`);
+  },
+  payrollForecast(year: number, growthRate = 0) {
+    return req<PayrollForecast>(`/api/payroll/forecast?year=${year}&growth_rate=${growthRate}`);
   },
   payrollCreatePayment(body: { employee_id: number; month: string; amount: number;
     status: "prepared" | "completed"; paid_at?: string; bank_name?: string;
@@ -1831,7 +1860,7 @@ export interface InvCustomsDecl {
 
 export interface CustomsDriveDocument {
   id: number; name: string; path: string; kind: string; mime_type: string;
-  size: number; parse_error: string; file_url: string;
+  size: number; parse_error: string; file_url: string; kind_manual?: boolean;
 }
 
 export interface CustomsDriveFolder {

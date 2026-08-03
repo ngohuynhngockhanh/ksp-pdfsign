@@ -267,6 +267,10 @@ class ContractDraft(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
     payload: Mapped[str] = mapped_column(Text, default="{}")
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
@@ -1015,6 +1019,7 @@ class InvCustomsDriveDocument(Base):
     size: Mapped[int] = mapped_column(default=0)
     modified_time: Mapped[str] = mapped_column(String(50), default="")
     kind: Mapped[str] = mapped_column(String(30), default="other", index=True)
+    kind_manual: Mapped[bool] = mapped_column(default=False)
     doc_id: Mapped[str] = mapped_column(String(64), default="")
     doc_suffix: Mapped[str] = mapped_column(String(20), default="")
     extracted_text: Mapped[str] = mapped_column(Text, default="")
@@ -1229,6 +1234,15 @@ def _migrate_add_columns() -> None:
         "inv_issue_lines": {
             "gia_von": "FLOAT DEFAULT 0",
             "thanh_tien_ban": "FLOAT DEFAULT 0",
+        },
+        "inv_customs_drive_documents": {
+            "kind_manual": "BOOLEAN DEFAULT 0",
+        },
+        "contract_drafts": {
+            "version": "INTEGER DEFAULT 1",
+            "status": "VARCHAR(20) DEFAULT 'draft'",
+            "document_id": "INTEGER",
+            "finalized_at": "DATETIME",
         },
     }
     with _engine.begin() as conn:

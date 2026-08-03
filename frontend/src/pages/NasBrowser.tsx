@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 type Entry = { name: string; is_dir: boolean; size: number };
@@ -20,31 +20,52 @@ export function NasBrowser() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const requestId = useRef(0);
 
-  async function load(p: string) {
+  function pathFromUrl() {
+    return new URLSearchParams(window.location.search).get("path") || "";
+  }
+
+  function writePathToUrl(nextPath: string, mode: "push" | "replace") {
+    const url = new URL(window.location.href);
+    if (nextPath) url.searchParams.set("path", nextPath);
+    else url.searchParams.delete("path");
+    window.history[mode === "push" ? "pushState" : "replaceState"](
+      { ...window.history.state, nasPath: nextPath }, "", `${url.pathname}${url.search}`,
+    );
+  }
+
+  async function load(p: string, historyMode: "push" | "replace" | "none" = "none") {
+    const currentRequest = ++requestId.current;
     setBusy(true);
     setErr("");
     try {
       const r = await api.nasBrowse(p);
+      if (currentRequest !== requestId.current) return;
       setPath(r.path);
       setEntries(r.entries);
+      if (historyMode !== "none") writePathToUrl(r.path, historyMode);
     } catch (e) {
+      if (currentRequest !== requestId.current) return;
       setErr((e as Error).message);
     } finally {
-      setBusy(false);
+      if (currentRequest === requestId.current) setBusy(false);
     }
   }
   useEffect(() => {
-    load("");
+    load(pathFromUrl(), "replace");
+    const restoreFromHistory = () => load(pathFromUrl());
+    window.addEventListener("popstate", restoreFromHistory);
+    return () => window.removeEventListener("popstate", restoreFromHistory);
   }, []);
 
   const parts = path ? path.split("\\") : [];
   function goTo(idx: number) {
-    load(parts.slice(0, idx + 1).join("\\"));
+    load(parts.slice(0, idx + 1).join("\\"), "push");
   }
   function open(e: Entry) {
     const child = path ? `${path}\\${e.name}` : e.name;
-    if (e.is_dir) load(child);
+    if (e.is_dir) load(child, "push");
     else {
       const isPdf = e.name.toLowerCase().endsWith(".pdf");
       window.open(api.nasFileUrl(child, isPdf), "_blank");
@@ -55,7 +76,7 @@ export function NasBrowser() {
     <div className="page-1col">
       <h3>Duyệt kho lưu trữ NAS</h3>
       <div className="crumbs">
-        <button className="link-btn" onClick={() => load("")}>
+        <button className="link-btn" onClick={() => load("", "push")}>
           🗄️ ho-so
         </button>
         {parts.map((p, i) => (

@@ -10,6 +10,7 @@ test("đường dẫn kiểm tra chữ ký giữ nguyên hồ sơ sau khi tải 
   });
 
   await page.goto("/kiem-tra?doc=18");
+  await expect(page.getByRole("heading", { name: "Kiểm định chữ ký số." })).toBeVisible();
   await expect(page.getByText("WINCA")).toBeVisible();
   await expect(page.getByText(/15\/6\/2027/)).toBeVisible();
   await page.reload();

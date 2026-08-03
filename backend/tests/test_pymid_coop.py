@@ -51,6 +51,8 @@ def test_catalog_prices_and_customer_scope(app_env):
     assert software["gross_price"] == 632_500
     assert software["tax_treatment"] == "exempt"
     assert software["vat_label"] == "KCT"
+    thermal_software = next(row for row in rows if row["code"] == "SW-NHIET")
+    assert thermal_software["gross_price"] == 345_000
 
     other = TestClient(app_env.app)
     login(other, "other", "OtherTest123@")

@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -32,6 +33,14 @@ class SourceIn(BaseModel):
 
 class AssignIn(BaseModel):
     customs_id: int = Field(gt=0)
+
+
+class DocumentKindIn(BaseModel):
+    kind: Literal[
+        "customs_declaration", "ci", "pl", "coo", "bill_of_lading",
+        "tax_receipt", "payment", "contract_po", "datasheet", "arrival_notice",
+        "product_photo", "other",
+    ]
 
 
 def _loads(value: str, default):
@@ -82,7 +91,42 @@ def _rclone_download(folder_id: str, path: str) -> bytes:
         return target.read_bytes()
 
 
-def _extract_text(name: str, content: bytes) -> str:
+def _ocr_pil_image(image) -> str:
+    try:
+        import pytesseract  # type: ignore
+
+        return pytesseract.image_to_string(image, lang="vie+eng")
+    except Exception:
+        pass
+    try:
+        import numpy as np
+        from rapidocr_onnxruntime import RapidOCR  # type: ignore
+
+        engine = RapidOCR()
+        result, _ = engine(np.array(image))
+        return " ".join(row[1] for row in (result or []))
+    except Exception:
+        return ""
+
+
+def _ocr_image(content: bytes) -> str:
+    from PIL import Image
+
+    return _ocr_pil_image(Image.open(io.BytesIO(content)).convert("RGB"))
+
+
+def _ocr_pdf_pages(content: bytes, max_pages: int = 3) -> str:
+    import pypdfium2 as pdfium
+
+    document = pdfium.PdfDocument(content)
+    return "\n".join(
+        _ocr_pil_image(document[index].render(scale=2.0).to_pil())
+        for index in range(min(len(document), max_pages))
+    )
+
+
+def _extract_text(name: str, content: bytes, force_ocr: bool = False,
+                  ocr_all_pages: bool = False) -> str:
     suffix = Path(name).suffix.lower()
     if suffix in (".txt", ".csv"):
         return content.decode("utf-8", errors="ignore")[:50_000]
@@ -91,12 +135,19 @@ def _extract_text(name: str, content: bytes) -> str:
             text = inv_import._pdf_all_text(content)
         except Exception:
             text = ""
-        if len(text.strip()) < 20:
+        if force_ocr or len(text.strip()) < 20:
             try:
-                text = classify._ocr_first_page(content) or text
+                ocr_text = _ocr_pdf_pages(content) if ocr_all_pages else classify._ocr_first_page(content)
+                if ocr_text and ocr_text not in text:
+                    text = f"{text}\n{ocr_text}".strip()
             except Exception:
                 pass
         return text[:50_000]
+    if suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"):
+        try:
+            return _ocr_image(content)[:50_000]
+        except Exception:
+            return ""
     if suffix in (".xlsx", ".xlsm"):
         try:
             workbook = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
@@ -125,6 +176,7 @@ def _folder_out(row: InvCustomsDriveFolder) -> dict:
             "checklist": _loads(row.checklist, {}), "findings": _loads(row.findings, []),
             "synced_at": row.synced_at.isoformat(), "documents": [
                 {"id": doc.id, "name": doc.name, "path": doc.path, "kind": doc.kind,
+                 "kind_manual": doc.kind_manual,
                  "mime_type": doc.mime_type, "size": doc.size, "parse_error": doc.parse_error,
                  "file_url": f"/api/inv/customs-drive/documents/{doc.id}/file" if doc.doc_id else ""}
                 for doc in sorted(row.documents, key=lambda item: item.name.lower())
@@ -171,7 +223,8 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
             document.synced_at = datetime.now(timezone.utc)
             if document.size < 0:
                 document.parse_error = "File Google native chưa hỗ trợ tải bản sao; vẫn giữ liên kết Drive."
-                document.kind = customs_drive.classify_customs_document(document.name, "")
+                if not document.kind_manual:
+                    document.kind = customs_drive.classify_customs_document(document.name, "")
                 dossier_files.append({"kind": document.kind, "text": ""})
                 continue
             try:
@@ -180,7 +233,8 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
                 document.doc_id = storage.save_upload(content, suffix=suffix)
                 document.doc_suffix = suffix
                 document.extracted_text = _extract_text(document.name, content)
-                document.kind = customs_drive.classify_customs_document(document.name, document.extracted_text)
+                if not document.kind_manual:
+                    document.kind = customs_drive.classify_customs_document(document.name, document.extracted_text)
                 document.parse_error = ""
                 declaration_numbers |= customs_drive.extract_declaration_numbers(document.name + " " + document.extracted_text)
                 if document.kind == "customs_declaration":
@@ -190,7 +244,8 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
                     declaration_content = (document.name, content)
             except Exception as exc:
                 document.parse_error = f"Không đọc được file: {type(exc).__name__}"
-                document.kind = customs_drive.classify_customs_document(document.name, "")
+                if not document.kind_manual:
+                    document.kind = customs_drive.classify_customs_document(document.name, "")
             dossier_files.append({"kind": document.kind, "text": document.extracted_text})
 
         customs_row = None
@@ -307,12 +362,52 @@ def review_folder(folder_id: int, db: Session = Depends(get_session),
     folder = db.get(InvCustomsDriveFolder, folder_id)
     if not folder:
         raise HTTPException(404, "Không tìm thấy folder hồ sơ")
+    for document in folder.documents:
+        if not document.doc_id:
+            continue
+        try:
+            content = storage.read_doc(document.doc_id, document.doc_suffix or ".bin")
+            document.extracted_text = _extract_text(
+                document.name,
+                content,
+                force_ocr=document.kind in {"ci", "pl", "coo", "arrival_notice", "product_photo"},
+                ocr_all_pages=document.kind == "arrival_notice",
+            )
+            if not document.kind_manual:
+                document.kind = customs_drive.classify_customs_document(
+                    document.name, document.extracted_text,
+                )
+            document.parse_error = ""
+        except Exception as exc:
+            document.parse_error = f"Không thể kiểm tra lại file: {type(exc).__name__}"
     result = customs_drive.review_dossier([
         {"kind": doc.kind, "text": doc.extracted_text} for doc in folder.documents])
     folder.dossier_status = result["status"]
     folder.checklist = json.dumps(result["checklist"], ensure_ascii=False)
     folder.findings = json.dumps(result["findings"], ensure_ascii=False)
     db.commit(); db.refresh(folder)
+    return _folder_out(folder)
+
+
+@router.patch("/documents/{document_id}/kind")
+def set_document_kind(document_id: int, payload: DocumentKindIn,
+                      db: Session = Depends(get_session),
+                      user: CurrentUser = Depends(require_admin)):
+    document = db.get(InvCustomsDriveDocument, document_id)
+    if not document:
+        raise HTTPException(404, "Không tìm thấy chứng từ")
+    document.kind = payload.kind
+    document.kind_manual = True
+    folder = document.folder
+    result = customs_drive.review_dossier([
+        {"kind": doc.kind, "text": doc.extracted_text} for doc in folder.documents
+    ])
+    folder.dossier_status = result["status"]
+    folder.checklist = json.dumps(result["checklist"], ensure_ascii=False)
+    folder.findings = json.dumps(result["findings"], ensure_ascii=False)
+    db.commit(); db.refresh(folder)
+    audit.record(db, user.username, user.role, user.ip, "customs_drive_classify",
+                 f"document:{document.id}", f"{document.name} -> {payload.kind}")
     return _folder_out(folder)
 
 

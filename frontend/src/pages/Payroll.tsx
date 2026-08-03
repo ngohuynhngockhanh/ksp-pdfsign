@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, PayrollHrSummary, PayrollImportDetail, PayrollImportItem, PayrollNetTargetPlan, PayrollWorkbookChange, PayrollWorkbookDraft } from "../api";
 import { PayrollHrOverview } from "../components/PayrollHrOverview";
+import { PayrollForecastPlanner } from "../components/PayrollForecastPlanner";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 const excelMoney = (value = "") => {
@@ -170,6 +171,7 @@ export function Payroll() {
     </section>}
     {message && <div className="payroll-message">{message}</div>}
     <PayrollHrOverview year={hrYear} summary={hrSummary} reload={loadHr} setMessage={setMessage} />
+    <PayrollForecastPlanner year={hrYear} />
     <section className="payroll-imports">
       <header><div><p className="eyebrow">EXCEL ĐÃ SYNC</p><h2>Bảng lương từ Google Drive</h2></div><span>{imports.length} file</span></header>
       {!imports.length ? <p className="muted">Chưa có file. Bấm Sync Drive để tải danh sách.</p> :

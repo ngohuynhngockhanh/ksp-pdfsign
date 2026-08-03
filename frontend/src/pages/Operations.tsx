@@ -56,7 +56,11 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
         <button className="ops-sync" disabled={!!busy} onClick={runSync}>{busy === "sync" ? "Đang đồng bộ…" : "Đồng bộ thuế ngay"}</button>
       </section>
       {err && <div className="error">{err}</div>}
-      {sync?.needs_action && <button className="ops-alert critical" onClick={() => navigate("thuesync")}><b>Cần đăng nhập lại cổng thuế</b><span>{sync.error}</span><strong>Mở xử lý →</strong></button>}
+      {sync?.needs_action && <button className="ops-alert critical" onClick={() => navigate("thuesync")}>
+        <span className="ops-alert-icon" aria-hidden="true">!</span>
+        <span className="ops-alert-copy"><b>Cần đăng nhập lại cổng thuế</b><small>{sync.error}</small></span>
+        <span className="ops-alert-action">Mở xử lý <i aria-hidden="true">→</i></span>
+      </button>}
       <section className="metric-grid">
         <article className="metric-card teal"><span>HÓA ĐƠN MUA</span><b>{data.purchases}</b><small>{data.purchase_drafts} bản nháp chờ duyệt</small></article>
         <article className="metric-card ink"><span>HÓA ĐƠN BÁN</span><b>{data.sales}</b><small>{data.sale_drafts} bản nháp</small></article>

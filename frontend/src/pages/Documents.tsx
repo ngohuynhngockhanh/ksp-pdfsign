@@ -310,12 +310,24 @@ export function Documents({
     load();
   }
 
+  const unassignedOnPage = docs.filter((doc) => !doc.customer_id).length;
+  const signedOnPage = docs.filter((doc) => Boolean(doc.signed_upload_name)).length;
+
   return (
-    <div className="docs-page">
+    <div className="docs-page document-vault">
+      <section className="document-vault-hero">
+        <div><span>INUT · DOCUMENT CONTROL</span><h1>Kho hồ sơ vận hành.</h1><p>Phân loại, gắn khách hàng, gom theo đơn hàng và kiểm tra trạng thái lưu trữ từ một mặt bàn duy nhất.</p></div>
+        <div className="document-vault-metrics" aria-label="Tóm tắt kho hồ sơ">
+          <article><strong>{total} hồ sơ</strong><small>trong phạm vi hiện tại</small></article>
+          <article className={unassignedOnPage ? "attention" : ""}><strong>{unassignedOnPage} chưa phân loại</strong><small>trên trang đang xem</small></article>
+          <article><strong>{signedOnPage} bản ký</strong><small>đã tải lên trang này</small></article>
+          <article className={nas?.pending ? "attention" : ""}><strong>{nas?.enabled ? `${nas.pending} chờ NAS` : "NAS đang tắt"}</strong><small>{nas?.enabled ? `${nas.synced}/${nas.total} đã đồng bộ` : "kiểm tra cấu hình lưu trữ"}</small></article>
+        </div>
+      </section>
       {/* Toolbar */}
       <div className="docs-toolbar">
         <h3>
-          Hồ sơ <span className="count">{total}</span>
+          Bộ lọc hồ sơ <span className="count">{total}</span>
         </h3>
         <div className="tb-group">
           <input
@@ -428,8 +440,8 @@ export function Documents({
       {err && <div className="error">{err}</div>}
 
       {/* Table */}
-      <div className="table-wrap">
-        <table className="dt">
+      <div className="table-wrap document-vault-table-wrap">
+        <table className="dt document-vault-table">
           <thead>
             <tr>
               <th className="chk">

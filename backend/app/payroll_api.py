@@ -26,7 +26,8 @@ from .payroll import (COL_MEAL, DEPENDENT_DEDUCTION, EMPLOYEE_INSURANCE_RATE,
                       EMPLOYER_INSURANCE_RATE, SELF_DEDUCTION, TRADE_UNION_RATE,
                       PayrollInput, apply_workbook_changes, calculate_annual_pit,
                       calculate_payroll,
-                      insurance_base_cap, plan_net_target, review_workbook)
+                      insurance_base_cap, plan_annual_bonus, plan_net_target,
+                      review_workbook)
 from . import audit
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -517,6 +518,132 @@ def hr_summary(year: int = 2026, db: Session = Depends(get_session),
             "pit_withheld": sum(item["tax"]["withheld"] for item in result),
             "annual_pit": sum(item["tax"]["annual_pit"] for item in result),
         },
+    }
+
+
+@router.get("/forecast")
+def payroll_forecast(year: int = 2026, growth_rate: float = 0,
+                     db: Session = Depends(get_session),
+                     _: CurrentUser = Depends(require_admin)):
+    if year < 2026 or year > 2100 or growth_rate < -.2 or growth_rate > .5:
+        raise HTTPException(400, "Tham số dự báo không hợp lệ")
+    _rebuild_hr_statements(db, year)
+    statements = db.scalars(select(PayrollStatement).where(
+        PayrollStatement.month.like(f"{year:04d}-%"),
+        PayrollStatement.is_current.is_(True),
+    ).order_by(PayrollStatement.month)).all()
+    if not statements:
+        return {"year": year, "actual_through": "", "growth_rate": growth_rate,
+                "future_months": [], "baseline": {"gross_income": 0, "net_payable": 0,
+                "annual_pit": 0, "pit_withheld": 0}, "recommended": {"gross_bonus": 0,
+                "additional_pit": 0, "net_bonus": 0, "effective_tax_rate": 0},
+                "scenarios": [], "employees": [], "assumptions": []}
+
+    grouped: dict[int, list[PayrollStatement]] = {}
+    for statement in statements:
+        grouped.setdefault(statement.employee_id, []).append(statement)
+    actual_through = max(row.month for row in statements)
+    latest_month = int(actual_through[-2:])
+    future_numbers = list(range(latest_month + 1, 13))
+    future_totals = {month: {"gross_income": 0.0, "net_payable": 0.0,
+                             "pit_estimate": 0.0} for month in future_numbers}
+    employee_rows = []
+    employee_plans = []
+    baseline_totals = {"gross_income": 0.0, "net_payable": 0.0,
+                       "annual_pit": 0.0, "pit_withheld": 0.0}
+
+    for employee_id, rows in grouped.items():
+        rows = sorted(rows, key=lambda item: item.month)
+        sample = rows[-3:]
+        count = len(sample)
+        average = lambda field: sum(float(getattr(item, field)) for item in sample) / count
+        projected = []
+        for step, month in enumerate(future_numbers, 1):
+            factor = (1 + growth_rate) ** step
+            values = {
+                "month": f"{year:04d}-{month:02d}",
+                "gross_income": round(average("gross_income") * factor),
+                "net_payable": round(average("net_payable") * factor),
+                "pit_estimate": round(average("pit_withheld") * factor),
+                "taxable_income_before_deductions": round(
+                    average("taxable_income_before_deductions") * factor),
+                "employee_insurance": round(average("employee_insurance")),
+                "dependent_count": round(average("dependent_count")),
+            }
+            projected.append(values)
+            for key in ("gross_income", "net_payable", "pit_estimate"):
+                future_totals[month][key] += values[key]
+
+        taxable_before = sum(row.taxable_income_before_deductions for row in rows)
+        taxable_before += sum(row["taxable_income_before_deductions"] for row in projected)
+        employee_insurance = sum(row.employee_insurance for row in rows)
+        employee_insurance += sum(row["employee_insurance"] for row in projected)
+        dependent_months = sum(row.dependent_count for row in rows)
+        dependent_months += sum(row["dependent_count"] for row in projected)
+        reference_gross = round(average("gross_income"))
+        plan = plan_annual_bonus(
+            taxable_income_before_deductions=taxable_before,
+            employee_insurance=employee_insurance,
+            dependent_months=dependent_months,
+            reference_monthly_gross=reference_gross,
+        )
+        annual = calculate_annual_pit(
+            taxable_income_before_deductions=taxable_before,
+            employee_insurance=employee_insurance,
+            dependent_months=dependent_months,
+        )
+        projected_gross = sum(row["gross_income"] for row in projected)
+        projected_net = sum(row["net_payable"] for row in projected)
+        projected_pit = sum(row["pit_estimate"] for row in projected)
+        baseline_totals["gross_income"] += sum(row.gross_income for row in rows) + projected_gross
+        baseline_totals["net_payable"] += sum(row.net_payable for row in rows) + projected_net
+        baseline_totals["annual_pit"] += annual["annual_pit"]
+        baseline_totals["pit_withheld"] += sum(row.pit_withheld for row in rows) + projected_pit
+        employee = db.get(PayrollEmployee, employee_id)
+        recommended = plan["recommended"]
+        employee_rows.append({
+            "employee_id": employee_id, "name": employee.name if employee else f"#{employee_id}",
+            "reference_monthly_gross": reference_gross,
+            "next_band_headroom": plan["next_band_headroom"],
+            "recommended_bonus": recommended["gross_bonus"],
+            "additional_pit": recommended["additional_pit"],
+            "net_bonus": recommended["net_bonus"],
+        })
+        employee_plans.append(plan)
+
+    scenarios = []
+    for index, key in enumerate(("none", "half_month", "one_month", "one_half_month")):
+        parts = [plan["scenarios"][index] for plan in employee_plans]
+        gross = round(sum(part["gross_bonus"] for part in parts))
+        tax = round(sum(part["additional_pit"] for part in parts))
+        scenarios.append({
+            "key": key, "label": parts[0]["label"] if parts else key,
+            "gross_bonus": gross, "additional_pit": tax,
+            "net_bonus": max(gross - tax, 0),
+            "effective_tax_rate": round(tax / gross, 4) if gross else 0,
+        })
+    recommended_parts = [plan["recommended"] for plan in employee_plans]
+    recommended_gross = round(sum(part["gross_bonus"] for part in recommended_parts))
+    recommended_tax = round(sum(part["additional_pit"] for part in recommended_parts))
+    recommended = {
+        "gross_bonus": recommended_gross, "additional_pit": recommended_tax,
+        "net_bonus": max(recommended_gross - recommended_tax, 0),
+        "effective_tax_rate": round(recommended_tax / recommended_gross, 4) if recommended_gross else 0,
+    }
+    return {
+        "year": year, "actual_through": actual_through, "growth_rate": growth_rate,
+        "future_months": [{"month": f"{year:04d}-{month:02d}",
+                           **{key: round(value) for key, value in totals.items()}}
+                          for month, totals in future_totals.items()],
+        "baseline": {key: round(value) for key, value in baseline_totals.items()},
+        "recommended": recommended, "scenarios": scenarios,
+        "employees": employee_rows,
+        "assumptions": [
+            "Dự phóng theo bình quân tối đa 3 tháng gần nhất của từng nhân viên.",
+            "Tăng trưởng được áp lũy tiến theo từng tháng còn lại; mặc định là 0%.",
+            "Thưởng được coi là thu nhập chịu TNCN và không tự động làm tăng nền BHXH.",
+            "Mức tham khảo ưu tiên không đẩy phần thu nhập sang bậc thuế năm kế tiếp.",
+        ],
     }
 
 

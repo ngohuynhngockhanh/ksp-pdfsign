@@ -118,163 +118,88 @@ export function CreateBBBG({
     }
   }
 
+  const missingUnits = items.filter((item) => item.ten.trim() && !item.dvt.trim()).length;
+  const ready = parsed && Boolean(benB.name.trim()) && items.length > 0 && missingUnits === 0;
+
   return (
-    <div className="page-1col">
-      <h3>Tạo Biên bản bàn giao từ hóa đơn</h3>
-
-      <div className="panel">
-        <label>
-          1. Tải hóa đơn (PDF hoặc XML) để tự điền
-          <input
-            type="file"
-            accept="application/pdf,.xml,text/xml,application/xml"
-            onChange={onInvoice}
-          />
-        </label>
-        <div className="muted">Nên dùng file XML — dữ liệu chính xác hơn PDF.</div>
-        {parsing && <div className="muted">Đang đọc hóa đơn…</div>}
-        {parsed && <div className="ok-note">✅ Đã đọc hóa đơn — kiểm tra & sửa bên dưới.</div>}
-        {parsed &&
-          (suggested ? (
-            <div className="ok-note">
-              👤 Khách hàng đề xuất: <b>{suggested.name}</b> — BBBG sẽ tự gán vào khách này khi ký.
-            </div>
-          ) : (
-            <div className="muted">
-              👤 Chưa có khách hàng khớp MST/tên — có thể tạo ở tab Khách hàng hoặc chọn lúc ký.
-            </div>
-          ))}
-      </div>
-
-      <div className="panel">
-        <h3>2. Thông tin biên bản</h3>
-        <div className="grid2">
-          <label>
-            Số BB
-            <input value={soBb} onChange={(e) => setSoBb(e.target.value)} />
-          </label>
-          <label>
-            Nơi lập
-            <input value={noiLap} onChange={(e) => setNoiLap(e.target.value)} />
-          </label>
-          <label>
-            Ngày
-            <input
-              type="number"
-              value={ngay.day}
-              onChange={(e) => setNgay({ ...ngay, day: +e.target.value })}
-            />
-          </label>
-          <label>
-            Tháng
-            <input
-              type="number"
-              value={ngay.month}
-              onChange={(e) => setNgay({ ...ngay, month: +e.target.value })}
-            />
-          </label>
-          <label>
-            Năm
-            <input
-              type="number"
-              value={ngay.year}
-              onChange={(e) => setNgay({ ...ngay, year: +e.target.value })}
-            />
-          </label>
-          <label>
-            Mẫu template
-            <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)}>
-              {templates.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
+    <div className="page-1col bbbg-studio">
+      <section className="bbbg-hero">
+        <div className="bbbg-hero-copy">
+          <span>AI DOCUMENT STUDIO · BÀN GIAO</span>
+          <h1>Biên bản bàn giao, từ hóa đơn đến bản ký.</h1>
+          <p>Đưa file nguồn vào một lần. CRM đọc bên nhận, hàng hóa và ngày chứng từ; bạn chỉ cần duyệt lại trước khi sinh PDF.</p>
+          <div className="bbbg-flow" aria-label="Quy trình tạo biên bản">
+            <b><i>01</i>AI đọc hóa đơn</b><b><i>02</i>Kiểm tra dữ liệu</b><b><i>03</i>Sinh PDF & ký</b>
+          </div>
         </div>
-      </div>
-
-      <div className="panel">
-        <h3>3. Bên B (bên nhận)</h3>
-        <SmartPartyPaste onApply={(data) => setBenB((current) => ({
-          ...current,
-          ...Object.fromEntries(Object.entries(data).filter(([, value]) => value)),
-        }))} />
-        <label>
-          Tên đơn vị
-          <input value={benB.name} onChange={(e) => setBenB({ ...benB, name: e.target.value })} />
+        <label className={`bbbg-dropzone ${parsed ? "parsed" : ""}`}>
+          <input aria-label="Hóa đơn nguồn" type="file" accept="application/pdf,.xml,text/xml,application/xml" onChange={onInvoice} />
+          <span>{parsing ? "ĐANG ĐỌC DỮ LIỆU" : parsed ? "ĐÃ NHẬN HÓA ĐƠN" : "HÓA ĐƠN NGUỒN"}</span>
+          <strong>{parsing ? "AI đang bóc tách…" : parsed ? "Đổi file khác" : "Thả hoặc chọn PDF / XML"}</strong>
+          <small>Ưu tiên XML để có dữ liệu chính xác nhất</small>
         </label>
-        <label>
-          Địa chỉ
-          <input value={benB.address} onChange={(e) => setBenB({ ...benB, address: e.target.value })} />
-        </label>
-        <div className="grid2">
-          <label>
-            MST
-            <input value={benB.mst} onChange={(e) => setBenB({ ...benB, mst: e.target.value })} />
-          </label>
-          <label>
-            Đại diện
-            <input value={benB.dai_dien} onChange={(e) => setBenB({ ...benB, dai_dien: e.target.value })} />
-          </label>
-          <label>
-            Chức vụ
-            <input value={benB.chuc_vu} onChange={(e) => setBenB({ ...benB, chuc_vu: e.target.value })} />
-          </label>
-          <label>
-            Người nhận
-            <input value={benB.nguoi_nhan} onChange={(e) => setBenB({ ...benB, nguoi_nhan: e.target.value })} />
-          </label>
-          <label>
-            Điện thoại
-            <input value={benB.dien_thoai} onChange={(e) => setBenB({ ...benB, dien_thoai: e.target.value })} />
-          </label>
-        </div>
-      </div>
+      </section>
 
-      <div className="panel">
-        <h3>4. Danh sách hàng hóa</h3>
-        {items.some((item) => item.ten.trim() && !item.dvt.trim()) && <div className="stock-form-alert">Có {items.filter((item) => item.ten.trim() && !item.dvt.trim()).length} dòng thiếu đơn vị tính.</div>}
-        <table className="doc-table">
-          <thead>
-            <tr>
-              <th>Tên hàng hóa</th>
-              <th style={{ width: "16%" }}>Đơn vị</th>
-              <th style={{ width: "16%" }}>Số lượng</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, i) => (
-              <tr key={i}>
-                <td>
-                  <input value={it.ten} onChange={(e) => setItem(i, "ten", e.target.value)} />
-                  {stockByName.get(normName(it.ten)) && <span className={`chip sm ${(stockByName.get(normName(it.ten))?.qty ?? 0) >= Number(it.so_luong || 0) ? "green" : "red"}`}>Tồn ngày {ngay.day}/{ngay.month}: {stockByName.get(normName(it.ten))?.qty} {stockByName.get(normName(it.ten))?.dvt || "(thiếu ĐVT)"}</span>}
-                </td>
-                <td>
-                  <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
-                </td>
-                <td>
-                  <input value={it.so_luong} onChange={(e) => setItem(i, "so_luong", e.target.value)} />
-                </td>
-                <td>
-                  <button className="danger-link" onClick={() => setItems(items.filter((_, j) => j !== i))}>
-                    Xóa
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <button onClick={() => setItems([...items, { ten: "", dvt: "", so_luong: "" }])}>
-          + Thêm dòng
-        </button>
-      </div>
-
+      {parsed && <div className="bbbg-ai-result">
+        <span>AI đã điền dữ liệu nguồn</span>
+        <b>{suggested ? `Khớp khách hàng: ${suggested.name}` : "Chưa khớp khách hàng trong CRM"}</b>
+        <small>Hãy duyệt thông tin bên nhận và tồn kho trước khi tạo bản ký.</small>
+      </div>}
       {err && <div className="error">{err}</div>}
-      <button className="primary" disabled={busy || !benB.name || items.length === 0} onClick={generate}>
-        {busy ? "Đang sinh…" : "Sinh BBBG → Ký ngay"}
-      </button>
+
+      <div className="bbbg-workspace">
+        <div className="bbbg-editor">
+          <section className="bbbg-card">
+            <header><span>01 · THÔNG TIN BIÊN BẢN</span><h2>Dấu mốc của hồ sơ</h2></header>
+            <div className="bbbg-form-grid">
+              <label>Số BB<input value={soBb} onChange={(e) => setSoBb(e.target.value)} /></label>
+              <label>Nơi lập<input value={noiLap} onChange={(e) => setNoiLap(e.target.value)} /></label>
+              <label>Ngày<input type="number" value={ngay.day} onChange={(e) => setNgay({ ...ngay, day: +e.target.value })} /></label>
+              <label>Tháng<input type="number" value={ngay.month} onChange={(e) => setNgay({ ...ngay, month: +e.target.value })} /></label>
+              <label>Năm<input type="number" value={ngay.year} onChange={(e) => setNgay({ ...ngay, year: +e.target.value })} /></label>
+              <label>Mẫu template<select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)}>{templates.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}</select></label>
+            </div>
+          </section>
+
+          <section className="bbbg-card">
+            <header><span>02 · BÊN NHẬN</span><h2>Ai nhận bàn giao?</h2><p>Dán chữ ký email/Zalo hoặc chỉnh trực tiếp dữ liệu AI đã đọc.</p></header>
+            <SmartPartyPaste onApply={(data) => setBenB((current) => ({
+              ...current,
+              ...Object.fromEntries(Object.entries(data).filter(([, value]) => value)),
+            }))} />
+            <div className="bbbg-party-grid">
+              <label className="wide">Tên đơn vị<input value={benB.name} onChange={(e) => setBenB({ ...benB, name: e.target.value })} /></label>
+              <label className="wide">Địa chỉ<input value={benB.address} onChange={(e) => setBenB({ ...benB, address: e.target.value })} /></label>
+              <label>Mã số thuế<input value={benB.mst} onChange={(e) => setBenB({ ...benB, mst: e.target.value })} /></label>
+              <label>Đại diện<input value={benB.dai_dien} onChange={(e) => setBenB({ ...benB, dai_dien: e.target.value })} /></label>
+              <label>Chức vụ<input value={benB.chuc_vu} onChange={(e) => setBenB({ ...benB, chuc_vu: e.target.value })} /></label>
+              <label>Người nhận<input value={benB.nguoi_nhan} onChange={(e) => setBenB({ ...benB, nguoi_nhan: e.target.value })} /></label>
+              <label>Điện thoại<input value={benB.dien_thoai} onChange={(e) => setBenB({ ...benB, dien_thoai: e.target.value })} /></label>
+              <label>Email<input value={benB.email} onChange={(e) => setBenB({ ...benB, email: e.target.value })} /></label>
+            </div>
+          </section>
+
+          <section className="bbbg-card bbbg-items-card">
+            <header><span>03 · HÀNG HÓA</span><h2>Danh mục bàn giao</h2><p>Đối chiếu số lượng với tồn kho tại ngày lập biên bản.</p></header>
+            {missingUnits > 0 && <div className="stock-form-alert">Có {missingUnits} dòng thiếu đơn vị tính.</div>}
+            <div className="bbbg-items-scroll"><table className="doc-table"><thead><tr><th>Tên hàng hóa</th><th>Đơn vị</th><th>Số lượng</th><th></th></tr></thead><tbody>
+              {items.map((it, i) => <tr key={i}><td><input value={it.ten} onChange={(e) => setItem(i, "ten", e.target.value)} />{stockByName.get(normName(it.ten)) && <span className={`chip sm ${(stockByName.get(normName(it.ten))?.qty ?? 0) >= Number(it.so_luong || 0) ? "green" : "red"}`}>Tồn {ngay.day}/{ngay.month}: {stockByName.get(normName(it.ten))?.qty} {stockByName.get(normName(it.ten))?.dvt || "(thiếu ĐVT)"}</span>}</td><td><input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} /></td><td><input value={it.so_luong} onChange={(e) => setItem(i, "so_luong", e.target.value)} /></td><td><button className="danger-link" onClick={() => setItems(items.filter((_, j) => j !== i))}>Xóa</button></td></tr>)}
+            </tbody></table></div>
+            <button className="bbbg-add-row" onClick={() => setItems([...items, { ten: "", dvt: "", so_luong: "" }])}>+ Thêm hàng hóa</button>
+          </section>
+        </div>
+
+        <aside className="bbbg-summary">
+          <span>TRẠNG THÁI HỒ SƠ</span>
+          <h2>{ready ? "Sẵn sàng tạo biên bản" : "Cần hoàn thiện dữ liệu"}</h2>
+          <div><small>Bên nhận</small><b>{benB.name || "Chưa có"}</b></div>
+          <div><small>Hàng hóa</small><b>{items.length} dòng</b></div>
+          <div><small>Đơn vị tính</small><b>{missingUnits ? `Thiếu ${missingUnits} dòng` : "Đầy đủ"}</b></div>
+          <div><small>Mẫu</small><b>{templates.find((item) => item.key === templateKey)?.label || templateKey}</b></div>
+          <button className="primary" disabled={busy || !benB.name || items.length === 0} onClick={generate}>{busy ? "Đang sinh PDF…" : "Sinh BBBG → Ký ngay"}</button>
+          <p>PDF được tạo ở bước kế tiếp; dữ liệu hiện tại vẫn có thể kiểm tra trước khi ký.</p>
+        </aside>
+      </div>
     </div>
   );
 }

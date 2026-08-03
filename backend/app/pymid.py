@@ -16,7 +16,7 @@ CATALOG = [
     {"code": "ROUTER-PYMID", "name": "Router Wi-Fi cho PYMID Center", "unit": "Cái", "source_price": 220000, "category": "hardware"},
     {"code": "SW-BIEU-DO", "name": "Phần mềm xuất số liệu và biểu đồ phục vụ phân tích", "unit": "Gói", "source_price": 150000, "category": "software"},
     {"code": "SW-PHUN-SUONG", "name": "Phần mềm điều khiển phun sương theo điều kiện độ ẩm và timer", "unit": "Gói", "source_price": 550000, "category": "software"},
-    {"code": "SW-NHIET", "name": "Phần mềm điều khiển nhiệt", "unit": "Gói", "source_price": 3000000, "category": "software"},
+    {"code": "SW-NHIET", "name": "Phần mềm điều khiển nhiệt", "unit": "Gói", "source_price": 300000, "category": "software"},
     {"code": "SENSOR-SHT30", "name": "Cảm biến nhiệt độ, độ ẩm RS485 SHT30", "unit": "Cái", "source_price": 570000, "category": "hardware"},
     {"code": "CABLE-SENSOR-4C", "name": "Dây cảm biến nhiệt độ, độ ẩm 4 lõi 4 màu", "unit": "Mét", "source_price": 6037, "category": "hardware"},
     {"code": "SW-CHECK-AUDIO", "name": "Phần mềm kiểm tra ổn định công suất dây âm thanh", "unit": "Gói", "source_price": 250000, "category": "software"},
@@ -57,4 +57,3 @@ def price_for(source_price: float, category: str, policy: dict) -> dict:
 def invoice_name(level: int) -> str:
     return ("iNut Nebi - Bộ giải pháp nhà yến cho kết cấu giám sát, lưu trữ, "
             f"Model Level {level} - Phiên bản tùy chỉnh theo cấu hình mong muốn của khách hàng từ phần cứng")
-

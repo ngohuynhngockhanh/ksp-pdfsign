@@ -14,6 +14,7 @@ from app.payroll import (
     calculate_payroll,
     calculate_pit,
     calculate_annual_pit,
+    plan_annual_bonus,
     insurance_base_cap,
     plan_net_target,
     review_workbook,
@@ -80,6 +81,23 @@ def test_annual_pit_caps_education_deduction_and_never_goes_negative():
     assert result["education_deduction"] == 24_000_000
     assert result["annual_taxable_income"] == 0
     assert result["annual_pit"] == 0
+
+
+def test_bonus_plan_compares_net_bonus_and_recommends_staying_before_next_band():
+    plan = plan_annual_bonus(
+        taxable_income_before_deductions=420_000_000,
+        employee_insurance=30_000_000,
+        dependent_months=0,
+        reference_monthly_gross=30_000_000,
+    )
+
+    assert len(plan["scenarios"]) >= 4
+    assert plan["recommended"]["gross_bonus"] > 0
+    assert plan["recommended"]["additional_pit"] >= 0
+    assert plan["recommended"]["net_bonus"] == (
+        plan["recommended"]["gross_bonus"] - plan["recommended"]["additional_pit"]
+    )
+    assert plan["recommended"]["gross_bonus"] <= plan["next_band_headroom"]
 
 
 def test_july_meal_allowance_caps_exempt_amount_and_overtime_is_exempt():
@@ -556,6 +574,15 @@ def test_hr_summary_tracks_paid_outstanding_and_annual_tax(client, tmp_path):
     assert employee["outstanding"] == 35_775_770
     assert employee["tax"]["withheld"] == 0
     assert employee["tax"]["annual_pit"] == 0
+
+    forecast = client.get("/api/payroll/forecast?year=2026&growth_rate=0")
+    assert forecast.status_code == 200, forecast.text
+    assert [month["month"] for month in forecast.json()["future_months"]] == [
+        "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
+    ]
+    assert forecast.json()["recommended"]["gross_bonus"] > 0
+    assert forecast.json()["scenarios"][0]["gross_bonus"] == 0
+    assert forecast.json()["employees"][0]["recommended_bonus"] > 0
 
     paid = client.post("/api/payroll/payments", json={
         "employee_id": employee["employee_id"],

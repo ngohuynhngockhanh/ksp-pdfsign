@@ -447,3 +447,43 @@ def test_contract_drafts_are_independent_per_customer(client):
     assert deleted.status_code == 200
     rows = client.get("/api/contract/drafts", params={"customer_id": cid}).json()
     assert [row["id"] for row in rows] == [first.json()["id"]]
+
+
+def test_finalized_contract_session_is_immutable_and_next_session_gets_new_version(client, monkeypatch):
+    _login(client)
+    customer = client.post("/api/customers", json={
+        "name": "Cong Ty Chot Hop Dong", "tax_code": "0312345688",
+    }).json()
+    body = {
+        "customer_id": customer["id"], "title": "Hop dong trien khai dot 1",
+        "payload": {
+            "so": "01/2026/HD", "ngay": {"day": 31, "month": 7, "year": 2026},
+            "ben_b": {"name": customer["name"], "mst": customer["tax_code"],
+                      "dai_dien": "Nguyen Van A"},
+        },
+    }
+    draft = client.post("/api/contract/drafts", json=body)
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["version"] == 1
+
+    from app import main
+    monkeypatch.setattr(main.bbbg, "render_contract", lambda settings, payload: PDF)
+    generated = client.post("/api/contract/generate", json={
+        **body["payload"], "dieu_khoan": main.bbbg.BAOTOAN_CONTRACT_TERMS_REV2,
+        "draft_id": draft.json()["id"], "filename": "hop-dong-dot-1.pdf",
+    })
+    assert generated.status_code == 200, generated.text
+    assert generated.json()["session_finalized"] is True
+
+    finalized = client.get("/api/contract/drafts", params={"customer_id": customer["id"]}).json()[0]
+    assert finalized["status"] == "finalized"
+    assert finalized["document_id"] == generated.json()["document_id"]
+    assert finalized["finalized_at"]
+
+    assert client.put(f"/api/contract/drafts/{draft.json()['id']}", json=body).status_code == 409
+    assert client.delete(f"/api/contract/drafts/{draft.json()['id']}").status_code == 409
+
+    next_session = client.post("/api/contract/drafts", json={**body, "title": "Hop dong trien khai dot 2"})
+    assert next_session.status_code == 200, next_session.text
+    assert next_session.json()["version"] == 2
+    assert next_session.json()["status"] == "draft"

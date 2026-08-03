@@ -288,6 +288,7 @@ class QuoteGenerate(BaseModel):
 
 # --- Hop dong phan mem / van hanh ---
 class ContractGenerate(BaseModel):
+    draft_id: int | None = None
     so: str = ""
     revision: str = ""
     ngay: BBBGDate

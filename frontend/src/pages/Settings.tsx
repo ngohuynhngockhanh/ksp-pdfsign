@@ -18,7 +18,15 @@ function SettingIcon({ name }: { name: SettingIconName }) {
   return <svg className="setting-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
-export function Settings() {
+export function Settings({
+  usingDefaultSecrets = false,
+  mustChangePassword = false,
+  onChangePassword,
+}: {
+  usingDefaultSecrets?: boolean;
+  mustChangePassword?: boolean;
+  onChangePassword?: () => void;
+}) {
   const [s, setS] = useState<AppSettings | null>(null);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -188,6 +196,14 @@ export function Settings() {
       </header>
       {err && <div className="error">{err}</div>}
       {msg && <div className="settings-toast" role="status">{msg}</div>}
+
+      {(usingDefaultSecrets || mustChangePassword) && <section className="settings-security-center" role="region" aria-label="Bảo mật tài khoản và khóa hệ thống">
+        <div><span className="eyebrow">SECURITY ATTENTION</span><h3>Cần hoàn tất cấu hình bảo mật</h3><p>Cảnh báo được gom tại đây để không che các màn hình vận hành.</p></div>
+        <div className="settings-security-items">
+          {usingDefaultSecrets && <article><b>Mật khẩu/khóa mặc định</b><span>Đổi các secret mặc định trong <code>.env</code> trước khi đưa hệ thống ra môi trường thật.</span></article>}
+          {mustChangePassword && <article><b>Mật khẩu tạm</b><span>Tài khoản hiện tại cần đặt mật khẩu riêng để kết thúc trạng thái khởi tạo.</span><button type="button" onClick={onChangePassword}>Đổi mật khẩu tài khoản</button></article>}
+        </div>
+      </section>}
 
       <div className="settings-grid">
 

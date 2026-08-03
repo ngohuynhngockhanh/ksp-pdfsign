@@ -7,8 +7,37 @@ const statusLabel: Record<string, string> = {
 };
 const kindLabel: Record<string, string> = {
   customs_declaration: "Tờ khai", ci: "CI", pl: "PL", coo: "C/O", bill_of_lading: "Vận đơn",
-  tax_receipt: "Giấy nộp thuế", payment: "Thanh toán", contract_po: "Hợp đồng/PO", other: "Khác",
+  tax_receipt: "Giấy nộp thuế", payment: "Thanh toán", contract_po: "Hợp đồng/PO",
+  datasheet: "Datasheet", arrival_notice: "AN · Arrival Notice",
+  product_photo: "Hình chụp sản phẩm", other: "Khác",
 };
+const kindPurpose: Record<string, string> = {
+  customs_declaration: "Nguồn chính để đối chiếu số tờ khai, luồng, trị giá và nghĩa vụ thuế.",
+  ci: "Đối chiếu trị giá, người bán, điều kiện giao hàng và thanh toán.",
+  pl: "Kiểm tra quy cách đóng gói, số kiện, số lượng và trọng lượng hàng.",
+  coo: "Xác minh xuất xứ và căn cứ xem xét ưu đãi thuế nhập khẩu.",
+  bill_of_lading: "Đối chiếu hành trình vận chuyển, người gửi, người nhận và số vận đơn.",
+  tax_receipt: "Xác nhận các khoản thuế và lệ phí hải quan đã nộp.",
+  payment: "Đối chiếu khoản thanh toán quốc tế, ngoại tệ và phí ngân hàng.",
+  contract_po: "Đối chiếu điều khoản mua bán, đơn giá, số lượng và cam kết hai bên.",
+  datasheet: "Đối chiếu thông số kỹ thuật, model, điện áp, vật liệu và tiêu chuẩn của hàng nhập.",
+  arrival_notice: "Đối chiếu ngày tàu đến, cảng dỡ hàng, số vận đơn và thời hạn nhận hàng.",
+  product_photo: "Đối chiếu hình dáng, nhãn, model và tình trạng thực tế; OCR nhãn để tìm thông tin xuất xứ.",
+  other: "Chưa xác định vai trò; cần xét lại loại chứng từ.",
+};
+const checklistLabel: Record<string, string> = {
+  declaration: "Tờ khai", ci: "CI", pl: "PL", origin: "Xuất xứ",
+  bill_of_lading: "Vận đơn", tax_receipt: "Giấy nộp thuế",
+  contract_po: "Hợp đồng/PO", payment: "Thanh toán",
+};
+const documentKinds = Object.keys(kindLabel);
+
+function formatSize(bytes: number): string {
+  if (bytes < 0) return "Google native";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 const supplierNote = `CONSIGNEE
 Company: INUT TECHNOLOGY DEVELOPMENT AND INVESTMENT JOINT STOCK COMPANY
 Tax code: 4401053694
@@ -29,6 +58,8 @@ export function CustomsDriveDossiers() {
   const [declarations, setDeclarations] = useState<InvCustomsDecl[]>([]);
   const [filter, setFilter] = useState("all");
   const [busy, setBusy] = useState(false);
+  const [savingDocumentId, setSavingDocumentId] = useState<number | null>(null);
+  const [savedDocumentId, setSavedDocumentId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
 
   async function load() {
@@ -56,8 +87,27 @@ export function CustomsDriveDossiers() {
     catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
   async function review(folderId: number) {
-    try { setBusy(true); await api.customsDriveReview(folderId); await load(); setMessage("Đã kiểm tra lại checklist hồ sơ."); }
+    try { setBusy(true); await api.customsDriveReview(folderId); await load(); setMessage("Đã đọc lại file và OCR nhãn sản phẩm để cập nhật checklist."); }
     catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
+  async function setDocumentKind(documentId: number, kind: string) {
+    const previousFolders = folders;
+    setSavingDocumentId(documentId); setSavedDocumentId(null); setMessage("");
+    setFolders((current) => current.map((row) => ({
+      ...row,
+      documents: row.documents.map((doc) => doc.id === documentId
+        ? { ...doc, kind, kind_manual: true }
+        : doc),
+    })));
+    try {
+      const updated = await api.customsDriveSetDocumentKind(documentId, kind);
+      setFolders((current) => current.map((row) => row.id === updated.id ? updated : row));
+      setSavedDocumentId(documentId);
+      setMessage("Đã lưu tự động loại chứng từ và tính lại checklist hồ sơ.");
+    } catch (error) {
+      setFolders(previousFolders);
+      setMessage(`Không thể tự lưu; đã trả về loại cũ. ${(error as Error).message}`);
+    } finally { setSavingDocumentId(null); }
   }
   async function copySupplierNote() {
     try {
@@ -103,13 +153,28 @@ export function CustomsDriveDossiers() {
       </div>
     </details>
     <div className="customs-drive-stats"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><b>{folders.length}</b><span>Tổng folder</span></button><button className={filter === "linked" ? "active" : ""} onClick={() => setFilter("linked")}><b>{counts.linked ?? 0}</b><span>Đã liên kết</span></button><button className={filter === "waiting_declaration" ? "active" : ""} onClick={() => setFilter("waiting_declaration")}><b>{counts.waiting_declaration ?? 0}</b><span>Chờ tờ khai</span></button><button className={filter === "ambiguous" ? "active" : ""} onClick={() => setFilter("ambiguous")}><b>{counts.ambiguous ?? 0}</b><span>Chờ gán</span></button><button className={filter === "missing_documents" ? "active" : ""} onClick={() => setFilter("missing_documents")}><b>{counts.missing_documents ?? 0}</b><span>Thiếu chứng từ</span></button></div>
-    {!visible.length ? <p className="muted customs-drive-empty">Chưa có dữ liệu. Hãy kiểm tra folder ID rồi bấm Đồng bộ Drive.</p> : <div className="customs-drive-list">{visible.map((row) => <article key={row.id} className={`customs-drive-card ${row.link_status}`}>
+    {!visible.length ? <p className="muted customs-drive-empty">Chưa có dữ liệu. Hãy kiểm tra folder ID rồi bấm Đồng bộ Drive.</p> : <div className="customs-drive-list">{visible.map((row) => {
+      const present = Object.entries(row.checklist).filter(([, value]) => value.state === "ok").map(([key]) => checklistLabel[key] ?? key);
+      const missing = Object.entries(row.checklist).filter(([, value]) => value.state === "missing").map(([key]) => checklistLabel[key] ?? key);
+      return <article key={row.id} className={`customs-drive-card ${row.link_status}`} role="region" aria-label={`Bộ hồ sơ ${row.name}`}>
       <header><div><strong>{row.name}</strong><small>{row.path}</small></div><div className="customs-drive-badges"><span className={`chip sm ${row.link_status === "linked" ? "green" : "amber"}`}>{statusLabel[row.link_status] ?? row.link_status}</span><span className={`chip sm ${row.dossier_status === "complete" ? "green" : row.dossier_status === "missing_documents" ? "red" : "amber"}`}>{statusLabel[row.dossier_status] ?? row.dossier_status}</span></div></header>
       <p className="customs-drive-reason">{row.match_reason}</p>
-      <div className="customs-drive-checklist">{Object.entries(row.checklist).map(([key, value]) => <span className={value.state} key={key}>{value.state === "ok" ? "✓" : value.state === "missing" ? "!" : "•"} {key}</span>)}</div>
-      <div className="customs-drive-files">{row.documents.map((doc) => <a key={doc.id} href={doc.file_url || row.drive_url} target="_blank" rel="noreferrer"><b>{kindLabel[doc.kind] ?? doc.kind}</b> {doc.name}</a>)}</div>
+      <div className="customs-drive-coverage"><span><b>Đã có</b>{present.length ? present.join(" · ") : "Chưa xác nhận"}</span><span className={missing.length ? "missing" : "complete"}><b>Còn thiếu</b>{missing.length ? missing.join(" · ") : "Không có mục bắt buộc"}</span></div>
+      <div className="customs-drive-checklist">{Object.entries(row.checklist).map(([key, value]) => <span className={value.state} key={key}>{value.state === "ok" ? "✓" : value.state === "missing" ? "!" : "•"} {checklistLabel[key] ?? key}</span>)}</div>
+      <div className="customs-drive-table-wrap">
+        <table className="customs-drive-table">
+          <thead><tr><th>Chứng từ</th><th>Loại chứng từ</th><th>Liên quan / dùng để làm gì</th><th>Trạng thái đọc file</th><th></th></tr></thead>
+          <tbody>{row.documents.map((doc) => <tr key={doc.id} className={`customs-doc-row kind-${doc.kind}`}>
+            <td><strong>{doc.name}</strong><small>{formatSize(doc.size)} · {doc.mime_type || "Không rõ định dạng"}</small></td>
+            <td><div className={`customs-kind-control kind-${doc.kind}`}><span className="customs-kind-swatch" aria-hidden="true" /><select aria-label={`Loại chứng từ của ${doc.name}`} value={doc.kind} disabled={busy || savingDocumentId !== null} onChange={(e) => setDocumentKind(doc.id, e.target.value)}>{documentKinds.map((kind) => <option key={kind} value={kind}>{kindLabel[kind]}</option>)}</select></div><small>{savingDocumentId === doc.id ? "Đang tự lưu…" : savedDocumentId === doc.id ? "Đã lưu tự động" : doc.kind_manual ? "Đã xét thủ công" : "AI tự phân loại"}</small></td>
+            <td>{kindPurpose[doc.kind] ?? kindPurpose.other}</td>
+            <td>{doc.parse_error ? <span className="customs-file-error">{doc.parse_error}</span> : <span className="customs-file-ok">Đã đọc nội dung</span>}</td>
+            <td><a href={doc.file_url || row.drive_url} target="_blank" rel="noreferrer">Mở file ↗</a></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
       {row.findings.map((finding) => <div className={`finding ${finding.level}`} key={finding.code}>{finding.message}</div>)}
       <footer><a href={row.drive_url} target="_blank" rel="noreferrer">Mở folder Drive ↗</a><button className="secondary" disabled={busy} onClick={() => review(row.id)}>Kiểm tra lại</button>{row.link_status !== "linked" && <select aria-label={`Gán tờ khai cho ${row.name}`} defaultValue="" disabled={busy} onChange={(e) => assign(row.id, e.target.value)}><option value="">Gán vào tờ khai…</option>{declarations.map((decl) => <option key={decl.id} value={decl.id}>{decl.so_to_khai}</option>)}</select>}</footer>
-    </article>)}</div>}
+    </article>;})}</div>}
   </section>;
 }

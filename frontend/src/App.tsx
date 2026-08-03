@@ -188,9 +188,15 @@ export function App() {
           : isAdmin
             ? "home"
             : isPymidStaff ? "pymidcoop" : "mine";
-        const verifyPk = initial === "verify" ? Number(new URLSearchParams(window.location.search).get("doc")) : 0;
+        const routeParams = new URLSearchParams(window.location.search);
+        const verifyPk = initial === "verify" ? Number(routeParams.get("doc")) : 0;
         if (verifyPk > 0) setVerifyDocPk(verifyPk);
-        navigate(initial, true, verifyPk > 0 ? `?doc=${verifyPk}` : "");
+        const initialSearch = verifyPk > 0
+          ? `?doc=${verifyPk}`
+          : initial === "nas" && routeParams.get("path")
+            ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
+            : "";
+        navigate(initial, true, initialSearch);
       })
       .catch(() => setAuthed(false));
     const onPop = () => {
@@ -306,18 +312,6 @@ export function App() {
         </div>
       </header>
 
-      {isAdmin && me.using_default_secrets && (
-        <div className="warn-banner">
-          ⚠️ Đang dùng mật khẩu/khóa <b>mặc định</b>. Hãy đổi trong file <code>.env</code> trước khi
-          chạy thật.
-        </div>
-      )}
-      {me.must_change_password && (
-        <div className="warn-banner security-action">
-          Tài khoản đang dùng mật khẩu tạm. <button className="link-btn" onClick={changePassword}>Đổi mật khẩu ngay</button>
-        </div>
-      )}
-
       <div className="body-row">
         {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
         <aside className={"sidebar" + (menuOpen ? " open" : "")}>
@@ -391,7 +385,7 @@ export function App() {
         {tab === "customers" && isAdmin && <Customers />}
         {tab === "nas" && isAdmin && <NasBrowser />}
         {tab === "audit" && isAdmin && <AuditLog />}
-        {tab === "settings" && isAdmin && <Settings />}
+        {tab === "settings" && isAdmin && <Settings usingDefaultSecrets={me.using_default_secrets} mustChangePassword={me.must_change_password} onChangePassword={changePassword} />}
         {tab === "payroll" && isAdmin && <Payroll />}
         {tab === "mine" && <MyDocuments onVerify={goVerify} />}
         {tab === "verify" && (

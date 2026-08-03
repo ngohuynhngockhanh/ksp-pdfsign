@@ -43,10 +43,25 @@ test("admin reviews an anonymized payroll parsed from Excel", async ({ page }, t
           tax: { withheld: 142176, annual_pit: 0, annual_taxable_income: 0, balance: -142176,
             self_deduction: 186000000, dependent_deduction: 43400000, education_deduction: 0,
             basis: "Dữ liệu thu nhập do công ty quản lý" },
-          months: [{ month: "2026-07", statement_id: 6, source_import_id: 9,
+        months: [{ month: "2026-07", statement_id: 6, source_import_id: 9,
             gross_income: 29107561, employee_insurance: 577500, employer_insurance: 1182500, pit_withheld: 142176,
             net_payable: 28387885, paid: 28387885, outstanding: 0,
-            reconciliation_status: "missing_evidence", payments: [] }] }] } });
+          reconciliation_status: "missing_evidence", payments: [] }] }] } });
+    }
+    if (path === "/api/payroll/forecast") {
+      return route.fulfill({ json: {
+        year: 2026, actual_through: "2026-07", growth_rate: 0,
+        future_months: ["08", "09", "10", "11", "12"].map((month) => ({ month: `2026-${month}`, gross_income: 50822791, net_payable: 49525770, pit_estimate: 142176 })),
+        baseline: { gross_income: 304936746, net_payable: 297154620, annual_pit: 853056, pit_withheld: 853056 },
+        recommended: { gross_bonus: 42000000, additional_pit: 2100000, net_bonus: 39900000, effective_tax_rate: 0.05 },
+        scenarios: [
+          { key: "none", label: "Không thưởng", gross_bonus: 0, additional_pit: 0, net_bonus: 0, effective_tax_rate: 0 },
+          { key: "half_month", label: "0,5 tháng thu nhập", gross_bonus: 25000000, additional_pit: 1250000, net_bonus: 23750000, effective_tax_rate: 0.05 },
+          { key: "one_month", label: "1 tháng thu nhập", gross_bonus: 50000000, additional_pit: 3000000, net_bonus: 47000000, effective_tax_rate: 0.06 },
+        ],
+        employees: [{ employee_id: 2, name: "Huỳnh Đức Nhâm", reference_monthly_gross: 21715385, next_band_headroom: 25000000, recommended_bonus: 21715385, additional_pit: 1085769, net_bonus: 20629616 }],
+        assumptions: ["Dự phóng theo bình quân tối đa 3 tháng gần nhất.", "Thưởng hiệu quả biến động không làm tăng nền BHXH khi có quy chế và quyết định riêng."],
+      } });
     }
     if (path === "/api/payroll/payments" && route.request().method() === "POST") {
       hrPaid = route.request().postDataJSON().amount;
@@ -131,6 +146,9 @@ test("admin reviews an anonymized payroll parsed from Excel", async ({ page }, t
   await expect(page.getByText("Nguồn chuẩn là file Excel đã sync và parse từ Google Drive.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Tạo tháng" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Bức tranh HR năm 2026" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kịch bản lương & thưởng cuối năm" })).toBeVisible();
+  await expect(page.getByText("42.000.000")).toBeVisible();
+  await expect(page.getByText("39.900.000")).toBeVisible();
   await expect(page.getByLabel("Tổng quan thanh toán và thuế năm")).toContainText("49.525.770");
   await expect(page.getByRole("heading", { name: "Biểu đồ lương và thuế" })).toBeVisible();
   await expect(page.getByLabel("Biểu đồ của Huỳnh Đức Nhâm")).toContainText("21.137.885");
