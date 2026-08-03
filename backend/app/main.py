@@ -1416,6 +1416,27 @@ async def public_training_session_create(
     return {"sessionId": row.id, "sessionToken": token, "phoneLast4": row.phone_last4}
 
 
+@app.get("/internal/public-training/sessions")
+async def public_training_session_restore(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Restore a browser session without returning the stored phone number."""
+    await public_training.require_internal_signature(request, settings)
+    token = request.query_params.get("sessionToken", "")
+    session = _public_session_by_token(db, token)
+    if session is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phiên hỏi đáp không hợp lệ")
+    session.last_seen_at = datetime.now(timezone.utc)
+    db.commit()
+    return {
+        "sessionId": session.id,
+        "phoneLast4": session.phone_last4,
+        "locale": session.locale,
+    }
+
+
 @app.post("/internal/public-training/questions", status_code=status.HTTP_202_ACCEPTED)
 async def public_training_question_create(
     request: Request,
