@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # De nghi thanh toan - letterhead rieng (khac BBBG: TP.HCM / Tong giam doc)
     dntt_noi_lap: str = "TP.HCM"
-    dntt_email: str = "hotro@mysmarthome.com.vn"
+    dntt_email: str = "khanhnhn@inut.vn"
     dntt_website: str = "inut.vn"
     dntt_rep: str = "NGÔ HUỲNH NGỌC KHÁNH"
     dntt_rep_title: str = "Tổng giám đốc"
