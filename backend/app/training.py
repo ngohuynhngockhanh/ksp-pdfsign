@@ -23,7 +23,7 @@ _EXECUTION_REQUEST = re.compile(
     r"(?:chạy|thực thi|execute)\s+(?:lệnh|command|shell|terminal)|rm\s+-rf\s+/|sudo\s+)")
 _MAX_TRAINING_MESSAGE_BYTES = 2000
 _AUTH_LOCK = threading.Lock()
-_AUTH_COOKIES: dict[tuple[str, str, int], str] = {}
+_AUTH_COOKIES: dict[tuple[str, str, object], str] = {}
 _METRICS_LOCK = threading.Lock()
 _REQUEST_TIMES: deque[float] = deque()
 _ACTIVE_REQUESTS = 0
@@ -107,9 +107,9 @@ def runtime_stats(settings: Settings) -> dict[str, Any]:
         }
 
 
-def _auth_cache_key(base: str, password: str, transport: httpx.BaseTransport | None) -> tuple[str, str, int]:
+def _auth_cache_key(base: str, password: str, transport: httpx.BaseTransport | None) -> tuple[str, str, object]:
     password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    return base, password_hash, id(transport) if transport is not None else 0
+    return base, password_hash, transport
 
 
 def _login(
@@ -117,7 +117,7 @@ def _login(
     base: str,
     origin: str,
     password: str,
-    cache_key: tuple[str, str, int],
+    cache_key: tuple[str, str, object],
     *,
     force: bool = False,
 ) -> str:
@@ -137,7 +137,7 @@ def _login(
         return cookie
 
 
-def _invalidate_auth(cache_key: tuple[str, str, int], cookie: str) -> None:
+def _invalidate_auth(cache_key: tuple[str, str, object], cookie: str) -> None:
     with _AUTH_LOCK:
         if _AUTH_COOKIES.get(cache_key) == cookie:
             _AUTH_COOKIES.pop(cache_key, None)

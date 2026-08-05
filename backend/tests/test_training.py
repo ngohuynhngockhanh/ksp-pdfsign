@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from collections import deque
 
 import httpx
 import pytest
@@ -205,6 +206,19 @@ def _cookie_handler(request: httpx.Request, calls: list[str]) -> httpx.Response:
         return httpx.Response(200, headers={"set-cookie": "ksp_chat_auth=test-cookie; Path=/"}, json={"ok": True})
     assert request.headers.get("cookie") == "ksp_chat_auth=test-cookie"
     return httpx.Response(200, json={"data": {"answer": "ok"}})
+
+
+def test_training_rate_limit_is_configurable(monkeypatch):
+    calls: list[str] = []
+    transport = httpx.MockTransport(lambda request: _cookie_handler(request, calls))
+    monkeypatch.setattr(training, "_transport", lambda: transport)
+    monkeypatch.setattr(training, "_REQUEST_TIMES", deque())
+
+    settings = _settings(training_rate_limit_per_minute=1, training_rate_window_seconds=60)
+    training.ask(settings, "Câu hỏi một")
+    with pytest.raises(training.TrainingError, match="gioi han"):
+        training.ask(settings, "Câu hỏi hai")
+    assert calls.count("/api/chat") == 1
 
 
 def test_training_background_job_reports_progress_and_result(monkeypatch):
