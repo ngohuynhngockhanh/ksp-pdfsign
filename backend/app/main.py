@@ -265,6 +265,29 @@ def health(settings: Settings = Depends(get_settings)):
     return {"status": "ok", "using_default_secrets": settings.using_default_secrets}
 
 
+@app.get("/api/public/site-config")
+def public_site_config(settings: Settings = Depends(get_settings)):
+    """Return the small, non-sensitive contact surface used by iNut.vn.
+
+    The website consumes this through its own server-side BFF. Keep this
+    response deliberately narrow: payment details, credentials, AI settings,
+    and operational URLs must never become public site configuration.
+    """
+    return {
+        "brand": {
+            "name": settings.bbbg_company,
+            "website": settings.dntt_website,
+        },
+        "contact": {
+            "company": settings.bbbg_company,
+            "address": settings.bbbg_address,
+            "phone": settings.bbbg_phone,
+            "email": settings.dntt_email,
+            "website": settings.dntt_website,
+        },
+    }
+
+
 # Chong do mat khau: sai lien tiep >= N lan trong cua so -> khoa IP 30 phut
 LOGIN_LOCK_FAILS = 5
 LOGIN_LOCK_MINUTES = 30
@@ -1831,6 +1854,17 @@ def _public_lead_out(row: TrainingPublicSession, *, reveal: bool = False) -> dic
     }
 
 
+def _public_query_answer(value: object, settings: Settings) -> dict:
+    """Flatten answer envelopes written by both old and current Hermes jobs."""
+    answer = value if isinstance(value, dict) else {}
+    for _ in range(2):
+        nested = answer.get("answer")
+        if not isinstance(nested, dict):
+            break
+        answer = nested
+    return public_training.sanitize_public_result(answer, settings)
+
+
 def _public_query_out(row: TrainingPublicQuery, settings: Settings) -> dict:
     try:
         answer = json.loads(row.answer_json or "{}")
@@ -1841,7 +1875,7 @@ def _public_query_out(row: TrainingPublicQuery, settings: Settings) -> dict:
         "question": row.question,
         "status": row.status,
         "stage": row.stage,
-        "answer": public_training.sanitize_public_result(answer, settings),
+        "answer": _public_query_answer(answer, settings),
         "createdAt": row.created_at.isoformat(),
         "completedAt": row.completed_at.isoformat() if row.completed_at else None,
         "durationMs": row.duration_ms,

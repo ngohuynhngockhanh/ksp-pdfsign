@@ -346,7 +346,8 @@ export interface TrainingPublicQuery {
   question: string;
   status: string;
   stage: string;
-  answer: TrainingAnswer;
+  // Older jobs stored the full Hermes response as { answer: TrainingAnswer }.
+  answer: TrainingAnswer | { answer: TrainingAnswer };
   createdAt: string;
   completedAt: string | null;
   durationMs: number;

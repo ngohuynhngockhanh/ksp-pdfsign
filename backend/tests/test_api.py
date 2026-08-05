@@ -104,6 +104,19 @@ def test_requires_auth(client):
     assert client.post("/api/upload").status_code == 401
 
 
+def test_public_site_config_contains_only_contact_fields(client):
+    response = client.get("/api/public/site-config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contact"]["company"]
+    assert body["contact"]["address"]
+    assert body["contact"]["phone"]
+    assert body["contact"]["email"]
+    assert "app_admin_password" not in response.text
+    assert "jwt_secret" not in response.text
+
+
 def test_login_bad(client):
     r = client.post("/api/login", json={"username": "admin", "password": "wrong"})
     assert r.status_code == 401

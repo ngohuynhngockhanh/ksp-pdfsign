@@ -181,6 +181,16 @@ def test_admin_can_manage_public_leads_and_reveal_phone_with_audit(client, monke
     detail = client.get(f"/api/training/public-leads/{session['sessionId']}?reveal=true")
     assert detail.status_code == 200
     assert detail.json()["phone"] == "0912345678"
+
+    # Hermes jobs created before the admin transcript contract was normalized
+    # store the full response as {"answer": {"answer": "..."}}.
+    nested = db.query(TrainingPublicQuery).filter_by(job_id="admin-job").one()
+    nested.answer_json = json.dumps({"sessionId": "legacy", "answer": {"answer": "A"}})
+    db.commit()
+    normalized = client.get(f"/api/training/public-leads/{session['sessionId']}")
+    assert normalized.status_code == 200
+    assert normalized.json()["queries"][0]["answer"]["answer"] == "A"
+
     updated = client.patch(f"/api/training/public-leads/{session['sessionId']}", json={"status": "qualified", "note": "Gọi lại"})
     assert updated.status_code == 200
     assert updated.json()["status"] == "qualified"
