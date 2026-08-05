@@ -415,6 +415,26 @@ export const api = {
       totals: { questions: number; tokens: number; successful: number };
       users: { username: string; questions: number; tokens: number; durationMs: number }[];
       recent: { username: string; question: string; status: string; tokens: number; durationMs: number; createdAt: string }[];
+      runtime: {
+        limit: number;
+        windowSeconds: number;
+        windowCount: number;
+        active: number;
+        total: number;
+        completed: number;
+        failed: number;
+        rejected: number;
+        lastError: string;
+      };
+      facebook: {
+        total: number;
+        inbound: number;
+        outbound: number;
+        replied: number;
+        failed: number;
+        statuses: Record<string, number>;
+        recent: { direction: string; status: string; text: string; error: string; createdAt: string }[];
+      };
       tokenNote: string;
     }>("/api/training/stats");
   },
@@ -2145,6 +2165,10 @@ export interface AppSettings {
   ai_model: string;
   ai_max_tokens: number;
   ai_timeout: number;
+  training_rate_limit_per_minute: number;
+  training_rate_window_seconds: number;
+  public_training_rate_limit: number;
+  public_training_rate_window_seconds: number;
   nas_enabled: boolean;
   nas_host: string;
   nas_share: string;

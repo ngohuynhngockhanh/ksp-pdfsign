@@ -96,6 +96,7 @@ from .db import (
     TrainingKnowledge,
     TrainingPublicSession,
     TrainingPublicQuery,
+    FacebookMessage,
     User,
     get_session,
     init_db,
@@ -1489,7 +1490,7 @@ async def public_training_question_create(
         question = public_training.validate_question(str(body.get("question", "")))
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    since = datetime.now(timezone.utc) - timedelta(minutes=15)
+    since = datetime.now(timezone.utc) - timedelta(seconds=max(1, settings.public_training_rate_window_seconds))
     recent = db.scalar(select(func.count(TrainingPublicQuery.id)).where(
         TrainingPublicQuery.session_id == session.id,
         TrainingPublicQuery.created_at >= since,
@@ -1826,12 +1827,17 @@ def training_stats(
     db: Session = Depends(get_session),
 ):
     rows = list(db.scalars(select(TrainingQuery).order_by(TrainingQuery.created_at.desc()).limit(1000)))
+    facebook_rows = list(db.scalars(select(FacebookMessage).order_by(FacebookMessage.created_at.desc()).limit(1000)))
     users: dict[str, dict] = {}
     for row in rows:
         item = users.setdefault(row.username, {"username": row.username, "questions": 0, "tokens": 0, "durationMs": 0})
         item["questions"] += 1
         item["tokens"] += row.input_tokens_est + row.output_tokens_est
         item["durationMs"] += row.duration_ms
+    facebook_statuses: dict[str, int] = {}
+    for row in facebook_rows:
+        key = f"{row.direction}_{row.status}"
+        facebook_statuses[key] = facebook_statuses.get(key, 0) + 1
     return {
         "totals": {
             "questions": len(rows),
@@ -1847,6 +1853,22 @@ def training_stats(
             "durationMs": row.duration_ms,
             "createdAt": row.created_at.isoformat(),
         } for row in rows[:30]],
+        "runtime": training.runtime_stats(get_settings()),
+        "facebook": {
+            "total": len(facebook_rows),
+            "inbound": sum(row.direction == "inbound" for row in facebook_rows),
+            "outbound": sum(row.direction == "outbound" for row in facebook_rows),
+            "replied": sum(row.status == "replied" for row in facebook_rows),
+            "failed": sum(row.status == "failed" for row in facebook_rows),
+            "statuses": facebook_statuses,
+            "recent": [{
+                "direction": row.direction,
+                "status": row.status,
+                "text": row.text[:160],
+                "error": row.error[:240],
+                "createdAt": row.created_at.isoformat(),
+            } for row in facebook_rows[:20]],
+        },
         "tokenNote": "Token ước tính từ độ dài câu hỏi và câu trả lời; Hermes CLI chưa trả usage chuẩn.",
     }
 
@@ -2913,6 +2935,10 @@ def get_app_settings(
         "ai_model": settings.ai_model,
         "ai_max_tokens": settings.ai_max_tokens,
         "ai_timeout": settings.ai_timeout,
+        "training_rate_limit_per_minute": settings.training_rate_limit_per_minute,
+        "training_rate_window_seconds": settings.training_rate_window_seconds,
+        "public_training_rate_limit": settings.public_training_rate_limit,
+        "public_training_rate_window_seconds": settings.public_training_rate_window_seconds,
         "nas_enabled": settings.nas_enabled,
         "nas_host": settings.nas_host,
         "nas_share": settings.nas_share,

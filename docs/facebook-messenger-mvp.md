@@ -9,8 +9,8 @@ gọi iNut Training/Hermes và gửi câu trả lời lại qua Meta Graph API.
 https://ksp-pdf-signer.p2p.inut.io.vn/webhooks/facebook
 ```
 
-Page ID đọc được từ trang công khai `inut.jsc` là `100063494173321`. Hãy xác
-nhận lại ID này trong Meta Business trước khi tạo Page Access Token.
+Page đang kết nối là `INUT JSC - IoT and Edge Computing`, Page ID
+`1698631723787176`.
 
 ## Cấu hình server
 
@@ -25,6 +25,8 @@ FACEBOOK_PAGE_ACCESS_TOKEN=<Page-Access-Token>
 FACEBOOK_GRAPH_BASE_URL=https://graph.facebook.com
 FACEBOOK_GRAPH_VERSION=v23.0
 FACEBOOK_REPLY_ENABLED=true
+TRAINING_RATE_LIMIT_PER_MINUTE=100
+TRAINING_RATE_WINDOW_SECONDS=60
 ```
 
 `FACEBOOK_VERIFY_TOKEN`, App Secret và Page Access Token không được gửi trong
@@ -55,8 +57,16 @@ và sổ kho. Hermes được nhắc rõ không tự bịa giá/tồn/giao hàng
 chốt giá chính thức, cấu hình đặc biệt hoặc đơn lớn sẽ được đánh dấu chuyển
 nhân viên.
 
+Hermes profile `inuttraining` đang dùng model `hermes` qua nine-router. KSP tái
+sử dụng phiên đăng nhập Hermes để không đốt giới hạn đăng nhập 5 lần/10 phút;
+rate limit Training mặc định là 100 yêu cầu/60 giây và có thể chỉnh trong
+`Cài đặt hệ thống`.
+
 MVP hiện xử lý văn bản và attachment placeholder; chưa tự phân tích ảnh/voice,
 chưa tạo báo giá hoặc hóa đơn và chưa tự ghi sổ kho.
+
+Quản trị viên xem thống kê rate, lỗi/reject Training và số tin vào/ra Facebook
+trong trang `Training`.
 
 ## Kiểm tra nhanh
 

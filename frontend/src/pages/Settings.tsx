@@ -85,6 +85,10 @@ export function Settings({
         ai_model: s.ai_model,
         ai_max_tokens: s.ai_max_tokens,
         ai_timeout: s.ai_timeout,
+        training_rate_limit_per_minute: s.training_rate_limit_per_minute,
+        training_rate_window_seconds: s.training_rate_window_seconds,
+        public_training_rate_limit: s.public_training_rate_limit,
+        public_training_rate_window_seconds: s.public_training_rate_window_seconds,
         nas_enabled: s.nas_enabled,
         nas_host: s.nas_host,
         nas_share: s.nas_share,
@@ -271,6 +275,32 @@ export function Settings({
           <div className="ai-test-run"><button className="btn-sm" disabled={busy || !aiPrompt.trim()} onClick={testAi}>{busy ? "Đang gọi…" : "🧪 Lưu & chạy prompt"}</button>{aiTestMsg && <span className="muted">{aiTestMsg}</span>}</div>
           {aiReply && <pre className="ai-test-reply">{aiReply}</pre>}
         </div>
+      </section>
+
+      {/* ---- TRAINING ---- */}
+      <section className="panel setting-card setting-ai">
+        <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="ai" /></span><div><span className="setting-card-kicker">HERMES TRAINING</span><h3>Giới hạn nhịp hỏi</h3><p>Cấu hình ngay trên KSP, không cần sửa code</p></div><span className="setting-state on">{s.training_rate_limit_per_minute}/{s.training_rate_window_seconds}s</span></header>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <label style={{ flex: 1, minWidth: 180 }}>
+            Training nội bộ + Messenger (lần)
+            <input type="number" min={1} max={10000} value={s.training_rate_limit_per_minute} onChange={(e) => set("training_rate_limit_per_minute", Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label style={{ width: 150 }}>
+            Cửa sổ (giây)
+            <input type="number" min={1} max={3600} value={s.training_rate_window_seconds} onChange={(e) => set("training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <label style={{ flex: 1, minWidth: 180 }}>
+            Trợ lý công khai iNut.vn (lần)
+            <input type="number" min={1} max={10000} value={s.public_training_rate_limit} onChange={(e) => set("public_training_rate_limit", Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label style={{ width: 150 }}>
+            Cửa sổ công khai (giây)
+            <input type="number" min={1} max={3600} value={s.public_training_rate_window_seconds} onChange={(e) => set("public_training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+        </div>
+        <p className="muted">Mặc định đã đặt 100 lần/phút. Trang Training hiển thị số đang chạy, hoàn tất, lỗi và bị từ chối.</p>
       </section>
 
       {/* ---- NAS ---- */}

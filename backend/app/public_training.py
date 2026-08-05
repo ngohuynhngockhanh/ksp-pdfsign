@@ -38,7 +38,7 @@ def normalize_phone(value: str) -> str:
 
 def validate_question(value: str) -> str:
     question = value.strip()
-    if not question or len(question) > 2000:
+    if not question or len(question.encode("utf-8")) > 2000:
         raise ValueError("Câu hỏi phải từ 1 đến 2000 ký tự")
     if re.search(r"(?i)(?:call\s*:\s*default_api|mcp__|tool\s*call|(?:hãy|hay|giúp tôi|vui lòng)\s+(?:chạy|thực thi|execute)\s+(?:lệnh|command|shell|terminal)|rm\s+-rf\s+/|sudo\s+)", question):
         raise ValueError("Training chỉ hỗ trợ tra cứu có nguồn")

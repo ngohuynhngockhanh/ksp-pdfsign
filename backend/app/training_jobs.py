@@ -29,7 +29,7 @@ _ttl_seconds = 30 * 60
 
 def start(owner: str, settings: Settings, question: str, session_id: str = "", personal_context: str = "") -> str:
     question = question.strip()
-    if not question or len(question) > 2000:
+    if not question or len(question.encode("utf-8")) > 2000:
         raise training.TrainingError("Cau hoi phai tu 1 den 2000 ky tu")
     job_id = secrets.token_urlsafe(24)
     with _lock:

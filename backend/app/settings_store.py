@@ -1,6 +1,6 @@
 """Cau hinh dong (KV) — override len Settings tu .env, sua duoc tu web.
 
-Chi cho phep override cac key AI (ai_*) va NAS (nas_*). Gia tri luu dang chuoi
+Chi cho phep override cac key AI (ai_*), Training va NAS (nas_*). Gia tri luu dang chuoi
 trong bang app_settings, coerce ve dung kieu khi ap len Settings.
 """
 from __future__ import annotations
@@ -15,6 +15,10 @@ ALLOWED_KEYS: dict[str, str] = {
     "ai_model": "str",
     "ai_max_tokens": "int",
     "ai_timeout": "float",
+    "training_rate_limit_per_minute": "int",
+    "training_rate_window_seconds": "int",
+    "public_training_rate_limit": "int",
+    "public_training_rate_window_seconds": "int",
     "nas_enabled": "bool",
     "nas_host": "str",
     "nas_share": "str",

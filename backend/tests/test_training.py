@@ -111,6 +111,17 @@ def test_training_api_requires_admin(client):
     assert client.get("/api/training/knowledge").status_code == 401
 
 
+def test_training_stats_exposes_rate_and_facebook_telemetry(client):
+    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+    response = client.get("/api/training/stats")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime"]["limit"] >= 1
+    assert payload["runtime"]["windowSeconds"] >= 1
+    assert {"inbound", "outbound", "failed"} <= payload["facebook"].keys()
+    client.post("/api/logout")
+
+
 def test_training_history_is_scoped_and_personal_knowledge_is_admin_managed(client):
     from app import db as dbmod
     from app.db import TrainingQuery, User
@@ -172,8 +183,28 @@ def test_personal_context_is_bounded_to_training_message_limit(monkeypatch):
     monkeypatch.setattr(training, "_transport", lambda: httpx.MockTransport(handler))
     training.ask(_settings(), "Câu hỏi ngắn", personal_context="🙂" * 20_000)
     payload = json.loads(requests[-1].content)
-    assert len(payload["message"].encode("utf-16-le")) // 2 <= 2000
+    assert len(payload["message"].encode("utf-8")) <= 2000
     assert payload["message"].startswith("Câu hỏi người dùng: Câu hỏi ngắn")
+
+
+def test_ask_reuses_hermes_auth_cookie(monkeypatch):
+    calls: list[str] = []
+    transport = httpx.MockTransport(lambda request: _cookie_handler(request, calls))
+
+    monkeypatch.setattr(training, "_transport", lambda: transport)
+    training.ask(_settings(), "Câu hỏi một")
+    training.ask(_settings(), "Câu hỏi hai")
+
+    assert calls.count("/api/auth/login") == 1
+    assert calls.count("/api/chat") == 2
+
+
+def _cookie_handler(request: httpx.Request, calls: list[str]) -> httpx.Response:
+    calls.append(request.url.path)
+    if request.url.path == "/api/auth/login":
+        return httpx.Response(200, headers={"set-cookie": "ksp_chat_auth=test-cookie; Path=/"}, json={"ok": True})
+    assert request.headers.get("cookie") == "ksp_chat_auth=test-cookie"
+    return httpx.Response(200, json={"data": {"answer": "ok"}})
 
 
 def test_training_background_job_reports_progress_and_result(monkeypatch):

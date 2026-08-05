@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     training_base_url: str = "http://127.0.0.1:8090"
     training_password: str = ""
     training_timeout: float = 180.0
+    training_rate_limit_per_minute: int = 100
+    training_rate_window_seconds: int = 60
     training_share_days: int = 30
 
     # Facebook Messenger webhook. Secrets must stay in the server environment.
@@ -84,7 +86,8 @@ class Settings(BaseSettings):
     public_training_hmac_secret: str = ""
     public_training_client_id: str = "inut-website"
     public_training_retention_days: int = 365
-    public_training_rate_limit: int = 10
+    public_training_rate_limit: int = 100
+    public_training_rate_window_seconds: int = 60
 
     # Dong bo NAS (SMB) - backup ho so 1 chieu app -> NAS
     nas_enabled: bool = True

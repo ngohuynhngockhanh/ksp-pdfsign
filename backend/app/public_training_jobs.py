@@ -31,7 +31,7 @@ _ttl_seconds = 30 * 60
 
 def start(*, job_id: str, owner_token: str, settings: Settings, question: str, hermes_session_id: str = "") -> str:
     question = question.strip()
-    if not question or len(question) > 2000:
+    if not question or len(question.encode("utf-8")) > 2000:
         raise training.TrainingError("Câu hỏi phải từ 1 đến 2000 ký tự")
     owner_hash = public_training.public_training_token_hash(owner_token)
     with _lock:
