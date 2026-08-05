@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import threading
 
 import httpx
 
@@ -223,6 +224,7 @@ def test_facebook_worker_does_not_block_reply_on_profile_lookup(client, monkeypa
 
     assert facebook_api._record_inbound("100063494173321", "psid.profile", "mid.profile", "Xin giá")
     calls: list[str] = []
+    profile_seen = threading.Event()
 
     def fake_ask(settings, question, session_id="", personal_context=""):
         calls.append("ask")
@@ -238,6 +240,7 @@ def test_facebook_worker_does_not_block_reply_on_profile_lookup(client, monkeypa
 
         def get_profile_name(self, psid):
             calls.append("profile")
+            profile_seen.set()
             return "Khách thử nghiệm"
 
         def close(self):
@@ -247,6 +250,7 @@ def test_facebook_worker_does_not_block_reply_on_profile_lookup(client, monkeypa
     monkeypatch.setattr(facebook, "MessengerClient", FakeMessenger)
     facebook.process_message("100063494173321", "psid.profile", "mid.profile", "Xin giá")
 
+    assert profile_seen.wait(1)
     assert calls.index("send") < calls.index("profile")
 
 

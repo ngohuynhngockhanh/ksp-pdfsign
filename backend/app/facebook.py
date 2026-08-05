@@ -32,6 +32,7 @@ _SCOPE_REFUSAL = (
     "Bạn hãy hỏi về thiết bị, giá, tồn kho, cấu hình hay dịch vụ iNut nhé."
 )
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="facebook-messenger")
+_profile_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="facebook-profile")
 
 
 class FacebookError(RuntimeError):
@@ -146,12 +147,14 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
     db = next(generator)
     inbound: FacebookMessage | None = None
     messenger: MessengerClient | None = None
+    enrich_profile = False
     try:
         inbound = db.scalar(
             select(FacebookMessage).where(FacebookMessage.message_id == message_id)
         )
         if inbound is None:
             return
+        enrich_profile = not inbound.sender_name
         inbound.processing_started_at = datetime.now(timezone.utc)
         inbound.queue_latency_ms = _datetime_elapsed_ms(inbound.processing_started_at, inbound.created_at)
         guard_reason = _facebook_scope_rejection(db, page_id, psid, text)
@@ -199,13 +202,14 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
                 reply_to_id=inbound.id,
             ))
             inbound.status = "rejected" if guard_reason else "replied"
-            _lookup_profile_after_reply(inbound, messenger, psid)
             messenger.close()
             messenger = None
         else:
             inbound.status = "queued"
         inbound.error = ""
         db.commit()
+        if enrich_profile and settings.facebook_reply_enabled and inbound.id:
+            _profile_executor.submit(_enrich_profile, settings, inbound.id, psid)
     except Exception as exc:  # noqa: BLE001 - worker must not crash the executor
         db.rollback()
         if inbound is not None:
@@ -256,23 +260,35 @@ def _facebook_scope_rejection(db: Session, page_id: str, psid: str, question: st
     return _SCOPE_REFUSAL
 
 
-def _lookup_profile_after_reply(
-    inbound: FacebookMessage, messenger: MessengerClient, psid: str
-) -> None:
-    """Enrich the inbox after the customer-visible reply has left Graph API."""
-    if inbound.sender_name:
-        return
-    get_profile_name = getattr(messenger, "get_profile_name", None)
-    if not callable(get_profile_name):
-        return
+def _enrich_profile(settings, message_id: int, psid: str) -> None:
+    """Fill the display name off the reply hot path using its own DB session."""
+    generator = get_session()
+    db = next(generator)
+    messenger: MessengerClient | None = None
     profile_started = time.perf_counter()
     try:
+        inbound = db.get(FacebookMessage, message_id)
+        if inbound is None or inbound.sender_name:
+            return
+        messenger = MessengerClient(
+            settings.facebook_page_access_token,
+            graph_base_url=settings.facebook_graph_base_url,
+            graph_version=settings.facebook_graph_version,
+            timeout=settings.facebook_timeout,
+        )
+        get_profile_name = getattr(messenger, "get_profile_name", None)
+        if not callable(get_profile_name):
+            return
         inbound.sender_name = get_profile_name(psid)
+        inbound.profile_lookup_ms = _elapsed_ms(profile_started)
+        db.commit()
     except Exception:  # noqa: BLE001 - profile enrichment is best effort
         # Missing profile permission must not turn a successful reply into a failure.
-        pass
+        db.rollback()
     finally:
-        inbound.profile_lookup_ms = _elapsed_ms(profile_started)
+        if messenger is not None:
+            messenger.close()
+        generator.close()
 
 
 def _answer_text(result: Any) -> str:
