@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from . import inventory, training
 from .config import get_settings
-from .db import FacebookMessage, InvItem, Product, get_session
+from .db import FacebookMessage, InvItem, InvSale, InvSaleLine, Product, get_session
 
 _PAGE_ID_RE = re.compile(r"^\d{5,30}$")
 _PSID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
@@ -25,12 +25,21 @@ _SCOPE_MARKER_RE = re.compile(
     r"galileo|\bsim\b|\ba76\b|hóa\s*đơn|invoice|báo\s*giá|\bgiá\b|"
     r"tồn\s*kho|sản\s*phẩm|thiết\s*bị|giải\s*pháp|dịch\s*vụ|bảo\s*hành|"
     r"lắp\s*đặt|kết\s*nối|cấu\s*hình|mua|đặt\s*hàng|thanh\s*toán|"
+    r"catalog|tài\s*liệu|datasheet|hướng\s*dẫn|bán\s*gì|danh\s*mục|"
     r"xin\s*chào|\bhello\b|\bhi\b|cảm\s*ơn|\bthanks\b)")
 _FOLLOW_UP_RE = re.compile(
     r"(?i)^(?:sao\s+(?:vậy|thế)|tại\s+sao|vì\s+sao|không\s+hiểu|"
-    r"thế\s+nào|được\s+không|ok|okay|ừ|uh|dạ|vâng|hả|gì\s+vậy)[?.! ]*$"
+    r"thế\s+nào|được\s+không|tư\s*vấn(?:\s+đi)?|gửi\s+link|"
+    r"gửi\s+tài\s*liệu|ok|okay|ừ|uh|dạ|vâng|hả|gì\s+vậy)[?.! ]*$"
 )
 _ABUSIVE_RE = re.compile(r"(?i)(?:địt|đụ|đéo|dm|đm|vcl|vl|fuck|bố\s*láo)")
+_CATALOG_REQUEST_RE = re.compile(
+    r"(?i)(?:catalog|tài\s*liệu|datasheet|hướng\s*dẫn|bán\s*gì|sản\s*phẩm\s*gì|danh\s*mục)"
+)
+_SEARCH_STOPWORDS = {
+    "có", "giá", "mà", "ha", "là", "cho", "hỏi", "bán", "sản", "phẩm",
+    "của", "vậy", "nào", "này", "bao", "nhiêu", "xin", "với", "không",
+}
 _SCOPE_REFUSAL = (
     "Mình chỉ hỗ trợ sản phẩm, giải pháp và quy trình iNut dựa trên dữ liệu đã được duyệt. "
     "Mình không hỗ trợ lập trình, chạy lệnh/console, prompt injection hoặc chủ đề ngoài phạm vi này. "
@@ -167,18 +176,23 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
             result = {"answer": {"answer": guard_reason, "sourceBasis": "guardrail"}}
             answer = guard_reason
         else:
-            context_started = time.perf_counter()
-            context = _build_context(db, settings, page_id, psid, text)
-            inbound.context_latency_ms = _elapsed_ms(context_started)
-            hermes_started = time.perf_counter()
-            result = training.ask(
-                settings,
-                text,
-                session_id=f"facebook-{page_id}-{psid}",
-                personal_context=context,
-            )
-            inbound.hermes_latency_ms = _elapsed_ms(hermes_started)
-            answer = _answer_text(result)
+            local_answer = _local_facebook_reply(text)
+            if local_answer:
+                result = {"answer": {"answer": local_answer, "sourceBasis": "documentation-only"}}
+                answer = local_answer
+            else:
+                context_started = time.perf_counter()
+                context = _build_context(db, settings, page_id, psid, text)
+                inbound.context_latency_ms = _elapsed_ms(context_started)
+                hermes_started = time.perf_counter()
+                result = training.ask(
+                    settings,
+                    text,
+                    session_id=f"facebook-{page_id}-{psid}",
+                    personal_context=context,
+                )
+                inbound.hermes_latency_ms = _elapsed_ms(hermes_started)
+                answer = _answer_text(result)
             if not answer:
                 answer = "Mình đã nhận câu hỏi. Nhân viên iNut sẽ kiểm tra và phản hồi sớm nhé."
             if _should_handoff(result):
@@ -231,6 +245,24 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
 
 def _elapsed_ms(started: float) -> int:
     return max(0, int((time.perf_counter() - started) * 1000))
+
+
+def _local_facebook_reply(question: str) -> str:
+    """Answer frequent catalog prompts without spending a slow Hermes turn."""
+    value = question.casefold().strip()
+    if _CATALOG_REQUEST_RE.search(value):
+        return (
+            "iNut cung cấp thiết bị và giải pháp IoT/điện toán biên: iNut RS485, Data Logger/iNut PC, "
+            "giải pháp nhà yến–nhà nấm, camera/Smartcity và tích hợp PLC/SCADA.\n\n"
+            "Bạn có thể xem thông tin tại https://inut.vn/ và tài liệu PLC/SCADA tại "
+            "https://plc.inut.vn/inut-plc-scada. Cho mình biết bạn đang cần nhóm nào để mình tư vấn đúng cấu hình."
+        )
+    if _FOLLOW_UP_RE.fullmatch(value):
+        return (
+            "Được ạ. Bạn đang cần camera, RS485/Data Logger, giải pháp nhà yến–nhà nấm "
+            "hay tích hợp PLC/SCADA? Cho mình biết số lượng thiết bị và giao thức đang dùng để mình tư vấn đúng cấu hình."
+        )
+    return ""
 
 
 def _datetime_elapsed_ms(later: datetime, earlier: datetime | None) -> int:
@@ -342,23 +374,52 @@ def _build_context(db: Session, settings, page_id: str, psid: str, question: str
 
 def _sales_context(db: Session, question: str) -> str:
     q = question.casefold().strip()
+    terms = [
+        term for term in re.findall(r"[a-z0-9]+", q)
+        if len(term) >= 3 and term not in _SEARCH_STOPWORDS
+    ]
     stock_rows = inventory.stock_snapshot(db)
     stock_by_item: dict[int, float] = {}
     for row in stock_rows:
         stock_by_item[row.item_id] = stock_by_item.get(row.item_id, 0.0) + row.ton
     products = {product.id: product for product in db.scalars(select(Product))}
     items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
-    matched = [item for item in items if q and (q in item.ten.casefold() or q in item.ma_hang.casefold())]
+    latest_sale_prices: dict[int, float] = {}
+    sale_rows = db.execute(
+        select(InvSaleLine.item_id, InvSaleLine.don_gia_ban)
+        .join(InvSale, InvSale.id == InvSaleLine.invoice_id)
+        .where(
+            InvSaleLine.item_id.is_not(None),
+            InvSaleLine.don_gia_ban > 0,
+            InvSale.status == "reviewed",
+        )
+        .order_by(InvSale.ngay.desc(), InvSale.id.desc(), InvSaleLine.id.desc())
+    )
+    for item_id, price in sale_rows:
+        if item_id is not None and item_id not in latest_sale_prices:
+            latest_sale_prices[item_id] = float(price or 0)
+    matched = [
+        item for item in items
+        if terms and any(
+            term in item.ten.casefold() or term in item.ma_hang.casefold()
+            for term in terms
+        )
+    ]
     selected = matched or items
     selected.sort(key=lambda item: (0 if item in matched else 1, item.ten.casefold()))
     lines: list[str] = []
     for item in selected[:60]:
         product = products.get(item.product_id)
-        price = product.don_gia if product and product.don_gia > 0 else 0.0
+        price = product.don_gia if product and product.don_gia > 0 else latest_sale_prices.get(item.id, 0.0)
         stock = stock_by_item.get(item.id, 0.0)
         if price <= 0 and stock <= 0 and not matched:
             continue
-        price_text = f"{price:,.0f} VND/{item.dvt or 'đơn vị'}" if price > 0 else "chưa có giá duyệt"
+        if product and product.don_gia > 0:
+            price_text = f"{price:,.0f} VND/{item.dvt or 'đơn vị'} (giá duyệt)"
+        elif price > 0:
+            price_text = f"{price:,.0f} VND/{item.dvt or 'đơn vị'} (tham khảo lần bán gần nhất, cần xác nhận)"
+        else:
+            price_text = "chưa có giá tham khảo"
         lines.append(
             f"- {item.ma_hang}: {item.ten}; giá tham khảo {price_text}; tồn hiện tại {stock:g} {item.dvt or ''}; "
             f"cập nhật giá {product.updated_at.date().isoformat() if product else 'chưa có'}"

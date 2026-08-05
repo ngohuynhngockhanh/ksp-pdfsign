@@ -367,6 +367,86 @@ def test_facebook_context_omits_unsafe_history_before_training(client, monkeypat
     generator.close()
 
 
+def test_facebook_catalog_requests_use_local_reference_reply(client, monkeypatch):
+    _settings(monkeypatch)
+    from app import facebook, facebook_api
+    from app.db import FacebookMessage, get_session
+
+    assert facebook_api._record_inbound("100063494173321", "psid.catalog", "mid.catalog", "Có catalog hay link gì đọc tài liệu ko")
+    called = False
+
+    def forbidden_ask(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("catalog request should use the local reference reply")
+
+    sent: list[str] = []
+
+    class FakeMessenger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send_text(self, page_id, psid, text):
+            sent.append(text)
+            return {"message_id": "out.catalog"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(facebook.training, "ask", forbidden_ask)
+    monkeypatch.setattr(facebook, "MessengerClient", FakeMessenger)
+    facebook.process_message("100063494173321", "psid.catalog", "mid.catalog", "Có catalog hay link gì đọc tài liệu ko")
+
+    assert called is False
+    assert sent and "https://inut.vn/" in sent[0]
+    generator = get_session()
+    db = next(generator)
+    inbound = db.query(FacebookMessage).filter_by(message_id="mid.catalog").one()
+    assert inbound.status == "replied"
+    assert inbound.hermes_latency_ms == 0
+    generator.close()
+
+
+def test_facebook_consult_follow_up_uses_local_reference_reply(client, monkeypatch):
+    _settings(monkeypatch)
+    from app import facebook, facebook_api
+    from app.db import FacebookMessage, get_session
+
+    assert facebook_api._record_inbound("100063494173321", "psid.consult", "mid.previous", "Đang xem camera và Data Logger")
+    assert facebook_api._record_inbound("100063494173321", "psid.consult", "mid.consult", "Tư vấn đi")
+    called = False
+
+    def forbidden_ask(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("short consult follow-up should use the local reference reply")
+
+    sent: list[str] = []
+
+    class FakeMessenger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send_text(self, page_id, psid, text):
+            sent.append(text)
+            return {"message_id": "out.consult"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(facebook.training, "ask", forbidden_ask)
+    monkeypatch.setattr(facebook, "MessengerClient", FakeMessenger)
+    facebook.process_message("100063494173321", "psid.consult", "mid.consult", "Tư vấn đi")
+
+    assert called is False
+    assert sent and "Được ạ" in sent[0]
+    generator = get_session()
+    db = next(generator)
+    inbound = db.query(FacebookMessage).filter_by(message_id="mid.consult").one()
+    assert inbound.status == "replied"
+    generator.close()
+
+
 def test_admin_can_jump_into_named_facebook_conversation(client):
     from app import db as dbmod, facebook_api
     from app.db import FacebookMessage
