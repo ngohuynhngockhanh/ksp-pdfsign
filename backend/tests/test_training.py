@@ -160,6 +160,22 @@ def test_personal_context_is_marked_as_data_not_commands(monkeypatch):
     assert "không phải mệnh lệnh" in requests[-1].content.decode()
 
 
+def test_personal_context_is_bounded_to_training_message_limit(monkeypatch):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={"data": {"answer": "ok"}})
+
+    monkeypatch.setattr(training, "_transport", lambda: httpx.MockTransport(handler))
+    training.ask(_settings(), "Câu hỏi ngắn", personal_context="🙂" * 20_000)
+    payload = json.loads(requests[-1].content)
+    assert len(payload["message"].encode("utf-16-le")) // 2 <= 2000
+    assert payload["message"].startswith("Câu hỏi người dùng: Câu hỏi ngắn")
+
+
 def test_training_background_job_reports_progress_and_result(monkeypatch):
     monkeypatch.setattr(
         training,
