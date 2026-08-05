@@ -68,6 +68,7 @@ async def facebook_events(request: Request):
             if not isinstance(message, dict) or message.get("is_echo"):
                 continue
             psid = str((event.get("sender") or {}).get("id", "")).strip()
+            sender_name = str((event.get("sender") or {}).get("name", "")).strip()[:255]
             message_id = str(message.get("mid", "")).strip()
             text = str(message.get("text", "")).strip()
             if not psid or not message_id or len(psid) > 128 or len(message_id) > 255:
@@ -77,7 +78,7 @@ async def facebook_events(request: Request):
             if not text:
                 continue
             text = text[:2000]
-            if _record_inbound(page_id, psid, message_id, text):
+            if _record_inbound(page_id, psid, message_id, text, sender_name):
                 enqueue_message(page_id, psid, message_id, text)
                 accepted += 1
     return {"ok": True, "accepted": accepted}
@@ -94,13 +95,19 @@ def _valid_signature(body: bytes, provided: str, secret: str) -> bool:
     return hmac.compare_digest(expected, provided[7:])
 
 
-def _record_inbound(page_id: str, psid: str, message_id: str, text: str) -> bool:
+def _record_inbound(page_id: str, psid: str, message_id: str, text: str, sender_name: str = "") -> bool:
     generator = get_session()
     db = next(generator)
     try:
         if db.scalar(select(FacebookMessage).where(FacebookMessage.message_id == message_id)):
             return False
-        db.add(FacebookMessage(page_id=page_id, psid=psid, message_id=message_id, text=text))
+        db.add(FacebookMessage(
+            page_id=page_id,
+            psid=psid,
+            sender_name=sender_name,
+            message_id=message_id,
+            text=text,
+        ))
         db.commit()
         return True
     except IntegrityError:

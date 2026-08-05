@@ -433,10 +433,32 @@ export const api = {
         replied: number;
         failed: number;
         statuses: Record<string, number>;
-        recent: { direction: string; status: string; text: string; error: string; createdAt: string }[];
+        recent: { direction: string; status: string; name: string; text: string; error: string; createdAt: string }[];
       };
       tokenNote: string;
     }>("/api/training/stats");
+  },
+  async facebookConversations(limit = 100) {
+    return req<{ items: {
+      conversationId: string;
+      pageId: string;
+      psid: string;
+      name: string;
+      messageCount: number;
+      failedCount: number;
+      lastText: string;
+      lastDirection: string;
+      lastStatus: string;
+      lastAt: string;
+    }[] }>(`/api/facebook/conversations?limit=${limit}`);
+  },
+  async facebookConversationHistory(pageId: string, psid: string) {
+    return req<{
+      pageId: string;
+      psid: string;
+      name: string;
+      items: { id: number; direction: string; text: string; status: string; error: string; createdAt: string }[];
+    }>(`/api/facebook/conversations/${encodeURIComponent(pageId)}/${encodeURIComponent(psid)}`);
   },
   async trainingHistory() {
     return req<{ items: { jobId: string; question: string; status: string; answer: TrainingAnswer; createdAt: string; completedAt: string | null; durationMs: number }[] }>("/api/training/history");

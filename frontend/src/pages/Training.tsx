@@ -56,6 +56,8 @@ type AccessUser = Awaited<ReturnType<typeof api.listUsers>>[number];
 type TrainingStats = Awaited<ReturnType<typeof api.trainingStats>>;
 type TrainingHistory = Awaited<ReturnType<typeof api.trainingHistory>>["items"];
 type TrainingKnowledge = Awaited<ReturnType<typeof api.trainingKnowledge>>["items"];
+type FacebookConversation = Awaited<ReturnType<typeof api.facebookConversations>>["items"][number];
+type FacebookHistory = Awaited<ReturnType<typeof api.facebookConversationHistory>>;
 
 export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
@@ -74,6 +76,9 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [publicLeads, setPublicLeads] = useState<TrainingPublicLead[]>([]);
+  const [facebookConversations, setFacebookConversations] = useState<FacebookConversation[]>([]);
+  const [selectedFacebook, setSelectedFacebook] = useState<FacebookHistory | null>(null);
+  const [facebookBusy, setFacebookBusy] = useState(false);
   const [selectedLead, setSelectedLead] = useState<(TrainingPublicLead & { queries: TrainingPublicQuery[] }) | null>(null);
   const [leadNote, setLeadNote] = useState("");
   const [leadStatus, setLeadStatus] = useState("new");
@@ -81,10 +86,11 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
 
   async function loadAccessUsers() {
     if (isAdmin) {
-      const [users, usage, leads] = await Promise.all([api.listUsers(), api.trainingStats(), api.trainingPublicLeads()]);
+      const [users, usage, leads, conversations] = await Promise.all([api.listUsers(), api.trainingStats(), api.trainingPublicLeads(), api.facebookConversations()]);
       setAccessUsers(users);
       setStats(usage);
       setPublicLeads(leads.items);
+      setFacebookConversations(conversations.items);
     }
   }
 
@@ -160,6 +166,17 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       setError((caught as Error).message);
     } finally {
       setLeadBusy(false);
+    }
+  }
+
+  async function openFacebookConversation(conversation: FacebookConversation) {
+    setFacebookBusy(true);
+    try {
+      setSelectedFacebook(await api.facebookConversationHistory(conversation.pageId, conversation.psid));
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setFacebookBusy(false);
     }
   }
 
@@ -251,12 +268,21 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="training-public-leads-head"><div><span>PUBLIC DESK</span><h2>Lead từ trợ lý iNut.vn</h2><p>Số điện thoại được mã hóa; chỉ admin mới có thể chủ động mở số đầy đủ.</p></div><button type="button" onClick={loadAccessUsers}>Làm mới</button></div>
         {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => { const publicAnswer = unwrapPublicAnswer(query.answer); return <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{publicAnswer?.answer && <p>{publicAnswer.answer}</p>}</article>; })}</div></article>}</div>}
       </section>}
+      {isAdmin && <section className="training-facebook-inbox">
+        <div className="training-facebook-inbox-head"><div><span>MESSENGER INBOX</span><h2>Nhảy thẳng vào hội thoại</h2><p>Nhóm theo tên Facebook, giữ nguyên lịch sử và trạng thái trả lời.</p></div><button type="button" onClick={loadAccessUsers} disabled={facebookBusy}>Làm mới</button></div>
+        {facebookConversations.length === 0 ? <p className="training-public-empty">Chưa có hội thoại Facebook.</p> : <div className="training-facebook-layout">
+          <div className="training-facebook-list">{facebookConversations.map((conversation) => <button type="button" key={conversation.conversationId} className={`training-facebook-row${selectedFacebook?.psid === conversation.psid && selectedFacebook?.pageId === conversation.pageId ? " active" : ""}`} onClick={() => openFacebookConversation(conversation)}>
+            <span><strong>{conversation.name}</strong><small>{conversation.messageCount} tin · {new Date(conversation.lastAt).toLocaleString("vi-VN")}</small><em>{conversation.lastText}</em></span><b>{conversation.failedCount ? `${conversation.failedCount} lỗi` : conversation.lastStatus}</b>
+          </button>)}</div>
+          {selectedFacebook && <article className="training-facebook-detail"><header><div><span>{selectedFacebook.pageId}</span><h3>{selectedFacebook.name}</h3></div><small>{selectedFacebook.items.length} tin nhắn</small></header><div className="training-facebook-thread">{selectedFacebook.items.map((item) => <div key={item.id} className={`training-facebook-bubble ${item.direction === "inbound" ? "inbound" : "outbound"}`}><small>{item.direction === "inbound" ? selectedFacebook.name : "iNut"} · {new Date(item.createdAt).toLocaleString("vi-VN")}</small><p>{item.text}</p>{item.error && <em>{item.status}: {item.error}</em>}</div>)}</div></article>}
+        </div>}
+      </section>}
       <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (
         <section className="training-stats">
           <div className="training-stat-head"><span>USAGE</span><h2>Nhịp sử dụng Training</h2><p>{stats.tokenNote}</p></div>
           <div className="training-stat-cards"><div><strong>{stats.totals.questions}</strong><span>Câu hỏi</span></div><div><strong>{stats.totals.tokens.toLocaleString("vi-VN")}</strong><span>Token ước tính</span></div><div><strong>{stats.totals.successful}</strong><span>Đã hoàn tất</span></div><div><strong>{stats.runtime.windowCount}/{stats.runtime.limit}</strong><span>Nhịp trong {stats.runtime.windowSeconds}s</span></div><div><strong>{stats.runtime.active}</strong><span>Đang chạy</span></div><div><strong>{stats.runtime.rejected}</strong><span>Bị giới hạn</span></div></div>
-          <div className="training-recent"><h3>Messenger fanpage</h3><p className="muted">{stats.facebook.inbound} tin vào · {stats.facebook.outbound} tin trả · {stats.facebook.replied} hội thoại đã trả lời · {stats.facebook.failed} lỗi.</p>{stats.facebook.recent.slice(0, 8).map((item, index) => <article key={`${item.createdAt}-${index}`}><span>{item.direction === "inbound" ? "Khách" : "iNut"}</span><strong>{item.text}</strong><small>{item.status} · {new Date(item.createdAt).toLocaleString("vi-VN")}{item.error ? ` · ${item.error}` : ""}</small></article>)}</div>
+          <div className="training-recent"><h3>Messenger fanpage</h3><p className="muted">{stats.facebook.inbound} tin vào · {stats.facebook.outbound} tin trả · {stats.facebook.replied} hội thoại đã trả lời · {stats.facebook.failed} lỗi.</p>{stats.facebook.recent.slice(0, 8).map((item, index) => <article key={`${item.createdAt}-${index}`}><span>{item.direction === "inbound" ? item.name : "iNut"}</span><strong>{item.text}</strong><small>{item.status} · {new Date(item.createdAt).toLocaleString("vi-VN")}{item.error ? ` · ${item.error}` : ""}</small></article>)}</div>
           <div className="training-user-chart">{stats.users.map((item) => {
             const maximum = Math.max(...stats.users.map((user) => user.questions), 1);
             return <div key={item.username}><label><strong>{item.username}</strong><small>{item.questions} câu · {item.tokens.toLocaleString("vi-VN")} token</small></label><span><i style={{ width: `${Math.max(7, item.questions / maximum * 100)}%` }} /></span></div>;

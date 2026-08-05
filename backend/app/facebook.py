@@ -15,6 +15,7 @@ from .config import get_settings
 from .db import FacebookMessage, InvItem, Product, get_session
 
 _PAGE_ID_RE = re.compile(r"^\d{5,30}$")
+_PSID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _GRAPH_VERSION_RE = re.compile(r"^v\d+\.\d+$")
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="facebook-messenger")
 
@@ -100,6 +101,25 @@ class MessengerClient:
         except (httpx.HTTPError, ValueError) as exc:
             raise FacebookError("Gui tin nhan Facebook that bai") from exc
 
+    def get_profile_name(self, psid: str) -> str:
+        """Read the display name for a user who has messaged this Page."""
+        recipient = str(psid or "").strip()
+        if not _PSID_RE.fullmatch(recipient):
+            raise FacebookError("Facebook PSID khong hop le")
+        url = f"{self._base_url}/{self._version}/{recipient}"
+        try:
+            response = self._http.get(
+                url,
+                params={"fields": "name"},
+                headers={"Authorization": f"Bearer {self._token}"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            name = payload.get("name", "") if isinstance(payload, dict) else ""
+            return str(name or "").strip()[:255]
+        except (httpx.HTTPError, ValueError) as exc:
+            raise FacebookError("Khong doc duoc ten Facebook") from exc
+
 
 def enqueue_message(page_id: str, psid: str, message_id: str, text: str) -> None:
     """Acknowledge Meta first; process Hermes work off the webhook request."""
@@ -111,12 +131,29 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
     generator = get_session()
     db = next(generator)
     inbound: FacebookMessage | None = None
+    messenger: MessengerClient | None = None
     try:
         inbound = db.scalar(
             select(FacebookMessage).where(FacebookMessage.message_id == message_id)
         )
         if inbound is None:
             return
+        if not inbound.sender_name and settings.facebook_page_access_token:
+            try:
+                messenger = MessengerClient(
+                    settings.facebook_page_access_token,
+                    graph_base_url=settings.facebook_graph_base_url,
+                    graph_version=settings.facebook_graph_version,
+                    timeout=settings.facebook_timeout,
+                )
+                get_profile_name = getattr(messenger, "get_profile_name", None)
+                if callable(get_profile_name):
+                    inbound.sender_name = get_profile_name(psid)
+            except FacebookError:
+                # A missing profile permission must not block the reply worker.
+                if messenger is not None:
+                    messenger.close()
+                    messenger = None
         context = _build_context(db, settings, page_id, psid, text)
         result = training.ask(
             settings,
@@ -131,16 +168,18 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
             answer += "\n\nNếu bạn cần chốt cấu hình hoặc báo giá chính thức, mình sẽ chuyển nhân viên iNut hỗ trợ tiếp."
 
         if settings.facebook_reply_enabled:
-            messenger = MessengerClient(
-                settings.facebook_page_access_token,
-                graph_base_url=settings.facebook_graph_base_url,
-                graph_version=settings.facebook_graph_version,
-                timeout=settings.facebook_timeout,
-            )
+            if messenger is None:
+                messenger = MessengerClient(
+                    settings.facebook_page_access_token,
+                    graph_base_url=settings.facebook_graph_base_url,
+                    graph_version=settings.facebook_graph_version,
+                    timeout=settings.facebook_timeout,
+                )
             try:
                 messenger.send_text(page_id, psid, answer)
             finally:
                 messenger.close()
+                messenger = None
             db.add(FacebookMessage(
                 page_id=page_id,
                 psid=psid,
@@ -163,6 +202,8 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
                 inbound.error = str(exc)[:500]
                 db.commit()
     finally:
+        if messenger is not None:
+            messenger.close()
         generator.close()
 
 

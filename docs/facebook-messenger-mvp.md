@@ -66,7 +66,9 @@ MVP hiện xử lý văn bản và attachment placeholder; chưa tự phân tíc
 chưa tạo báo giá hoặc hóa đơn và chưa tự ghi sổ kho.
 
 Quản trị viên xem thống kê rate, lỗi/reject Training và số tin vào/ra Facebook
-trong trang `Training`.
+trong trang `Training`. Khu vực `MESSENGER INBOX` nhóm hội thoại theo người,
+hiển thị tên Facebook (hoặc PSID rút gọn nếu Meta không cho đọc tên), và cho
+phép bấm vào để xem toàn bộ lịch sử chat.
 
 ## Kiểm tra nhanh
 

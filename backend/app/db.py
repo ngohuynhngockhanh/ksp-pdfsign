@@ -239,6 +239,7 @@ class FacebookMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     page_id: Mapped[str] = mapped_column(String(64), index=True)
     psid: Mapped[str] = mapped_column(String(128), index=True)
+    sender_name: Mapped[str] = mapped_column(String(255), default="")
     message_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     direction: Mapped[str] = mapped_column(String(10), default="inbound", index=True)
     text: Mapped[str] = mapped_column(String(4000), default="")
@@ -1209,6 +1210,9 @@ def _migrate_add_columns() -> None:
         },
         "training_queries": {
             "answer_json": "TEXT DEFAULT '{}'",
+        },
+        "facebook_messages": {
+            "sender_name": "VARCHAR(255) DEFAULT ''",
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",

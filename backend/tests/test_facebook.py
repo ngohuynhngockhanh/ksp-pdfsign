@@ -146,6 +146,29 @@ def test_messenger_client_error_does_not_expose_token():
         client.close()
 
 
+def test_messenger_client_reads_profile_name():
+    from app.facebook import MessengerClient
+
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["authorization"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"id": "psid.1", "name": "Nguyễn Văn A"})
+
+    client = MessengerClient(
+        "page-token-for-tests",
+        graph_base_url="http://127.0.0.1:8099",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert client.get_profile_name("psid.1") == "Nguyễn Văn A"
+        assert "fields=name" in str(seen["url"])
+        assert seen["authorization"] == "Bearer page-token-for-tests"
+    finally:
+        client.close()
+
+
 def test_facebook_worker_uses_history_and_stores_outbound_reply(client, monkeypatch):
     _settings(monkeypatch)
     from app import facebook, facebook_api
@@ -186,3 +209,33 @@ def test_facebook_worker_uses_history_and_stores_outbound_reply(client, monkeypa
     assert inbound.status == "replied"
     assert outbound.reply_to_id == inbound.id
     generator.close()
+
+
+def test_admin_can_jump_into_named_facebook_conversation(client):
+    from app import db as dbmod, facebook_api
+    from app.db import FacebookMessage
+
+    assert facebook_api._record_inbound(
+        "100063494173321", "psid.named", "mid.named", "Xin chào", "Nguyễn Văn A"
+    )
+    generator = dbmod.get_session()
+    db = next(generator)
+    db.add(FacebookMessage(
+        page_id="100063494173321",
+        psid="psid.named",
+        direction="outbound",
+        text="Chào bạn, iNut đây.",
+        status="sent",
+    ))
+    db.commit()
+    generator.close()
+
+    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+    conversations = client.get("/api/facebook/conversations")
+    assert conversations.status_code == 200
+    item = next(row for row in conversations.json()["items"] if row["psid"] == "psid.named")
+    assert item["name"] == "Nguyễn Văn A"
+    history = client.get("/api/facebook/conversations/100063494173321/psid.named")
+    assert history.status_code == 200
+    assert [row["text"] for row in history.json()["items"]] == ["Xin chào", "Chào bạn, iNut đây."]
+    client.post("/api/logout")

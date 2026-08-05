@@ -1864,12 +1864,85 @@ def training_stats(
             "recent": [{
                 "direction": row.direction,
                 "status": row.status,
+                "name": _facebook_display_name(row),
                 "text": row.text[:160],
                 "error": row.error[:240],
                 "createdAt": row.created_at.isoformat(),
             } for row in facebook_rows[:20]],
         },
         "tokenNote": "Token ước tính từ độ dài câu hỏi và câu trả lời; Hermes CLI chưa trả usage chuẩn.",
+    }
+
+
+def _facebook_display_name(row: FacebookMessage) -> str:
+    return row.sender_name.strip() or f"Facebook · {row.psid[-6:]}"
+
+
+@app.get("/api/facebook/conversations")
+def facebook_conversations(
+    limit: int = 100,
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Return recent Messenger conversations grouped for the admin inbox."""
+    rows = list(db.scalars(
+        select(FacebookMessage)
+        .order_by(FacebookMessage.created_at.desc(), FacebookMessage.id.desc())
+        .limit(5000)
+    ))
+    conversations: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        key = (row.page_id, row.psid)
+        item = conversations.get(key)
+        if item is None:
+            item = {
+                "conversationId": f"{row.page_id}:{row.psid}",
+                "pageId": row.page_id,
+                "psid": row.psid,
+                "name": _facebook_display_name(row),
+                "messageCount": 0,
+                "failedCount": 0,
+                "lastText": row.text[:240],
+                "lastDirection": row.direction,
+                "lastStatus": row.status,
+                "lastAt": row.created_at.isoformat(),
+            }
+            conversations[key] = item
+        if row.sender_name.strip() and item["name"].startswith("Facebook · "):
+            item["name"] = row.sender_name.strip()
+        item["messageCount"] += 1
+        item["failedCount"] += row.status == "failed"
+    return {"items": list(conversations.values())[:max(1, min(limit, 200))]}
+
+
+@app.get("/api/facebook/conversations/{page_id}/{psid}")
+def facebook_conversation_history(
+    page_id: str,
+    psid: str,
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    rows = list(db.scalars(
+        select(FacebookMessage)
+        .where(FacebookMessage.page_id == page_id, FacebookMessage.psid == psid)
+        .order_by(FacebookMessage.created_at.asc(), FacebookMessage.id.asc())
+        .limit(1000)
+    ))
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hội thoại Facebook")
+    name = next((row.sender_name.strip() for row in rows if row.sender_name.strip()), "")
+    return {
+        "pageId": page_id,
+        "psid": psid,
+        "name": name or f"Facebook · {psid[-6:]}",
+        "items": [{
+            "id": row.id,
+            "direction": row.direction,
+            "text": row.text,
+            "status": row.status,
+            "error": row.error,
+            "createdAt": row.created_at.isoformat(),
+        } for row in rows],
     }
 
 
