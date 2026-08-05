@@ -228,6 +228,26 @@ class TrainingPublicQuery(Base):
     session: Mapped["TrainingPublicSession"] = relationship(back_populates="queries")
 
 
+class FacebookMessage(Base):
+    """Tin nhắn Messenger đã nhận/gửi, dùng để giữ ngữ cảnh theo từng PSID."""
+
+    __tablename__ = "facebook_messages"
+    __table_args__ = (
+        Index("ix_facebook_messages_conversation", "page_id", "psid", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    page_id: Mapped[str] = mapped_column(String(64), index=True)
+    psid: Mapped[str] = mapped_column(String(128), index=True)
+    message_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    direction: Mapped[str] = mapped_column(String(10), default="inbound", index=True)
+    text: Mapped[str] = mapped_column(String(4000), default="")
+    status: Mapped[str] = mapped_column(String(20), default="received", index=True)
+    reply_to_id: Mapped[int | None] = mapped_column(nullable=True)
+    error: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
 class TrainingKnowledge(Base):
     """Admin-managed notes scoped to one CRM user; never executable instructions."""
 

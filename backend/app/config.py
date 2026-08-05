@@ -66,6 +66,19 @@ class Settings(BaseSettings):
     training_timeout: float = 180.0
     training_share_days: int = 30
 
+    # Facebook Messenger webhook. Secrets must stay in the server environment.
+    facebook_enabled: bool = False
+    facebook_page_id: str = "100063494173321"
+    facebook_verify_token: str = ""
+    facebook_app_secret: str = ""
+    facebook_page_access_token: str = ""
+    facebook_graph_base_url: str = "https://graph.facebook.com"
+    facebook_graph_version: str = "v23.0"
+    facebook_timeout: float = 20.0
+    facebook_reply_enabled: bool = True
+    facebook_context_turns: int = 12
+    facebook_retention_days: int = 365
+
     # Trợ lý công khai trên inut.vn. Secret chỉ dùng server-to-server qua BFF.
     public_training_enabled: bool = False
     public_training_hmac_secret: str = ""

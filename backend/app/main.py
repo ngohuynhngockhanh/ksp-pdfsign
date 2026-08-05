@@ -142,12 +142,14 @@ from .security import hash_password, verify_password
 
 from .inv_api import router as inv_router  # noqa: E402
 from .payroll_api import router as payroll_router  # noqa: E402
+from .facebook_api import router as facebook_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
 app.include_router(payroll_router)
 app.include_router(customs_drive_router)
 app.include_router(pymid_router)
+app.include_router(facebook_router)
 
 
 def _training_error(exc: training.TrainingError) -> HTTPException:
@@ -242,6 +244,7 @@ def _startup():
     try:
         ensure_admin_seed(db, settings)
         _cleanup_public_training_data(db, settings)
+        _cleanup_facebook_messages(db, settings)
     finally:
         gen.close()
 
@@ -254,6 +257,17 @@ def _cleanup_public_training_data(db: Session, settings: Settings) -> None:
         return
     db.execute(delete(TrainingPublicQuery).where(TrainingPublicQuery.session_id.in_(old_ids)))
     db.execute(delete(TrainingPublicSession).where(TrainingPublicSession.id.in_(old_ids)))
+    db.commit()
+
+
+def _cleanup_facebook_messages(db: Session, settings: Settings) -> None:
+    """Giữ hội thoại Messenger trong thời hạn cấu hình, tránh phình DB/PII."""
+    from .db import FacebookMessage
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, settings.facebook_retention_days))
+    db.query(FacebookMessage).filter(FacebookMessage.created_at < cutoff).delete(
+        synchronize_session=False
+    )
     db.commit()
 
 
