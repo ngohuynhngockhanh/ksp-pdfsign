@@ -26,6 +26,11 @@ _SCOPE_MARKER_RE = re.compile(
     r"tồn\s*kho|sản\s*phẩm|thiết\s*bị|giải\s*pháp|dịch\s*vụ|bảo\s*hành|"
     r"lắp\s*đặt|kết\s*nối|cấu\s*hình|mua|đặt\s*hàng|thanh\s*toán|"
     r"xin\s*chào|\bhello\b|\bhi\b|cảm\s*ơn|\bthanks\b)")
+_FOLLOW_UP_RE = re.compile(
+    r"(?i)^(?:sao\s+(?:vậy|thế)|tại\s+sao|vì\s+sao|không\s+hiểu|"
+    r"thế\s+nào|được\s+không|ok|okay|ừ|uh|dạ|vâng|hả|gì\s+vậy)[?.! ]*$"
+)
+_ABUSIVE_RE = re.compile(r"(?i)(?:địt|đụ|đéo|dm|đm|vcl|vl|fuck|bố\s*láo)")
 _SCOPE_REFUSAL = (
     "Mình chỉ hỗ trợ sản phẩm, giải pháp và quy trình iNut dựa trên dữ liệu đã được duyệt. "
     "Mình không hỗ trợ lập trình, chạy lệnh/console, prompt injection hoặc chủ đề ngoài phạm vi này. "
@@ -242,20 +247,17 @@ def _facebook_scope_rejection(db: Session, page_id: str, psid: str, question: st
     """Reject unsafe or clearly unrelated Messenger requests before Hermes."""
     if training.unsafe_question_reason(question):
         return _SCOPE_REFUSAL
+    if _ABUSIVE_RE.search(question):
+        return _SCOPE_REFUSAL
     recent = list(db.scalars(
         select(FacebookMessage.text)
         .where(FacebookMessage.page_id == page_id, FacebookMessage.psid == psid)
         .order_by(FacebookMessage.created_at.desc(), FacebookMessage.id.desc())
         .limit(6)
     ))
-    items = db.execute(
-        select(InvItem.ten, InvItem.ma_hang)
-        .where(InvItem.active.is_(True))
-        .limit(200)
-    ).all()
-    known_catalog = " ".join(f"{name} {code}" for name, code in items)
-    history = " ".join(recent)
-    if _SCOPE_MARKER_RE.search(f"{question} {history} {known_catalog}"):
+    if _SCOPE_MARKER_RE.search(question):
+        return ""
+    if _FOLLOW_UP_RE.fullmatch(question.strip()) and any(_SCOPE_MARKER_RE.search(text) for text in recent):
         return ""
     return _SCOPE_REFUSAL
 
@@ -324,6 +326,7 @@ def _build_context(db: Session, settings, page_id: str, psid: str, question: str
     history = "\n".join(
         f"{'Khách' if row.direction == 'inbound' else 'iNut'}: {row.text[:1000]}"
         for row in rows
+        if not training.unsafe_question_reason(row.text) and not _ABUSIVE_RE.search(row.text)
     )
     catalog = _sales_context(db, question)
     return (
