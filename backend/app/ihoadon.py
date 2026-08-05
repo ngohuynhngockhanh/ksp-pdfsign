@@ -195,7 +195,13 @@ class Client:
             "invoice_series": template.get("invoice_series"),
             "adjustment_type": "1",
         }
-        data = self.post("/invoices", {"invoice": invoice})
+        # TT78 uses the /new API; the legacy endpoint rejects accounts migrated from TT32.
+        endpoint = "/new/invoices" if template.get("is_decree_new") else "/invoices"
+        payload = {
+            key: value for key, value in invoice.items()
+            if key not in {"other_id", "is_decree_new"}
+        }
+        data = self.post(endpoint, {"invoice": payload})
         created = data.get("invoice") if isinstance(data, dict) and data.get("invoice") else data
         if not isinstance(created, dict):
             created = {}
