@@ -298,14 +298,34 @@ def ask(settings: Settings, question: str, session_id: str = "", personal_contex
         _finish_request(success=False, error=str(exc))
         raise
     except (httpx.HTTPError, KeyError, ValueError) as exc:
-        _finish_request(success=False, error=str(exc))
-        raise TrainingError("Hermes Training khong tra loi duoc") from exc
+        message = training_failure_message(exc)
+        _finish_request(success=False, error=message)
+        raise TrainingError(message) from exc
     except Exception as exc:  # noqa: BLE001 - keep proxy errors user-safe
-        _finish_request(success=False, error=str(exc))
-        raise TrainingError("Hermes Training khong tra loi duoc") from exc
+        message = training_failure_message(exc)
+        _finish_request(success=False, error=message)
+        raise TrainingError(message) from exc
     finally:
         if success:
             _finish_request(success=True)
+
+
+def training_failure_message(exc: BaseException) -> str:
+    """Map upstream failures to safe, actionable messages without leaking internals."""
+    if isinstance(exc, httpx.TimeoutException):
+        return "Hermes Training qua thoi gian cho"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        if status_code == 429:
+            return "Hermes Training dang gioi han yeu cau"
+        if status_code in {401, 403}:
+            return "Hermes Training tu choi phien dang nhap"
+        return f"Hermes Training loi ket noi (HTTP {status_code})"
+    if isinstance(exc, httpx.RequestError):
+        return "Khong ket noi duoc Hermes Training"
+    if isinstance(exc, (KeyError, ValueError)):
+        return "Hermes Training tra ve du lieu khong hop le"
+    return "Hermes Training khong tra loi duoc"
 
 
 def _safe_fallback(question: str) -> dict[str, Any]:

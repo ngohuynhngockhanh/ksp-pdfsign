@@ -60,12 +60,12 @@ def _run(job_id: str, settings: Settings, question: str, session_id: str, person
             result = training.ask(settings, question, session_id, personal_context)
         else:
             result = training.ask(settings, question, session_id)
-    except training.TrainingError:
+    except training.TrainingError as exc:
         with _lock:
             job = _jobs.get(job_id)
             if job is not None:
                 job.status = "failed"
-                job.error = "Hermes Training khong tra loi duoc"
+                job.error = str(exc)
         return
     with _lock:
         job = _jobs.get(job_id)

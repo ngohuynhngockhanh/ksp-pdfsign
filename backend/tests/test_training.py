@@ -92,6 +92,26 @@ def test_ask_replaces_raw_tool_call_with_safe_speedtest_guidance(monkeypatch):
     assert "RUN SPEEDTEST" in result["answer"]["answer"]
 
 
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (httpx.ReadTimeout("slow"), "Hermes Training qua thoi gian cho"),
+        (httpx.ConnectError("offline"), "Khong ket noi duoc Hermes Training"),
+        (
+            httpx.HTTPStatusError(
+                "rate",
+                request=httpx.Request("POST", "http://training"),
+                response=httpx.Response(429),
+            ),
+            "Hermes Training dang gioi han yeu cau",
+        ),
+        (ValueError("invalid payload"), "Hermes Training tra ve du lieu khong hop le"),
+    ],
+)
+def test_training_failure_message_is_safe_and_actionable(exc, expected):
+    assert training.training_failure_message(exc) == expected
+
+
 def test_invalid_training_inputs_fail_before_network():
     with pytest.raises(training.TrainingError):
         training.search(_settings(), "")
@@ -269,6 +289,22 @@ def test_training_background_job_reports_progress_and_result(monkeypatch):
     assert payload["status"] == "done"
     assert payload["result"]["answer"]["answer"] == "Kết quả: Speedtest iNut làm sao"
     assert training_jobs.get("other-user", job_id) is None
+
+
+def test_training_background_job_preserves_safe_failure_reason(monkeypatch):
+    def fail(*args, **kwargs):
+        raise training.TrainingError("Hermes Training qua thoi gian cho")
+
+    monkeypatch.setattr(training, "ask", fail)
+    job_id = training_jobs.start("iot-failure", _settings(), "Alo")
+    deadline = datetime.datetime.now().timestamp() + 2
+    payload = training_jobs.get("iot-failure", job_id)
+    while payload and payload["status"] == "running" and datetime.datetime.now().timestamp() < deadline:
+        import time
+
+        time.sleep(0.01)
+        payload = training_jobs.get("iot-failure", job_id)
+    assert payload == {"status": "failed", "stage": "Không thể hoàn tất", "error": "Hermes Training qua thoi gian cho"}
 
 
 def test_training_access_can_be_granted_per_customer_account(client, monkeypatch):
