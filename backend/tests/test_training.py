@@ -113,6 +113,19 @@ def test_training_api_requires_admin(client):
 
 
 def test_training_stats_exposes_rate_and_facebook_telemetry(client):
+    from app import db as dbmod
+    from app.db import FacebookMessage
+
+    generator = dbmod.get_session()
+    db = next(generator)
+    db.add_all([
+        FacebookMessage(page_id="100063494173321", psid="stats.1", text="a", latency_ms=100),
+        FacebookMessage(page_id="100063494173321", psid="stats.2", text="b", latency_ms=200),
+        FacebookMessage(page_id="100063494173321", psid="stats.3", text="c", latency_ms=1000),
+    ])
+    db.commit()
+    generator.close()
+
     client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
     response = client.get("/api/training/stats")
     assert response.status_code == 200
@@ -120,6 +133,10 @@ def test_training_stats_exposes_rate_and_facebook_telemetry(client):
     assert payload["runtime"]["limit"] >= 1
     assert payload["runtime"]["windowSeconds"] >= 1
     assert {"inbound", "outbound", "failed"} <= payload["facebook"].keys()
+    assert payload["facebook"]["latency"]["count"] == 3
+    assert payload["facebook"]["latency"]["averageMs"] == 433
+    assert payload["facebook"]["latency"]["p50Ms"] == 200
+    assert payload["facebook"]["latency"]["p95Ms"] == 1000
     client.post("/api/logout")
 
 

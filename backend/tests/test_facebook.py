@@ -208,7 +208,46 @@ def test_facebook_worker_uses_history_and_stores_outbound_reply(client, monkeypa
     outbound = db.query(FacebookMessage).filter_by(direction="outbound").one()
     assert inbound.status == "replied"
     assert outbound.reply_to_id == inbound.id
+    assert inbound.processing_started_at is not None
+    assert inbound.replied_at is not None
+    assert inbound.latency_ms >= 0
+    assert inbound.hermes_latency_ms >= 0
+    assert inbound.context_latency_ms >= 0
+    assert inbound.send_latency_ms >= 0
     generator.close()
+
+
+def test_facebook_worker_does_not_block_reply_on_profile_lookup(client, monkeypatch):
+    _settings(monkeypatch)
+    from app import facebook, facebook_api
+
+    assert facebook_api._record_inbound("100063494173321", "psid.profile", "mid.profile", "Xin giá")
+    calls: list[str] = []
+
+    def fake_ask(settings, question, session_id="", personal_context=""):
+        calls.append("ask")
+        return {"answer": {"answer": "Mình kiểm tra giá giúp bạn.", "sourceBasis": "documentation-only"}}
+
+    class FakeMessenger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send_text(self, page_id, psid, text):
+            calls.append("send")
+            return {"message_id": "out.profile"}
+
+        def get_profile_name(self, psid):
+            calls.append("profile")
+            return "Khách thử nghiệm"
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(facebook.training, "ask", fake_ask)
+    monkeypatch.setattr(facebook, "MessengerClient", FakeMessenger)
+    facebook.process_message("100063494173321", "psid.profile", "mid.profile", "Xin giá")
+
+    assert calls.index("send") < calls.index("profile")
 
 
 def test_admin_can_jump_into_named_facebook_conversation(client):
