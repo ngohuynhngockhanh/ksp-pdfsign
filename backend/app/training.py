@@ -28,12 +28,12 @@ _EXECUTION_REQUEST = re.compile(
 _PROMPT_INJECTION_REQUEST = re.compile(
     r"(?i)(?:ignore\s+(?:all\s+)?(?:previous|earlier|prior)\s+instructions?|"
     r"bỏ qua\s+(?:(?:mọi|toàn bộ|các)\s+)?(?:hướng dẫn|quy tắc|chỉ dẫn|prompt)|"
-    r"system\s+prompt|developer\s+message|jailbreak|\bDAN\b|"
+    r"system\s+prompt|developer\s+message|prompt\s+injection|jailbreak|\bDAN\b|"
     r"reveal\s+(?:the\s+)?prompt|tiết lộ\s+(?:prompt|hướng dẫn))")
 _PROGRAMMING_REQUEST = re.compile(
     r"(?i)(?:\blập\s*trình\b|\bviết\s+(?:code|mã\s*nguồn|script)\b|"
     r"\b(?:python|javascript|typescript|java|c\+\+|c#|bash|powershell)\b|"
-    r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code)\b)")
+    r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code|console|terminal|shell)\b)")
 _MAX_TRAINING_MESSAGE_BYTES = 2000
 _AUTH_LOCK = threading.Lock()
 _AUTH_COOKIES: dict[tuple[str, str, object], str] = {}
