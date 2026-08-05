@@ -431,6 +431,7 @@ export const api = {
         inbound: number;
         outbound: number;
         replied: number;
+        rejected: number;
         failed: number;
         statuses: Record<string, number>;
         latency: { count: number; averageMs: number; p50Ms: number; p95Ms: number; maxMs: number };

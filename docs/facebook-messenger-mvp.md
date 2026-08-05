@@ -70,6 +70,16 @@ trong trang `Training`. Khu vực `MESSENGER INBOX` nhóm hội thoại theo ng�
 hiển thị tên Facebook (hoặc PSID rút gọn nếu Meta không cho đọc tên), và cho
 phép bấm vào để xem toàn bộ lịch sử chat.
 
+Mỗi tin trả lời còn lưu thời gian từ lúc webhook nhận tin đến lúc Graph API
+nhận câu trả lời, cùng các chặng hàng đợi, dựng ngữ cảnh, Hermes và gửi Graph.
+Dashboard hiển thị trung bình, P50, P95 và P95 từng chặng để biết chính xác
+điểm nghẽn thay vì đoán.
+
+Messenger có lớp guardrail trước Hermes: chỉ nhận câu hỏi liên quan sản phẩm,
+giải pháp và quy trình iNut trong dữ liệu đã duyệt; từ chối chủ đề lan man,
+lập trình, lệnh shell/console và prompt injection. Các yêu cầu bị chặn không
+mở phiên Hermes nên vừa an toàn vừa phản hồi nhanh hơn.
+
 ## Kiểm tra nhanh
 
 ```bash

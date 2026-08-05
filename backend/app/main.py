@@ -1888,6 +1888,7 @@ def training_stats(
             "inbound": sum(row.direction == "inbound" for row in facebook_rows),
             "outbound": sum(row.direction == "outbound" for row in facebook_rows),
             "replied": sum(row.status == "replied" for row in facebook_rows),
+            "rejected": sum(row.status == "rejected" for row in facebook_rows),
             "failed": sum(row.status == "failed" for row in facebook_rows),
             "statuses": facebook_statuses,
             "latency": facebook_latency,

@@ -138,7 +138,7 @@ def test_training_stats_exposes_rate_and_facebook_telemetry(client):
     payload = response.json()
     assert payload["runtime"]["limit"] >= 1
     assert payload["runtime"]["windowSeconds"] >= 1
-    assert {"inbound", "outbound", "failed"} <= payload["facebook"].keys()
+    assert {"inbound", "outbound", "rejected", "failed"} <= payload["facebook"].keys()
     assert payload["facebook"]["latency"]["count"] == 3
     assert payload["facebook"]["latency"]["averageMs"] == 433
     assert payload["facebook"]["latency"]["p50Ms"] == 200
