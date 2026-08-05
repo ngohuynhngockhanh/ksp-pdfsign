@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -47,6 +48,8 @@ _SCOPE_REFUSAL = (
 )
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="facebook-messenger")
 _profile_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="facebook-profile")
+_conversation_locks: dict[str, threading.Lock] = {}
+_conversation_locks_guard = threading.Lock()
 
 
 class FacebookError(RuntimeError):
@@ -156,6 +159,15 @@ def enqueue_message(page_id: str, psid: str, message_id: str, text: str) -> None
 
 
 def process_message(page_id: str, psid: str, message_id: str, text: str) -> None:
+    """Process one conversation in order while keeping other pages concurrent."""
+    key = f"{page_id}:{psid}"
+    with _conversation_locks_guard:
+        lock = _conversation_locks.setdefault(key, threading.Lock())
+    with lock:
+        _process_message(page_id, psid, message_id, text)
+
+
+def _process_message(page_id: str, psid: str, message_id: str, text: str) -> None:
     settings = get_settings()
     generator = get_session()
     db = next(generator)

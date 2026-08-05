@@ -101,6 +101,39 @@ def test_facebook_webhook_checks_signature_and_deduplicates(client, monkeypatch)
     assert bad.status_code == 403
 
 
+def test_facebook_messages_for_one_conversation_stay_in_order(monkeypatch):
+    from app import facebook
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls: list[str] = []
+
+    def fake_process(page_id, psid, message_id, text):
+        calls.append(message_id)
+        if message_id == "mid.first":
+            first_started.set()
+            release_first.wait(1)
+
+    monkeypatch.setattr(facebook, "_process_message", fake_process)
+    first = threading.Thread(
+        target=facebook.process_message,
+        args=("100063494173321", "psid.order", "mid.first", "Một"),
+    )
+    second = threading.Thread(
+        target=facebook.process_message,
+        args=("100063494173321", "psid.order", "mid.second", "Hai"),
+    )
+    first.start()
+    assert first_started.wait(1)
+    second.start()
+    second.join(0.05)
+    assert calls == ["mid.first"]
+    release_first.set()
+    first.join(1)
+    second.join(1)
+    assert calls == ["mid.first", "mid.second"]
+
+
 def test_messenger_client_uses_bearer_and_redacts_token(monkeypatch):
     from app.facebook import MessengerClient
 
