@@ -37,6 +37,9 @@ function errorMessage(error: string) {
   if (/timeout|timed out|qua thoi gian cho/i.test(value)) {
     return "Dịch vụ phản hồi quá thời gian chờ. Tin này đã dừng, không còn chạy ngầm.";
   }
+  if (/HTTP 400|tu choi yeu cau/i.test(value)) {
+    return "iNut Training từ chối yêu cầu (HTTP 400). Tin này đã dừng; hãy thử gửi lại.";
+  }
   if (/khong ket noi|loi ket noi/i.test(value)) {
     return "Không kết nối được iNut Training ở lần xử lý đó. Tin đã dừng và có thể thử lại.";
   }

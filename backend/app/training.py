@@ -24,7 +24,12 @@ _EXECUTION_REQUEST = re.compile(
     r"(?:lệnh|command|shell|terminal|console)|rm\s+-rf\s+/|sudo\s+|"
     r"(?:bash|zsh|powershell|cmd)\s+-c\b|"
     r"(?:chạy|thực thi|execute|run)\s+(?:ls|pwd|whoami|cat|grep|curl|wget|rm|"
-    r"mkdir|chmod|docker|git|npm|pip|python)\b)")
+    r"mkdir|chmod|docker|git|npm|pip|python)\b|"
+    r"(?:giả sử|assume|pretend)\s+(?:tôi|i)\s+(?:là|am)\s+"
+    r"(?:quản trị viên|admin(?:istrator)?|root|developer|system)\b|"
+    r"(?:trả|cho|gửi|hiển thị|show|return)\s+(?:tôi\s+)?"
+    r"(?:kết quả|output|result)\s+(?:của\s+)?"
+    r"(?:lệnh|command|shell|terminal)\b)")
 _PROMPT_INJECTION_REQUEST = re.compile(
     r"(?i)(?:ignore\s+(?:all\s+)?(?:previous|earlier|prior)\s+instructions?|"
     r"bỏ qua\s+(?:(?:mọi|toàn bộ|các)\s+)?(?:hướng dẫn|quy tắc|chỉ dẫn|prompt)|"
@@ -34,6 +39,7 @@ _PROGRAMMING_REQUEST = re.compile(
     r"(?i)(?:\blập\s*trình\b|\bviết\s+(?:code|mã\s*nguồn|script)\b|"
     r"\b(?:python|javascript|typescript|java|c\+\+|c#|bash|powershell)\b|"
     r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code|console|terminal|shell)\b)")
+_SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
 _MAX_TRAINING_MESSAGE_BYTES = 2000
 _AUTH_LOCK = threading.Lock()
 _AUTH_COOKIES: dict[tuple[str, str, object], str] = {}
@@ -126,6 +132,15 @@ def unsafe_question_reason(question: str) -> str:
     if _EXECUTION_REQUEST.search(value) or _PROMPT_INJECTION_REQUEST.search(value) or _PROGRAMMING_REQUEST.search(value):
         return "Training chi ho tro tra cuu co nguon; khong thuc thi tool, lenh hoac ho tro lap trinh"
     return ""
+
+
+def _normalise_session_id(base: str, session_id: str) -> str:
+    """Keep legacy caller IDs stable while satisfying Hermes' public token format."""
+    value = str(session_id or "").strip()
+    if not value or _SESSION_ID.fullmatch(value):
+        return value
+    digest = hashlib.sha256(f"{base}\n{value}".encode("utf-8")).hexdigest()
+    return f"ksp-{digest}"
 
 
 def _auth_cache_key(base: str, password: str, transport: httpx.BaseTransport | None) -> tuple[str, str, object]:
@@ -280,13 +295,14 @@ def ask(settings: Settings, question: str, session_id: str = "", personal_contex
             headers = {"Origin": origin}
             if cookie:
                 headers["Cookie"] = f"ksp_chat_auth={cookie}"
-            response = client.post(f"{base}/api/chat", headers=headers, json={"sessionId": session_id, "message": enriched_question})
+            hermes_session_id = _normalise_session_id(base, session_id)
+            response = client.post(f"{base}/api/chat", headers=headers, json={"sessionId": hermes_session_id, "message": enriched_question})
             if response.status_code == 401:
                 _invalidate_auth(cache_key, cookie)
                 cookie = _login(client, base, origin, settings.training_password, cache_key, force=True)
                 if cookie:
                     headers["Cookie"] = f"ksp_chat_auth={cookie}"
-                response = client.post(f"{base}/api/chat", headers=headers, json={"sessionId": session_id, "message": enriched_question})
+                response = client.post(f"{base}/api/chat", headers=headers, json={"sessionId": hermes_session_id, "message": enriched_question})
             response.raise_for_status()
             data = response.json()["data"]
             answer = data.get("answer", {})
@@ -320,6 +336,8 @@ def training_failure_message(exc: BaseException) -> str:
             return "Hermes Training dang gioi han yeu cau"
         if status_code in {401, 403}:
             return "Hermes Training tu choi phien dang nhap"
+        if status_code == 400:
+            return "Hermes Training tu choi yeu cau (HTTP 400)"
         return f"Hermes Training loi ket noi (HTTP {status_code})"
     if isinstance(exc, httpx.RequestError):
         return "Khong ket noi duoc Hermes Training"
