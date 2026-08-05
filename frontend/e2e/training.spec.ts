@@ -21,8 +21,17 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/training/stats", (route) => route.fulfill({ json: {
     totals: { questions: 3, tokens: 420, successful: 3 }, users: [], recent: [], tokenNote: "Token ước tính",
     runtime: { limit: 100, windowSeconds: 60, windowCount: 1, active: 0, total: 3, completed: 3, failed: 0, rejected: 0, lastError: "" },
-    facebook: { total: 0, inbound: 0, outbound: 0, replied: 0, rejected: 0, failed: 0, statuses: {}, latency: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, stages: { queue: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, context: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, hermes: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, send: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, profile: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 } }, recent: [] },
+    facebook: { total: 3, inbound: 2, outbound: 1, replied: 0, rejected: 0, failed: 1, statuses: {}, latency: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, stages: { queue: { count: 0, averageMs: 0, p95Ms: 0, maxMs: 0 }, context: { count: 0, averageMs: 0, p95Ms: 0, maxMs: 0 }, hermes: { count: 0, averageMs: 0, p95Ms: 0, maxMs: 0 }, send: { count: 0, averageMs: 0, p95Ms: 0, maxMs: 0 }, profile: { count: 0, averageMs: 0, p95Ms: 0, maxMs: 0 } }, recent: [] },
   }}));
+  await page.route("**/api/users", (route) => route.fulfill({ json: [{ id: 1, username: "admin", role: "admin", customer_name: null, training_access: true }] }));
+  await page.route("**/api/training/public-leads", (route) => route.fulfill({ json: { items: [] } }));
+  await page.route("**/api/facebook/conversations*", (route) => route.fulfill({ json: { items: [{
+    conversationId: "page-1:person-1", pageId: "page-1", psid: "person-1", name: "Khách thử nghiệm", messageCount: 2,
+    failedCount: 1, lastText: "Alo", lastDirection: "inbound", lastStatus: "failed", lastAt: "2026-08-05T10:40:55Z", lastLatencyMs: 0,
+  }] } }));
+  await page.route("**/api/facebook/conversations/page-1/person-1", (route) => route.fulfill({ json: {
+    pageId: "page-1", psid: "person-1", name: "Khách thử nghiệm", items: [{ id: 81, direction: "inbound", text: "Alo", status: "failed", error: "Hermes Training khong tra loi duoc", createdAt: "2026-08-05T10:40:55Z", queueLatencyMs: 0, latencyMs: 0, hermesLatencyMs: 0, contextLatencyMs: 0, sendLatencyMs: 0 }],
+  } }));
   await page.route("**/api/training/history", (route) => route.fulfill({ json: {
     items: [{ jobId: "old-job", question: "Câu hỏi cũ của tôi", status: "done", answer: { answer: "Trả lời cũ", sourceBasis: "documentation-only", documentationEvidence: [] }, createdAt: "2026-07-28T10:00:00Z", completedAt: "2026-07-28T10:00:03Z", durationMs: 3000 }],
   }}));
@@ -49,4 +58,16 @@ test("admin asks Hermes and creates a customer link", async ({ page }) => {
 
   await page.getByRole("button", { name: "Tạo link gửi khách" }).click();
   await expect(page.getByText("https://example.test/t/public-answer")).toBeVisible();
+});
+
+test("admin can filter Messenger history and see an actionable Hermes failure", async ({ page }) => {
+  await page.goto("/training");
+  await expect(page.getByRole("heading", { name: "Inbox fanpage iNut" })).toBeVisible();
+  await expect(page.getByText("1 lỗi lịch sử")).toBeVisible();
+  await page.getByLabel("Tìm hội thoại Messenger").fill("Khách thử nghiệm");
+  await page.getByRole("button", { name: /Khách thử nghiệm/ }).click();
+  await expect(page.getByText("Hermes chưa tạo được câu trả lời")).toBeVisible();
+  await expect(page.getByText("Lỗi · lỗi đã dừng")).toBeVisible();
+  await page.getByLabel("Lọc trạng thái Messenger").selectOption("replied");
+  await expect(page.getByText("Không có hội thoại khớp bộ lọc hiện tại.")).toBeVisible();
 });
