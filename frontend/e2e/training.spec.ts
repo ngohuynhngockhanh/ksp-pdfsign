@@ -20,6 +20,8 @@ test.beforeEach(async ({ page }) => {
   }}));
   await page.route("**/api/training/stats", (route) => route.fulfill({ json: {
     totals: { questions: 3, tokens: 420, successful: 3 }, users: [], recent: [], tokenNote: "Token ước tính",
+    runtime: { limit: 100, windowSeconds: 60, windowCount: 1, active: 0, total: 3, completed: 3, failed: 0, rejected: 0, lastError: "" },
+    facebook: { total: 0, inbound: 0, outbound: 0, replied: 0, rejected: 0, failed: 0, statuses: {}, latency: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, stages: { queue: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, context: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, hermes: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, send: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 }, profile: { count: 0, averageMs: 0, p50Ms: 0, p95Ms: 0, maxMs: 0 } }, recent: [] },
   }}));
   await page.route("**/api/training/history", (route) => route.fulfill({ json: {
     items: [{ jobId: "old-job", question: "Câu hỏi cũ của tôi", status: "done", answer: { answer: "Trả lời cũ", sourceBasis: "documentation-only", documentationEvidence: [] }, createdAt: "2026-07-28T10:00:00Z", completedAt: "2026-07-28T10:00:03Z", durationMs: 3000 }],
