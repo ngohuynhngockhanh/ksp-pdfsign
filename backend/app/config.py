@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     # Facebook Messenger webhook. Secrets must stay in the server environment.
     facebook_enabled: bool = False
-    facebook_page_id: str = "100063494173321"
+    facebook_page_id: str = "1698631723787176"
     facebook_verify_token: str = ""
     facebook_app_secret: str = ""
     facebook_page_access_token: str = ""
