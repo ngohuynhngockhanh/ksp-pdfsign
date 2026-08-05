@@ -25,6 +25,7 @@ import { TaxReview } from "./pages/TaxReview";
 import { Operations } from "./pages/Operations";
 import { Payroll } from "./pages/Payroll";
 import { Training } from "./pages/Training";
+import { Messenger } from "./pages/Messenger";
 import { PymidCoop } from "./pages/PymidCoop";
 
 type Tab =
@@ -52,6 +53,7 @@ type Tab =
   | "verify"
   | "mine"
   | "training"
+  | "messenger"
   | "pymidcoop";
 
 const ROUTES: Record<Tab, string> = {
@@ -79,6 +81,7 @@ const ROUTES: Record<Tab, string> = {
   verify: "/kiem-tra",
   mine: "/ho-so-cua-toi",
   training: "/training",
+  messenger: "/messenger",
   pymidcoop: "/pymid-coop",
 };
 const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
@@ -171,7 +174,7 @@ export function App() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training",
+              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training", "messenger",
               "pymidcoop",
             ] as Tab[])
           : isPymidStaff
@@ -224,6 +227,7 @@ export function App() {
     ["Tổng quan", [["home", "Trung tâm vận hành", "◉"]]],
     ["Hợp tác", [["pymidcoop", "INUT – PYMID CO.OP", "◆"]]],
     ["Trợ lý", [["training", "iNut Training", "✦"]]],
+    ["Kênh bán hàng", [["messenger", "Messenger fanpage", "◌"]]],
     [
       "Hóa đơn & Thuế",
       [
@@ -335,6 +339,7 @@ export function App() {
         <main className="app-content" data-page={tab}>
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
+        {tab === "messenger" && isAdmin && <Messenger />}
         {tab === "pymidcoop" && (isAdmin || isPymid) && (
           <PymidCoop isAdmin={isAdmin} canManageStaff={isAdmin || !isPymidStaff} />
         )}

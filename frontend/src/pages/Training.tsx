@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api, TrainingAnswer, TrainingEvidence, TrainingSearchResult, TrainingPublicLead, TrainingPublicQuery } from "../api";
 
 const QUICK_QUESTIONS = [
@@ -56,48 +56,6 @@ type AccessUser = Awaited<ReturnType<typeof api.listUsers>>[number];
 type TrainingStats = Awaited<ReturnType<typeof api.trainingStats>>;
 type TrainingHistory = Awaited<ReturnType<typeof api.trainingHistory>>["items"];
 type TrainingKnowledge = Awaited<ReturnType<typeof api.trainingKnowledge>>["items"];
-type FacebookConversation = Awaited<ReturnType<typeof api.facebookConversations>>["items"][number];
-type FacebookHistory = Awaited<ReturnType<typeof api.facebookConversationHistory>>;
-
-type FacebookStatusFilter = "all" | "processing" | "replied" | "rejected" | "failed";
-
-const FACEBOOK_STATUS_LABELS: Record<string, string> = {
-  received: "Đã nhận",
-  queued: "Đang chờ",
-  processing: "Đang xử lý",
-  replied: "Đã trả lời",
-  sent: "Đã gửi",
-  rejected: "Đã chặn",
-  failed: "Lỗi",
-};
-
-function facebookStatusLabel(status: string) {
-  return FACEBOOK_STATUS_LABELS[status] || status || "Chưa rõ";
-}
-
-function facebookStatusFilterMatches(status: string, filter: FacebookStatusFilter) {
-  if (filter === "all") return true;
-  if (filter === "processing") return status === "received" || status === "queued" || status === "processing";
-  if (filter === "replied") return status === "replied" || status === "sent";
-  return status === filter;
-}
-
-function facebookErrorMessage(error: string) {
-  const value = error.trim();
-  if (!value) return "Không có thông tin lỗi.";
-  if (/Hermes Training khong tra loi duoc/i.test(value)) {
-    return "Hermes chưa tạo được câu trả lời. Tin này đã dừng ở lần xử lý trước; hãy thử gửi lại sau khi kiểm tra kết nối iNut Training.";
-  }
-  if (/timeout|timed out/i.test(value)) {
-    return "Dịch vụ phản hồi quá thời gian chờ. Tin này đã dừng, không còn chạy ngầm.";
-  }
-  return value;
-}
-
-function formatDurationMs(value: number) {
-  if (!value || value < 1) return "—";
-  return `${(value / 1000).toFixed(1)}s`;
-}
 
 export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
@@ -116,42 +74,20 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [publicLeads, setPublicLeads] = useState<TrainingPublicLead[]>([]);
-  const [facebookConversations, setFacebookConversations] = useState<FacebookConversation[]>([]);
-  const [selectedFacebook, setSelectedFacebook] = useState<FacebookHistory | null>(null);
-  const [facebookBusy, setFacebookBusy] = useState(false);
-  const [facebookSearch, setFacebookSearch] = useState("");
-  const [facebookStatusFilter, setFacebookStatusFilter] = useState<FacebookStatusFilter>("all");
-  const [facebookSort, setFacebookSort] = useState<"recent" | "messages" | "errors">("recent");
   const [selectedLead, setSelectedLead] = useState<(TrainingPublicLead & { queries: TrainingPublicQuery[] }) | null>(null);
   const [leadNote, setLeadNote] = useState("");
   const [leadStatus, setLeadStatus] = useState("new");
   const [leadBusy, setLeadBusy] = useState(false);
 
-  const filteredFacebookConversations = useMemo(() => {
-    const query = facebookSearch.trim().toLocaleLowerCase("vi-VN");
-    return [...facebookConversations]
-      .filter((conversation) => {
-        const matchesSearch = !query || [conversation.name, conversation.lastText, conversation.pageId]
-          .some((value) => value.toLocaleLowerCase("vi-VN").includes(query));
-        return matchesSearch && facebookStatusFilterMatches(conversation.lastStatus, facebookStatusFilter);
-      })
-      .sort((left, right) => {
-        if (facebookSort === "messages") return right.messageCount - left.messageCount;
-        if (facebookSort === "errors") return right.failedCount - left.failedCount;
-        return new Date(right.lastAt).getTime() - new Date(left.lastAt).getTime();
-      });
-  }, [facebookConversations, facebookSearch, facebookSort, facebookStatusFilter]);
-
   async function loadAccessUsers() {
     if (isAdmin) {
-      const [users, usage, leads, conversations] = await Promise.allSettled([
-        api.listUsers(), api.trainingStats(), api.trainingPublicLeads(), api.facebookConversations(),
+      const [users, usage, leads] = await Promise.allSettled([
+        api.listUsers(), api.trainingStats(), api.trainingPublicLeads(),
       ]);
       if (users.status === "fulfilled") setAccessUsers(users.value);
       if (usage.status === "fulfilled") setStats(usage.value);
       if (leads.status === "fulfilled") setPublicLeads(leads.value.items);
-      if (conversations.status === "fulfilled") setFacebookConversations(conversations.value.items);
-      const failed = [users, usage, leads, conversations].filter((result) => result.status === "rejected");
+      const failed = [users, usage, leads].filter((result) => result.status === "rejected");
       setError(failed.length ? "Một số dữ liệu quản trị chưa tải được. Hãy bấm Làm mới inbox để thử lại." : "");
     }
   }
@@ -228,17 +164,6 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       setError((caught as Error).message);
     } finally {
       setLeadBusy(false);
-    }
-  }
-
-  async function openFacebookConversation(conversation: FacebookConversation) {
-    setFacebookBusy(true);
-    try {
-      setSelectedFacebook(await api.facebookConversationHistory(conversation.pageId, conversation.psid));
-    } catch (caught) {
-      setError((caught as Error).message);
-    } finally {
-      setFacebookBusy(false);
     }
   }
 
@@ -329,31 +254,6 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       {isAdmin && <section className="training-public-leads">
         <div className="training-public-leads-head"><div><span>PUBLIC DESK</span><h2>Lead từ trợ lý iNut.vn</h2><p>Số điện thoại được mã hóa; chỉ admin mới có thể chủ động mở số đầy đủ.</p></div><button type="button" onClick={loadAccessUsers}>Làm mới</button></div>
         {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => { const publicAnswer = unwrapPublicAnswer(query.answer); return <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{publicAnswer?.answer && <p>{publicAnswer.answer}</p>}</article>; })}</div></article>}</div>}
-      </section>}
-      {isAdmin && <section className="messenger-console" aria-labelledby="messenger-console-title">
-        <div className="messenger-console-head">
-          <div><span>QUẢN TRỊ MESSENGER</span><h2 id="messenger-console-title">Inbox fanpage iNut</h2><p>Hội thoại Facebook nằm riêng khỏi Training. Tìm tên, đọc đủ ngữ cảnh và nhận biết ngay lỗi đang xử lý hay lỗi lịch sử.</p></div>
-          <button type="button" onClick={loadAccessUsers} disabled={facebookBusy}>{facebookBusy ? "Đang tải…" : "Làm mới inbox"}</button>
-        </div>
-        {stats && <div className="messenger-kpis" aria-label="Tổng quan Messenger">
-          <div><strong>{stats.facebook.inbound}</strong><span>Tin khách gửi</span></div>
-          <div><strong>{stats.facebook.replied}</strong><span>Đã trả lời</span></div>
-          <div><strong>{stats.facebook.rejected}</strong><span>Đã chặn</span></div>
-          <div className={stats.facebook.failed > 0 ? "is-warning" : ""}><strong>{stats.facebook.failed}</strong><span>Lỗi lịch sử</span></div>
-          <div><strong>{formatDurationMs(stats.facebook.latency.averageMs)}</strong><span>Phản hồi trung bình</span></div>
-        </div>}
-        <div className="messenger-toolbar">
-          <label className="messenger-search"><span>Tìm hội thoại</span><input aria-label="Tìm hội thoại Messenger" value={facebookSearch} onChange={(event) => setFacebookSearch(event.target.value)} placeholder="Tên, nội dung hoặc Page ID…" /></label>
-          <label><span>Trạng thái</span><select aria-label="Lọc trạng thái Messenger" value={facebookStatusFilter} onChange={(event) => setFacebookStatusFilter(event.target.value as FacebookStatusFilter)}><option value="all">Tất cả</option><option value="processing">Đang xử lý</option><option value="replied">Đã trả lời</option><option value="rejected">Đã chặn</option><option value="failed">Lỗi</option></select></label>
-          <label><span>Sắp xếp</span><select aria-label="Sắp xếp hội thoại Messenger" value={facebookSort} onChange={(event) => setFacebookSort(event.target.value as typeof facebookSort)}><option value="recent">Mới nhất</option><option value="messages">Nhiều tin nhất</option><option value="errors">Nhiều lỗi nhất</option></select></label>
-        </div>
-        {facebookConversations.some((conversation) => conversation.failedCount > 0) && <div className="messenger-history-note"><strong>Lỗi lịch sử</strong><span>Một số hội thoại có lỗi từ lần chạy trước. Lỗi đã dừng, không có nghĩa Hermes đang tiếp tục xử lý; mở hội thoại để xem thời điểm và nguyên nhân.</span></div>}
-        {facebookConversations.length === 0 ? <p className="messenger-empty">Chưa có hội thoại Facebook. Khi fanpage nhận tin mới, hội thoại sẽ xuất hiện ở đây.</p> : filteredFacebookConversations.length === 0 ? <p className="messenger-empty">Không có hội thoại khớp bộ lọc hiện tại.</p> : <div className="training-facebook-layout">
-          <div className="training-facebook-list" aria-label="Danh sách hội thoại Messenger">{filteredFacebookConversations.map((conversation) => <button type="button" key={conversation.conversationId} className={`training-facebook-row${selectedFacebook?.psid === conversation.psid && selectedFacebook?.pageId === conversation.pageId ? " active" : ""}`} onClick={() => openFacebookConversation(conversation)}>
-            <span><strong>{conversation.name}</strong><small>{conversation.messageCount} tin · {new Date(conversation.lastAt).toLocaleString("vi-VN")}{conversation.lastLatencyMs > 0 ? ` · ${formatDurationMs(conversation.lastLatencyMs)}` : ""}</small><em>{conversation.lastText}</em></span><b className={`messenger-status messenger-status-${conversation.lastStatus}`}>{facebookStatusLabel(conversation.lastStatus)}</b>{conversation.failedCount > 0 && <small className="messenger-history-badge">{conversation.failedCount} lỗi lịch sử</small>}
-          </button>)}</div>
-          {selectedFacebook && <article className="training-facebook-detail"><header><div><span>{selectedFacebook.pageId}</span><h3>{selectedFacebook.name}</h3></div><small>{selectedFacebook.items.length} tin nhắn · {selectedFacebook.items.filter((item) => item.status === "failed").length} lỗi lịch sử</small></header><div className="training-facebook-thread">{selectedFacebook.items.map((item) => <div key={item.id} className={`training-facebook-bubble ${item.direction === "inbound" ? "inbound" : "outbound"}`}><small>{item.direction === "inbound" ? selectedFacebook.name : "iNut"} · {new Date(item.createdAt).toLocaleString("vi-VN")}{item.direction === "inbound" && item.latencyMs > 0 ? ` · trả lời ${formatDurationMs(item.latencyMs)}` : ""}</small><p>{item.text}</p>{item.error && <div className="messenger-error"><strong>{facebookStatusLabel(item.status)} · lỗi đã dừng</strong><span>{facebookErrorMessage(item.error)}</span></div>}</div>)}</div></article>}
-        </div>}
       </section>}
       <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (

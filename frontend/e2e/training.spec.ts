@@ -47,6 +47,7 @@ test.beforeEach(async ({ page }) => {
 
 test("admin asks Hermes and creates a customer link", async ({ page }) => {
   await page.goto("/training");
+  await expect(page.getByRole("heading", { name: "Inbox fanpage iNut" })).toHaveCount(0);
   await expect(page.getByText("Mọi câu hỏi và câu trả lời đều được lưu vào lịch sử")).toBeVisible();
   await expect(page.getByText("Câu hỏi cũ của tôi")).toBeVisible();
   await page.getByLabel("Câu hỏi cho iNut Training").fill("cài frpc lỗi giờ sao");
@@ -61,8 +62,9 @@ test("admin asks Hermes and creates a customer link", async ({ page }) => {
 });
 
 test("admin can filter Messenger history and see an actionable Hermes failure", async ({ page }) => {
-  await page.goto("/training");
-  await expect(page.getByRole("heading", { name: "Inbox fanpage iNut" })).toBeVisible();
+  await page.goto("/messenger");
+  await expect(page).toHaveURL(/\/messenger$/);
+  await expect(page.getByRole("heading", { name: "Messenger fanpage" })).toBeVisible();
   await expect(page.getByText("1 lỗi lịch sử")).toBeVisible();
   await page.getByLabel("Tìm hội thoại Messenger").fill("Khách thử nghiệm");
   await page.getByRole("button", { name: /Khách thử nghiệm/ }).click();
