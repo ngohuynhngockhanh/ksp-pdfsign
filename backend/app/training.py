@@ -19,8 +19,21 @@ class TrainingError(RuntimeError):
 
 
 _EXECUTION_REQUEST = re.compile(
-    r"(?i)(?:call\s*:\s*default_api|mcp__|tool\s*call|(?:hãy|hay|giúp tôi|vui lòng)\s+"
-    r"(?:chạy|thực thi|execute)\s+(?:lệnh|command|shell|terminal)|rm\s+-rf\s+/|sudo\s+)")
+    r"(?i)(?:call\s*:\s*default_api|mcp__|tool\s*call|"
+    r"(?:hãy|hay|giúp tôi|vui lòng)?\s*(?:chạy|thực thi|execute|run)\s+"
+    r"(?:lệnh|command|shell|terminal|console)|rm\s+-rf\s+/|sudo\s+|"
+    r"(?:bash|zsh|powershell|cmd)\s+-c\b|"
+    r"(?:chạy|thực thi|execute|run)\s+(?:ls|pwd|whoami|cat|grep|curl|wget|rm|"
+    r"mkdir|chmod|docker|git|npm|pip|python)\b)")
+_PROMPT_INJECTION_REQUEST = re.compile(
+    r"(?i)(?:ignore\s+(?:all\s+)?(?:previous|earlier|prior)\s+instructions?|"
+    r"bỏ qua\s+(?:(?:mọi|toàn bộ|các)\s+)?(?:hướng dẫn|quy tắc|chỉ dẫn|prompt)|"
+    r"system\s+prompt|developer\s+message|jailbreak|\bDAN\b|"
+    r"reveal\s+(?:the\s+)?prompt|tiết lộ\s+(?:prompt|hướng dẫn))")
+_PROGRAMMING_REQUEST = re.compile(
+    r"(?i)(?:\blập\s*trình\b|\bviết\s+(?:code|mã\s*nguồn|script)\b|"
+    r"\b(?:python|javascript|typescript|java|c\+\+|c#|bash|powershell)\b|"
+    r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code)\b)")
 _MAX_TRAINING_MESSAGE_BYTES = 2000
 _AUTH_LOCK = threading.Lock()
 _AUTH_COOKIES: dict[tuple[str, str, object], str] = {}
@@ -105,6 +118,14 @@ def runtime_stats(settings: Settings) -> dict[str, Any]:
             "rejected": _REJECTED_REQUESTS,
             "lastError": _LAST_ERROR,
         }
+
+
+def unsafe_question_reason(question: str) -> str:
+    """Return a stable refusal reason before any model/tool request is opened."""
+    value = str(question or "").strip()
+    if _EXECUTION_REQUEST.search(value) or _PROMPT_INJECTION_REQUEST.search(value) or _PROGRAMMING_REQUEST.search(value):
+        return "Training chi ho tro tra cuu co nguon; khong thuc thi tool, lenh hoac ho tro lap trinh"
+    return ""
 
 
 def _auth_cache_key(base: str, password: str, transport: httpx.BaseTransport | None) -> tuple[str, str, object]:
@@ -226,8 +247,9 @@ def ask(settings: Settings, question: str, session_id: str = "", personal_contex
     question = question.strip()
     if not question or _utf8_bytes(question) > _MAX_TRAINING_MESSAGE_BYTES:
         raise TrainingError("Cau hoi phai tu 1 den 2000 ky tu")
-    if _EXECUTION_REQUEST.search(question):
-        raise TrainingError("Training chi ho tro tra cuu co nguon; khong thuc thi tool hoac lenh")
+    unsafe_reason = unsafe_question_reason(question)
+    if unsafe_reason:
+        raise TrainingError(unsafe_reason)
     if not settings.training_password:
         raise TrainingError("TRAINING_PASSWORD chua duoc cau hinh")
     _reserve_request(settings)

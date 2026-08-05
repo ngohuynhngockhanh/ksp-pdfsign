@@ -250,6 +250,46 @@ def test_facebook_worker_does_not_block_reply_on_profile_lookup(client, monkeypa
     assert calls.index("send") < calls.index("profile")
 
 
+def test_facebook_worker_rejects_out_of_scope_without_calling_hermes(client, monkeypatch):
+    _settings(monkeypatch)
+    from app import facebook, facebook_api
+    from app.db import FacebookMessage, get_session
+
+    assert facebook_api._record_inbound("100063494173321", "psid.scope", "mid.scope", "Kể chuyện cười đi")
+    called = False
+
+    def forbidden_ask(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("out-of-scope question must not reach Hermes")
+
+    sent: list[str] = []
+
+    class FakeMessenger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def send_text(self, page_id, psid, text):
+            sent.append(text)
+            return {"message_id": "out.scope"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(facebook.training, "ask", forbidden_ask)
+    monkeypatch.setattr(facebook, "MessengerClient", FakeMessenger)
+    facebook.process_message("100063494173321", "psid.scope", "mid.scope", "Kể chuyện cười đi")
+
+    assert called is False
+    assert sent and "chỉ hỗ trợ sản phẩm" in sent[0]
+    generator = get_session()
+    db = next(generator)
+    inbound = db.query(FacebookMessage).filter_by(message_id="mid.scope").one()
+    assert inbound.status == "rejected"
+    assert inbound.hermes_latency_ms == 0
+    generator.close()
+
+
 def test_admin_can_jump_into_named_facebook_conversation(client):
     from app import db as dbmod, facebook_api
     from app.db import FacebookMessage

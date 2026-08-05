@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request, status
 
 from .config import Settings
 from .crypto import fingerprint
+from .training import unsafe_question_reason
 
 _NONCES: dict[str, float] = {}
 _NONCE_LOCK = threading.Lock()
@@ -40,7 +41,7 @@ def validate_question(value: str) -> str:
     question = value.strip()
     if not question or len(question.encode("utf-8")) > 2000:
         raise ValueError("Câu hỏi phải từ 1 đến 2000 ký tự")
-    if re.search(r"(?i)(?:call\s*:\s*default_api|mcp__|tool\s*call|(?:hãy|hay|giúp tôi|vui lòng)\s+(?:chạy|thực thi|execute)\s+(?:lệnh|command|shell|terminal)|rm\s+-rf\s+/|sudo\s+)", question):
+    if unsafe_question_reason(question):
         raise ValueError("Training chỉ hỗ trợ tra cứu có nguồn")
     return question
 

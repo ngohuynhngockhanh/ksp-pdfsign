@@ -4,6 +4,7 @@ from __future__ import annotations
 import io as _io
 import html
 import json
+import math
 import re
 import secrets
 import zipfile
@@ -1821,6 +1822,25 @@ def _estimated_tokens(value: str) -> int:
     return max(1, (len(value.strip()) + 3) // 4)
 
 
+def _latency_summary(values: list[int]) -> dict[str, int]:
+    """Return stable percentile metrics for completed Messenger replies."""
+    ordered = sorted(max(0, int(value)) for value in values)
+    if not ordered:
+        return {"count": 0, "averageMs": 0, "p50Ms": 0, "p95Ms": 0, "maxMs": 0}
+
+    def percentile(percent: float) -> int:
+        index = min(len(ordered) - 1, max(0, math.ceil(percent / 100 * len(ordered)) - 1))
+        return ordered[index]
+
+    return {
+        "count": len(ordered),
+        "averageMs": round(sum(ordered) / len(ordered)),
+        "p50Ms": percentile(50),
+        "p95Ms": percentile(95),
+        "maxMs": ordered[-1],
+    }
+
+
 @app.get("/api/training/stats")
 def training_stats(
     _user: CurrentUser = Depends(require_admin),
@@ -1838,6 +1858,15 @@ def training_stats(
     for row in facebook_rows:
         key = f"{row.direction}_{row.status}"
         facebook_statuses[key] = facebook_statuses.get(key, 0) + 1
+    completed_facebook = [row for row in facebook_rows if row.latency_ms > 0]
+    facebook_latency = _latency_summary([row.latency_ms for row in completed_facebook])
+    facebook_stages = {
+        "queue": _latency_summary([row.queue_latency_ms for row in completed_facebook if row.queue_latency_ms > 0]),
+        "context": _latency_summary([row.context_latency_ms for row in completed_facebook if row.context_latency_ms > 0]),
+        "hermes": _latency_summary([row.hermes_latency_ms for row in completed_facebook if row.hermes_latency_ms > 0]),
+        "send": _latency_summary([row.send_latency_ms for row in completed_facebook if row.send_latency_ms > 0]),
+        "profile": _latency_summary([row.profile_lookup_ms for row in completed_facebook if row.profile_lookup_ms > 0]),
+    }
     return {
         "totals": {
             "questions": len(rows),
@@ -1861,6 +1890,8 @@ def training_stats(
             "replied": sum(row.status == "replied" for row in facebook_rows),
             "failed": sum(row.status == "failed" for row in facebook_rows),
             "statuses": facebook_statuses,
+            "latency": facebook_latency,
+            "stages": facebook_stages,
             "recent": [{
                 "direction": row.direction,
                 "status": row.status,
@@ -1868,6 +1899,11 @@ def training_stats(
                 "text": row.text[:160],
                 "error": row.error[:240],
                 "createdAt": row.created_at.isoformat(),
+                "queueLatencyMs": row.queue_latency_ms,
+                "latencyMs": row.latency_ms,
+                "hermesLatencyMs": row.hermes_latency_ms,
+                "contextLatencyMs": row.context_latency_ms,
+                "sendLatencyMs": row.send_latency_ms,
             } for row in facebook_rows[:20]],
         },
         "tokenNote": "Token ước tính từ độ dài câu hỏi và câu trả lời; Hermes CLI chưa trả usage chuẩn.",
@@ -1906,6 +1942,7 @@ def facebook_conversations(
                 "lastDirection": row.direction,
                 "lastStatus": row.status,
                 "lastAt": row.created_at.isoformat(),
+                "lastLatencyMs": row.latency_ms,
             }
             conversations[key] = item
         if row.sender_name.strip() and item["name"].startswith("Facebook · "):
@@ -1942,6 +1979,11 @@ def facebook_conversation_history(
             "status": row.status,
             "error": row.error,
             "createdAt": row.created_at.isoformat(),
+            "queueLatencyMs": row.queue_latency_ms,
+            "latencyMs": row.latency_ms,
+            "hermesLatencyMs": row.hermes_latency_ms,
+            "contextLatencyMs": row.context_latency_ms,
+            "sendLatencyMs": row.send_latency_ms,
         } for row in rows],
     }
 

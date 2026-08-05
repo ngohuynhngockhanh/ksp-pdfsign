@@ -246,6 +246,14 @@ class FacebookMessage(Base):
     status: Mapped[str] = mapped_column(String(20), default="received", index=True)
     reply_to_id: Mapped[int | None] = mapped_column(nullable=True)
     error: Mapped[str] = mapped_column(String(500), default="")
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    queue_latency_ms: Mapped[int] = mapped_column(default=0)
+    latency_ms: Mapped[int] = mapped_column(default=0)
+    hermes_latency_ms: Mapped[int] = mapped_column(default=0)
+    context_latency_ms: Mapped[int] = mapped_column(default=0)
+    send_latency_ms: Mapped[int] = mapped_column(default=0)
+    profile_lookup_ms: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
 
@@ -1213,6 +1221,14 @@ def _migrate_add_columns() -> None:
         },
         "facebook_messages": {
             "sender_name": "VARCHAR(255) DEFAULT ''",
+            "processing_started_at": "DATETIME",
+            "replied_at": "DATETIME",
+            "queue_latency_ms": "INTEGER DEFAULT 0",
+            "latency_ms": "INTEGER DEFAULT 0",
+            "hermes_latency_ms": "INTEGER DEFAULT 0",
+            "context_latency_ms": "INTEGER DEFAULT 0",
+            "send_latency_ms": "INTEGER DEFAULT 0",
+            "profile_lookup_ms": "INTEGER DEFAULT 0",
         },
         "inv_purchase_invoices": {
             "loai": "VARCHAR(10) DEFAULT 'hang_hoa'",

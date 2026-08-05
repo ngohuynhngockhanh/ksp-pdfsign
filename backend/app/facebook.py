@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -17,6 +19,18 @@ from .db import FacebookMessage, InvItem, Product, get_session
 _PAGE_ID_RE = re.compile(r"^\d{5,30}$")
 _PSID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _GRAPH_VERSION_RE = re.compile(r"^v\d+\.\d+$")
+_SCOPE_MARKER_RE = re.compile(
+    r"(?i)(?:inut|i-nut|iot|datalogger|module|rs485|rs232|modbus|smart\s*city|"
+    r"sensor|cảm\s*biến|camera|gateway|edge|frpc|p2p|mqtt|arduino|raspberry|"
+    r"galileo|\bsim\b|\ba76\b|hóa\s*đơn|invoice|báo\s*giá|\bgiá\b|"
+    r"tồn\s*kho|sản\s*phẩm|thiết\s*bị|giải\s*pháp|dịch\s*vụ|bảo\s*hành|"
+    r"lắp\s*đặt|kết\s*nối|cấu\s*hình|mua|đặt\s*hàng|thanh\s*toán|"
+    r"xin\s*chào|\bhello\b|\bhi\b|cảm\s*ơn|\bthanks\b)")
+_SCOPE_REFUSAL = (
+    "Mình chỉ hỗ trợ sản phẩm, giải pháp và quy trình iNut dựa trên dữ liệu đã được duyệt. "
+    "Mình không hỗ trợ lập trình, chạy lệnh/console, prompt injection hoặc chủ đề ngoài phạm vi này. "
+    "Bạn hãy hỏi về thiết bị, giá, tồn kho, cấu hình hay dịch vụ iNut nhé."
+)
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="facebook-messenger")
 
 
@@ -138,48 +152,44 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
         )
         if inbound is None:
             return
-        if not inbound.sender_name and settings.facebook_page_access_token:
-            try:
-                messenger = MessengerClient(
-                    settings.facebook_page_access_token,
-                    graph_base_url=settings.facebook_graph_base_url,
-                    graph_version=settings.facebook_graph_version,
-                    timeout=settings.facebook_timeout,
-                )
-                get_profile_name = getattr(messenger, "get_profile_name", None)
-                if callable(get_profile_name):
-                    inbound.sender_name = get_profile_name(psid)
-            except FacebookError:
-                # A missing profile permission must not block the reply worker.
-                if messenger is not None:
-                    messenger.close()
-                    messenger = None
-        context = _build_context(db, settings, page_id, psid, text)
-        result = training.ask(
-            settings,
-            text,
-            session_id=f"facebook-{page_id}-{psid}",
-            personal_context=context,
-        )
-        answer = _answer_text(result)
-        if not answer:
-            answer = "Mình đã nhận câu hỏi. Nhân viên iNut sẽ kiểm tra và phản hồi sớm nhé."
-        if _should_handoff(result):
-            answer += "\n\nNếu bạn cần chốt cấu hình hoặc báo giá chính thức, mình sẽ chuyển nhân viên iNut hỗ trợ tiếp."
+        inbound.processing_started_at = datetime.now(timezone.utc)
+        inbound.queue_latency_ms = _datetime_elapsed_ms(inbound.processing_started_at, inbound.created_at)
+        guard_reason = _facebook_scope_rejection(db, page_id, psid, text)
+        if guard_reason:
+            result = {"answer": {"answer": guard_reason, "sourceBasis": "guardrail"}}
+            answer = guard_reason
+        else:
+            context_started = time.perf_counter()
+            context = _build_context(db, settings, page_id, psid, text)
+            inbound.context_latency_ms = _elapsed_ms(context_started)
+            hermes_started = time.perf_counter()
+            result = training.ask(
+                settings,
+                text,
+                session_id=f"facebook-{page_id}-{psid}",
+                personal_context=context,
+            )
+            inbound.hermes_latency_ms = _elapsed_ms(hermes_started)
+            answer = _answer_text(result)
+            if not answer:
+                answer = "Mình đã nhận câu hỏi. Nhân viên iNut sẽ kiểm tra và phản hồi sớm nhé."
+            if _should_handoff(result):
+                answer += "\n\nNếu bạn cần chốt cấu hình hoặc báo giá chính thức, mình sẽ chuyển nhân viên iNut hỗ trợ tiếp."
 
         if settings.facebook_reply_enabled:
-            if messenger is None:
-                messenger = MessengerClient(
-                    settings.facebook_page_access_token,
-                    graph_base_url=settings.facebook_graph_base_url,
-                    graph_version=settings.facebook_graph_version,
-                    timeout=settings.facebook_timeout,
-                )
+            messenger = MessengerClient(
+                settings.facebook_page_access_token,
+                graph_base_url=settings.facebook_graph_base_url,
+                graph_version=settings.facebook_graph_version,
+                timeout=settings.facebook_timeout,
+            )
+            send_started = time.perf_counter()
             try:
                 messenger.send_text(page_id, psid, answer)
             finally:
-                messenger.close()
-                messenger = None
+                inbound.send_latency_ms = _elapsed_ms(send_started)
+            inbound.replied_at = datetime.now(timezone.utc)
+            inbound.latency_ms = _datetime_elapsed_ms(inbound.replied_at, inbound.created_at)
             db.add(FacebookMessage(
                 page_id=page_id,
                 psid=psid,
@@ -188,7 +198,10 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
                 status="sent",
                 reply_to_id=inbound.id,
             ))
-            inbound.status = "replied"
+            inbound.status = "rejected" if guard_reason else "replied"
+            _lookup_profile_after_reply(inbound, messenger, psid)
+            messenger.close()
+            messenger = None
         else:
             inbound.status = "queued"
         inbound.error = ""
@@ -205,6 +218,61 @@ def process_message(page_id: str, psid: str, message_id: str, text: str) -> None
         if messenger is not None:
             messenger.close()
         generator.close()
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
+
+
+def _datetime_elapsed_ms(later: datetime, earlier: datetime | None) -> int:
+    if earlier is None:
+        return 0
+    if earlier.tzinfo is None:
+        earlier = earlier.replace(tzinfo=timezone.utc)
+    if later.tzinfo is None:
+        later = later.replace(tzinfo=timezone.utc)
+    return max(0, int((later - earlier).total_seconds() * 1000))
+
+
+def _facebook_scope_rejection(db: Session, page_id: str, psid: str, question: str) -> str:
+    """Reject unsafe or clearly unrelated Messenger requests before Hermes."""
+    if training.unsafe_question_reason(question):
+        return _SCOPE_REFUSAL
+    recent = list(db.scalars(
+        select(FacebookMessage.text)
+        .where(FacebookMessage.page_id == page_id, FacebookMessage.psid == psid)
+        .order_by(FacebookMessage.created_at.desc(), FacebookMessage.id.desc())
+        .limit(6)
+    ))
+    items = db.execute(
+        select(InvItem.ten, InvItem.ma_hang)
+        .where(InvItem.active.is_(True))
+        .limit(200)
+    ).all()
+    known_catalog = " ".join(f"{name} {code}" for name, code in items)
+    history = " ".join(recent)
+    if _SCOPE_MARKER_RE.search(f"{question} {history} {known_catalog}"):
+        return ""
+    return _SCOPE_REFUSAL
+
+
+def _lookup_profile_after_reply(
+    inbound: FacebookMessage, messenger: MessengerClient, psid: str
+) -> None:
+    """Enrich the inbox after the customer-visible reply has left Graph API."""
+    if inbound.sender_name:
+        return
+    get_profile_name = getattr(messenger, "get_profile_name", None)
+    if not callable(get_profile_name):
+        return
+    profile_started = time.perf_counter()
+    try:
+        inbound.sender_name = get_profile_name(psid)
+    except Exception:  # noqa: BLE001 - profile enrichment is best effort
+        # Missing profile permission must not turn a successful reply into a failure.
+        pass
+    finally:
+        inbound.profile_lookup_ms = _elapsed_ms(profile_started)
 
 
 def _answer_text(result: Any) -> str:

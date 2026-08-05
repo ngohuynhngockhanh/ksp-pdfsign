@@ -433,7 +433,9 @@ export const api = {
         replied: number;
         failed: number;
         statuses: Record<string, number>;
-        recent: { direction: string; status: string; name: string; text: string; error: string; createdAt: string }[];
+        latency: { count: number; averageMs: number; p50Ms: number; p95Ms: number; maxMs: number };
+        stages: Record<string, { count: number; averageMs: number; p50Ms: number; p95Ms: number; maxMs: number }>;
+        recent: { direction: string; status: string; name: string; text: string; error: string; createdAt: string; queueLatencyMs: number; latencyMs: number; hermesLatencyMs: number; contextLatencyMs: number; sendLatencyMs: number }[];
       };
       tokenNote: string;
     }>("/api/training/stats");
@@ -450,6 +452,7 @@ export const api = {
       lastDirection: string;
       lastStatus: string;
       lastAt: string;
+      lastLatencyMs: number;
     }[] }>(`/api/facebook/conversations?limit=${limit}`);
   },
   async facebookConversationHistory(pageId: string, psid: string) {
@@ -457,7 +460,7 @@ export const api = {
       pageId: string;
       psid: string;
       name: string;
-      items: { id: number; direction: string; text: string; status: string; error: string; createdAt: string }[];
+      items: { id: number; direction: string; text: string; status: string; error: string; createdAt: string; queueLatencyMs: number; latencyMs: number; hermesLatencyMs: number; contextLatencyMs: number; sendLatencyMs: number }[];
     }>(`/api/facebook/conversations/${encodeURIComponent(pageId)}/${encodeURIComponent(psid)}`);
   },
   async trainingHistory() {
