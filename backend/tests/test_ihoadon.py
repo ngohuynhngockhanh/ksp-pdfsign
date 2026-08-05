@@ -24,13 +24,17 @@ class FakeResponse:
 
 
 class FakeHTTP:
+    def __init__(self):
+        self.posted = []
+
     def close(self):
         pass
 
     def post(self, url, json=None, headers=None):
+        self.posted.append((url, json))
         if url.endswith("/api/login"):
             return FakeResponse({"access_token": "token", "account": {"name": "INUT"}})
-        if url.endswith("/api/invoices"):
+        if url.endswith("/api/new/invoices"):
             return FakeResponse({"invoice": {"id": "draft-1", "status": "GHI_TAM"}})
         raise AssertionError(url)
 
@@ -62,10 +66,13 @@ def test_dashboard_counts():
 def test_create_draft_uses_current_template():
     client = ihoadon.Client(_settings())
     client._http.close()
-    client._http = FakeHTTP()
+    fake = FakeHTTP()
+    client._http = fake
     result = client.create_draft({"other_id": "ksp-1", "invoice_products": []})
     assert result == {
         "id": "draft-1", "other_id": "ksp-1", "status": "GHI_TAM",
         "template_code": "1", "invoice_series": "C26TPK",
         "web_url": "https://example.test/system/vat-invoice",
     }
+    assert fake.posted[-1][0].endswith("/api/new/invoices")
+    assert "other_id" not in fake.posted[-1][1]["invoice"]
