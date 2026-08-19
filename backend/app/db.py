@@ -1058,6 +1058,34 @@ class InvCustomsDriveDocument(Base):
     folder: Mapped["InvCustomsDriveFolder"] = relationship(back_populates="documents")
 
 
+class InvCustomsEcusExport(Base):
+    """PDF extracted from an ECUS attachment and optionally copied to Drive."""
+
+    __tablename__ = "inv_customs_ecus_exports"
+    __table_args__ = (
+        UniqueConstraint("customs_id", "sha256", name="uq_customs_ecus_export_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customs_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_decls.id"), index=True)
+    source_row_id: Mapped[str] = mapped_column(String(64), default="")
+    declaration_number: Mapped[str] = mapped_column(String(15), default="", index=True)
+    original_name: Mapped[str] = mapped_column(String(255), default="")
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
+    doc_id: Mapped[str] = mapped_column(String(64), default="")
+    doc_suffix: Mapped[str] = mapped_column(String(10), default=".pdf")
+    drive_folder_id: Mapped[str] = mapped_column(String(255), default="")
+    drive_path: Mapped[str] = mapped_column(String(1000), default="")
+    status: Mapped[str] = mapped_column(String(20), default="extracted", index=True)
+    source_time: Mapped[str] = mapped_column(String(50), default="")
+    error: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    customs: Mapped["InvCustomsDecl"] = relationship()
+
+
 class TaxReviewUpload(Base):
     """File BCT (to khai GTGT) ke toan up len -> he thong cham loi + xem online.
 

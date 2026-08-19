@@ -73,6 +73,7 @@ ACTION_LABELS = {
     "payroll_payment_create": "Ghi nhận thanh toán lương",
     "payroll_payment_evidence": "Bổ sung chứng từ thanh toán lương",
     "payroll_payment_cancel": "Hủy thanh toán lương",
+    "ecus_drive_sync": "Đồng bộ PDF ECUS lên Google Drive",
 }
 
 

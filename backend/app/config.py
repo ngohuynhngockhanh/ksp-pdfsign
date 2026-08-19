@@ -107,6 +107,14 @@ class Settings(BaseSettings):
     customs_drive_remote: str = "vnmap-drive:"
     customs_drive_bind: str = "0.0.0.0"
 
+    # ECUS attachments: snapshot DB qua SCP, khong mo ECUS hay ky/gui lai VNACCS.
+    ecus_drive_sync_enabled: bool = False
+    ecus_ssh_host: str = "192.168.1.111"
+    ecus_ssh_user: str = "Administrator"
+    ecus_ssh_key_path: str = "/home/ksp/.ssh/id_ed25519"
+    ecus_db_path: str = "C:/pro/ECUSSIGN_PRO/Database/ECUSSIGN_DN_4401053694.DB"
+    ecus_ssh_timeout: int = 60
+
     # iHOADON - chi dong bo va tao hoa don GHI_TAM, khong ky/phat hanh.
     ihoadon_enabled: bool = False
     ihoadon_base_url: str = "https://ihoadon.com.vn"

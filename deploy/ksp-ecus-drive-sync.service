@@ -1,0 +1,16 @@
+[Unit]
+Description=KSP ECUS PDF attachment to Google Drive synchronization
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ksp
+Group=ksp
+WorkingDirectory=/home/ksp/ksp-pdfsign/backend
+ExecStart=/usr/bin/flock -n /tmp/ksp-ecus-drive-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ecus_drive_sync.py
+TimeoutStartSec=15min
+UMask=0077
+
+[Install]
+WantedBy=default.target
