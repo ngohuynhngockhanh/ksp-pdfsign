@@ -231,6 +231,18 @@ export class BackendClient {
     if (toolName === 'commercial_invoice_parse') {
       return { method: 'POST', path: '/api/invoice/parse', body: filters.payload || {} }
     }
+    if (toolName === 'tax_sync' && args?.operation === 'auto_sync') {
+      const payload = args.payload || {}
+      const query = {}
+      const fromDate = payload.from_date ?? payload.from ?? payload.start_date ?? payload.tu
+      const toDate = payload.to_date ?? payload.to ?? payload.end_date ?? payload.den
+      if (fromDate !== undefined) query.from_date = fromDate
+      if (toDate !== undefined) query.to_date = toDate
+      if (payload.days_back !== undefined) query.days_back = payload.days_back
+      if (payload.do_import !== undefined) query.do_import = payload.do_import
+      if (payload.send_telegram !== undefined) query.send_telegram = payload.send_telegram
+      return { method: 'POST', path: '/api/tax/auto-sync', query }
+    }
     if (toolName === 'tax_status' && filters.resource) {
       const resources = { credentials: '/api/tax/credentials', session: '/api/tax/session', policy: '/api/tax/policy', auto_sync: '/api/tax/auto-sync/status' }
       if (!resources[filters.resource]) throw new Error(`unsupported_tax_status:${filters.resource}`)

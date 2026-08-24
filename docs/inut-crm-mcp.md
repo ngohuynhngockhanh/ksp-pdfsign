@@ -29,6 +29,8 @@ Tool đọc chạy trực tiếp. Tool ghi dùng hai bước:
 
 Token xác nhận dùng một lần và bị vô hiệu khi gateway restart. Thao tác high-risk như ký số, đồng bộ thuế/hóa đơn, gửi Telegram, in SPX, NAS sync và xóa dữ liệu luôn được audit.
 
+Với đồng bộ thuế, dùng `tax_sync` với `operation=auto_sync` để backend tự kiểm tra token và tự giải CAPTCHA bằng `solve_tax_svg_captcha` khi cần. Khoảng ngày có thể gửi bằng `from_date`/`to_date` (MCP tự chuyển sang query schema của backend); không cần gửi `ckey`/`cvalue` thủ công cho luồng này.
+
 Mọi kết quả có `status`, `summary`, `data`, `next_actions`, `artifacts` và `meta`. Dữ liệu e-GP/AI fallback được đánh dấu rõ là `mock`, `cache` hoặc `heuristic`.
 
 ## Kiểm tra nhanh

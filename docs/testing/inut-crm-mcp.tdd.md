@@ -17,6 +17,7 @@
 | Confirmation payload is exact and single-use | `npm test` (`confirmations.test.js`) | PASS |
 | Backend session/cookie retry and allowlisted routes work | `npm test` (`backend-client.test.js`) | PASS |
 | Tax sync date aliases reach the backend as `tu`/`den` | `npm test` (`backend-client.test.js`) | PASS |
+| Automatic tax sync uses the existing CAPTCHA solver with an explicit range | `npm test` (`backend-client.test.js`), `pytest -q tests/test_tax_ops.py -k auto_tax_sync` | PASS |
 | Streamable HTTP handshake and tool call work | `npm test` (`server.test.js`) | PASS |
 | Both MCP transports are live on the machine | `npm run smoke` / `node scripts/smoke-inut-crm-mcp.mjs` | PASS; 62 tools |
 | Gateway service starts automatically | `systemctl --user status inut-crm-mcp.service` | PASS; active |
