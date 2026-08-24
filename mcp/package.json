@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
+    "smoke": "node smoke.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage"
   },

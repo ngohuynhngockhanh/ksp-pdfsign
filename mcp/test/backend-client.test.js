@@ -46,3 +46,20 @@ test('backend client maps mutation operations to explicit allowlisted routes', a
   assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/bidding/bookmarks/9')
   await assert.rejects(() => client.dispatch('bidding_bookmarks', { operation: 'drop_database', payload: {} }), /unsupported_operation/)
 })
+
+test('customer search applies accent-neutral filtering over the admin customer list', async () => {
+  const client = new BackendClient({
+    username: 'admin',
+    password: 'fixture',
+    fetchImpl: async (url) => {
+      if (String(url).endsWith('/api/login')) return response(200, {}, { 'set-cookie': 'ksp_session=fixture' })
+      return response(200, [
+        { name: 'Công ty INUT', tax_code: '4401053694', contact: '' },
+        { name: 'Nhà cung cấp khác', tax_code: '0100000000', contact: '' },
+      ])
+    },
+  })
+  const result = await client.dispatch('crm_customers_search', { query: 'inut' })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].tax_code, '4401053694')
+})

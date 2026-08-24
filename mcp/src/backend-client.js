@@ -1,7 +1,7 @@
 import { Blob } from 'node:buffer'
 
 const READ_ROUTES = {
-  crm_customers_search: ({ query = {}, args }) => ['/api/customers', { ...query, search: args.query || undefined, page: args.page, per_page: args.page_size }],
+  crm_customers_search: () => ['/api/customers'],
   crm_customer_get: ({ args }) => [`/api/customers/${id(args)}`],
   crm_users: () => ['/api/users'],
   crm_orders: () => ['/api/orders'],
@@ -22,7 +22,7 @@ const READ_ROUTES = {
   bidding_attachments: ({ args }) => [`/api/bidding/tenders/${segment(args.id || args.query)}/attachments`],
   bidding_competitors: ({ args }) => [`/api/bidding/tenders/${segment(args.id || args.query)}/competitors`],
   inventory_warehouses: () => ['/api/inv/warehouses'],
-  inventory_items: ({ args }) => ['/api/inv/items', { search: args.query, ...(args.filters || {}) }],
+  inventory_items: ({ args }) => ['/api/inv/items', { q: args.query, ...(args.filters || {}) }],
   inventory_stock: ({ args }) => [`/api/inv/${args.filters?.report || 'stock'}`, args.filters || {}],
   inventory_purchases: ({ args }) => ['/api/inv/purchase', args.filters || {}],
   inventory_sales: ({ args }) => ['/api/inv/sale', args.filters || {}],
@@ -42,7 +42,7 @@ const READ_ROUTES = {
   nas: ({ args }) => [`/api/nas/${args.filters?.resource || 'status'}`, args.filters || {}],
   spx: ({ args }) => [`/api/spx/${args.filters?.resource || 'stats'}`, args.filters || {}],
   pymid: ({ args }) => [`/api/pymid/${args.filters?.resource || 'catalog'}`, args.filters || {}],
-  training: ({ args }) => [`/api/training/${args.filters?.resource || 'search'}`, args.filters || {}],
+  training: ({ args }) => [`/api/training/${args.filters?.resource || 'search'}`, { q: args.query, ...(args.filters || {}) }],
   ai: () => ['/api/ai/status'],
   standards: ({ args }) => [`/api/standards/${args.filters?.resource || 'statistics'}`, args.filters || {}],
   operations_dashboard: () => ['/api/operations/dashboard'],
@@ -179,7 +179,13 @@ export class BackendClient {
     if (resolver && !args?.operation) {
       const resolved = resolver({ args })
       const [path, query = {}] = resolved
-      return this.request(path, { query })
+      const result = await this.request(path, { query })
+      if (toolName === 'crm_customers_search' && args?.query && Array.isArray(result)) {
+        const needle = String(args.query).trim().toLocaleLowerCase()
+        return result.filter((customer) => [customer.name, customer.tax_code, customer.contact, customer.email]
+          .filter(Boolean).some((value) => String(value).toLocaleLowerCase().includes(needle)))
+      }
+      return result
     }
     const mutation = buildMutationRequest(toolName, args)
     return this.request(mutation.path, { method: mutation.method, body: mutation.body })
