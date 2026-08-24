@@ -116,11 +116,31 @@ function buildMutationRequest(toolName, args) {
   const route = routes?.[args.operation]
   if (!route) throw new Error(`unsupported_operation:${toolName}:${args.operation}`)
   let path = route[1]
-  const payload = { ...(args.payload || {}) }
+  const payload = normalizePayload(toolName, args.payload || {})
   const targetId = payload.id ?? args.id
   if (path.includes('{id}')) path = path.replace('{id}', segment(targetId))
   delete payload.id
   return { method: route[0], path, body: route[0] === 'DELETE' ? undefined : payload }
+}
+
+function normalizePayload(toolName, source) {
+  const payload = { ...source }
+  if (toolName !== 'tax_sync') return payload
+
+  // The MCP API uses readable date names while KSP's tax endpoints retain
+  // their legacy Vietnamese request keys.
+  const aliases = [
+    ['tu', ['from_date', 'from', 'start_date']],
+    ['den', ['to_date', 'to', 'end_date']],
+  ]
+  for (const [backendKey, keys] of aliases) {
+    if (payload[backendKey] === undefined) {
+      const alias = keys.find((key) => payload[key] !== undefined)
+      if (alias) payload[backendKey] = payload[alias]
+    }
+    for (const key of keys) delete payload[key]
+  }
+  return payload
 }
 
 export class BackendClient {
