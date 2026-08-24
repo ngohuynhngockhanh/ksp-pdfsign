@@ -1,0 +1,27 @@
+[Unit]
+Description=INUT CRM MCP Gateway (local Codex/agy bridge)
+After=ksp-backend.service network-online.target
+Requires=ksp-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ksp-pdfsign/mcp
+EnvironmentFile=%h/ksp-pdfsign/.env
+Environment=PATH=%h/.nvm/versions/node/v24.18.1/bin:/usr/bin:/bin
+Environment=KSP_BACKEND_URL=http://127.0.0.1:2032
+Environment=INUT_CRM_MCP_HOST=127.0.0.1
+Environment=INUT_CRM_MCP_PORT=2037
+Environment=INUT_CRM_MCP_TOKEN_FILE=%h/.config/inut-crm/inut-crm.token
+Environment=INUT_CRM_MCP_AUDIT_PATH=%h/ksp-pdfsign/backend/data/mcp-audit.jsonl
+ExecStart=%h/.nvm/versions/node/v24.18.1/bin/node %h/ksp-pdfsign/mcp/src/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/ksp-pdfsign/backend/data %h/.config/inut-crm
+UMask=0077
+
+[Install]
+WantedBy=default.target
