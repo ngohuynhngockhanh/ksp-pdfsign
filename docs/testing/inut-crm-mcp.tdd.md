@@ -16,6 +16,7 @@
 | Bearer auth is constant-time and loopback-only | `npm test` (`auth.test.js`), `backend/.venv/bin/pytest -q tests/test_mcp_auth.py` | PASS |
 | Confirmation payload is exact and single-use | `npm test` (`confirmations.test.js`) | PASS |
 | Backend session/cookie retry and allowlisted routes work | `npm test` (`backend-client.test.js`) | PASS |
+| Tax sync date aliases reach the backend as `tu`/`den` | `npm test` (`backend-client.test.js`) | PASS |
 | Streamable HTTP handshake and tool call work | `npm test` (`server.test.js`) | PASS |
 | Both MCP transports are live on the machine | `npm run smoke` / `node scripts/smoke-inut-crm-mcp.mjs` | PASS; 62 tools |
 | Gateway service starts automatically | `systemctl --user status inut-crm-mcp.service` | PASS; active |
