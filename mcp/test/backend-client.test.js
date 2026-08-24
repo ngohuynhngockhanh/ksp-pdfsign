@@ -106,3 +106,25 @@ test('tax sync maps user-friendly date fields to the backend period schema', asy
     do_import: true,
   })
 })
+
+test('tax auto-sync sends explicit date ranges as query parameters', async () => {
+  const calls = []
+  const client = new BackendClient({
+    username: 'admin',
+    password: 'fixture',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options })
+      if (String(url).endsWith('/api/login')) return response(200, {}, { 'set-cookie': 'ksp_session=fixture' })
+      return response(200, { ok: true })
+    },
+  })
+
+  await client.dispatch('tax_sync', {
+    operation: 'auto_sync',
+    payload: { from_date: '2026-08-01', to_date: '2026-08-24', do_import: true, send_telegram: false },
+  })
+
+  const request = calls.at(-1)
+  assert.equal(request.url, 'http://127.0.0.1:2032/api/tax/auto-sync?from_date=2026-08-01&to_date=2026-08-24&do_import=true&send_telegram=false')
+  assert.equal(request.options.body, undefined)
+})
