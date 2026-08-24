@@ -81,3 +81,28 @@ test('special POST-backed read tools use the correct backend methods', async () 
   await client.dispatch('commercial_preview', { filters: { resource: 'quote', payload: { items: [] } } })
   assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/quote/preview')
 })
+
+test('tax sync maps user-friendly date fields to the backend period schema', async () => {
+  const calls = []
+  const client = new BackendClient({
+    username: 'admin',
+    password: 'fixture',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options })
+      if (String(url).endsWith('/api/login')) return response(200, {}, { 'set-cookie': 'ksp_session=fixture' })
+      return response(200, { ok: true })
+    },
+  })
+
+  await client.dispatch('tax_sync', {
+    operation: 'sync',
+    payload: { from_date: '2026-08-01', to_date: '2026-08-24', do_import: true },
+  })
+
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/tax/sync')
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), {
+    tu: '2026-08-01',
+    den: '2026-08-24',
+    do_import: true,
+  })
+})
