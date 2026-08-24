@@ -229,7 +229,7 @@ class TrainingPublicQuery(Base):
 
 
 class FacebookMessage(Base):
-    """Tin nhắn Messenger đã nhận/gửi, dùng để giữ ngữ cảnh theo từng PSID."""
+    """Tin nhắn Messenger để lưu inbox/telemetry; Hermes chỉ nhận tối đa 20 lượt đã lọc."""
 
     __tablename__ = "facebook_messages"
     __table_args__ = (
@@ -255,6 +255,39 @@ class FacebookMessage(Base):
     send_latency_ms: Mapped[int] = mapped_column(default=0)
     profile_lookup_ms: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class TelegramConnection(Base):
+    """A single Telegram chat bound to one KSP account."""
+
+    __tablename__ = "telegram_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    chat_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(255), default="")
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    connected_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship()
+
+
+class TelegramLink(Base):
+    """Short-lived, single-use link used by the bot /start handshake."""
+
+    __tablename__ = "telegram_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked: Mapped[bool] = mapped_column(default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    user: Mapped["User"] = relationship()
 
 
 class TrainingKnowledge(Base):
@@ -606,6 +639,8 @@ class InvMove(Base):
     so_luong: Mapped[float] = mapped_column(default=0.0)
     don_gia: Mapped[float] = mapped_column(default=0.0)
     gia_tri: Mapped[float] = mapped_column(default=0.0)
+    lot_number: Mapped[str] = mapped_column(String(100), default="")
+    serial_numbers: Mapped[str] = mapped_column(Text, default="")
     # Nguon goc: purchase|issue|production|opening|manual + id chung tu/dong
     ref_type: Mapped[str] = mapped_column(String(20), default="")
     ref_id: Mapped[int | None] = mapped_column(nullable=True)
@@ -840,6 +875,10 @@ class InvProduction(Base):
         ForeignKey("inv_sale_invoices.id"), nullable=True
     )
     sale_line_id: Mapped[int | None] = mapped_column(nullable=True)
+    lot_number: Mapped[str] = mapped_column(String(100), default="")
+    serial_numbers: Mapped[str] = mapped_column(Text, default="")
+    mfg_date: Mapped[str] = mapped_column(String(20), default="")
+    exp_date: Mapped[str] = mapped_column(String(20), default="")
     # ghi so du am kho NVL (user thua nhan sai, se nhap bu) — ly do luu o note
     am_kho_override: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
@@ -863,6 +902,8 @@ class InvProductionLine(Base):
     so_luong: Mapped[float] = mapped_column(default=0.0)
     # gia tam tinh (khi NVL chua co gia von tai ngay SX) - chi dong tieu hao 'vao'
     don_gia_tam: Mapped[float] = mapped_column(default=0.0)
+    lot_number: Mapped[str] = mapped_column(String(100), default="")
+    serial_numbers: Mapped[str] = mapped_column(Text, default="")
     # thay mat hang tuong tu: ly do + mat hang goc bi thay (fork cong thuc)
     note: Mapped[str] = mapped_column(String(255), default="")
     orig_item_id: Mapped[int | None] = mapped_column(
@@ -1159,8 +1200,146 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class TqcCertificate(Base):
+    """Normalized TQC CNHQ records verified from an official certificate number."""
+
+    __tablename__ = "tqc_certificates"
+    __table_args__ = (
+        Index("ix_tqc_certificates_model_norm", "model_norm"),
+        Index("ix_tqc_certificates_manufacturer_norm", "manufacturer_norm"),
+        Index("ix_tqc_certificates_applicant_norm", "applicant_norm"),
+        Index("ix_tqc_certificates_status", "derived_status"),
+        Index("ix_tqc_certificates_expiry", "expiry_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    certificate_no: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    certificate_no_norm: Mapped[str] = mapped_column(String(120), index=True)
+    issue_date: Mapped[str] = mapped_column(String(40), default="")
+    expiry_date: Mapped[str] = mapped_column(String(40), default="")
+    applicant_name: Mapped[str] = mapped_column(String(500), default="")
+    applicant_norm: Mapped[str] = mapped_column(String(500), default="")
+    product_name: Mapped[str] = mapped_column(String(1000), default="")
+    product_norm: Mapped[str] = mapped_column(String(1000), default="")
+    model: Mapped[str] = mapped_column(String(255), default="")
+    model_norm: Mapped[str] = mapped_column(String(255), default="")
+    manufacturer: Mapped[str] = mapped_column(String(500), default="")
+    manufacturer_norm: Mapped[str] = mapped_column(String(500), default="")
+    factory_name: Mapped[str] = mapped_column(String(500), default="")
+    factory_address: Mapped[str] = mapped_column(String(1000), default="")
+    technical_regulations_json: Mapped[str] = mapped_column(Text, default="[]")
+    certification_method: Mapped[str] = mapped_column(String(100), default="")
+    serial_form_no: Mapped[str] = mapped_column(String(255), default="")
+    source_status: Mapped[str] = mapped_column(String(100), default="")
+    derived_status: Mapped[str] = mapped_column(String(30), default="unknown")
+    verification_status: Mapped[str] = mapped_column(String(40), default="verified_cached")
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    raw_json: Mapped[str] = mapped_column(Text, default="{}")
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class SpxShipment(Base):
+    """Van don giao hang qua SPX Express (spx.vn)."""
+
+    __tablename__ = "spx_shipments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tracking_no: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    order_code: Mapped[str] = mapped_column(String(50), default="", index=True)
+    recipient_name: Mapped[str] = mapped_column(String(150), default="")
+    recipient_phone: Mapped[str] = mapped_column(String(20), default="")
+    recipient_address: Mapped[str] = mapped_column(String(500), default="")
+    province: Mapped[str] = mapped_column(String(100), default="")
+    district: Mapped[str] = mapped_column(String(100), default="")
+    ward: Mapped[str] = mapped_column(String(100), default="")
+    cod_amount: Mapped[float] = mapped_column(default=0.0)
+    weight_gram: Mapped[int] = mapped_column(default=500)
+    length_cm: Mapped[int] = mapped_column(default=10)
+    width_cm: Mapped[int] = mapped_column(default=10)
+    height_cm: Mapped[int] = mapped_column(default=10)
+    item_description: Mapped[str] = mapped_column(String(500), default="")
+    note: Mapped[str] = mapped_column(String(500), default="Cho xem hàng, không cho thử")
+    payer: Mapped[str] = mapped_column(String(20), default="sender")  # sender | recipient
+    status: Mapped[str] = mapped_column(String(30), default="ready_to_ship", index=True)  # ready_to_ship | picking | delivering | delivered | cancelled
+    shipping_fee: Mapped[float] = mapped_column(default=0.0)
+    label_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    sender_name: Mapped[str] = mapped_column(String(150), default="")
+    sender_phone: Mapped[str] = mapped_column(String(20), default="")
+    sender_address: Mapped[str] = mapped_column(String(500), default="")
+    is_printed: Mapped[bool] = mapped_column(default=False, index=True)
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+
+class BiddingBookmark(Base):
+    """Goi thau quan tam trong phan he Dau Thau (Mua Sam Cong)."""
+
+    __tablename__ = "bidding_bookmarks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tbmt_code: Mapped[str] = mapped_column(String(50), default="", index=True)
+    tender_name: Mapped[str] = mapped_column(String(500), default="")
+    procuring_entity: Mapped[str] = mapped_column(String(255), default="")
+    investor: Mapped[str] = mapped_column(String(255), default="")
+    field: Mapped[str] = mapped_column(String(100), default="", index=True)
+    bid_price: Mapped[float] = mapped_column(default=0.0)
+    bid_deadline: Mapped[str] = mapped_column(String(100), default="")
+    bid_opening_date: Mapped[str] = mapped_column(String(100), default="")
+    province: Mapped[str] = mapped_column(String(100), default="", index=True)
+    bidding_method: Mapped[str] = mapped_column(String(150), default="")
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    status: Mapped[str] = mapped_column(String(30), default="watching", index=True)  # watching | preparing | submitted | won | lost
+    note: Mapped[str] = mapped_column(Text, default="")
+    ai_summary: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class BiddingWatchlist(Base):
+    """Quy tac theo doi tu dong goi thau (Watchlist & Canh Bao Telegram)."""
+
+    __tablename__ = "bidding_watchlists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    keyword: Mapped[str] = mapped_column(String(255), default="")
+    province: Mapped[str] = mapped_column(String(100), default="")
+    field: Mapped[str] = mapped_column(String(100), default="")
+    min_price: Mapped[float] = mapped_column(default=0.0)
+    max_price: Mapped[float] = mapped_column(default=0.0)
+    method: Mapped[str] = mapped_column(String(150), default="")
+    notify_telegram: Mapped[bool] = mapped_column(default=True)
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class BiddingAlertLog(Base):
+    """Nhat ky canh bao tranh spam trung lap goi thau da ban tin."""
+
+    __tablename__ = "bidding_alert_logs"
+    __table_args__ = (
+        UniqueConstraint("watchlist_id", "tbmt_code", name="uq_bidding_alert_watchlist_tbmt"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    watchlist_id: Mapped[int] = mapped_column(
+        ForeignKey("bidding_watchlists.id", ondelete="CASCADE"), index=True
+    )
+    tbmt_code: Mapped[str] = mapped_column(String(50), index=True)
+    alerted_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 _engine = None
 _SessionLocal = None
+
 
 
 def _init_engine():
@@ -1275,11 +1454,21 @@ def _migrate_add_columns() -> None:
             "tong_gia_thanh": "FLOAT DEFAULT 0",
             "gia_ban_du_kien": "FLOAT DEFAULT 0",
             "am_kho_override": "BOOLEAN DEFAULT 0",
+            "lot_number": "VARCHAR(100) DEFAULT ''",
+            "serial_numbers": "TEXT DEFAULT ''",
+            "mfg_date": "VARCHAR(20) DEFAULT ''",
+            "exp_date": "VARCHAR(20) DEFAULT ''",
         },
         "inv_production_lines": {
             "note": "VARCHAR(255) DEFAULT ''",
             "orig_item_id": "INTEGER",
             "don_gia_tam": "FLOAT DEFAULT 0",
+            "lot_number": "VARCHAR(100) DEFAULT ''",
+            "serial_numbers": "TEXT DEFAULT ''",
+        },
+        "inv_moves": {
+            "lot_number": "VARCHAR(100) DEFAULT ''",
+            "serial_numbers": "TEXT DEFAULT ''",
         },
         "inv_recipes": {
             "parent_id": "INTEGER",
@@ -1311,6 +1500,70 @@ def _migrate_add_columns() -> None:
             "status": "VARCHAR(20) DEFAULT 'draft'",
             "document_id": "INTEGER",
             "finalized_at": "DATETIME",
+        },
+        "bidding_bookmarks": {
+            "tbmt_code": "VARCHAR(50) DEFAULT ''",
+            "tender_name": "VARCHAR(500) DEFAULT ''",
+            "procuring_entity": "VARCHAR(255) DEFAULT ''",
+            "investor": "VARCHAR(255) DEFAULT ''",
+            "field": "VARCHAR(100) DEFAULT ''",
+            "bid_price": "FLOAT DEFAULT 0",
+            "bid_deadline": "VARCHAR(100) DEFAULT ''",
+            "bid_opening_date": "VARCHAR(100) DEFAULT ''",
+            "province": "VARCHAR(100) DEFAULT ''",
+            "bidding_method": "VARCHAR(150) DEFAULT ''",
+            "source_url": "VARCHAR(1000) DEFAULT ''",
+            "status": "VARCHAR(30) DEFAULT 'watching'",
+            "note": "TEXT DEFAULT ''",
+            "ai_summary": "TEXT DEFAULT ''",
+            "created_by": "INTEGER",
+            "created_at": "DATETIME",
+            "updated_at": "DATETIME",
+        },
+        "bidding_watchlists": {
+            "name": "VARCHAR(255) DEFAULT ''",
+            "keyword": "VARCHAR(255) DEFAULT ''",
+            "province": "VARCHAR(100) DEFAULT ''",
+            "field": "VARCHAR(100) DEFAULT ''",
+            "min_price": "FLOAT DEFAULT 0",
+            "max_price": "FLOAT DEFAULT 0",
+            "method": "VARCHAR(150) DEFAULT ''",
+            "notify_telegram": "BOOLEAN DEFAULT 1",
+            "is_active": "BOOLEAN DEFAULT 1",
+            "last_checked_at": "DATETIME",
+            "created_by": "INTEGER",
+            "created_at": "DATETIME",
+            "updated_at": "DATETIME",
+        },
+        "bidding_alert_logs": {
+            "watchlist_id": "INTEGER",
+            "tbmt_code": "VARCHAR(50) DEFAULT ''",
+            "alerted_at": "DATETIME",
+        },
+        "spx_shipments": {
+            "order_code": "VARCHAR(100) DEFAULT ''",
+            "recipient_name": "VARCHAR(255) DEFAULT ''",
+            "recipient_phone": "VARCHAR(50) DEFAULT ''",
+            "recipient_address": "VARCHAR(500) DEFAULT ''",
+            "province": "VARCHAR(100) DEFAULT ''",
+            "district": "VARCHAR(100) DEFAULT ''",
+            "ward": "VARCHAR(100) DEFAULT ''",
+            "cod_amount": "FLOAT DEFAULT 0",
+            "weight_gram": "FLOAT DEFAULT 0",
+            "length_cm": "FLOAT DEFAULT 0",
+            "width_cm": "FLOAT DEFAULT 0",
+            "height_cm": "FLOAT DEFAULT 0",
+            "item_description": "TEXT DEFAULT ''",
+            "note": "VARCHAR(500) DEFAULT ''",
+            "payer": "VARCHAR(50) DEFAULT 'SENDER'",
+            "status": "VARCHAR(50) DEFAULT 'READY_TO_SHIP'",
+            "shipping_fee": "FLOAT DEFAULT 0",
+            "label_doc_id": "INTEGER",
+            "sender_name": "VARCHAR(255) DEFAULT ''",
+            "sender_phone": "VARCHAR(50) DEFAULT ''",
+            "sender_address": "VARCHAR(500) DEFAULT ''",
+            "is_printed": "BOOLEAN DEFAULT 0",
+            "printed_at": "DATETIME",
         },
     }
     with _engine.begin() as conn:

@@ -121,3 +121,78 @@ def test_csv_import_schema_is_bounded_and_deduplicated():
     rows = parse_import_csv(text)
     assert rows == [{"certificate_no": "C0955191224AE15A3", "qr_input": ""}]
 
+
+@pytest.fixture
+def auth_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("APP_ADMIN_PASSWORD", "NhapHang123@")
+    from app.config import get_settings
+    from app import db
+    from app.auth import ensure_admin_seed
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    get_settings.cache_clear()
+    db.reset_engine_for_tests()
+    db.init_db()
+    session = next(db.get_session())
+    ensure_admin_seed(session, get_settings())
+    session.close()
+    client = TestClient(app)
+    assert client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"}).status_code == 200
+    return client
+
+
+def test_tqc_search_and_exact_lookup_use_local_index(auth_client, monkeypatch):
+    from app import standards_api
+    from app import tqc_cnhq
+
+    raw = {
+        "so_giay_chung_nhan": "C0955191224AE15A3",
+        "don_vi_nop_ho_so_vn": "CÔNG TY INUT",
+        "ten_san_pham_vn": "Thiết bị IoT",
+        "ky_hieu": "T27G16",
+        "ten_hang_san_xuat_vn": "TOMKO",
+        "quy_chuan_ky_thuat": "[]",
+        "tinh_trang_giay_chung_nhan": "còn hiệu lực",
+    }
+
+    class FakeClient:
+        def lookup(self, certificate_no):
+            return tqc_cnhq.normalize_certificate(raw, source_url="https://api-cnhq.tqc.gov.vn/api/search/C0955191224AE15A3")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(standards_api.tqc_cnhq, "get_client", lambda _settings=None: FakeClient())
+    response = auth_client.get("/api/standards/tqc/certificates/C0955191224AE15A3")
+    assert response.status_code == 200
+    assert response.json()["certificate"]["model"] == "T27G16"
+    search = auth_client.get("/api/standards/tqc/search", params={"model": "t27g16"})
+    assert search.status_code == 200
+    assert search.json()["items"][0]["manufacturer"] == "TOMKO"
+
+
+def test_tqc_import_requires_admin_and_returns_counts(auth_client, monkeypatch):
+    from app import standards_api
+    from app import tqc_cnhq
+
+    class FakeClient:
+        def lookup(self, certificate_no):
+            return tqc_cnhq.normalize_certificate({
+                "so_giay_chung_nhan": certificate_no,
+                "ky_hieu": "CPH2699",
+                "quy_chuan_ky_thuat": "[]",
+            })
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(standards_api.tqc_cnhq, "get_client", lambda _settings=None: FakeClient())
+    response = auth_client.post("/api/standards/tqc/import", json={
+        "entries": [{"certificate_no": "C0955191224AE15A3"}],
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verified"] == 1
+    assert body["items"][0]["status"] == "verified_live"

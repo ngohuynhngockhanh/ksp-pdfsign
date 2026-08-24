@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Tai khoan nhan thanh toan (sau nay mo rong BANK_ACCOUNTS nhieu STK)
     bank_account_name: str = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
     bank_account_number: str = "79713"
-    bank_name: str = "Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)"
+    bank_name: str = "Techcombank - Ngân hàng Thương mại Cổ phần Kỹ Thương Việt Nam"
 
     # AI (endpoint tuong thich OpenAI) - mac dinh 9router local
     ai_enabled: bool = False
@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # Facebook Messenger webhook. Secrets must stay in the server environment.
     facebook_enabled: bool = False
     facebook_page_id: str = "1698631723787176"
+    facebook_page_name: str = "INUT JSC - IoT and Edge Computing"
     facebook_verify_token: str = ""
     facebook_app_secret: str = ""
     facebook_page_access_token: str = ""
@@ -78,8 +79,18 @@ class Settings(BaseSettings):
     facebook_graph_version: str = "v23.0"
     facebook_timeout: float = 20.0
     facebook_reply_enabled: bool = True
-    facebook_context_turns: int = 12
+    # Retained for config compatibility; Facebook never sends Messenger history to Hermes.
+    facebook_context_turns: int = 0
     facebook_retention_days: int = 365
+
+    # Telegram notifications. The bot token is only read from the server env.
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = "Webinut_bot"
+    telegram_api_base_url: str = "https://api.telegram.org"
+    telegram_poll_timeout: int = 25
+    telegram_connect_ttl_seconds: int = 600
+    telegram_notify_enabled: bool = True
 
     # Trợ lý công khai trên inut.vn. Secret chỉ dùng server-to-server qua BFF.
     public_training_enabled: bool = False
@@ -109,8 +120,9 @@ class Settings(BaseSettings):
 
     # ECUS attachments: snapshot DB qua SCP, khong mo ECUS hay ky/gui lai VNACCS.
     ecus_drive_sync_enabled: bool = False
-    ecus_ssh_host: str = "192.168.1.111"
+    ecus_ssh_host: str = "192.168.1.158"
     ecus_ssh_user: str = "Administrator"
+
     ecus_ssh_key_path: str = "/home/ksp/.ssh/id_ed25519"
     ecus_db_path: str = "C:/pro/ECUSSIGN_PRO/Database/ECUSSIGN_DN_4401053694.DB"
     ecus_ssh_timeout: int = 60
@@ -123,6 +135,29 @@ class Settings(BaseSettings):
     ihoadon_password: str = ""
     ihoadon_timeout: float = 30.0
 
+    # TQC CNHQ lookup. The API key is optional and never exposed to clients.
+    tqc_cnhq_base_url: str = "https://api-cnhq.tqc.gov.vn"
+    tqc_cnhq_api_key: str = ""
+    tqc_cnhq_timeout: float = 15.0
+    tqc_cnhq_cache_ttl_seconds: int = 86400
+    tqc_cnhq_rate_limit_per_minute: int = 450
+
+    # Zoho Mail Sync (đồng bộ hóa đơn PDF/XML từ email qua REST API OAuth 2.0 hoặc IMAP)
+    zoho_sync_mode: str = "rest_api"  # "rest_api" | "imap"
+    zoho_client_id: str = ""
+    zoho_client_secret: str = ""
+    zoho_refresh_token: str = ""
+    zoho_accounts_url: str = "https://accounts.zoho.com"
+    zoho_mail_api_url: str = "https://mail.zoho.com"
+    zoho_imap_enabled: bool = True
+    zoho_imap_server: str = "imappro.zoho.com"
+    zoho_imap_port: int = 993
+    zoho_imap_username: str = "khanhnhn@inut.vn"
+    zoho_imap_password: str = ""
+    zoho_imap_mailbox: str = "INBOX"
+    zoho_imap_days: int = 30
+    zoho_imap_timeout: float = 20.0
+
     # Email canh bao job thue
     smtp_host: str = ""
     smtp_port: int = 587
@@ -132,7 +167,7 @@ class Settings(BaseSettings):
     smtp_to: str = ""
 
     # Windows agent (may cam token)
-    agent_default_ip: str = "192.168.1.4"
+    agent_default_ip: str = "192.168.1.158"
     agent_port: int = 8443
     agent_scheme: str = "https"
     agent_admin_password: str = ""
