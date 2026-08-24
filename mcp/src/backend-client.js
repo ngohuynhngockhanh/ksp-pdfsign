@@ -120,15 +120,17 @@ function buildMutationRequest(toolName, args) {
 }
 
 export class BackendClient {
-  constructor({ baseUrl, username, password, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ baseUrl, username, password, bearerToken, fetchImpl = globalThis.fetch } = {}) {
     this.baseUrl = String(baseUrl || 'http://127.0.0.1:2032').replace(/\/$/, '')
     this.username = username || ''
     this.password = password || ''
+    this.bearerToken = bearerToken || ''
     this.fetchImpl = fetchImpl
     this.cookie = ''
   }
 
   async login() {
+    if (this.bearerToken) return { ok: true, auth: 'mcp-bearer' }
     if (!this.username || !this.password) throw new Error('backend credentials are not configured')
     const response = await this.fetchImpl(`${this.baseUrl}/api/login`, {
       method: 'POST',
@@ -149,6 +151,7 @@ export class BackendClient {
     }
     const headers = { accept: raw ? '*/*' : 'application/json' }
     if (this.cookie) headers.cookie = this.cookie
+    if (this.bearerToken) headers.authorization = `Bearer ${this.bearerToken}`
     let requestBody = body
     if (body !== undefined && body !== null && !(body instanceof FormData) && !(body instanceof Blob)) {
       headers['content-type'] = 'application/json'

@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
 import process from 'node:process'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -45,12 +46,13 @@ function safeError(error) {
 }
 
 export function createRuntime(options = {}) {
-  const token = options.token || (options.tokenFile ? readTokenFile(options.tokenFile) : process.env.INUT_CRM_MCP_TOKEN)
+  const token = options.token || (options.tokenFile ? readTokenFile(options.tokenFile) : process.env.INUT_CRM_MCP_TOKEN_FILE ? readTokenFile(process.env.INUT_CRM_MCP_TOKEN_FILE) : process.env.INUT_CRM_MCP_TOKEN)
   const authenticator = options.authenticator || createTokenAuthenticator({ token })
   const backendClient = options.backendClient || new BackendClient({
     baseUrl: options.backendUrl || process.env.KSP_BACKEND_URL || 'http://127.0.0.1:2032',
     username: options.backendUsername || process.env.MCP_BACKEND_USERNAME || process.env.APP_ADMIN_USERNAME,
     password: options.backendPassword || process.env.MCP_BACKEND_PASSWORD || process.env.APP_ADMIN_PASSWORD,
+    bearerToken: token,
   })
   const confirmationStore = options.confirmationStore || new ConfirmationStore()
   const auditPath = options.auditPath || process.env.INUT_CRM_MCP_AUDIT_PATH || './backend/data/mcp-audit.jsonl'
@@ -60,11 +62,7 @@ export function createRuntime(options = {}) {
       ts: new Date().toISOString(),
       ...redactSecrets(event),
     }
-    try {
-      fs.mkdirSync(new URL('.', `file://${auditPath}`).pathname, { recursive: true })
-    } catch {
-      // The parent directory is normally created by the backend service.
-    }
+    try { fs.mkdirSync(path.dirname(path.resolve(auditPath)), { recursive: true }) } catch { /* best effort */ }
     try {
       fs.appendFileSync(auditPath, `${JSON.stringify(record)}\n`, { mode: 0o600 })
       try { fs.chmodSync(auditPath, 0o600) } catch { /* best effort */ }

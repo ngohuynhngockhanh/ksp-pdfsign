@@ -1,6 +1,9 @@
 """Dang nhap + phan quyen (admin/khach hang) bang JWT cookie, nguoi dung trong DB."""
 from __future__ import annotations
 
+import hmac
+import os
+from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -40,6 +43,45 @@ def require_full_portal(user: CurrentUser) -> None:
             status.HTTP_403_FORBIDDEN,
             "Tài khoản nhân viên PYMID chỉ được truy cập INUT - PYMID CO.OP",
         )
+
+
+def authenticate_mcp_bearer(request: Request, db: Session) -> CurrentUser | None:
+    """Authenticate the local MCP owner without requiring a second admin password.
+
+    The token is accepted only from loopback and only when its file is private.
+    This path is intentionally separate from browser cookie authentication.
+    """
+    client_host = (request.client.host if request.client else "").replace("::ffff:", "")
+    if client_host not in {"127.0.0.1", "::1", "localhost"}:
+        return None
+    header = request.headers.get("authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    supplied = header[7:].strip()
+    token_file = Path(os.environ.get(
+        "INUT_CRM_MCP_TOKEN_FILE",
+        str(Path.home() / ".config" / "inut-crm" / "inut-crm.token"),
+    ))
+    try:
+        mode = token_file.stat().st_mode & 0o777
+        if mode & 0o077:
+            return None
+        expected = token_file.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+    if not expected or not hmac.compare_digest(supplied, expected):
+        return None
+    user = db.scalar(select(User).where(User.role == "admin").order_by(User.id.asc()))
+    if user is None:
+        return None
+    return CurrentUser(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        customer_id=user.customer_id,
+        training_access=user.training_access,
+        ip=client_host,
+    )
 
 
 def ensure_admin_seed(db: Session, settings: Settings) -> None:
@@ -87,6 +129,9 @@ def require_user(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ) -> CurrentUser:
+    mcp_user = authenticate_mcp_bearer(request, db)
+    if mcp_user is not None:
+        return mcp_user
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Chua dang nhap")

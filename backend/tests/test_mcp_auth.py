@@ -3,8 +3,6 @@ from pathlib import Path
 from starlette.requests import Request
 
 from app.auth import authenticate_mcp_bearer
-from app.db import User
-from app.security import hash_password
 
 
 def _request(authorization: str, host: str = "127.0.0.1") -> Request:
@@ -18,14 +16,15 @@ def _request(authorization: str, host: str = "127.0.0.1") -> Request:
     })
 
 
-def test_mcp_bearer_auth_is_loopback_only_and_maps_to_admin(tmp_path, monkeypatch, db):
+def test_mcp_bearer_auth_is_loopback_only_and_maps_to_admin(client, tmp_path, monkeypatch):
     token_file = Path(tmp_path) / "mcp.token"
     token_file.write_text("unit-mcp-token")
+    token_file.chmod(0o600)
     monkeypatch.setenv("INUT_CRM_MCP_TOKEN_FILE", str(token_file))
-    admin = User(username="mcp-admin", password_hash=hash_password("unused"), role="admin")
-    db.add(admin)
-    db.commit()
-    db.refresh(admin)
+    from app import db as dbmod
+    generation = dbmod.get_session()
+    db = next(generation)
+    admin = db.query(dbmod.User).filter_by(username="admin").first()
 
     current = authenticate_mcp_bearer(_request("Bearer unit-mcp-token"), db)
     assert current is not None
