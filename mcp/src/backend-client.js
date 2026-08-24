@@ -142,6 +142,7 @@ export class BackendClient {
   }
 
   async request(path, { method = 'GET', query = {}, body, raw = false, retry = true } = {}) {
+    if (!this.cookie) await this.login()
     const url = new URL(path, `${this.baseUrl}/`)
     for (const [key, value] of Object.entries(query || {})) {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value))
@@ -172,7 +173,7 @@ export class BackendClient {
 
   async dispatch(toolName, args) {
     const resolver = READ_ROUTES[toolName]
-    if (resolver) {
+    if (resolver && !args?.operation) {
       const resolved = resolver({ args })
       const [path, query = {}] = resolved
       return this.request(path, { query })
