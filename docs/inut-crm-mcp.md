@@ -18,6 +18,7 @@ cp .env.example .env
 ```
 
 Installer tạo token tại `~/.config/inut-crm/inut-crm.token` với quyền `0600`, cài user service và đăng ký cả Codex lẫn agy. Token không được commit hoặc in ra terminal.
+Installer cũng thêm một dòng source idempotent vào `~/.bashrc` để Codex CLI nhận `INUT_CRM_MCP_TOKEN`; mở terminal mới hoặc chạy `source ~/.bashrc` sau lần cài đầu.
 
 ## Quy tắc gọi tool
 

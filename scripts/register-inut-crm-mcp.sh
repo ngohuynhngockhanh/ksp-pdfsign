@@ -18,6 +18,20 @@ umask 077
 printf 'INUT_CRM_MCP_TOKEN=%s\n' "$token" > "$ENV_DIR/inut-crm.conf"
 chmod 600 "$ENV_DIR/inut-crm.conf"
 
+# environment.d is consumed by systemd sessions, but interactive Codex shells
+# also need the token exported before they start the MCP client.
+SHELL_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/inut-crm/inut-crm.env.sh"
+printf 'export INUT_CRM_MCP_TOKEN="$(<%q)"\n' "$TOKEN_FILE" > "$SHELL_ENV_FILE"
+chmod 600 "$SHELL_ENV_FILE"
+SHELL_RC="$HOME/.bashrc"
+SOURCE_MARKER="# INUT CRM MCP token (managed by register-inut-crm-mcp.sh)"
+if [[ -f "$SHELL_RC" ]] && ! grep -Fqx "$SOURCE_MARKER" "$SHELL_RC"; then
+  {
+    printf '\n%s\n' "$SOURCE_MARKER"
+    printf 'if [[ -r %q ]]; then . %q; fi\n' "$SHELL_ENV_FILE" "$SHELL_ENV_FILE"
+  } >> "$SHELL_RC"
+fi
+
 if command -v codex >/dev/null 2>&1; then
   codex mcp remove inut-crm >/dev/null 2>&1 || true
   codex mcp add inut-crm --url http://127.0.0.1:2037/mcp --bearer-token-env-var INUT_CRM_MCP_TOKEN >/dev/null
