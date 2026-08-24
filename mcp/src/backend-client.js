@@ -7,6 +7,7 @@ const READ_ROUTES = {
   crm_orders: () => ['/api/orders'],
   crm_documents_search: ({ args }) => ['/api/documents', { page: args.page, per_page: args.page_size, search: args.query, ...(args.filters || {}) }],
   crm_document_get: ({ args }) => [`/api/documents/${id(args)}`],
+  crm_document_verify: ({ args }) => [`/api/documents/${id(args)}/verify`],
   crm_document_download: ({ args }) => [`/api/documents/${id(args)}/download`],
   commercial_templates: () => ['/api/quote/templates'],
   commercial_products: () => ['/api/products'],
@@ -59,8 +60,10 @@ const MUTATION_ROUTES = {
   crm_document_write: {
     assign: ['POST', '/api/documents/{id}/assign'], rename: ['POST', '/api/documents/{id}/rename'], type: ['POST', '/api/documents/{id}/type'], order: ['POST', '/api/documents/{id}/order'], delete: ['DELETE', '/api/documents/{id}'],
   },
+  crm_document_sign: { sign: ['POST', '/api/sign'] },
   crm_document_share: { create: ['POST', '/api/documents/{id}/share'] },
   crm_orders: { create: ['POST', '/api/orders'], delete: ['DELETE', '/api/orders/{id}'], assign: ['POST', '/api/documents/{id}/order'] },
+  crm_users: { training_access: ['PATCH', '/api/users/{id}/training-access'], password: ['POST', '/api/users/{id}/password'] },
   commercial_generate: { quote: ['POST', '/api/quote/generate'], contract: ['POST', '/api/contract/generate'], bbbg: ['POST', '/api/bbbg/generate'], certificate: ['POST', '/api/factory-certificate/generate'] },
   commercial_settings: { update: ['POST', '/api/settings'] },
   commercial_logo: { update: ['POST', '/api/logo'], delete: ['DELETE', '/api/logo'] },
@@ -69,11 +72,12 @@ const MUTATION_ROUTES = {
   bidding_watch_scan: { scan: ['POST', '/api/bidding/watchlist/{id}/scan'], scan_all: ['POST', '/api/bidding/scan-all'] },
   inventory_items: { create: ['POST', '/api/inv/items'], update: ['PATCH', '/api/inv/items/{id}'], merge: ['POST', '/api/inv/items/merge'] },
   inventory_purchases: { create: ['POST', '/api/inv/purchase'], update: ['PATCH', '/api/inv/purchase/{id}'], post: ['POST', '/api/inv/purchase/{id}/post'], void: ['POST', '/api/inv/purchase/{id}/void'], delete: ['DELETE', '/api/inv/purchase/{id}'], recalc: ['POST', '/api/inv/purchase/{id}/recalc-totals'] },
-  inventory_sales: { update: ['PATCH', '/api/inv/sale/{id}'], generate: ['POST', '/api/inv/sale/{id}/generate'], delete: ['DELETE', '/api/inv/sale/{id}'] },
+  inventory_sales: { create: ['POST', '/api/inv/sale'], update: ['PATCH', '/api/inv/sale/{id}'], generate: ['POST', '/api/inv/sale/{id}/generate'], delete: ['DELETE', '/api/inv/sale/{id}'] },
   inventory_issues: { create: ['POST', '/api/inv/issues'], update: ['PATCH', '/api/inv/issues/{id}'], post: ['POST', '/api/inv/issues/{id}/post'], void: ['POST', '/api/inv/issues/{id}/void'], delete: ['DELETE', '/api/inv/issues/{id}'] },
   inventory_production: { create: ['POST', '/api/inv/productions'], update: ['PATCH', '/api/inv/productions/{id}'], post: ['POST', '/api/inv/productions/{id}/post'], void: ['POST', '/api/inv/productions/{id}/void'], delete: ['DELETE', '/api/inv/productions/{id}'] },
   inventory_recipes: { create: ['POST', '/api/inv/recipes'], update: ['PATCH', '/api/inv/recipes/{id}'], delete: ['DELETE', '/api/inv/recipes/{id}'], describe: ['POST', '/api/inv/recipes/{id}/describe'] },
   inventory_customs: { create: ['POST', '/api/inv/customs'], update: ['PATCH', '/api/inv/customs/{id}'], post: ['POST', '/api/inv/customs/{id}/post'], void: ['POST', '/api/inv/customs/{id}/void'], delete: ['DELETE', '/api/inv/customs/{id}'] },
+  inventory_import_export: { opening_import: ['POST', '/api/inv/opening/import'], purchase_import_url: ['POST', '/api/inv/purchase/import-url'], purchase_sync_nas: ['POST', '/api/inv/purchase/sync-nas'], sale_import_url: ['POST', '/api/inv/sale/import-url'] },
   tax_sync: { sync: ['POST', '/api/tax/sync'], auto_sync: ['POST', '/api/tax/auto-sync'], job: ['POST', '/api/jobs/tax-sync/run'] },
   tax_review: { upload: ['POST', '/api/tax/review/upload'], delete: ['DELETE', '/api/tax/review/{id}'] },
   tax_reports: { generate: ['POST', '/api/tax/reports/{id}/generate'], lock: ['POST', '/api/tax/reports/{id}/lock'] },
@@ -175,6 +179,8 @@ export class BackendClient {
   }
 
   async dispatch(toolName, args) {
+    const special = this.#specialRequest(toolName, args)
+    if (special) return this.request(special.path, { method: special.method, query: special.query, body: special.body })
     const resolver = READ_ROUTES[toolName]
     if (resolver && !args?.operation) {
       const resolved = resolver({ args })
@@ -189,5 +195,27 @@ export class BackendClient {
     }
     const mutation = buildMutationRequest(toolName, args)
     return this.request(mutation.path, { method: mutation.method, body: mutation.body })
+  }
+
+  #specialRequest(toolName, args) {
+    const filters = args?.filters || {}
+    if (toolName === 'bidding_tender_analyze') {
+      return { method: 'POST', path: `/api/bidding/tenders/${segment(args.id || args.query)}/analyze-ai`, body: { custom_context: filters.custom_context || '' } }
+    }
+    if (toolName === 'commercial_preview') {
+      const resource = filters.resource || 'quote'
+      const paths = { quote: '/api/quote/preview', contract: '/api/contract/preview', bbbg: '/api/bbbg/preview', certificate: '/api/factory-certificate/preview' }
+      if (!paths[resource]) throw new Error(`unsupported_preview:${resource}`)
+      return { method: 'POST', path: paths[resource], body: filters.payload || {} }
+    }
+    if (toolName === 'commercial_invoice_parse') {
+      return { method: 'POST', path: '/api/invoice/parse', body: filters.payload || {} }
+    }
+    if (toolName === 'tax_status' && filters.resource) {
+      const resources = { credentials: '/api/tax/credentials', session: '/api/tax/session', policy: '/api/tax/policy', auto_sync: '/api/tax/auto-sync/status' }
+      if (!resources[filters.resource]) throw new Error(`unsupported_tax_status:${filters.resource}`)
+      return { method: 'GET', path: resources[filters.resource] }
+    }
+    return null
   }
 }

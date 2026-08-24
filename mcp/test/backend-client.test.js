@@ -63,3 +63,21 @@ test('customer search applies accent-neutral filtering over the admin customer l
   assert.equal(result.length, 1)
   assert.equal(result[0].tax_code, '4401053694')
 })
+
+test('special POST-backed read tools use the correct backend methods', async () => {
+  const calls = []
+  const client = new BackendClient({
+    username: 'admin',
+    password: 'fixture',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options })
+      if (String(url).endsWith('/api/login')) return response(200, {}, { 'set-cookie': 'ksp_session=fixture' })
+      return response(200, { ok: true })
+    },
+  })
+  await client.dispatch('bidding_tender_analyze', { query: 'IB2600001001-00', filters: { custom_context: 'test' } })
+  assert.equal(calls.at(-1).options.method, 'POST')
+  assert.match(calls.at(-1).url, /analyze-ai$/)
+  await client.dispatch('commercial_preview', { filters: { resource: 'quote', payload: { items: [] } } })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/quote/preview')
+})

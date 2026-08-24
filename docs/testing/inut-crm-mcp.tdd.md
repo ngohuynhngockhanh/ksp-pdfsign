@@ -33,3 +33,4 @@
 
 - The complete existing KSP pytest selection (`test_mcp_auth.py`, bidding unit, and adversarial suites) exceeded the 120-second validation window in this environment; the MCP-specific suite and live smoke checks passed.
 - Agy headless model invocation timed out/returned an unrelated required-argument error while other configured remote MCP servers were being initialized. Its `inut-crm` registration is enabled and the same SSE endpoint was called successfully by the official MCP client SDK.
+- `pip-audit --local` reports 27 vulnerabilities in nine pre-existing backend packages, including `python-jose`, `python-multipart`, `starlette`, `cryptography`, and `pypdf`; dependency remediation is not included in this MCP-only change because it requires a separate compatibility pass across the existing application.
