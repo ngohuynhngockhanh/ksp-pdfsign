@@ -51,6 +51,62 @@ export interface TaxReviewItem {
   uploaded_by: string;
   uploaded_at: string;
 }
+
+export interface TqcCertificate {
+  certificate_no: string;
+  issue_date: string;
+  expiry_date: string;
+  applicant_name: string;
+  product_name: string;
+  model: string;
+  manufacturer: string;
+  factory_name: string;
+  factory_address: string;
+  technical_regulations: string[];
+  certification_method: string;
+  serial_form_no: string;
+  source_status: string;
+  derived_status: "active" | "expired" | "cancelled" | "unknown";
+  provenance: {
+    verification_status: string;
+    source_url: string;
+    checked_at: string | null;
+    cache_age_seconds?: number;
+  };
+}
+
+export interface TqcSearchResponse {
+  items: TqcCertificate[];
+  total: number;
+  page: number;
+  page_size: number;
+  search_scope: "local_index";
+  index_last_updated_at: string | null;
+  warning?: string;
+  verification_status?: string;
+}
+
+export interface TqcImportResult {
+  requested: number;
+  processed: number;
+  verified: number;
+  cached: number;
+  not_found: number;
+  errors: Array<{ index: number; code: string; message: string }>;
+  items: Array<Record<string, any>>;
+}
+
+export interface TqcImportJob {
+  job_id: number;
+  status: "running" | "success" | "failed";
+  phase: string;
+  progress: number;
+  requested: number;
+  result: TqcImportResult | null;
+  error: string;
+  started_at: string;
+  finished_at: string | null;
+}
 export interface TaxGrid {
   name: string;
   rows: string[][];
@@ -307,6 +363,9 @@ export interface TrainingEvidence {
   timestamp?: string;
 }
 
+/** Output intent sent with Training requests; the server may use this to pick a playbook. */
+export type TrainingMode = "technical" | "sales";
+
 export interface TrainingAnswer {
   answer: string;
   sourceBasis?: string;
@@ -354,6 +413,240 @@ export interface TrainingPublicQuery {
 }
 
 // Loi am kho: mang theo danh sach vi pham de UI mo modal nhap ly do (duyet am kho).
+// --- Bidding / Procurement Interfaces (Mua Sắm Công) ---
+export interface BiddingTenderSummary {
+  tbmt_code: string;
+  tender_name: string;
+  procuring_entity: string;
+  investor?: string;
+  field: string;
+  bid_price: number;
+  bid_deadline?: string | null;
+  bid_opening_date?: string | null;
+  province: string;
+  bidding_method?: string;
+  source_url?: string;
+  is_bookmarked?: boolean;
+  bookmark_id?: number | null;
+  bookmark_status?: "watching" | "preparing" | "submitted" | "won" | "lost" | null;
+  is_closed?: boolean;
+}
+
+export interface BiddingTenderDetail extends BiddingTenderSummary {
+  bid_validity_period_days?: number | null;
+  execution_period_days?: number | null;
+  decision_number?: string;
+  description?: string;
+  ai_summary?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BiddingSearchResult {
+  items: BiddingTenderSummary[];
+  total: number;
+  page: number;
+  page_size?: number;
+  per_page?: number;
+  total_pages: number;
+  is_mock?: boolean;
+}
+
+export interface BiddingBookmarkItem {
+  id: number;
+  tbmt_code: string;
+  tender_name: string;
+  procuring_entity: string;
+  investor: string;
+  field: string;
+  bid_price: number;
+  bid_deadline: string | null;
+  bid_opening_date?: string | null;
+  province: string;
+  bidding_method?: string;
+  source_url: string;
+  status: "watching" | "preparing" | "submitted" | "won" | "lost";
+  note: string;
+  ai_summary: string;
+  created_by?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BiddingBookmarkListOut {
+  items: BiddingBookmarkItem[];
+  total: number;
+}
+
+export interface BiddingBookmarkCreate {
+  tbmt_code: string;
+  tender_name: string;
+  procuring_entity?: string;
+  investor?: string;
+  field?: string;
+  bid_price?: number;
+  bid_deadline?: string | null;
+  bid_opening_date?: string | null;
+  province?: string;
+  bidding_method?: string;
+  source_url?: string;
+  status?: "watching" | "preparing" | "submitted" | "won" | "lost";
+  note?: string;
+  ai_summary?: string;
+}
+
+export interface BiddingBookmarkUpdate {
+  status?: "watching" | "preparing" | "submitted" | "won" | "lost";
+  note?: string;
+  ai_summary?: string;
+  tender_name?: string;
+  bid_price?: number;
+  bid_deadline?: string | null;
+}
+
+export interface BiddingWatchlistItem {
+  id: number;
+  name: string;
+  keyword: string;
+  province: string;
+  field: string;
+  min_price: number | null;
+  max_price: number | null;
+  method?: string;
+  notify_telegram: boolean;
+  is_active: boolean;
+  last_checked_at: string | null;
+  created_by?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BiddingWatchlistListOut {
+  items: BiddingWatchlistItem[];
+  total: number;
+}
+
+export interface BiddingWatchlistCreate {
+  name: string;
+  keyword?: string;
+  province?: string;
+  field?: string;
+  min_price?: number | null;
+  max_price?: number | null;
+  method?: string;
+  notify_telegram?: boolean;
+  is_active?: boolean;
+}
+
+export interface BiddingWatchlistUpdate {
+  name?: string;
+  keyword?: string;
+  province?: string;
+  field?: string;
+  min_price?: number | null;
+  max_price?: number | null;
+  method?: string;
+  notify_telegram?: boolean;
+  is_active?: boolean;
+}
+
+export interface BiddingAIAnalysisData {
+  executive_summary?: string;
+  summary?: string;
+  scope_of_work?: string[];
+  capacity_requirements?: string[] | string;
+  revenue_requirements?: string;
+  financial_requirements?: {
+    min_annual_revenue?: number;
+    financial_resources?: number;
+    bid_security_amount?: number;
+    summary?: string;
+  } | string;
+  key_personnel_requirements?: string[];
+  equipment_requirements?: string[];
+  critical_timeline?: {
+    bid_closing_at?: string;
+    clarification_deadline?: string;
+    execution_period_days?: number;
+    timeline_notes?: string;
+  } | string;
+  inut_fit_analysis?: {
+    score: number;
+    match_level?: string;
+    strengths: string[];
+    challenges?: string[];
+    risks?: string[];
+    recommendation: string;
+    strategic_action_plan?: string;
+  };
+  inut_compatibility_score?: number;
+  strengths?: string[];
+  risks?: string[];
+  recommendations?: string;
+}
+
+export interface BiddingAIAnalysisResult {
+  tbmt_code: string;
+  analysis: BiddingAIAnalysisData;
+  saved_to_bookmark?: boolean;
+}
+
+export interface BiddingScanResult {
+  ok?: boolean;
+  watchlists_scanned?: number;
+  new_tenders_found?: number;
+  matched_count?: number;
+  alerts_sent?: number;
+  new_alerts_sent?: number;
+  alerts_failed?: number;
+  details?: any[];
+  count_new?: number;
+  new_matches_count?: number;
+  message?: string;
+}
+
+export interface BiddingWonPackage {
+  tbmt_code: string;
+  tender_name: string;
+  procuring_entity: string;
+  bid_price: number;
+  won_price: number;
+  discount_percent: number;
+  award_date: string;
+  decision_number: string;
+  status: string;
+}
+
+export interface BiddingContractorItem {
+  customer_id?: number | null;
+  tax_code: string;
+  name: string;
+  short_name?: string;
+  address?: string;
+  email?: string;
+  bidding_status: string;
+  bidding_status_label: string;
+  total_bids: number;
+  total_won: number;
+  total_lost: number;
+  total_evaluating: number;
+  win_rate_percent: number;
+  total_won_value_vnd: number;
+  total_won_value_formatted: string;
+  average_discount_percent: number;
+  top_procuring_entities: string[];
+  highlight_won_packages: BiddingWonPackage[];
+  ai_insight?: string;
+}
+
+export interface BiddingCrmScanResult {
+  total_crm_customers: number;
+  total_won_contractors: number;
+  total_won_value_vnd: number;
+  total_won_value_formatted: string;
+  items: BiddingContractorItem[];
+}
+
 export class NegStockError extends Error {
   violations: NegStockViolation[];
   constructor(message: string, violations: NegStockViolation[]) {
@@ -385,21 +678,486 @@ async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  bidding: {
+    async search(params: {
+      keyword?: string;
+      province?: string;
+      field?: string;
+      min_price?: number | null;
+      max_price?: number | null;
+      method?: string;
+      status?: string;
+      page?: number;
+      page_size?: number;
+      per_page?: number;
+    }) {
+      const q = new URLSearchParams();
+      if (params.keyword) q.set("keyword", params.keyword);
+      if (params.province) q.set("province", params.province);
+      if (params.field) q.set("field", params.field);
+      if (params.min_price != null && !isNaN(params.min_price)) q.set("min_price", String(params.min_price));
+      if (params.max_price != null && !isNaN(params.max_price)) q.set("max_price", String(params.max_price));
+      if (params.method) q.set("method", params.method);
+      if (params.status) q.set("status", params.status);
+      if (params.page) q.set("page", String(params.page));
+      const size = params.page_size || params.per_page;
+      if (size) q.set("page_size", String(size));
+      const qs = q.toString();
+      return req<BiddingSearchResult>(`/api/bidding/search${qs ? `?${qs}` : ""}`);
+    },
+
+    async getTender(tbmtCode: string) {
+      return req<BiddingTenderDetail>(`/api/bidding/tenders/${encodeURIComponent(tbmtCode)}`);
+    },
+
+    getHtmlPreviewUrl(tbmtCode: string) {
+      return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/html-preview`;
+    },
+
+    async analyzeAI(tbmtCode: string, customContext?: string) {
+      return req<BiddingAIAnalysisResult>(`/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/analyze-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_context: customContext || "" }),
+      });
+    },
+
+    async listBookmarks(params?: { status?: string; field?: string; search?: string }) {
+      const q = new URLSearchParams();
+      if (params?.status) q.set("status", params.status);
+      if (params?.field) q.set("field", params.field);
+      if (params?.search) q.set("search", params.search);
+      const qs = q.toString();
+      const res = await req<BiddingBookmarkItem[] | BiddingBookmarkListOut | { items: BiddingBookmarkItem[]; total?: number }>(
+        `/api/bidding/bookmarks${qs ? `?${qs}` : ""}`
+      );
+      const list = Array.isArray(res) ? res : (res?.items || []);
+      return list as BiddingBookmarkItem[];
+    },
+
+    async createBookmark(data: BiddingBookmarkCreate) {
+      return req<BiddingBookmarkItem>("/api/bidding/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    },
+
+    async updateBookmark(id: number, data: BiddingBookmarkUpdate) {
+      return req<BiddingBookmarkItem>(`/api/bidding/bookmarks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    },
+
+    async deleteBookmark(id: number) {
+      return req<{ ok: boolean }>(`/api/bidding/bookmarks/${id}`, {
+        method: "DELETE",
+      });
+    },
+
+    async listWatchlist() {
+      const res = await req<BiddingWatchlistItem[] | BiddingWatchlistListOut | { items: BiddingWatchlistItem[]; total?: number }>(
+        "/api/bidding/watchlist"
+      );
+      const list = Array.isArray(res) ? res : (res?.items || []);
+      return list as BiddingWatchlistItem[];
+    },
+
+    async createWatchlist(data: BiddingWatchlistCreate) {
+      return req<BiddingWatchlistItem>("/api/bidding/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    },
+
+    async updateWatchlist(id: number, data: BiddingWatchlistUpdate) {
+      return req<BiddingWatchlistItem>(`/api/bidding/watchlist/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    },
+
+    async deleteWatchlist(id: number) {
+      return req<{ ok: boolean }>(`/api/bidding/watchlist/${id}`, {
+        method: "DELETE",
+      });
+    },
+
+    async scanWatchlist(id: number) {
+      return req<BiddingScanResult>(`/api/bidding/watchlist/${id}/scan`, {
+        method: "POST",
+      });
+    },
+
+    async scanAllWatchlists() {
+      return req<BiddingScanResult>("/api/bidding/watchlist/scan-all", {
+        method: "POST",
+      });
+    },
+
+    async scanCrmContractors() {
+      return req<BiddingCrmScanResult>("/api/bidding/contractors/crm-scan");
+    },
+
+    async searchContractors(query: string) {
+      return req<BiddingContractorItem[]>(`/api/bidding/contractors/search?query=${encodeURIComponent(query)}`);
+    },
+
+    async getContractorProfile(taxCode: string) {
+      return req<BiddingContractorItem>(`/api/bidding/contractors/${encodeURIComponent(taxCode)}`);
+    },
+
+    async getWonPackages(query = "", field = "") {
+      const q = new URLSearchParams();
+      if (query) q.set("query", query);
+      if (field) q.set("field", field);
+      const qs = q.toString();
+      return req<{
+        total_packages: number;
+        total_won_value_vnd: number;
+        total_won_value_formatted: string;
+        average_discount_percent: number;
+        packages: any[];
+      }>(`/api/bidding/won-packages${qs ? `?${qs}` : ""}`);
+    },
+
+    async getPlaybook() {
+      return req<{
+        company_name: string;
+        tax_code: string;
+        strategic_sweet_spot_discount: string;
+        standard_e_hsdt_kits: any[];
+        subcontractor_partnership_action_plan: any[];
+      }>("/api/bidding/playbook");
+    },
+
+    async getAttachments(tbmtCode: string) {
+      return req<Array<{
+        file_id: string;
+        filename: string;
+        title: string;
+        file_type: string;
+        file_size: string;
+        badge: string;
+        icon: string;
+        description: string;
+        download_url: string;
+      }>>(`/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/attachments`);
+    },
+
+    getAttachmentDownloadUrl(tbmtCode: string, fileId: string) {
+      return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/attachments/${encodeURIComponent(fileId)}/download`;
+    },
+
+    getFullDossierZipUrl(tbmtCode: string) {
+      return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/download-all-zip`;
+    },
+
+    async getCompetitors(tbmtCode: string) {
+      return req<Array<{
+        ranking: number;
+        status: string;
+        status_label: string;
+        contractor_name: string;
+        tax_code: string;
+        address: string;
+        bid_price: number;
+        bid_price_formatted: string;
+        discount_percent: number;
+        tech_score: number;
+        eval_result: string;
+        files: Array<{
+          file_id: string;
+          title: string;
+          file_type: string;
+          size: string;
+        }>;
+      }>>(`/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/competitors`);
+    },
+
+    getCompetitorFileDownloadUrl(tbmtCode: string, taxCode: string, fileId: string) {
+      return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/competitors/${encodeURIComponent(taxCode)}/files/${encodeURIComponent(fileId)}/download`;
+    },
+
+    getAllCompetitorsZipUrl(tbmtCode: string) {
+      return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/competitors/download-all-zip`;
+    },
+  },
+
+  standards: {
+    async getStatistics() {
+      return req<{
+        total_standards: number;
+        by_ministry: Record<string, number>;
+        by_category: Record<string, number>;
+        updated_at: string;
+      }>("/api/standards/statistics");
+    },
+
+    async search(params: {
+      q?: string;
+      ministry?: string;
+      category?: string;
+      procedure_type?: string;
+    } = {}) {
+      const p = new URLSearchParams();
+      if (params.q) p.set("q", params.q);
+      if (params.ministry) p.set("ministry", params.ministry);
+      if (params.category) p.set("category", params.category);
+      if (params.procedure_type) p.set("procedure_type", params.procedure_type);
+      const qs = p.toString();
+      return req<Array<{
+        code: string;
+        name: string;
+        ministry: string;
+        ministry_label: string;
+        category: string;
+        category_label: string;
+        circular: string;
+        effective_date: string;
+        status: string;
+        procedure_type: string;
+        procedure_label: string;
+        target_equipment: string;
+        applicable_hs_codes: string[];
+        managing_agency: string;
+        certification_method: string;
+        testing_labs: string[];
+        key_technical_requirements: string[];
+        inut_product_match: string;
+      }>>(`/api/standards/search${qs ? `?${qs}` : ""}`);
+    },
+
+    async getTqcStatus() {
+      return req<{
+        enabled: boolean;
+        base_url: string;
+        api_key_configured: boolean;
+        rate_limit_per_minute: number;
+        cache_ttl_seconds: number;
+        search_mode: string;
+      }>("/api/standards/tqc/status");
+    },
+
+    async searchTqc(params: {
+      q?: string;
+      model?: string;
+      manufacturer?: string;
+      applicant?: string;
+      certificate_no?: string;
+      status?: string;
+      valid_on?: string;
+      page?: number;
+      page_size?: number;
+    } = {}) {
+      const p = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== "") p.set(key, String(value));
+      });
+      const qs = p.toString();
+      return req<TqcSearchResponse>(`/api/standards/tqc/search${qs ? `?${qs}` : ""}`);
+    },
+
+    async getTqcCertificate(certificateNo: string, refresh = false) {
+      const suffix = refresh ? "?refresh=true" : "";
+      return req<{ certificate: TqcCertificate }>(`/api/standards/tqc/certificates/${encodeURIComponent(certificateNo)}${suffix}`);
+    },
+
+    async importTqc(entries: Array<{ certificate_no?: string; qr_input?: string }>, refresh_existing = false) {
+      return req<TqcImportResult>("/api/standards/tqc/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries, refresh_existing }),
+      });
+    },
+
+    async importTqcCsv(file: File, refresh_existing = false) {
+      const form = new FormData();
+      form.append("file", file);
+      return req<{
+        job_id: number;
+        status: "running";
+        requested: number;
+      }>(`/api/standards/tqc/import/csv?refresh_existing=${refresh_existing ? "true" : "false"}`, {
+        method: "POST",
+        body: form,
+      });
+    },
+
+    async getTqcImportJob(jobId: number) {
+      return req<TqcImportJob>(`/api/standards/tqc/import/jobs/${jobId}`);
+    },
+
+    async getLatestTqcImportJob() {
+      return req<{ job: TqcImportJob | null }>("/api/standards/tqc/import/jobs/latest");
+    },
+
+    async retryTqcImportJob(jobId: number) {
+      return req<TqcImportJob>(`/api/standards/tqc/import/jobs/${jobId}/retry`, { method: "POST" });
+    },
+
+    async lookupHsCode(hsCode: string) {
+      return req<{
+        hs_code: string;
+        hs_description: string;
+        applicable_standards: string[];
+        customs_inspection_agency: string;
+        inspection_type: string;
+        required_procedure: string;
+        customs_notes: string;
+        exemption_cases: string;
+      }>(`/api/standards/hs-lookup/${encodeURIComponent(hsCode)}`);
+    },
+
+    async getHsMappings() {
+      return req<Array<{
+        hs_code: string;
+        hs_description: string;
+        applicable_standards: string[];
+        customs_inspection_agency: string;
+        inspection_type: string;
+        required_procedure: string;
+        customs_notes: string;
+        exemption_cases: string;
+      }>>("/api/standards/hs-mappings");
+    },
+
+    async getTestingLabs() {
+      return req<Array<{
+        id: number;
+        name: string;
+        code: string;
+        ministry: string;
+        address: string;
+        branch?: string;
+        phone: string;
+        email: string;
+        scope: string[];
+        average_testing_time_days: string;
+        estimated_cost_vnd: string;
+        badge: string;
+      }>>("/api/standards/testing-labs");
+    },
+
+    async getPlaybooks() {
+      return req<Array<{
+        id: string;
+        title: string;
+        subtitle: string;
+        category: string;
+        badge: string;
+        hs_codes: Array<{
+          code: string;
+          description: string;
+          import_tax_mfn: string;
+          import_tax_form_e: string;
+          vat_rate: string;
+          recommended: boolean;
+        }>;
+        required_standards: Array<{
+          code: string;
+          name: string;
+          procedure: string;
+          test_scope: string;
+        }>;
+        six_step_workflow?: Array<{
+          step: number;
+          title: string;
+          description: string;
+        }>;
+        cost_estimate: {
+          state_fees?: Array<{ name: string; cost: string; agency: string }>;
+          lab_testing_fees?: Array<{ scope: string; cost: string; time: string }>;
+          total_lab_cost_range?: string;
+          forwarder_service_cost_range?: string;
+        };
+        practical_tips: string[];
+      }>>("/api/standards/playbooks");
+    },
+
+    async getPlaybookDetail(playbookId: string) {
+      return req<any>(`/api/standards/playbooks/${encodeURIComponent(playbookId)}`);
+    },
+
+    getStandardPdfUrl(code: string) {
+      return `/api/standards/${encodeURIComponent(code)}/pdf`;
+    },
+
+    getCrDeclarationPdfUrl(payload: any) {
+      return "/api/standards/generate-cr-declaration/pdf";
+    },
+
+    getCrDeclarationDocxUrl(payload: any) {
+      return "/api/standards/generate-cr-declaration/docx";
+    },
+
+    async getGameState() {
+      return req<{
+        current_level: number;
+        current_level_title: string;
+        current_exp: number;
+        max_exp: number;
+        progress_percent: number;
+        completed_quests_count: number;
+        total_quests: number;
+        ai_companion_cheer: string;
+        quests: Array<{
+          quest_id: number;
+          title: string;
+          subtitle: string;
+          description: string;
+          ai_companion_tip: string;
+          secret_cheatsheet: string;
+          exp_reward: number;
+          level_title: string;
+          status: "pending" | "in_progress" | "completed";
+          completed_at?: string;
+          personal_note?: string;
+        }>;
+      }>("/api/standards/game/state");
+    },
+
+    async completeGameQuest(questId: number, note: string = "") {
+      return req<any>("/api/standards/game/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quest_id: questId, note }),
+      });
+    },
+
+    async updateGameNote(questId: number, note: string) {
+      return req<any>("/api/standards/game/note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quest_id: questId, note }),
+      });
+    },
+
+    async resetGame() {
+      return req<any>("/api/standards/game/reset", {
+        method: "POST",
+      });
+    },
+  },
   async trainingSearch(query: string) {
     return req<{ results: TrainingSearchResult[] }>(`/api/training/search?q=${encodeURIComponent(query)}`);
   },
-  async trainingAsk(question: string, sessionId = "") {
+  async trainingAsk(question: string, sessionId = "", mode: TrainingMode = "technical") {
     return req<{ sessionId: string; answer: TrainingAnswer }>("/api/training/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, session_id: sessionId }),
+      body: JSON.stringify({ question, session_id: sessionId, mode }),
     });
   },
-  async trainingJobStart(question: string, sessionId = "") {
+  async trainingJobStart(question: string, sessionId = "", mode: TrainingMode = "technical") {
     return req<{ jobId: string; status: string; stage: string }>("/api/training/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, session_id: sessionId }),
+      body: JSON.stringify({ question, session_id: sessionId, mode }),
     });
   },
   async trainingJobStatus(jobId: string) {
@@ -780,6 +1538,24 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async telegramStatus() {
+    return req<{
+      enabled: boolean;
+      bot_username: string;
+      connected: boolean;
+      username: string;
+      display_name: string;
+      connected_at: string | null;
+    }>("/api/telegram/status");
+  },
+  async telegramConnect() {
+    return req<{ ok: boolean; url: string; expires_at: string }>("/api/telegram/connect", {
+      method: "POST",
+    });
+  },
+  async telegramDisconnect() {
+    return req<{ ok: boolean }>("/api/telegram/connection", { method: "DELETE" });
+  },
   async aiTest(prompt = "") {
     return req<{ ok: boolean; message: string; reply: string }>("/api/ai/test", {
       method: "POST",
@@ -860,8 +1636,14 @@ export const api = {
   async taxSyncRuns() {
     return req<JobRun[]>("/api/jobs/tax-sync");
   },
-  async runTaxSyncJob() {
-    return req<JobRun>("/api/jobs/tax-sync/run", { method: "POST" });
+  async runTaxSyncJob(range?: { tu: string; den: string }) {
+    return req<JobRun>("/api/jobs/tax-sync/run", {
+      method: "POST",
+      ...(range ? {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(range),
+      } : {}),
+    });
   },
   async taxReports() {
     return req<TaxReport[]>("/api/tax/reports");
@@ -1338,6 +2120,47 @@ export const api = {
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) },
     );
   },
+  // --- Dong bo hoa don PDF/XML tu Zoho Mail (IMAP) ---
+  async emailSyncSettings() {
+    return req<EmailSyncSettings>("/api/inv/email-sync/settings");
+  },
+  async emailSyncSaveSettings(body: Partial<EmailSyncSettings> & { password?: string; client_secret?: string; refresh_token?: string; grant_token?: string }) {
+    return req<EmailSyncSettings>("/api/inv/email-sync/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async emailSyncTest(body: {
+    mode?: string;
+    client_id?: string;
+    client_secret?: string;
+    refresh_token?: string;
+    grant_token?: string;
+    accounts_url?: string;
+    mail_api_url?: string;
+    server?: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    mailbox?: string;
+  }) {
+    return req<EmailSyncTestResult>("/api/inv/email-sync/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async emailSyncRun(days = 30) {
+    return req<EmailSyncJobRun>("/api/inv/email-sync/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days }),
+    });
+  },
+  async emailSyncRuns() {
+    return req<EmailSyncJobRun[]>("/api/inv/email-sync/runs");
+  },
   // --- Hoa don BAN RA ---
   async invSaleUpload(files: File[]) {
     const fd = new FormData();
@@ -1648,6 +2471,34 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+  },
+  async invProductionCheckShortage(payload: ShortageCheckIn) {
+    return req<ShortageCheckOut>("/api/inv/productions/check-shortage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async invProductionReadiness(id: number) {
+    return req<ShortageCheckOut>(`/api/inv/productions/${id}/readiness`);
+  },
+  async invTraceability(params: {
+    batch_no?: string;
+    serial_no?: string;
+    item_id?: number;
+    production_id?: number;
+    tu?: string;
+    den?: string;
+  } = {}) {
+    const p = new URLSearchParams();
+    if (params.batch_no) p.set("batch_no", params.batch_no);
+    if (params.serial_no) p.set("serial_no", params.serial_no);
+    if (params.item_id != null) p.set("item_id", String(params.item_id));
+    if (params.production_id != null) p.set("production_id", String(params.production_id));
+    if (params.tu) p.set("tu", params.tu);
+    if (params.den) p.set("den", params.den);
+    const qs = p.toString();
+    return req<TraceabilityResponseOut>(`/api/inv/traceability${qs ? `?${qs}` : ""}`);
   },
   // --- To khai nhap khau (customs) ---
   async invCustomsList(filters: { statusF?: string; tu?: string; den?: string } = {}) {
@@ -1976,6 +2827,8 @@ export interface StockCardRow {
   ton_gia_tri: number;
   ref_type: string;
   ref_id: number | null;
+  lot_number?: string;
+  serial_numbers?: string;
 }
 
 export interface ItemFlowDoc {
@@ -2416,6 +3269,8 @@ export interface InvProductionLine {
   gia_tri_uoc: number;
   so_luong_dinh_muc: number | null;
   gia_tri_dinh_muc: number | null;
+  lot_number?: string;
+  serial_numbers?: string;
   note: string;
   orig_item_id: number | null;
 }
@@ -2435,8 +3290,89 @@ export interface InvProduction {
   gia_thanh_dv_uoc: number;
   gia_ban_du_kien: number;
   sale_id: number | null;
+  lot_number?: string;
+  serial_numbers?: string;
+  mfg_date?: string;
+  exp_date?: string;
+  am_kho_override?: boolean;
   created_at: string;
   lines: InvProductionLine[];
+}
+
+export interface ShortageCheckLineIn {
+  item_id: number;
+  so_luong: number;
+  warehouse_id?: number;
+}
+
+export interface ShortageCheckIn {
+  recipe_id?: number;
+  output_item_id?: number;
+  output_qty?: number;
+  warehouse_id?: number;
+  ngay?: string;
+  lines?: ShortageCheckLineIn[];
+}
+
+export interface ShortageItemOut {
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  warehouse_id: number;
+  warehouse_code: string;
+  required_qty: number;
+  available_qty: number;
+  shortage_qty: number;
+  is_shortage: boolean;
+  warning_level: string; // "ok" | "amber" | "red"
+}
+
+export interface ShortageCheckOut {
+  has_shortage: boolean;
+  can_produce: boolean;
+  items: ShortageItemOut[];
+}
+
+export interface TraceabilityOutputItemOut {
+  id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  qty: number;
+  warehouse_id: number;
+  warehouse_code: string;
+}
+
+export interface TraceabilityConsumedMaterialOut {
+  item_id: number;
+  ma_hang: string;
+  ten: string;
+  dvt: string;
+  so_luong: number;
+  lot_number: string;
+  batch_no: string;
+  serial_numbers: string[];
+  warehouse_id: number;
+  warehouse_code: string;
+}
+
+export interface TraceabilityRecordOut {
+  production_id: number;
+  so_ct: string;
+  ngay: string;
+  status: string;
+  batch_no: string;
+  lot_number: string;
+  serial_numbers: string[];
+  mfg_date: string;
+  exp_date: string;
+  output_item: TraceabilityOutputItemOut | null;
+  consumed_materials: TraceabilityConsumedMaterialOut[];
+}
+
+export interface TraceabilityResponseOut {
+  records: TraceabilityRecordOut[];
 }
 
 export interface InvRecipe {
@@ -2535,4 +3471,327 @@ export interface PymidOrder {
   customer_reference: string; note: string; policy_code: string; items: PymidOrderItem[];
   invoice_lines: PymidOrderLine[]; total_net: number; total_tax: number; total_gross: number;
   created_at: string; updated_at: string;
+}
+
+export interface EmailSyncSettings {
+  enabled: boolean;
+  mode: "rest_api" | "imap";
+  // REST API OAuth
+  client_id: string;
+  has_client_secret: boolean;
+  has_refresh_token: boolean;
+  accounts_url: string;
+  mail_api_url: string;
+  // IMAP
+  server: string;
+  port: number;
+  username: string;
+  has_password: boolean;
+  mailbox: string;
+  days: number;
+}
+
+export interface EmailSyncTestResult {
+  ok: boolean;
+  message: string;
+  mailbox?: string;
+  total_emails?: number;
+  account_name?: string;
+  account_id?: string;
+  refresh_token?: string;
+}
+
+export interface EmailSyncJobRun {
+  id: number;
+  kind: string;
+  status: "running" | "success" | "needs_action" | "failed";
+  started_at: string | null;
+  finished_at: string | null;
+  needs_action: boolean;
+  error: string;
+  stats: {
+    emails_scanned?: number;
+    attachments_found?: number;
+    pdf_attached_to_existing?: number;
+    created_new_draft?: number;
+    skipped_existing?: number;
+    errors?: number;
+    details?: string[];
+  };
+}
+
+// SPX Express Logistics Integration
+export interface SpxSettings {
+  spx_username: string;
+  spx_password: string;
+  spx_shop_id: string;
+  spx_api_token: string;
+  spx_cookies: string;
+  spx_sender_name: string;
+  spx_sender_phone: string;
+  spx_sender_address: string;
+  spx_sender_province: string;
+  spx_sender_district: string;
+  spx_sender_ward: string;
+}
+
+export interface SpxOrder {
+  id: number;
+  tracking_no: string;
+  order_code: string;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
+  province: string;
+  district: string;
+  ward: string;
+  cod_amount: number;
+  weight_gram: number;
+  length_cm: number;
+  width_cm: number;
+  height_cm: number;
+  item_description: string;
+  note: string;
+  payer: string;
+  status: "ready_to_ship" | "picking" | "delivering" | "delivered" | "cancelled";
+  shipping_fee: number;
+  label_doc_id: string;
+  sender_name: string;
+  sender_phone: string;
+  sender_address: string;
+  is_printed: boolean;
+  printed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpxOrderCreatePayload {
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
+  province?: string;
+  district?: string;
+  ward?: string;
+  cod_amount?: number;
+  weight_gram?: number;
+  length_cm?: number;
+  width_cm?: number;
+  height_cm?: number;
+  item_description?: string;
+  note?: string;
+  payer?: string;
+  order_code?: string;
+  sender_name?: string;
+  sender_phone?: string;
+  sender_address?: string;
+}
+
+export interface SpxOrderListResponse {
+  items: SpxOrder[];
+  total: number;
+  unprinted_count?: number;
+  printed_count?: number;
+}
+
+export interface SpxStatsResponse {
+  total: number;
+  unprinted: number;
+  printed: number;
+}
+
+export async function fetchSpxSettings(): Promise<SpxSettings> {
+  const res = await fetch("/api/spx/settings", { credentials: "include" });
+  if (!res.ok) throw new Error("Không thể tải cấu hình SPX Express");
+  return res.json();
+}
+
+export async function saveSpxSettings(payload: Partial<SpxSettings>): Promise<SpxSettings> {
+  const res = await fetch("/api/spx/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi lưu cấu hình" }));
+    throw new Error(err.detail || "Không thể lưu cấu hình SPX Express");
+  }
+  return res.json();
+}
+
+export async function testSpxConnection(payload: {
+  username?: string;
+  password?: string;
+  shop_id?: string;
+  api_token?: string;
+  cookies?: string;
+}): Promise<{ success: boolean; message: string; user_info?: any }> {
+  const res = await fetch("/api/spx/test-connection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function fetchSpxStats(): Promise<SpxStatsResponse> {
+  const res = await fetch("/api/spx/stats", { credentials: "include" });
+  if (!res.ok) return { total: 0, unprinted: 0, printed: 0 };
+  return res.json();
+}
+
+export async function quickPrintSpxOrder(payload: {
+  tracking_no: string;
+  printer_name?: string;
+  host?: string;
+  print_remote?: boolean;
+}): Promise<{ success: boolean; message: string; tracking_no: string; is_printed: boolean; printed_at: string }> {
+  const res = await fetch("/api/spx/quick-print", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi in nhanh" }));
+    throw new Error(err.detail || "Không thể thực hiện in nhanh đơn SPX");
+  }
+  return res.json();
+}
+
+export async function syncSpxOrders(payload: {
+  raw_text?: string;
+  from_date?: string;
+  to_date?: string;
+}): Promise<{ success: boolean; message: string; total_synced: number; tracking_numbers: string[] }> {
+  const res = await fetch("/api/spx/sync-orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi đồng bộ" }));
+    throw new Error(err.detail || "Không thể đồng bộ danh sách đơn SPX");
+  }
+  return res.json();
+}
+
+export async function batchPrintSpxOrders(payload: {
+  tracking_numbers?: string[];
+  from_date?: string;
+  to_date?: string;
+  printer_name?: string;
+  host?: string;
+}): Promise<{ success: boolean; message: string; total_printed: number; tracking_numbers: string[]; errors?: string[] }> {
+  const res = await fetch("/api/spx/batch-print", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi in hàng loạt" }));
+    throw new Error(err.detail || "Không thể in hàng loạt đơn SPX");
+  }
+  return res.json();
+}
+
+export async function markSpxOrderPrinted(trackingNo: string, isPrinted: boolean = true): Promise<SpxOrder> {
+  const endpoint = isPrinted ? "mark-printed" : "mark-unprinted";
+  const res = await fetch(`/api/spx/orders/${encodeURIComponent(trackingNo)}/${endpoint}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Không thể cập nhật trạng thái in");
+  return res.json();
+}
+
+export async function createSpxOrder(payload: SpxOrderCreatePayload): Promise<SpxOrder> {
+  const res = await fetch("/api/spx/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi tạo vận đơn" }));
+    throw new Error(err.detail || "Không thể tạo vận đơn SPX");
+  }
+  return res.json();
+}
+
+export async function fetchSpxOrders(params?: {
+  status?: string;
+  is_printed?: boolean;
+  from_date?: string;
+  to_date?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SpxOrderListResponse> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.is_printed !== undefined) q.set("is_printed", String(params.is_printed));
+  if (params?.from_date) q.set("from_date", params.from_date);
+  if (params?.to_date) q.set("to_date", params.to_date);
+  if (params?.search) q.set("search", params.search);
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.offset) q.set("offset", String(params.offset));
+
+  const res = await fetch(`/api/spx/orders?${q.toString()}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Không thể tải danh sách vận đơn SPX");
+  return res.json();
+}
+
+export async function getSpxOrder(trackingNo: string): Promise<SpxOrder> {
+  const res = await fetch(`/api/spx/orders/${encodeURIComponent(trackingNo)}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Không thể tải thông tin vận đơn");
+  return res.json();
+}
+
+export async function cancelSpxOrder(trackingNo: string): Promise<SpxOrder> {
+  const res = await fetch(`/api/spx/orders/${encodeURIComponent(trackingNo)}/cancel`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi hủy đơn" }));
+    throw new Error(err.detail || "Không thể hủy vận đơn");
+  }
+  return res.json();
+}
+
+export function getSpxOrderLabelUrl(trackingNo: string): string {
+  return `/api/spx/orders/${encodeURIComponent(trackingNo)}/label`;
+}
+
+export interface RemotePrinter {
+  name: string;
+  driver: string;
+  port: string;
+  is_thermal?: boolean;
+}
+
+export async function listRemotePrinters(host = "192.168.1.10"): Promise<RemotePrinter[]> {
+  const res = await fetch(`/api/spx/printers?host=${encodeURIComponent(host)}`, { credentials: "include" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function printSpxOrderRemote(
+  trackingNo: string,
+  host = "192.168.1.10",
+  printerName = "TP732H"
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(
+    `/api/spx/orders/${encodeURIComponent(trackingNo)}/print-remote?host=${encodeURIComponent(host)}&printer_name=${encodeURIComponent(printerName)}`,
+    { method: "POST", credentials: "include" }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi in từ xa" }));
+    throw new Error(err.detail || "Không thể gửi lệnh in tới máy in");
+  }
+  return res.json();
 }

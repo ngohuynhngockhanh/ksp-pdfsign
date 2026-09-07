@@ -13,6 +13,11 @@ from sqlalchemy import select
 from . import crypto, storage, tax
 from .db import AppSetting, InvPurchase, InvSale, JobRun, TaxReport
 
+_TAX_PENDING_CKEY = "tax_pending_ckey"
+_TAX_PENDING_RUN = "tax_pending_run_id"
+_TAX_PENDING_AT = "tax_pending_created_at"
+_TAX_CAPTCHA_TTL_SECONDS = 10 * 60
+
 
 def document_state(inv) -> str:
     if not inv.doc_id or not storage.exists(inv.doc_id, inv.doc_suffix or ".pdf"):
@@ -64,9 +69,94 @@ def _setting(db, key: str, secret: bool = False) -> str:
     if not row:
         return ""
     value = row.value or ""
-    if secret and value.startswith("enc:"):
-        return crypto.decrypt(value[4:])
+    if secret:
+        if value.startswith("enc:"):
+            return crypto.decrypt(value[4:])
+        # Accept older rows that stored the Fernet token without the marker,
+        # while keeping plaintext settings backward-compatible.
+        return crypto.decrypt(value) or value
     return value
+
+
+def _set_setting(db, key: str, value: str) -> None:
+    row = db.get(AppSetting, key)
+    if row is None:
+        row = AppSetting(key=key, value=value)
+        db.add(row)
+    else:
+        row.value = value
+
+
+def store_tax_token(db, token: str) -> None:
+    """Persist a tax session token encrypted for reuse by later sync jobs."""
+    _set_setting(db, "tax_token_enc", crypto.encrypt(token))
+    db.commit()
+
+
+def stored_tax_credentials(db) -> tuple[str, str]:
+    mst = _setting(db, "tax_mst")
+    return mst, _setting(db, "tax_password_enc", secret=True)
+
+
+def clear_tax_captcha(db) -> None:
+    for key in (_TAX_PENDING_CKEY, _TAX_PENDING_RUN, _TAX_PENDING_AT):
+        row = db.get(AppSetting, key)
+        if row is not None:
+            row.value = ""
+    db.commit()
+
+
+def pending_tax_captcha(db) -> dict | None:
+    """Return the current human-in-the-loop challenge, expiring it after 10 minutes."""
+    key_row = db.get(AppSetting, _TAX_PENDING_CKEY)
+    if not key_row or not key_row.value:
+        return None
+    created_row = db.get(AppSetting, _TAX_PENDING_AT)
+    created_raw = created_row.value if created_row else ""
+    try:
+        created = datetime.fromisoformat(created_raw)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - created).total_seconds() > _TAX_CAPTCHA_TTL_SECONDS:
+            clear_tax_captcha(db)
+            return None
+    except (TypeError, ValueError):
+        clear_tax_captcha(db)
+        return None
+    run_row = db.get(AppSetting, _TAX_PENDING_RUN)
+    try:
+        run_id = int(run_row.value) if run_row and run_row.value else 0
+    except (TypeError, ValueError):
+        run_id = 0
+    return {"ckey": crypto.decrypt(key_row.value), "run_id": run_id, "created_at": created_raw}
+
+
+def request_tax_captcha(db, settings, run_id: int) -> dict:
+    """Fetch a fresh challenge and deliver it to linked admin Telegram chats.
+
+    The CAPTCHA remains human-entered; only its one-time key is stored encrypted.
+    """
+    from . import telegram
+
+    if not telegram.is_configured(settings) or not telegram.admin_chat_ids(db):
+        return {"sent": 0, "reason": "telegram_unavailable"}
+    challenge = tax.get_captcha()
+    ckey, svg = str(challenge.get("key") or ""), str(challenge.get("svg") or "")
+    if not ckey or not svg:
+        raise tax.TaxError("Cổng thuế không trả CAPTCHA hợp lệ")
+    _set_setting(db, _TAX_PENDING_CKEY, crypto.encrypt(ckey))
+    _set_setting(db, _TAX_PENDING_RUN, str(int(run_id or 0)))
+    _set_setting(db, _TAX_PENDING_AT, datetime.now(timezone.utc).isoformat())
+    db.commit()
+    sent = telegram.send_tax_captcha(
+        settings,
+        db,
+        svg,
+        "Phiên cổng thuế hết hạn. Nhập mã CAPTCHA trong ảnh để tiếp tục đồng bộ.",
+    )
+    if not sent:
+        clear_tax_captcha(db)
+    return {"sent": sent, "run_id": int(run_id or 0)}
 
 
 def send_alert_email(db, subject: str, body: str) -> bool:
@@ -94,15 +184,33 @@ def daily_range(today: date | None = None) -> tuple[str, str]:
     return first.isoformat(), today.isoformat()
 
 
-def run_tax_sync(db) -> JobRun:
-    tu, den = daily_range()
-    run = JobRun(kind="tax_sync", period_from=tu, period_to=den)
-    db.add(run); db.commit(); db.refresh(run)
+def run_tax_sync(db, tu: str | None = None, den: str | None = None, existing_run: JobRun | None = None) -> JobRun:
+    default_tu, default_den = daily_range()
+    tu, den = tu or default_tu, den or default_den
+    run = existing_run
+    if run is None:
+        run = JobRun(kind="tax_sync", period_from=tu, period_to=den)
+        db.add(run)
+    else:
+        run.period_from, run.period_to = tu, den
+        run.status, run.error, run.stats, run.needs_action = "running", "", "{}", False
+        run.finished_at = None
+    db.commit(); db.refresh(run)
     try:
         token_row = db.get(AppSetting, "tax_token_enc")
         token = crypto.decrypt(token_row.value) if token_row else ""
         if not tax.check_token(token):
-            raise PermissionError("Phiên cổng thuế hết hạn; cần nhập captcha lại trong CRM")
+            notice = ""
+            try:
+                from .config import get_settings
+                challenge = request_tax_captcha(db, get_settings(), run.id)
+                if challenge.get("sent"):
+                    notice = " Đã gửi CAPTCHA qua Telegram cho quản trị viên."
+                elif challenge.get("reason") == "telegram_unavailable":
+                    notice = " Chưa gửi được CAPTCHA qua Telegram; hãy kiểm tra liên kết quản trị viên."
+            except Exception as exc:  # noqa: BLE001
+                notice = f" Không tạo được CAPTCHA tự động: {type(exc).__name__}."
+            raise PermissionError("Phiên cổng thuế hết hạn; cần nhập CAPTCHA để gia hạn." + notice)
         invoices = tax.fetch_invoices(token, tu, den)
         result = tax.reconcile(db, invoices, tu, den)
         result["import"] = tax.import_missing_purchases(db, token, result["missing_mua"])
@@ -124,6 +232,13 @@ def run_tax_sync(db) -> JobRun:
     run.finished_at = datetime.now(timezone.utc)
     db.commit(); db.refresh(run)
     return run
+
+
+def resume_tax_sync(db, run_id: int) -> JobRun:
+    run = db.get(JobRun, int(run_id))
+    if run is None or run.kind != "tax_sync":
+        raise ValueError("Không tìm thấy phiên đồng bộ thuế cần tiếp tục")
+    return run_tax_sync(db, run.period_from, run.period_to, existing_run=run)
 
 
 def _quarter_range(ky: str) -> tuple[str, str]:

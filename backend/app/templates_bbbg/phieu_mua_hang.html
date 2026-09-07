@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { 
+    size: A4; 
+    margin: 12mm 14mm 14mm; 
+    @bottom-right {
+      content: "Trang " counter(page) " / " counter(pages);
+      font-size: 9px;
+      font-style: italic;
+      color: #666;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 11px; 
+    color: #1a1a1a; 
+    line-height: 1.45;
+    position: relative;
+  }
+  .watermark {
+    position: fixed; top: 48%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 65%; opacity: 0.06; z-index: -1;
+  }
+  .letterhead { 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    border-bottom: 2px solid #0052cc; 
+    padding-bottom: 8px; 
+    margin-bottom: 8px;
+  }
+  .letterhead-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .letterhead img.logo { width: 62px; height: 62px; object-fit: contain; }
+  .letterhead .info { font-size: 10px; line-height: 1.4; color: #333; }
+  .letterhead .info .name { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #0052cc; }
+  .doc-badge {
+    text-align: right;
+    font-size: 9.5px;
+    color: #555;
+    background: #f0f4f9;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #d0dbe8;
+  }
+  .doc-badge .so-hd { font-weight: bold; color: #0052cc; font-size: 10.5px; }
+
+  .place { text-align: right; font-style: italic; font-size: 10.5px; margin: 4px 0; }
+  
+  .title-block { text-align: center; margin: 8px 0 12px; }
+  h1 { 
+    font-size: 17px; 
+    letter-spacing: 0.5px; 
+    margin: 0; 
+    color: #0b2545;
+    text-transform: uppercase;
+  }
+  .sub-title {
+    font-size: 10.5px;
+    font-style: italic;
+    color: #555;
+    margin-top: 2px;
+  }
+  .cancu-line {
+    font-size: 10px;
+    color: #444;
+    margin-top: 3px;
+  }
+
+  /* Two party boxes */
+  .parties-grid {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .party-box {
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 8px 10px;
+    background: #fafbfc;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .party-title {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    color: #0052cc;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  .party-name { font-weight: bold; font-size: 11px; color: #0f172a; }
+
+  /* Product table */
+  table.items-table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin: 8px 0 4px; 
+  }
+  table.items-table th, table.items-table td { 
+    border: 1px solid #94a3b8; 
+    padding: 5px 6px; 
+    font-size: 10px; 
+  }
+  table.items-table th { 
+    text-align: center; 
+    font-weight: bold; 
+    background: #0052cc; 
+    color: #ffffff;
+    font-size: 10px;
+  }
+  table.items-table td.c { text-align: center; }
+  table.items-table td.r { text-align: right; }
+  table.items-table tr.sum td { font-weight: bold; background: #f8fafc; }
+  table.items-table tr.grand td { font-weight: bold; font-size: 11.5px; background: #eff6ff; color: #0052cc; }
+  .bang-chu { font-style: italic; font-size: 10px; margin: 4px 0 10px; color: #334155; }
+
+  /* Timeline Section */
+  .section-title {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0052cc;
+    border-left: 3px solid #0052cc;
+    padding-left: 6px;
+    margin: 12px 0 6px;
+    background: #f1f5f9;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .timeline-container {
+    margin: 6px 0 10px;
+  }
+  .timeline-step {
+    display: flex;
+    margin-bottom: 6px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #0052cc;
+    border-radius: 0 4px 4px 0;
+    padding: 5px 8px;
+    font-size: 10px;
+    page-break-inside: avoid;
+  }
+  .timeline-step.completed {
+    border-left-color: #10b981;
+  }
+  .step-time {
+    width: 28%;
+    font-weight: bold;
+    color: #0052cc;
+    padding-right: 8px;
+    border-right: 1px dashed #cbd5e1;
+  }
+  .timeline-step.completed .step-time { color: #059669; }
+  .step-content {
+    width: 72%;
+    padding-left: 8px;
+  }
+  .step-title { font-weight: bold; color: #1e293b; }
+  .step-desc { color: #475569; font-size: 9.5px; }
+
+  /* Payment Process Section */
+  .payment-box {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 6px 0 10px;
+    background: #ffffff;
+    page-break-inside: avoid;
+  }
+  .payment-grid {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .payment-card {
+    flex: 1;
+    border: 1px solid #93c5fd;
+    background: #eff6ff;
+    border-radius: 4px;
+    padding: 6px 8px;
+    text-align: center;
+  }
+  .payment-card .p-title { font-size: 9.5px; font-weight: bold; color: #1e40af; text-transform: uppercase; }
+  .payment-card .p-amount { font-size: 13px; font-weight: bold; color: #0052cc; margin: 2px 0; }
+  .payment-card .p-desc { font-size: 9px; color: #475569; }
+
+  .bank-details {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1.45;
+  }
+  .bank-text { flex: 1; }
+
+  /* Policy terms */
+  .policy-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 9.5px;
+    color: #334155;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+  .policy-box ul { margin: 0; padding-left: 16px; }
+  .policy-box li { margin-bottom: 2px; }
+
+  /* Signatures */
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 14px;
+    page-break-inside: avoid;
+    text-align: center;
+  }
+  .sig-col { width: 45%; }
+  .sig-role { font-weight: bold; text-transform: uppercase; font-size: 10.5px; color: #0b2545; }
+  .sig-hint { font-style: italic; font-size: 9px; color: #64748b; margin-top: 2px; }
+  .sig-space { height: 60px; }
+  .sig-name { font-weight: bold; font-size: 11px; color: #0f172a; }
+</style>
+</head>
+<body>
+
+  {% if logo_data_uri %}<img class="watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <!-- HEADER / LETTERHEAD -->
+  <div class="letterhead">
+    <div class="letterhead-left">
+      {% if logo_data_uri %}<img class="logo" src="{{ logo_data_uri }}">{% endif %}
+      <div class="info">
+        <div class="name">{{ ben_a.company }}</div>
+        <div>Địa chỉ: {{ ben_a.address }}</div>
+        <div>MST: {{ ben_a.mst }} · Hotline: {{ ben_a.phone }}</div>
+        <div>Email: {{ email }} · Website: {{ website }}</div>
+      </div>
+    </div>
+    <div class="doc-badge">
+      <div>Mã phiếu: <span class="so-hd">{{ so }}</span></div>
+      <div>Theo HĐ: <b>{{ can_cu }}</b></div>
+    </div>
+  </div>
+
+  <div class="place">{{ noi_lap }}, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }}</div>
+
+  <!-- TITLE -->
+  <div class="title-block">
+    <h1>PHIẾU XÁC NHẬN MUA HÀNG & TIẾN ĐỘ THANH TOÁN</h1>
+    <div class="sub-title">PURCHASE ORDER & PAYMENT SCHEDULE CONFIRMATION</div>
+    <div class="cancu-line">Căn cứ Hợp đồng kinh tế số <b>{{ can_cu }}</b> ngày 29/08/2026 ký giữa hai Bên</div>
+  </div>
+
+  <!-- PARTIES -->
+  <div class="parties-grid">
+    <div class="party-box">
+      <div class="party-title">BÊN MUA (BÊN A)</div>
+      <div class="party-name">{{ ben_b.name }}</div>
+      <div><b>Đại diện:</b> {{ ben_b.dai_dien }} - {{ ben_b.chuc_vu }}</div>
+      <div><b>Địa chỉ:</b> {{ ben_b.address }}</div>
+      <div><b>Mã số thuế:</b> {{ ben_b.mst }}</div>
+      {% if ben_b.tai_khoan %}<div><b>Tài khoản:</b> {{ ben_b.tai_khoan }}</div>{% endif %}
+    </div>
+
+    <div class="party-box">
+      <div class="party-title">BÊN BÁN (BÊN B)</div>
+      <div class="party-name">{{ ben_a.company }}</div>
+      <div><b>Đại diện:</b> {{ ben_a.rep }} - {{ ben_a.title }}</div>
+      <div><b>Địa chỉ:</b> {{ ben_a.address }}</div>
+      <div><b>Mã số thuế:</b> {{ ben_a.mst }}</div>
+      <div><b>Hotline:</b> {{ ben_a.phone }}</div>
+    </div>
+  </div>
+
+  <!-- PRODUCT TABLE -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width: 4%;">STT</th>
+        <th style="width: 50%;">Tên Hàng Hóa / Giải Pháp / Dịch Vụ</th>
+        <th style="width: 7%;">ĐVT</th>
+        <th style="width: 6%;">SL</th>
+        <th style="width: 16%;">Đơn Giá (VNĐ)</th>
+        <th style="width: 17%;">Thành Tiền (VNĐ)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>
+          <b>{{ it.ten }}</b>
+          {% if it.ghi_chu %}<div style="font-size: 9px; color: #475569; margin-top: 2px;">{{ it.ghi_chu|replace('\n', '<br>') }}</div>{% endif %}
+        </td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong|qty }}</td>
+        <td class="r">{{ it.don_gia|vnd }}</td>
+        <td class="r">{{ it.thanh_tien|vnd }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="sum">
+        <td colspan="5" class="r">Tổng cộng tiền hàng ban đầu (chưa VAT):</td>
+        <td class="r">{{ tong_truoc_thue|vnd }} VNĐ</td>
+      </tr>
+      <tr class="sum">
+        <td colspan="5" class="r">Thuế giá trị gia tăng (VAT 8%):</td>
+        <td class="r">{{ tong_thue|vnd }} VNĐ</td>
+      </tr>
+      <tr class="grand">
+        <td colspan="5" class="r">TỔNG CỘNG THANH TOÁN (ĐÃ BAO GỒM VAT):</td>
+        <td class="r">{{ tong_thanh_toan|vnd }} VNĐ</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="bang-chu">Bằng chữ: <b>{{ bang_chu }}</b></div>
+
+  <!-- SECTION 1: TIMELINE MILESTONES -->
+  <div class="section-title">1. MỤC THỜI GIAN & TIẾN ĐỘ THỰC HIỆN DỰ ÁN (TIMELINE)</div>
+  <div class="timeline-container">
+    <div class="timeline-step completed">
+      <div class="step-time">Mốc 1: 29/08/2026<br><span style="font-size:8.5px; font-weight:normal; color:#059669;">[ĐÃ KÍCH HOẠT]</span></div>
+      <div class="step-content">
+        <div class="step-title">Ký kết hợp đồng & Xác nhận Phiếu mua hàng</div>
+        <div class="step-desc">Ký Hợp đồng kinh tế số {{ can_cu }}; chốt thông tin cấu hình và giải pháp kỹ thuật iNut Smartcity. Bên Mua thực hiện thanh toán Đợt 1 (tháng góp đầu tiên).</div>
+      </div>
+    </div>
+
+    <div class="timeline-step">
+      <div class="step-time">Mốc 2: 03 - 05 ngày<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ Đợt 1)</span></div>
+      <div class="step-content">
+        <div class="step-title">Bàn giao thiết bị phần cứng & Mã QR nhận diện</div>
+        <div class="step-desc">Xuất kho và bàn giao 01 bộ thiết bị iNut10C Full HD 1080p, phụ kiện nguồn, dây kết nối; bàn giao 10 bộ mã QR thiết kế chuẩn nhận diện cho Bên Mua.</div>
+      </div>
+    </div>
+
+    <div class="timeline-step">
+      <div class="step-time">Mốc 3: 02 ngày làm việc<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kế tiếp)</span></div>
+      <div class="step-content">
+        <div class="step-title">Cấu hình giao diện, nhận diện thương hiệu & Tích hợp Camera</div>
+        <div class="step-desc">Cấu hình màu sắc giao diện phần mềm, Hotline, thông tin Fanpage; kết nối luồng Camera tại quán, tích hợp OBS và kiểm thử tính năng Livestream / CheckVar.</div>
+      </div>
+    </div>
+
+    <div class="timeline-step">
+      <div class="step-time">Mốc 4: Hoàn thành & Bàn giao<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(Đưa vào sử dụng)</span></div>
+      <div class="step-content">
+        <div class="step-title">Đào tạo vận hành & Ký Biên bản bàn giao nghiệm thu</div>
+        <div class="step-desc">Hướng dẫn chi tiết nhân sự/kỹ thuật viên Bên Mua sử dụng hệ thống xem và tải clip không cần cài App (hỗ trợ cả Android, iOS); kích hoạt vận hành chính thức.</div>
+      </div>
+    </div>
+
+    <div class="timeline-step">
+      <div class="step-time">Mốc 5: 12 tháng<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ ngày bàn giao)</span></div>
+      <div class="step-content">
+        <div class="step-title">Chính sách bảo hành & Hỗ trợ kỹ thuật 24/7</div>
+        <div class="step-desc">Bảo hành 1 đổi 1 trong vòng 1 năm đối với lỗi kỹ thuật phần cứng. Miễn phí 100% phí duy trì phần mềm hàng tháng trong suốt vòng đời sử dụng.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: PAYMENT PROCESS -->
+  <div class="section-title">2. QUY TRÌNH & TIẾN ĐỘ THANH TOÁN (PAYMENT SCHEDULE)</div>
+  <div class="payment-box">
+    <div style="font-size: 10px; color: #334155; margin-bottom: 6px;">
+      Hai Bên thống nhất quy trình thanh toán theo hình thức trả góp linh hoạt 02 đợt cụ thể như sau:
+    </div>
+
+    <div class="payment-grid">
+      <div class="payment-card">
+        <div class="p-title">ĐỢT 1: THÁNG GÓP ĐẦU TIÊN (50%)</div>
+        <div class="p-amount">9.606.600 VNĐ</div>
+        <div class="p-desc">Thanh toán ngay sau khi xác nhận đơn hàng / ký kết HĐ (Ngày 29/08/2026).</div>
+      </div>
+
+      <div class="payment-card">
+        <div class="p-title">ĐỢT 2: THÁNG GÓP THỨ HAI (50%)</div>
+        <div class="p-amount">9.606.600 VNĐ</div>
+        <div class="p-desc">Thanh toán vào tháng góp thứ hai (trong vòng 30 ngày sau đợt 1 / nghiệm thu).</div>
+      </div>
+    </div>
+
+    <div class="bank-details">
+      <div class="bank-text">
+        <div style="font-weight: bold; color: #0052cc; margin-bottom: 2px;">THÔNG TIN TÀI KHOẢN THANH TOÁN CHÍNH THỨC CỦA INUT:</div>
+        <div>• Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+        <div>• Số tài khoản: <b style="font-size: 12px; color: #d9381e;">{{ bank.account_number }}</b></div>
+        <div>• Tên thụ hưởng: <b>{{ bank.account_name }}</b></div>
+        <div>• Cú pháp chuyển khoản: <b>Khang Linh ELV thanh toan dot 1 HD 29082026</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: WARRANTY & RIGHTS -->
+  <div class="section-title">3. CHÍNH SÁCH BẢO HÀNH & QUYỀN LỢI CỦA KHÁCH HÀNG</div>
+  <div class="policy-box">
+    <ul>
+      <li><b>Cam kết chất lượng:</b> Thiết bị mới 100%, bảo hành chính hãng <b>1 năm (1 đổi 1)</b> đối với toàn bộ lỗi kỹ thuật do nhà sản xuất.</li>
+      <li><b>Quyền lợi khách hàng:</b> Bên Mua được sử dụng trọn vẹn toàn bộ tiện ích, tính năng cắt cam, livestream, checkvar mà <b>không phải trả bất kỳ chi phí duy trì hoặc thuê bao hàng tháng nào</b> sau khi mua.</li>
+      <li><b>Hỗ trợ sau bảo hành:</b> Sau 1 năm, phí dịch vụ bảo hành/bảo trì tận nơi là 300.000 VNĐ/lần (chưa bao gồm VAT). Hỗ trợ kỹ thuật từ xa qua hotline/Zalo được phục vụ miễn phí.</li>
+      <li>Phiếu này được lập thành 02 bản có giá trị pháp lý tương đương và đi kèm Hợp đồng kinh tế số {{ can_cu }}.</li>
+    </ul>
+  </div>
+
+  <!-- SIGNATURES -->
+  <div class="signatures">
+    <div class="sig-col">
+      <div class="sig-role">ĐẠI DIỆN BÊN MUA (BÊN A)</div>
+      <div class="sig-hint">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">{{ ben_b.dai_dien }}</div>
+      <div style="font-size: 9.5px; color: #64748b;">{{ ben_b.chuc_vu }}</div>
+    </div>
+
+    <div class="sig-col">
+      <div class="sig-role">ĐẠI DIỆN BÊN BÁN (BÊN B)</div>
+      <div class="sig-hint">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">{{ ben_a.rep }}</div>
+      <div style="font-size: 9.5px; color: #64748b;">{{ ben_a.title }}</div>
+    </div>
+  </div>
+
+</body>
+</html>

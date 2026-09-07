@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from . import public_training, training
+from . import public_training, sales_assistant, training
 from .config import Settings
 from .db import TrainingPublicQuery, get_session
 
@@ -64,7 +64,12 @@ def public_training_token_hash(token: str) -> str:
 def _run(job_id: str, owner_hash: str, owner_token: str, settings: Settings, question: str, hermes_session_id: str) -> None:
     started = time.monotonic()
     try:
-        result = training.ask(settings, question, hermes_session_id or f"public-{owner_hash[:16]}")
+        result = training.ask(
+            settings,
+            question,
+            hermes_session_id or f"public-{owner_hash[:16]}",
+            assistant_mode=sales_assistant.SALES_MODE,
+        )
         result = public_training.sanitize_public_result(result, settings)
     except training.TrainingError:
         _finish_db(job_id, "failed", {}, started)

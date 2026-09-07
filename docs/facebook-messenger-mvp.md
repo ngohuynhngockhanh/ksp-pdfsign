@@ -1,7 +1,11 @@
 # Facebook Messenger MVP
 
-MVP này nhận tin nhắn từ fanpage iNut JSC, lưu ngữ cảnh theo Facebook PSID,
-gọi iNut Training/Hermes và gửi câu trả lời lại qua Meta Graph API.
+MVP này nhận tin nhắn từ fanpage iNut JSC, lưu inbox theo Facebook PSID,
+gọi iNut Training/Hermes và gửi câu trả lời lại qua Meta Graph API. Bot chạy
+ở **Facebook Sales Mode**: tư vấn nhu cầu như nhân viên bán hàng, hỏi một câu
+khám phá phù hợp, nêu lợi ích, gửi link sản phẩm và mời nhân viên xác nhận khi
+cần báo giá/custom. Lịch sử Messenger chỉ phục vụ hộp thư quản trị viên;
+không gửi nguyên văn lịch sử vào Hermes.
 
 ## Callback
 
@@ -50,12 +54,35 @@ Meta sẽ gọi `GET` để kiểm tra webhook, sau đó gửi `POST` có
 `X-Hub-Signature-256`. Backend kiểm tra chữ ký, bỏ event trùng `mid`, ACK
 nhanh rồi xử lý Hermes ở worker nền.
 
-## Giá và tồn kho
+## Phạm vi dữ liệu giá công khai
 
-MVP lấy `Product.don_gia` làm giá tham khảo nội bộ và đối chiếu tồn từ `InvItem`
-và sổ kho. Hermes được nhắc rõ không tự bịa giá/tồn/giao hàng. Câu hỏi cần
-chốt giá chính thức, cấu hình đặc biệt hoặc đơn lớn sẽ được đánh dấu chuyển
-nhân viên.
+Luồng Hermes qua Facebook **không được đọc bất kỳ dữ liệu hóa đơn, mua vào,
+bán ra, tồn kho, giá vốn hoặc CRM nội bộ nào**. `facebook_catalog.py` chỉ gọi
+đúng ba trang công khai sau và không có fallback sang database:
+
+- iNut RS485: https://inut.vn/solutions/p/rs485-gateway
+- iNut Datalogger / iNut PC: https://inut.vn/solutions/p/datalogger-cong-nghiep
+- iNut BilliardLive: https://inut.vn/solutions/billiard-live
+
+Giá được đọc từ nội dung website, cache tối đa 5 phút; nếu website lỗi thì
+trả lời chưa đọc được giá công khai và chuyển nhân viên. Câu hỏi về hóa đơn,
+mua vào/bán ra, giá vốn hoặc tồn kho bị chặn trước khi mở phiên Hermes.
+Hermes cũng nhận policy công khai đã lọc và câu trả lời nhắc tới dữ liệu tài
+chính nội bộ sẽ bị thay bằng thông báo từ chối.
+
+Các câu chào hỏi, hỏi catalog, hỏi giá sản phẩm công khai, hỏi giá mơ hồ,
+xin link và nhận diện một trong ba sản phẩm được trả nhanh ở lớp KSP để khách
+không phải chờ Hermes. Bot cũng nhận diện sản phẩm công khai ở lượt trước để
+hiểu các câu tiếp như “món này bao nhiêu tiền?” hoặc “PLC Siemens 20 điểm”.
+Các câu cần hiểu bài toán hoặc tư vấn sâu được gửi sang Hermes cùng playbook
+bán hàng và tối đa 20 lượt hội thoại đã lọc. Playbook yêu cầu câu trả lời
+2–5 câu, tối đa một câu hỏi khám phá, không hỏi lại điều khách vừa nói,
+không hứa tồn kho/giao hàng/khuyến mãi và luôn có bước tiếp theo rõ ràng.
+
+Mỗi tin nhắn Facebook tạo một mã phiên Hermes mới dạng `facebook-once-*`,
+không resume phiên của tin trước. `personal_context` chứa policy công khai,
+catalog của ba URL trên, sản phẩm công khai đang quan tâm, và tối đa 20 lượt
+Messenger đã lọc (bỏ hóa đơn, tồn kho, giá không công khai, lời tục, injection).
 
 Hermes profile `inuttraining` đang dùng model `hermes` qua nine-router. KSP tái
 sử dụng phiên đăng nhập Hermes để không đốt giới hạn đăng nhập 5 lần/10 phút;
@@ -75,10 +102,10 @@ nhận câu trả lời, cùng các chặng hàng đợi, dựng ngữ cảnh, H
 Dashboard hiển thị trung bình, P50, P95 và P95 từng chặng để biết chính xác
 điểm nghẽn thay vì đoán.
 
-Messenger có lớp guardrail trước Hermes: chỉ nhận câu hỏi liên quan sản phẩm,
-giải pháp và quy trình iNut trong dữ liệu đã duyệt; từ chối chủ đề lan man,
-lập trình, lệnh shell/console và prompt injection. Các yêu cầu bị chặn không
-mở phiên Hermes nên vừa an toàn vừa phản hồi nhanh hơn.
+Messenger có lớp guardrail trước Hermes: chặn dữ liệu hóa đơn/mua bán, tồn kho,
+lập trình, lệnh shell/console, prompt injection và lời lẽ xúc phạm. Các yêu cầu
+bị chặn không mở phiên Hermes nên vừa an toàn vừa phản hồi nhanh hơn; câu hỏi
+lan man nhưng vô hại được Hermes chuyển hướng ngắn gọn về nhu cầu sản phẩm.
 
 ## Kiểm tra nhanh
 

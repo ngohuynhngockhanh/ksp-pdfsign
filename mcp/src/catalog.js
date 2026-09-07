@@ -16,6 +16,63 @@ const mutationInput = z.object({
   payload: z.record(z.string(), z.unknown()).default({}),
 }).strict()
 
+const tqcStatusInput = z.object({}).strict()
+const tqcSearchInput = z.object({
+  query: z.string().max(300).optional(),
+  page: z.number().int().min(1).max(10000).optional(),
+  page_size: z.number().int().min(1).max(100).optional(),
+  filters: z.object({
+    model: z.string().max(255).optional(),
+    manufacturer: z.string().max(500).optional(),
+    applicant: z.string().max(500).optional(),
+    certificate_no: z.string().max(120).optional(),
+    status: z.enum(['active', 'expired', 'cancelled', 'unknown']).optional(),
+    valid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).strict().optional(),
+}).strict().refine((value) => Boolean(
+  value.query || value.filters && Object.values(value.filters).some(Boolean),
+), { message: 'query or at least one TQC filter is required' })
+const tqcGetInput = z.object({
+  id: z.string().min(6).max(120).regex(/^[A-Za-z0-9]+$/),
+  filters: z.object({ refresh: z.boolean().optional() }).strict().optional(),
+}).strict()
+const tqcImportJobInput = z.object({
+  id: z.union([z.string().regex(/^[0-9]+$/), z.number().int().positive()]).optional(),
+  query: z.string().regex(/^[0-9]+$/).optional(),
+  filters: z.object({ latest: z.boolean().optional() }).strict().optional(),
+}).strict().refine((value) => Boolean(value.filters?.latest || value.id || value.query), {
+  message: 'id/query or filters.latest is required',
+})
+const tqcImportRetryInput = z.object({
+  mode: z.enum(['prepare', 'execute']),
+  confirm: z.boolean().default(false),
+  confirmation_token: z.string().max(128).optional(),
+  operation: z.literal('retry'),
+  payload: z.object({ id: z.union([z.string().regex(/^[0-9]+$/), z.number().int().positive()]) }).strict(),
+}).strict()
+const tqcImportInput = z.object({
+  mode: z.enum(['prepare', 'execute']),
+  confirm: z.boolean().default(false),
+  confirmation_token: z.string().max(128).optional(),
+  operation: z.literal('import'),
+  payload: z.object({
+    entries: z.array(z.object({
+      certificate_no: z.string().max(120).optional(),
+      qr_input: z.string().max(2000).optional(),
+    }).strict().refine((value) => Boolean(value.certificate_no || value.qr_input), { message: 'certificate_no or qr_input is required' })).min(1).max(100),
+    refresh_existing: z.boolean().optional(),
+  }).strict(),
+}).strict()
+
+const schemaOverrides = {
+  standards_tqc_status: tqcStatusInput,
+  standards_tqc_search: tqcSearchInput,
+  standards_tqc_get: tqcGetInput,
+  standards_tqc_import: tqcImportInput,
+  standards_tqc_import_job: tqcImportJobInput,
+  standards_tqc_import_retry: tqcImportRetryInput,
+}
+
 const definitions = [
   ['inut_crm_health', 'Read MCP and backend health with dependency status.', 'read', 'read', 'system'],
   ['inut_crm_capabilities', 'List the versioned tool, resource, prompt, and route coverage catalog.', 'read', 'read', 'system'],
@@ -80,10 +137,17 @@ const definitions = [
   ['customs_drive', 'Read or prepare/execute Customs Drive source, folder, review, and sync operations.', 'high_risk', 'prepare_execute', 'integrations'],
   ['nas', 'Read NAS status/browse/disk or prepare/execute test and sync operations.', 'high_risk', 'prepare_execute', 'integrations'],
   ['spx', 'Read SPX stats/orders or prepare/execute order, label, print, sync, and cancel operations.', 'high_risk', 'prepare_execute', 'integrations'],
+  ['spx_print_by_label', 'In nhanh tem vận đơn SPX theo mã (SPXVN... / VN...) chuẩn Tỉ lệ vàng 65% sang máy in nhiệt TP732H.', 'high_risk', 'prepare_execute', 'integrations'],
   ['pymid', 'Read or prepare/execute PYMID staff, catalog, and order operations.', 'write', 'prepare_execute', 'integrations'],
   ['training', 'Read or prepare/execute admin training search, ask, jobs, history, and knowledge operations.', 'write', 'prepare_execute', 'knowledge'],
   ['ai', 'Read AI status or prepare/execute bounded AI test and narrative operations.', 'write', 'prepare_execute', 'knowledge'],
   ['standards', 'Read standards/search/playbooks or prepare/execute declaration and game operations.', 'write', 'prepare_execute', 'knowledge'],
+  ['standards_tqc_status', 'Read TQC CNHQ connector status, cache policy, and safe configuration flags.', 'read', 'read', 'knowledge'],
+  ['standards_tqc_search', 'Search locally verified TQC CNHQ records by model, manufacturer, applicant, or certificate number.', 'read', 'read', 'knowledge'],
+  ['standards_tqc_get', 'Verify one TQC CNHQ certificate live or read a fresh local cache with provenance.', 'read', 'read', 'knowledge'],
+  ['standards_tqc_import', 'Prepare or execute bounded import of TQC certificate numbers and official QR payloads.', 'write', 'prepare_execute', 'knowledge'],
+  ['standards_tqc_import_job', 'Read the latest or one durable TQC CSV import job with progress and recovery state.', 'read', 'read', 'knowledge'],
+  ['standards_tqc_import_retry', 'Prepare or execute a retry for a failed durable TQC CSV import job.', 'write', 'prepare_execute', 'knowledge'],
   ['operations_dashboard', 'Read the operations dashboard and bounded scheduled-job summaries.', 'read', 'read', 'system'],
 ]
 
@@ -95,7 +159,7 @@ export const toolDefinitions = definitions.map(([name, description, access, exec
   access,
   execution,
   category,
-  inputSchema: execution === 'read' ? common.read : common.mutation,
+  inputSchema: schemaOverrides[name] || (execution === 'read' ? common.read : common.mutation),
   handler: name,
   annotations: {
     readOnlyHint: access === 'read',
@@ -116,6 +180,6 @@ export const routeCoverage = {
   bidding: ['search', 'tenders', 'bookmarks', 'watchlist', 'contractors', 'won-packages', 'playbook', 'attachments', 'competitors'],
   inventory: ['warehouses', 'items', 'stock', 'purchase', 'sale', 'issues', 'productions', 'recipes', 'customs'],
   tax_finance: ['tax', 'tax-review', 'tax-reports', 'ihoadon', 'payroll', 'email-sync'],
-  integrations: ['telegram', 'facebook', 'customs-drive', 'nas', 'spx', 'pymid'],
-  knowledge: ['training', 'ai', 'standards', 'operations'],
+  integrations: ['telegram', 'facebook', 'customs-drive', 'nas', 'spx', 'spx_print_by_label', 'pymid'],
+  knowledge: ['training', 'ai', 'standards', 'standards-tqc', 'operations'],
 }

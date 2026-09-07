@@ -353,6 +353,7 @@ _SO_HD_PATTERNS = [
     re.compile(r"Số\s*/?\(?(?:Invoice\s*)?(?:No\.?)?\)?\s*:?\s*(\d{1,8})"),
     re.compile(r"Số hóa đơn\s*:?\s*(\d{1,8})", re.IGNORECASE),
     re.compile(r"(?:^|\s)(?:HĐ|Invoice)\s*(?:số|No)\.?\s*:?\s*(\d{1,8})", re.IGNORECASE),
+    re.compile(r"(\d{1,8})\s*(?:\n|\r\n)[^\n]*?(?:Số\s*\(No\.\)|Số\s*:|No\.\s*:)", re.IGNORECASE),
 ]
 
 _KY_HIEU_RE = re.compile(r"\b([1-6]?[CK]2[0-9][A-Z]{2,5})\b")
@@ -448,34 +449,43 @@ def _money_ctx(v) -> float:
         s = v.strip().replace(" ", "")
         parts = s.split(",")
         if len(parts) == 2 and len(parts[1]) == 3 and "." not in s and parts[0].isdigit():
-            return money.parse_num(s.replace(",", ""))
+            return float(s.replace(",", ""))
     return money.parse_num(v)
 
 
-def _snap_vat(pct: float) -> int:
-    """Lam tron ve muc thue GTGT gan nhat (0/5/8/10) — tong OCR hay lech nhe."""
-    return min(_VAT_LEVELS, key=lambda v: abs(v - pct))
+def _snap_vat(val: float) -> int:
+    """Snap ve muc thue hop le gan nhat (0, 5, 8, 10)."""
+    return min(_VAT_LEVELS, key=lambda lvl: abs(lvl - val))
 
 
-def _invoice_vat_rate(raw: str, tong_truoc_thue: float, tong_thue: float) -> int:
-    """Thue suat muc hoa don: regex text > suy tu tong > mac dinh 8%.
+def _invoice_vat_rate(raw: str, tong_truoc: float, thue: float) -> int:
+    """Xac dinh thue suat GTGT chung cua ca hoa don."""
+    # Uu tien 1: Regex tren text tho
+    if raw:
+        if re.search(r"[Tt]huế\s*suất.*?(?:KCT|không chịu thuế|khong chiu thue)", raw, re.IGNORECASE):
+            return 0
+        m = re.search(r"[Tt]huế\s*suất[^\d%]{0,35}?(\d{1,2})\s*%", raw, re.IGNORECASE)
+        if m:
+            rate = int(m.group(1))
+            if rate in _VAT_LEVELS:
+                return rate
 
-    Chiu duoc bien the text PDF: "Thuế suất GTGT: 8%", "Thuếsuất thuế GTGT
-    (VAT Rate) : 8%" (dinh lien, chen nhieu chu giua truoc con so).
-    """
-    m = re.search(r"[Tt]huế\s*[sx]uất[^\d%\n]{0,35}(\d{1,2})\s*%", raw)
-    if m:
-        return int(m.group(1))
-    if re.search(r"[Tt]huế\s*[sx]uất[^\n]{0,30}(KCT|[Kk]hông chịu thuế)", raw):
-        return 0
-    if tong_truoc_thue > 0:
-        return _snap_vat(tong_thue / tong_truoc_thue * 100)
-    return 8  # khong suy duoc gi -> mac dinh 8% (quy uoc cong ty)
+    # Uu tien 2: Suy tu tong tien truoc thue va tong thue
+    if tong_truoc > 0:
+        if thue == 0:
+            return 0
+        if thue > 0:
+            raw_pct = thue / tong_truoc * 100
+            return _snap_vat(raw_pct)
+
+    # Uu tien 3: Khong suy duoc gi -> mac dinh 8%
+    return 8
 
 
-def _line_vat(ten: str, invoice_rate: int) -> int:
-    """VAT cho 1 dong: phan mem/license -> KCT (0), con lai theo muc hoa don."""
-    if _PHAN_MEM_RE.search(ten):
+
+def _line_vat(ten_hang: str, invoice_rate: int) -> int:
+    """Thue suat cho 1 dong: phan mem/license luon la 0 (KCT); con lai theo muc chung."""
+    if _PHAN_MEM_RE.search(ten_hang or ""):
         return 0
     return invoice_rate
 
@@ -486,12 +496,15 @@ def parse_purchase_pdf(pdf_bytes: bytes) -> dict:
     raw = base.get("raw_text", "")
     ngay_ky = _pdf_sign_date(pdf_bytes)
 
-    # Ben ban: MST dau tien trong van ban (truoc block nguoi mua)
+    # Ben ban: Bo qua MST nguoi mua INUT (4401053694)
     ten_ban = ""
     mst_ban = ""
-    m = re.search(r"Mã số thuế[^\d]*(\d{10,13})", raw)
-    if m:
-        mst_ban = m.group(1)
+    for m in re.finditer(r"Mã số thuế[^\d]*(\d{10,14})", raw, re.IGNORECASE):
+        cand_mst = m.group(1)
+        if cand_mst != "4401053694":
+            mst_ban = cand_mst
+            break
+
     # Ten don vi ban: uu tien dong chua tu dinh danh phap nhan (CONG TY/DN/HKD...).
     # Nguoi ban la ben KHONG phai INUT (MST mua = 4401053694).
     _ORG_KW = ("công ty", "cong ty", "cty", "doanh nghiệp", "hộ kinh doanh",

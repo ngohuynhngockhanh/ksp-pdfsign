@@ -12,6 +12,7 @@ ACTION_LABELS = {
     "login_locked": "Bị chặn (khóa IP 30p)",
     "sign": "Ký số",
     "bbbg_generate": "Sinh BBBG",
+    "factory_certificate_generate": "Sinh giấy chứng nhận xuất xưởng",
     "quote_generate": "Sinh báo giá/đề nghị TT",
     "ai_narrative": "Sinh thuyết minh AI",
     "contract_generate": "Sinh hợp đồng",
@@ -74,6 +75,7 @@ ACTION_LABELS = {
     "payroll_payment_evidence": "Bổ sung chứng từ thanh toán lương",
     "payroll_payment_cancel": "Hủy thanh toán lương",
     "ecus_drive_sync": "Đồng bộ PDF ECUS lên Google Drive",
+    "tqc_import": "Nhập chỉ mục chứng nhận TQC",
 }
 
 

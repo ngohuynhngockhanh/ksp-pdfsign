@@ -47,6 +47,7 @@ test.beforeEach(async ({ page }) => {
 
 test("admin asks Hermes and creates a customer link", async ({ page }) => {
   await page.goto("/training");
+  await page.getByRole("button", { name: "Kỹ thuật / nguồn" }).click();
   await expect(page.getByRole("heading", { name: "Inbox fanpage iNut" })).toHaveCount(0);
   await expect(page.getByText("Mọi câu hỏi và câu trả lời đều được lưu vào lịch sử")).toBeVisible();
   await expect(page.getByText("Câu hỏi cũ của tôi")).toBeVisible();
@@ -59,6 +60,26 @@ test("admin asks Hermes and creates a customer link", async ({ page }) => {
 
   await page.getByRole("button", { name: "Tạo link gửi khách" }).click();
   await expect(page.getByText("https://example.test/t/public-answer")).toBeVisible();
+});
+
+test("admin can use the marketing assistant mode", async ({ page }) => {
+  let sentMode = "";
+  await page.route("**/api/training/jobs", async (route) => {
+    sentMode = String(route.request().postDataJSON()?.mode || "");
+    await route.fulfill({ status: 202, json: {
+      jobId: "e2e-job", status: "running", stage: "Đang tìm trong kho iNut",
+    } });
+  });
+
+  await page.goto("/training");
+  await page.getByRole("button", { name: "Tư vấn bán hàng / Marketing" }).click();
+  await expect(page.getByText("Marketing assistant an toàn")).toBeVisible();
+  await page.getByLabel("Câu hỏi cho iNut Training").fill("Khách cần gateway RS485 cho nhà máy");
+  await page.getByRole("button", { name: "Hỏi Hermes" }).click();
+
+  await expect(page.getByText("TƯ VẤN BÁN HÀNG CÓ NGUỒN")).toBeVisible();
+  expect(sentMode).toBe("sales");
+  await expect(page.getByText("Bước tiếp theo cho khách", { exact: true })).toBeVisible();
 });
 
 test("admin can filter Messenger history and see an actionable Hermes failure", async ({ page }) => {

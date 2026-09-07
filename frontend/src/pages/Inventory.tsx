@@ -487,7 +487,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
 
       {card && (
         <div className="modal-backdrop" onClick={() => setCard(null)}>
-          <div className="modal" style={{ maxWidth: 860 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 960 }} onClick={(e) => e.stopPropagation()}>
             <h3>
               Thẻ kho: {card.row.ma_hang} · {card.row.ten}{" "}
               <span className="chip gray sm">{card.row.warehouse_code}</span>
@@ -498,6 +498,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                   <tr>
                     <th>Ngày</th>
                     <th>Loại</th>
+                    <th>Số Lô / Serial</th>
                     <th style={{ textAlign: "right" }}>Nhập</th>
                     <th style={{ textAlign: "right" }}>Xuất</th>
                     <th style={{ textAlign: "right" }}>Đơn giá</th>
@@ -514,6 +515,19 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                         <span className={"chip sm " + (m.xuat ? "amber" : "green")}>
                           {m.loai_label}
                         </span>
+                      </td>
+                      <td className="nowrap">
+                        {m.lot_number && (
+                          <span className="chip gray sm" style={{ marginRight: 4 }} title={`Số lô: ${m.lot_number}`}>
+                            Lô: {m.lot_number}
+                          </span>
+                        )}
+                        {m.serial_numbers && (
+                          <span className="chip gray sm" title={`Serial: ${m.serial_numbers}`}>
+                            SN: {m.serial_numbers}
+                          </span>
+                        )}
+                        {!m.lot_number && !m.serial_numbers && <span className="muted">—</span>}
                       </td>
                       <td style={{ textAlign: "right" }}>{m.nhap ? qty(m.nhap) : ""}</td>
                       <td style={{ textAlign: "right" }}>{m.xuat ? qty(m.xuat) : ""}</td>
@@ -587,6 +601,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                     <th>Ngày</th>
                     <th>Loại</th>
                     <th>Chứng từ</th>
+                    <th>Số Lô / Serial</th>
                     <th>Đích đến</th>
                     <th style={{ textAlign: "right" }}>±SL</th>
                     <th style={{ textAlign: "right" }}>Giá trị</th>
@@ -615,6 +630,21 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                           <span className="muted">—</span>
                         )}
                       </td>
+                      <td className="nowrap">
+                        {(s as { lot_number?: string }).lot_number && (
+                          <span className="chip gray sm" style={{ marginRight: 4 }}>
+                            Lô: {(s as { lot_number?: string }).lot_number}
+                          </span>
+                        )}
+                        {(s as { serial_numbers?: string }).serial_numbers && (
+                          <span className="chip gray sm">
+                            SN: {(s as { serial_numbers?: string }).serial_numbers}
+                          </span>
+                        )}
+                        {!(s as { lot_number?: string }).lot_number && !(s as { serial_numbers?: string }).serial_numbers && (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td className="muted">
                         {s.flow_to && s.flow_to.length > 0
                           ? "→ " +
@@ -637,7 +667,7 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                   ))}
                   {flow.steps.length === 0 && (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <span className="muted">Chưa có phát sinh</span>
                       </td>
                     </tr>

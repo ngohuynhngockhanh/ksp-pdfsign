@@ -3,7 +3,7 @@
 ## User journeys
 
 - Owner can discover and call `inut-crm` from Codex over Streamable HTTP.
-- Owner can discover and call `inut-crm` from agy-compatible SSE transport.
+- Owner can discover and call `inut-crm` from agy over Streamable HTTP.
 - Read tools proxy typed KSP REST operations and return deterministic envelopes.
 - Mutations require a prepare preview and a one-time confirmation token.
 - Invalid tokens, non-loopback requests, replayed confirmations, and path traversal are rejected.
@@ -22,7 +22,7 @@
 | Both MCP transports are live on the machine | `npm run smoke` / `node scripts/smoke-inut-crm-mcp.mjs` | PASS; 62 tools |
 | Gateway service starts automatically | `systemctl --user status inut-crm-mcp.service` | PASS; active |
 | Codex discovers and calls `inut_crm_health` | `codex exec ...` with `INUT_CRM_MCP_TOKEN` | PASS |
-| agy registration is present and SSE protocol works | `agy mcp list`, SDK SSE smoke | PASS |
+| agy registration is present and Streamable HTTP works | `agy mcp list`, live `standards_tqc_status` call | PASS |
 | Dependency audit is clean | `npm audit --audit-level=high` | PASS; 0 vulnerabilities |
 
 ## RED/GREEN checkpoints

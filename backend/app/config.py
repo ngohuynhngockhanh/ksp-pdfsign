@@ -120,7 +120,7 @@ class Settings(BaseSettings):
 
     # ECUS attachments: snapshot DB qua SCP, khong mo ECUS hay ky/gui lai VNACCS.
     ecus_drive_sync_enabled: bool = False
-    ecus_ssh_host: str = "192.168.1.158"
+    ecus_ssh_host: str = "192.168.1.10"
     ecus_ssh_user: str = "Administrator"
 
     ecus_ssh_key_path: str = "/home/ksp/.ssh/id_ed25519"
@@ -167,7 +167,7 @@ class Settings(BaseSettings):
     smtp_to: str = ""
 
     # Windows agent (may cam token)
-    agent_default_ip: str = "192.168.1.158"
+    agent_default_ip: str = "192.168.1.10"
     agent_port: int = 8443
     agent_scheme: str = "https"
     agent_admin_password: str = ""
@@ -177,8 +177,8 @@ class Settings(BaseSettings):
     # gi tren may Windows) hoac "agent" (goi HTTP toi Windows Agent da cai).
     signing_mode: str = "ssh"
     ssh_user: str = "Administrator"
-    ssh_connect_timeout: int = 10
-    ssh_command_timeout: int = 60
+    ssh_connect_timeout: int = 15
+    ssh_command_timeout: int = 300
 
     # Ky so
     tsa_url: str = ""

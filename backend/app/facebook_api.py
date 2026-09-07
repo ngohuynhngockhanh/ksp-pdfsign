@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from . import facebook
+from . import facebook, telegram
 from .config import get_settings
 from .db import FacebookMessage, get_session
 
@@ -79,6 +79,7 @@ async def facebook_events(request: Request):
                 continue
             text = text[:2000]
             if _record_inbound(page_id, psid, message_id, text, sender_name):
+                telegram.enqueue_messenger_notification(page_id, sender_name, text, message_id, settings, psid=psid)
                 enqueue_message(page_id, psid, message_id, text)
                 accepted += 1
     return {"ok": True, "accepted": accepted}

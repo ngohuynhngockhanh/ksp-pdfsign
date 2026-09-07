@@ -5,7 +5,8 @@
 ## Transports
 
 - Codex: Streamable HTTP `http://127.0.0.1:2037/mcp`
-- agy: SSE `http://127.0.0.1:2037/sse`
+- agy: Streamable HTTP `http://127.0.0.1:2037/mcp`
+- Legacy SDK compatibility: SSE `http://127.0.0.1:2037/sse`
 - Diagnostics: `/health` và `/tools`
 
 ## Cài đặt
@@ -19,6 +20,7 @@ cp .env.example .env
 
 Installer tạo token tại `~/.config/inut-crm/inut-crm.token` với quyền `0600`, cài user service và đăng ký cả Codex lẫn agy. Token không được commit hoặc in ra terminal.
 Installer cũng thêm một dòng source idempotent vào `~/.bashrc` để Codex CLI nhận `INUT_CRM_MCP_TOKEN`; mở terminal mới hoặc chạy `source ~/.bashrc` sau lần cài đầu.
+Với agy, installer thêm allow-rule giới hạn `mcp(inut-crm/*)` để print/headless mode gọi được riêng các tool của `inut-crm` mà không bật auto-approve cho MCP khác.
 
 ## Quy tắc gọi tool
 

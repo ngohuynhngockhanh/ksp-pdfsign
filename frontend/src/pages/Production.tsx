@@ -45,6 +45,10 @@ export function Production() {
   const [cpNhanCong, setCpNhanCong] = useState(0);
   const [cpSxc, setCpSxc] = useState(0);
   const [giaBanDuKien, setGiaBanDuKien] = useState(0);
+  const [lotNumber, setLotNumber] = useState("");
+  const [serialNumbers, setSerialNumbers] = useState("");
+  const [mfgDate, setMfgDate] = useState("");
+  const [expDate, setExpDate] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [avail, setAvail] = useState<StockRow[]>([]);
   const [pickQ, setPickQ] = useState("");
@@ -137,20 +141,80 @@ export function Production() {
 
   function addOutput(it: { id: number; ma_hang: string; ten: string; dvt: string }) {
     if (!tpWh) return;
-    setLines([
-      ...lines.filter((l) => l.chieu !== "ra"),
-      {
+    const targetQty = 1;
+    const matched = recipes.find((r) => r.output_item_id === it.id);
+    if (matched) {
+      setRecipeId(matched.id);
+      const base = matched.output_qty || 1;
+      const factor = targetQty / base;
+      const availMap = new Map(avail.map((a) => [`${a.item_id}-${a.warehouse_id}`, a]));
+      const consume: DraftLine[] = matched.lines.map((ln) => {
+        const a = availMap.get(`${ln.item_id}-${ln.warehouse_id}`);
+        return {
+          chieu: "vao" as const,
+          item_id: ln.item_id,
+          warehouse_id: ln.warehouse_id,
+          label: `${ln.ma_hang} · ${ln.ten}`,
+          dvt: ln.dvt,
+          kha_dung: a?.kha_dung ?? 0,
+          so_luong: Number((ln.so_luong * factor).toFixed(4)),
+        };
+      });
+      const out: DraftLine = {
         chieu: "ra",
         item_id: it.id,
         warehouse_id: tpWh.id,
         label: `${it.ma_hang} · ${it.ten}`,
         dvt: it.dvt,
         kha_dung: 0,
-        so_luong: 1,
-      },
-    ]);
+        so_luong: targetQty,
+      };
+      setLines([...consume, out]);
+    } else {
+      setLines([
+        ...lines.filter((l) => l.chieu !== "ra"),
+        {
+          chieu: "ra",
+          item_id: it.id,
+          warehouse_id: tpWh.id,
+          label: `${it.ma_hang} · ${it.ten}`,
+          dvt: it.dvt,
+          kha_dung: 0,
+          so_luong: targetQty,
+        },
+      ]);
+    }
     setOutQ("");
     setOutResults([]);
+  }
+
+  function updateOutputQty(newQty: number) {
+    const out = lines.find((l) => l.chieu === "ra");
+    if (!out) return;
+    const matched = recipeId
+      ? recipes.find((r) => r.id === recipeId)
+      : recipes.find((r) => r.output_item_id === out.item_id);
+    if (matched) {
+      const base = matched.output_qty || 1;
+      const factor = newQty / base;
+      const availMap = new Map(avail.map((a) => [`${a.item_id}-${a.warehouse_id}`, a]));
+      const consume: DraftLine[] = matched.lines.map((ln) => {
+        const a = availMap.get(`${ln.item_id}-${ln.warehouse_id}`);
+        return {
+          chieu: "vao" as const,
+          item_id: ln.item_id,
+          warehouse_id: ln.warehouse_id,
+          label: `${ln.ma_hang} · ${ln.ten}`,
+          dvt: ln.dvt,
+          kha_dung: a?.kha_dung ?? 0,
+          so_luong: Number((ln.so_luong * factor).toFixed(4)),
+        };
+      });
+      const updatedOut: DraftLine = { ...out, so_luong: newQty };
+      setLines([...consume, updatedOut]);
+    } else {
+      setLines(lines.map((x) => (x === out ? { ...x, so_luong: newQty } : x)));
+    }
   }
 
   async function createOutputItem() {
@@ -166,13 +230,10 @@ export function Production() {
     }
   }
 
-  function applyRecipe(r: InvRecipe) {
-    // Cong thuc la dinh muc cho r.output_qty SP. Hoi so SP can SX roi nhan
-    // vat tu theo he so (SX N cai -> tieu hao dinh muc x N).
+  function applyRecipe(r: InvRecipe, explicitQty?: number) {
+    const curOut = lines.find((l) => l.chieu === "ra");
+    const target = explicitQty ?? (curOut?.so_luong || r.output_qty || 1);
     const base = r.output_qty || 1;
-    const ans = window.prompt(`Sản xuất bao nhiêu "${r.output_ten}"?`, String(base));
-    if (ans == null) return;
-    const target = Number(ans) || base;
     const factor = target / base;
     const availMap = new Map(avail.map((a) => [`${a.item_id}-${a.warehouse_id}`, a]));
     const consume: DraftLine[] = r.lines.map((ln) => {
@@ -184,7 +245,7 @@ export function Production() {
         label: `${ln.ma_hang} · ${ln.ten}`,
         dvt: ln.dvt,
         kha_dung: a?.kha_dung ?? 0,
-        so_luong: ln.so_luong * factor,
+        so_luong: Number((ln.so_luong * factor).toFixed(4)),
       };
     });
     const out: DraftLine = {
@@ -192,7 +253,7 @@ export function Production() {
       item_id: r.output_item_id,
       warehouse_id: tpWh?.id ?? 0,
       label: r.output_ten,
-      dvt: "",
+      dvt: curOut?.dvt || "",
       kha_dung: 0,
       so_luong: target,
     };
@@ -226,7 +287,20 @@ export function Production() {
     }
   }
 
-  async function save() {
+  function resetCreateForm() {
+    setLines([]);
+    setNote("");
+    setRecipeId(null);
+    setCpNhanCong(0);
+    setCpSxc(0);
+    setGiaBanDuKien(0);
+    setLotNumber("");
+    setSerialNumbers("");
+    setMfgDate("");
+    setExpDate("");
+  }
+
+  async function saveOrder(shouldPost: boolean) {
     setErr("");
     try {
       const prod = await api.invProductionCreate({
@@ -236,22 +310,36 @@ export function Production() {
         cp_nhan_cong: cpNhanCong,
         cp_sxc: cpSxc,
         gia_ban_du_kien: giaBanDuKien,
+        lot_number: lotNumber,
+        serial_numbers: serialNumbers,
+        mfg_date: mfgDate,
+        exp_date: expDate,
         lines: lines.map((l) => ({
           chieu: l.chieu,
           item_id: l.item_id,
           warehouse_id: l.warehouse_id,
           so_luong: l.so_luong,
           don_gia_tam: l.don_gia_tam || 0,
+          lot_number: l.chieu === "ra" ? lotNumber : "",
+          serial_numbers: l.chieu === "ra" ? serialNumbers : "",
         })),
       });
-      await api.invProductionPost(prod.id);
+      if (shouldPost) {
+        try {
+          await api.invProductionPost(prod.id);
+        } catch (e) {
+          if (e instanceof NegStockError) {
+            setNegModal({ violations: e.violations, prodId: prod.id });
+            setCreating(false);
+            resetCreateForm();
+            load();
+            return;
+          }
+          throw e;
+        }
+      }
       setCreating(false);
-      setLines([]);
-      setNote("");
-      setRecipeId(null);
-      setCpNhanCong(0);
-      setCpSxc(0);
-      setGiaBanDuKien(0);
+      resetCreateForm();
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -294,14 +382,27 @@ export function Production() {
   async function viewSave(): Promise<InvProduction | null> {
     if (!view) return null;
     return api.invProductionSave(view.id, {
-      ngay: view.ngay, note: view.note, description: view.description,
+      ngay: view.ngay,
+      note: view.note,
+      description: view.description,
       recipe_id: view.recipe_id,
-      cp_nhan_cong: view.cp_nhan_cong, cp_sxc: view.cp_sxc,
+      cp_nhan_cong: view.cp_nhan_cong,
+      cp_sxc: view.cp_sxc,
       gia_ban_du_kien: view.gia_ban_du_kien,
+      lot_number: view.lot_number || "",
+      serial_numbers: view.serial_numbers || "",
+      mfg_date: view.mfg_date || "",
+      exp_date: view.exp_date || "",
       lines: view.lines.map((l) => ({
-        chieu: l.chieu, item_id: l.item_id, warehouse_id: l.warehouse_id,
-        so_luong: l.so_luong, don_gia_tam: l.don_gia_tam || 0,
-        note: l.note || "", orig_item_id: l.orig_item_id,
+        chieu: l.chieu,
+        item_id: l.item_id,
+        warehouse_id: l.warehouse_id,
+        so_luong: l.so_luong,
+        don_gia_tam: l.don_gia_tam || 0,
+        lot_number: l.lot_number || (l.chieu === "ra" ? (view.lot_number || "") : ""),
+        serial_numbers: l.serial_numbers || (l.chieu === "ra" ? (view.serial_numbers || "") : ""),
+        note: l.note || "",
+        orig_item_id: l.orig_item_id,
       })),
     });
   }
@@ -590,6 +691,7 @@ export function Production() {
               <th>Số CT</th>
               <th>Ngày</th>
               <th>Thành phẩm</th>
+              <th>Số Lô / Serial</th>
               <th>Tiêu hao</th>
               <th style={{ textAlign: "right" }}>Giá thành</th>
               <th>Trạng thái</th>
@@ -617,6 +719,19 @@ export function Production() {
                   </td>
                   <td className="nowrap">{p.ngay}</td>
                   <td>{outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ")}</td>
+                  <td className="nowrap">
+                    {p.lot_number && (
+                      <span className="chip gray sm" style={{ marginRight: 4 }} title={`Số lô: ${p.lot_number}`}>
+                        Lô: {p.lot_number}
+                      </span>
+                    )}
+                    {p.serial_numbers && (
+                      <span className="chip gray sm" title={`Serial: ${p.serial_numbers}`}>
+                        SN: {p.serial_numbers}
+                      </span>
+                    )}
+                    {!p.lot_number && !p.serial_numbers && <span className="muted">—</span>}
+                  </td>
                   <td className="muted">{ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
                   <td style={{ textAlign: "right" }} className="nowrap">
                     {posted ? vnd(total) : <span className="muted">~{vnd(total)}</span>}
@@ -650,7 +765,7 @@ export function Production() {
             })}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="empty">
                     <div className="empty-ic">🏭</div>
                     <div>Chưa có lệnh sản xuất nào.</div>
@@ -739,7 +854,7 @@ export function Production() {
                   value={l.so_luong}
                   onChange={(e) => {
                     const v = Number(e.target.value) || 0;
-                    setLines(lines.map((x) => (x === l ? { ...x, so_luong: v } : x)));
+                    updateOutputQty(v);
                   }}
                 />{" "}
                 <button className="btn-sm ghost" onClick={() => setLines(lines.filter((x) => x !== l))}>
@@ -764,6 +879,44 @@ export function Production() {
                 <button className="btn-sm" onClick={createOutputItem}>
                   ＋ Tạo mã thành phẩm mới
                 </button>
+              </div>
+            )}
+
+            {/* Batch/Lot and Serial Number Tracking (R3) */}
+            {outputs.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginTop: 8, padding: "8px 12px", background: "#f5f8f7", borderRadius: 10 }}>
+                <label>
+                  Số Lô (Lot/Batch)
+                  <input
+                    placeholder="vd: LO-202608-01"
+                    value={lotNumber}
+                    onChange={(e) => setLotNumber(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Số Serial
+                  <input
+                    placeholder="vd: SN001, SN002..."
+                    value={serialNumbers}
+                    onChange={(e) => setSerialNumbers(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Ngày sản xuất (NSX)
+                  <input
+                    type="date"
+                    value={mfgDate}
+                    onChange={(e) => setMfgDate(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Hạn dùng (HSD)
+                  <input
+                    type="date"
+                    value={expDate}
+                    onChange={(e) => setExpDate(e.target.value)}
+                  />
+                </label>
               </div>
             )}
 
@@ -844,20 +997,78 @@ export function Production() {
               </table>
             </div>
 
+            {/* Pre-Production Stock Shortage Summary Warning (R2/R4) */}
+            {over.length > 0 && (
+              <div className="warn-banner" style={{ marginTop: 10, borderRadius: 12, border: "1px solid #ead7a7", background: "#fff9e8", padding: "10px 14px" }}>
+                <div style={{ fontWeight: "bold", color: "#805d16", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>⚠️ Cảnh báo thiếu hụt vật tư trước khi sản xuất ({over.length} mặt hàng thiếu)</span>
+                </div>
+                <div className="table-wrap" style={{ maxHeight: "140px", overflow: "auto" }}>
+                  <table className="dt" style={{ fontSize: "12px", width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th>Vật tư</th>
+                        <th style={{ textAlign: "right" }}>Nhu cầu</th>
+                        <th style={{ textAlign: "right" }}>Khả dụng</th>
+                        <th style={{ textAlign: "right" }}>Thiếu hụt</th>
+                        <th>Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {over.map((l) => {
+                        const deficit = Number(Math.max(0, l.so_luong - l.kha_dung).toFixed(4));
+                        const isRed = l.kha_dung <= 0;
+                        return (
+                          <tr key={`${l.item_id}-${l.warehouse_id}`}>
+                            <td>{l.label}</td>
+                            <td style={{ textAlign: "right" }}>{l.so_luong} {l.dvt}</td>
+                            <td style={{ textAlign: "right" }}>{l.kha_dung} {l.dvt}</td>
+                            <td style={{ textAlign: "right", color: "#c9533f", fontWeight: "bold" }}>-{deficit} {l.dvt}</td>
+                            <td>
+                              <span className={`chip sm ${isRed ? "red" : "amber"}`}>
+                                {isRed ? "🔴 Hết hàng" : "🟡 Thiếu"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="muted" style={{ margin: "6px 0 0 0", fontSize: 11 }}>
+                  💡 Bạn có thể lưu nháp lệnh sản xuất hoặc ghi sổ (sẽ yêu cầu xác nhận lý do duyệt âm kho).
+                </p>
+              </div>
+            )}
+
             <div className="modal-actions">
               <button disabled={outputs.length === 0 || consumes.length === 0} onClick={saveRecipe}>
                 💾 Lưu công thức
               </button>
               <button onClick={() => setCreating(false)}>Hủy</button>
               <button
+                disabled={outputs.length === 0 || consumes.length === 0 || lines.some((l) => l.so_luong <= 0)}
+                onClick={() => saveOrder(false)}
+                title="Lưu lệnh sản xuất ở trạng thái nháp (chưa trừ tồn kho)"
+              >
+                💾 Lưu nháp
+              </button>
+              <button
                 className="primary"
                 disabled={
                   outputs.length === 0 ||
                   consumes.length === 0 ||
-                  over.length > 0 ||
                   lines.some((l) => l.so_luong <= 0)
                 }
-                onClick={save}
+                onClick={() => {
+                  if (over.length > 0) {
+                    if (window.confirm(`Có ${over.length} mặt hàng không đủ tồn khả dụng.\n\nBạn có chắc muốn tiếp tục ghi sổ sản xuất (cho phép duyệt âm kho)?`)) {
+                      saveOrder(true);
+                    }
+                  } else {
+                    saveOrder(true);
+                  }
+                }}
               >
                 ✅ Ghi sổ sản xuất
               </button>
@@ -995,6 +1206,46 @@ export function Production() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Batch / Serial / Mfg / Exp Tracking for Finished Goods in View Modal */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, margin: "8px 0", padding: "8px 12px", background: "#f5f8f7", borderRadius: 10 }}>
+              <label>
+                Số Lô (Lot/Batch)
+                <input
+                  value={view.lot_number || ""}
+                  disabled={view.status !== "draft"}
+                  placeholder="—"
+                  onChange={(e) => setView({ ...view, lot_number: e.target.value })}
+                />
+              </label>
+              <label>
+                Số Serial
+                <input
+                  value={view.serial_numbers || ""}
+                  disabled={view.status !== "draft"}
+                  placeholder="—"
+                  onChange={(e) => setView({ ...view, serial_numbers: e.target.value })}
+                />
+              </label>
+              <label>
+                Ngày sản xuất
+                <input
+                  type="date"
+                  value={view.mfg_date || ""}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, mfg_date: e.target.value })}
+                />
+              </label>
+              <label>
+                Hạn dùng
+                <input
+                  type="date"
+                  value={view.exp_date || ""}
+                  disabled={view.status !== "draft"}
+                  onChange={(e) => setView({ ...view, exp_date: e.target.value })}
+                />
+              </label>
             </div>
 
             {view.status === "draft" && recipes.length > 0 && (
@@ -1180,6 +1431,43 @@ export function Production() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Pre-Production Shortage Warning in Draft View Modal */}
+            {view.status === "draft" && vConsumes.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id)) && (
+              <div className="warn-banner" style={{ marginTop: 10, borderRadius: 12, border: "1px solid #ead7a7", background: "#fff9e8", padding: "10px 14px" }}>
+                <div style={{ fontWeight: "bold", color: "#805d16", marginBottom: 6 }}>
+                  ⚠️ Cảnh báo: Một số nguyên vật liệu vượt tồn khả dụng tại ngày {view.ngay}
+                </div>
+                <div className="table-wrap" style={{ maxHeight: "120px", overflow: "auto" }}>
+                  <table className="dt" style={{ fontSize: "12px", width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th>Vật tư</th>
+                        <th style={{ textAlign: "right" }}>Nhu cầu</th>
+                        <th style={{ textAlign: "right" }}>Khả dụng</th>
+                        <th style={{ textAlign: "right" }}>Thiếu hụt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vConsumes
+                        .filter((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                        .map((l) => {
+                          const kd = khaDungFor(l.item_id, l.warehouse_id);
+                          const deficit = Number(Math.max(0, l.so_luong - kd).toFixed(4));
+                          return (
+                            <tr key={l.id}>
+                              <td>{l.ma_hang} · {l.ten}</td>
+                              <td style={{ textAlign: "right" }}>{l.so_luong}</td>
+                              <td style={{ textAlign: "right" }}>{kd}</td>
+                              <td style={{ textAlign: "right", color: "#c9533f", fontWeight: "bold" }}>-{deficit}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 

@@ -94,6 +94,23 @@ def test_render_bao_gia():
     assert "NGÔ HUỲNH NGỌC KHÁNH" in t
 
 
+def test_render_bao_gia_includes_company_bank_account():
+    pdf, _ = bbbg.render_quote(get_settings(), dict(QUOTE))
+    t = _text(pdf)
+    assert "Thông tin tài khoản nhận thanh toán" in t
+    assert "79713" in t
+    assert "Techcombank" in t
+    assert "Ngân hàng Thương mại Cổ phần Kỹ Thương Việt Nam" in t
+
+
+def test_render_bao_gia_replaces_tax_note_with_warranty():
+    data = {**QUOTE, "bao_hanh": "Bảo hành 12 tháng, 1 đổi 1 kể từ ngày mua hàng."}
+    pdf, _ = bbbg.render_quote(get_settings(), data)
+    t = _text(pdf)
+    assert "Bảo hành 12 tháng, 1 đổi 1 kể từ ngày mua hàng." in t
+    assert "Đơn giá chưa bao gồm thuế GTGT" not in t
+
+
 def test_render_de_nghi_tt_toan_bo():
     data = {**QUOTE, "template_key": "de_nghi_tt", "so": "19-07-2026/DNTT-INUT"}
     pdf, totals = bbbg.render_quote(get_settings(), data)
@@ -101,7 +118,7 @@ def test_render_de_nghi_tt_toan_bo():
     t = _text(pdf)
     assert "ĐỀ NGHỊ THANH TOÁN" in t
     assert "TP.HCM" in t                       # noi lap mac dinh rieng
-    assert "hotro@mysmarthome.com.vn" in t
+    assert get_settings().dntt_email in t
     assert "Techcombank" in t and "79713" in t  # TK nhan
     assert "TỔNG SỐ TIỀN CÒN LẠI CẦN THANH TOÁN" in t
     assert "Tổng giám đốc".upper() in t.upper()
@@ -157,7 +174,7 @@ def test_render_bbnt():
 
 def test_quote_templates_registry():
     keys = [t["key"] for t in bbbg.list_quote_templates()]
-    assert keys == ["bao_gia", "de_nghi_tt", "bbnt"]
+    assert keys == ["bao_gia", "de_nghi_tt", "bbnt", "phieu_mua_hang"]
 
 
 # ---------------------------------------------------------------------------

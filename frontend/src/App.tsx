@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 import { Login } from "./pages/Login";
 import { Signer } from "./pages/Signer";
@@ -27,6 +27,11 @@ import { Payroll } from "./pages/Payroll";
 import { Training } from "./pages/Training";
 import { Messenger } from "./pages/Messenger";
 import { PymidCoop } from "./pages/PymidCoop";
+import { Telegram } from "./pages/Telegram";
+import { ShippingSPX } from "./pages/ShippingSPX";
+import { BiddingProcurement } from "./pages/BiddingProcurement";
+import { StandardsConformity } from "./pages/StandardsConformity";
+
 
 type Tab =
   | "home"
@@ -54,7 +59,11 @@ type Tab =
   | "mine"
   | "training"
   | "messenger"
-  | "pymidcoop";
+  | "telegram"
+  | "pymidcoop"
+  | "shippingspx"
+  | "bidding"
+  | "standards";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -82,11 +91,31 @@ const ROUTES: Record<Tab, string> = {
   mine: "/ho-so-cua-toi",
   training: "/training",
   messenger: "/messenger",
+  telegram: "/telegram",
   pymidcoop: "/pymid-coop",
+  shippingspx: "/shipping-spx",
+  bidding: "/bidding",
+  standards: "/standards",
 };
-const PATH_TO_TAB: Record<string, Tab> = Object.fromEntries(
-  Object.entries(ROUTES).map(([t, p]) => [p, t as Tab]),
-) as Record<string, Tab>;
+
+const PATH_TO_TAB: Record<string, Tab> = {
+  ...(Object.fromEntries(
+    Object.entries(ROUTES).map(([t, p]) => [p, t as Tab]),
+  ) as Record<string, Tab>),
+  "/bidding": "bidding",
+  "/dau-thau": "bidding",
+  "/shipping-spx": "shippingspx",
+  "/spx": "shippingspx",
+};
+
+function resolveTab(pathname: string): Tab | null {
+  if (pathname.startsWith("/standards") || pathname.startsWith("/hop-chuan-hop-quy") || pathname.startsWith("/qcvn")) return "standards";
+  if (pathname.startsWith("/bidding") || pathname.startsWith("/dau-thau")) return "bidding";
+  if (pathname.startsWith("/shipping-spx") || pathname.startsWith("/spx")) return "shippingspx";
+  if (pathname.startsWith("/training")) return "training";
+  if (pathname.startsWith("/pymid-coop")) return "pymidcoop";
+  return PATH_TO_TAB[pathname] || null;
+}
 
 interface Me {
   username: string;
@@ -132,12 +161,18 @@ export function App() {
     } | null
   >(null);
 
-  function navigate(t: Tab, replace = false, search = "") {
-    const path = ROUTES[t] + search;
-    if (replace) history.replaceState({ t }, "", path);
-    else history.pushState({ t }, "", path);
-    setTabState(t);
-  }
+  const navigate = useCallback((targetTab: Tab, replace = false, search = "") => {
+    setTabState(targetTab);
+    const path = ROUTES[targetTab] || "/";
+    const full = `${path}${search}`;
+    if (window.location.pathname + window.location.search !== full) {
+      if (replace) {
+        window.history.replaceState({ tab: targetTab }, "", full);
+      } else {
+        window.history.pushState({ tab: targetTab }, "", full);
+      }
+    }
+  }, []);
 
   // Ctrl/Cmd/Shift+click (hoac click giua) tren menu -> de trinh duyet tu mo tab/cua
   // so moi theo href that (khong preventDefault); click thuong moi dieu huong kieu SPA.
@@ -174,8 +209,8 @@ export function App() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training", "messenger",
-              "pymidcoop",
+              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training", "messenger", "telegram",
+              "pymidcoop", "shippingspx", "bidding", "standards",
             ] as Tab[])
           : isPymidStaff
             ? (["pymidcoop"] as Tab[])
@@ -185,25 +220,35 @@ export function App() {
               ...(m.training_access ? ["training" as Tab] : []),
               ...(m.customer_name?.toLocaleLowerCase("vi").includes("pymid") ? ["pymidcoop" as Tab] : []),
             ] as Tab[]);
-        const fromPath = PATH_TO_TAB[window.location.pathname];
+        const fromPath = resolveTab(window.location.pathname);
         const initial = fromPath && allowed.includes(fromPath)
           ? fromPath
           : isAdmin
             ? "home"
             : isPymidStaff ? "pymidcoop" : "mine";
-        const routeParams = new URLSearchParams(window.location.search);
-        const verifyPk = initial === "verify" ? Number(routeParams.get("doc")) : 0;
-        if (verifyPk > 0) setVerifyDocPk(verifyPk);
-        const initialSearch = verifyPk > 0
-          ? `?doc=${verifyPk}`
-          : initial === "nas" && routeParams.get("path")
-            ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
-            : "";
-        navigate(initial, true, initialSearch);
+
+        const isSubpathHandled = window.location.pathname.startsWith("/bidding") ||
+          window.location.pathname.startsWith("/dau-thau") ||
+          window.location.pathname.startsWith("/shipping-spx") ||
+          window.location.pathname.startsWith("/standards");
+
+        if (isSubpathHandled) {
+          setTabState(initial);
+        } else {
+          const routeParams = new URLSearchParams(window.location.search);
+          const verifyPk = initial === "verify" ? Number(routeParams.get("doc")) : 0;
+          if (verifyPk > 0) setVerifyDocPk(verifyPk);
+          const initialSearch = verifyPk > 0
+            ? `?doc=${verifyPk}`
+            : initial === "nas" && routeParams.get("path")
+              ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
+              : "";
+          navigate(initial, true, initialSearch);
+        }
       })
       .catch(() => setAuthed(false));
     const onPop = () => {
-      const t = PATH_TO_TAB[window.location.pathname];
+      const t = resolveTab(window.location.pathname);
       if (t) {
         setTabState(t);
         if (t === "verify") {
@@ -214,7 +259,7 @@ export function App() {
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [navigate]);
 
   if (authed === null) return <div className="center">Đang tải…</div>;
   if (!authed || !me) return <Login onLogin={() => location.reload()} />;
@@ -227,7 +272,15 @@ export function App() {
     ["Tổng quan", [["home", "Trung tâm vận hành", "◉"]]],
     ["Hợp tác", [["pymidcoop", "INUT – PYMID CO.OP", "◆"]]],
     ["Trợ lý", [["training", "iNut Training", "✦"]]],
-    ["Kênh bán hàng", [["messenger", "Messenger fanpage", "◌"]]],
+    [
+      "Kênh bán hàng & Đấu thầu",
+      [
+        ["messenger", "Messenger fanpage", "◌"],
+        ["bidding", "Đấu Thầu (Mua Sắm Công)", "🏛️"],
+        ["standards", "Hợp Chuẩn & Hợp Quy (QCVN)", "📜"],
+      ],
+    ],
+    ["Thông báo", [["telegram", "Telegram thông báo", "◈"]]],
     [
       "Hóa đơn & Thuế",
       [
@@ -244,8 +297,10 @@ export function App() {
         ["tonkho", "Tồn kho", "□"], ["tokhai", "Tờ khai nhập khẩu", "◇"],
         ["xuatkho", "Xuất kho", "→"], ["sanxuat", "Sản xuất", "⚙"],
         ["congthuc", "Công thức", "⌘"],
+        ["shippingspx", "Vận đơn SPX", "🚚"],
       ],
     ],
+
     [
       "Hồ sơ",
       [
@@ -340,6 +395,7 @@ export function App() {
         {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
         {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
         {tab === "messenger" && isAdmin && <Messenger />}
+        {tab === "telegram" && isAdmin && <Telegram />}
         {tab === "pymidcoop" && (isAdmin || isPymid) && (
           <PymidCoop isAdmin={isAdmin} canManageStaff={isAdmin || !isPymidStaff} />
         )}
@@ -377,7 +433,11 @@ export function App() {
         {tab === "xuatkho" && isAdmin && <StockIssue />}
         {tab === "sanxuat" && isAdmin && <Production />}
         {tab === "congthuc" && isAdmin && <Recipes />}
+        {tab === "shippingspx" && isAdmin && <ShippingSPX />}
+        {tab === "bidding" && isAdmin && <BiddingProcurement />}
+        {tab === "standards" && isAdmin && <StandardsConformity />}
         {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
+
         {tab === "thuesync" && isAdmin && <TaxSync />}
         {tab === "thuebct" && isAdmin && <TaxReview />}
         {tab === "documents" && isAdmin && (

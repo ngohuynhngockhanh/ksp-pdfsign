@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+import threading
 from typing import Any
 from pydantic import BaseModel, Field
 
@@ -17,9 +19,12 @@ from . import tqc_cnhq
 from .audit import record as audit_record
 from .auth import CurrentUser, require_admin, require_user
 from .config import Settings, get_settings
-from .db import TqcCertificate, get_session
+from .db import JobRun, TqcCertificate, get_session
 
 router = APIRouter(prefix="/api/standards", tags=["standards"])
+_TQC_IMPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tqc-csv-import")
+_TQC_IMPORT_LOCK = threading.Lock()
+_TQC_IMPORT_ACTIVE: set[int] = set()
 
 
 class CrDeclarationRequest(BaseModel):
@@ -72,6 +77,113 @@ def search_standards(
     )
 
 
+@router.get("/lookup/model")
+def lookup_standards_by_model(
+    query: str = Query("", max_length=150, description="Tên thiết bị, model hoặc từ khóa kỹ thuật"),
+    q: str = Query("", max_length=150, description="Alias cho query"),
+    model: str = Query("", max_length=150, description="Alias cho model"),
+    model_code: str = Query("", max_length=150, description="Alias cho model_code"),
+    hs_code: str = Query("", max_length=150, description="Mã HS Code Hải quan"),
+    ministry: str = Query("", max_length=150, description="Bộ quản lý chuyên ngành: BTTTT, BKHCN, BTNMT, BCT, BGTVT"),
+    mandatory_only: bool = Query(False, description="Chỉ lấy quy chuẩn bắt buộc"),
+    fuzzy: bool = Query(True, description="Bật tìm kiếm mờ (Fuzzy matching)"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Direction 1: Tra cứu quy chuẩn kỹ thuật QCVN/TCVN áp dụng theo Model thiết bị hoặc HS Code."""
+    effective_query = query or q or model or model_code
+    return standards.TwoWayLookupService.lookup_by_model(
+        query=effective_query,
+        hs_code=hs_code,
+        ministry=ministry,
+        mandatory_only=mandatory_only,
+        fuzzy=fuzzy,
+        limit=limit,
+        offset=offset,
+        db=db,
+    )
+
+
+@router.get("/lookup/tax-code")
+def lookup_standards_by_tax_code(
+    tax_code: str = Query("", max_length=150, description="Mã số thuế doanh nghiệp (MST)"),
+    mst: str = Query("", max_length=150, description="Alias cho tax_code"),
+    company_name: str = Query("", max_length=150, description="Tên công ty hoặc từ khóa tìm kiếm"),
+    company: str = Query("", max_length=150, description="Alias cho company_name"),
+    status: str = Query("", max_length=150, description="Lọc theo trạng thái hiệu lực hồ sơ: active, expired, all"),
+    ministry: str = Query("", max_length=150, description="Lọc theo Bộ quản lý chuyên ngành"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Direction 2: Tra cứu hồ sơ chứng nhận/công bố hợp quy và danh mục QCVN theo MST hoặc Tên doanh nghiệp."""
+    effective_tax = tax_code or mst
+    effective_company = company_name or company
+    return standards.TwoWayLookupService.lookup_by_tax_code(
+        tax_code=effective_tax,
+        company_name=effective_company,
+        status=status,
+        ministry=ministry,
+        limit=limit,
+        offset=offset,
+        db=db,
+    )
+
+
+@router.get("/lookup/enterprise/{tax_code}")
+def lookup_standards_by_enterprise_tax_code(
+    tax_code: str,
+    status: str = Query("", max_length=150, description="Lọc theo trạng thái hồ sơ"),
+    ministry: str = Query("", max_length=150, description="Lọc theo Bộ quản lý"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Tra cứu hồ sơ hợp quy và danh mục tiêu chuẩn của một doanh nghiệp cụ thể theo MST."""
+    return standards.TwoWayLookupService.lookup_by_tax_code(
+        tax_code=tax_code,
+        company_name="",
+        status=status,
+        ministry=ministry,
+        limit=limit,
+        offset=offset,
+        db=db,
+    )
+
+
+@router.get("/suggest")
+def suggest_standards(
+    q: str = Query("", max_length=150, description="Từ khóa gợi ý tìm kiếm"),
+    type: str = Query("all", max_length=150, description="Loại gợi ý: all, model, tax_code, company, qcvn, hs_code"),
+    limit: int = Query(10, ge=1, le=50),
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Gợi ý thông minh (Auto-complete) cho Models, MST, Doanh nghiệp, QCVN và HS Code."""
+    return standards.TwoWayLookupService.suggest(
+        q=q,
+        type=type,
+        limit=limit,
+        db=db,
+    )
+
+
+@router.get("/rules")
+def get_inference_rules(
+    user: CurrentUser = Depends(require_user),
+) -> dict[str, Any]:
+    """Danh mục toàn bộ các luật suy luận quy chuẩn kỹ thuật (Rule-based inference engine)."""
+    rules = standards.RuleInferenceEngine.get_all_rules()
+    return {
+        "total_rules": len(rules),
+        "rules": rules,
+    }
+
+
 def _tqc_http_error(exc: tqc_cnhq.TqcCnhqError) -> HTTPException:
     code = exc.code
     http_status = exc.status if 400 <= exc.status <= 599 else status.HTTP_502_BAD_GATEWAY
@@ -82,7 +194,143 @@ def _tqc_http_error(exc: tqc_cnhq.TqcCnhqError) -> HTTPException:
 
 
 def _cached_certificate(row: TqcCertificate) -> dict[str, Any]:
-    return tqc_cnhq._model_to_dict(row)
+    return tqc_cnhq.certificate_to_dict(row, verification_status="verified_cached")
+
+
+def _empty_tqc_import_result(requested: int) -> dict[str, Any]:
+    return {
+        "requested": requested,
+        "processed": 0,
+        "verified": 0,
+        "cached": 0,
+        "not_found": 0,
+        "errors": [],
+        "items": [],
+    }
+
+
+def _merge_tqc_import_result(current: dict[str, Any], batch: dict[str, Any], index: int) -> dict[str, Any]:
+    errors = [*current.get("errors", [])]
+    errors.extend({**error, "index": index} for error in batch.get("errors", []))
+    return {
+        "requested": current["requested"],
+        "processed": int(current.get("processed", 0)) + int(batch.get("processed", 0)),
+        "verified": int(current.get("verified", 0)) + int(batch.get("verified", 0)),
+        "cached": int(current.get("cached", 0)) + int(batch.get("cached", 0)),
+        "not_found": int(current.get("not_found", 0)) + int(batch.get("not_found", 0)),
+        "errors": errors,
+        "items": [*current.get("items", []), *batch.get("items", [])],
+    }
+
+
+def _run_tqc_csv_import(job_id: int) -> None:
+    session_gen = get_session()
+    db = next(session_gen)
+    client = None
+    try:
+        job = db.get(JobRun, job_id)
+        if job is None:
+            return
+        state = json.loads(job.stats or "{}")
+        payload = state.get("payload") or {}
+        entries = payload.get("entries") or []
+        refresh_existing = bool(payload.get("refresh_existing"))
+        requested = len(entries)
+        cursor = min(requested, max(0, int(state.get("cursor", 0))))
+        result = state.get("result") or _empty_tqc_import_result(requested)
+        if not entries:
+            raise tqc_cnhq.TqcCnhqError("Job import TQC thiếu payload", code="missing_job_payload")
+        client = tqc_cnhq.get_client(get_settings(), wait_on_rate_limit=True)
+        step_interval = max(1, requested // 50)
+        for index in range(cursor, requested):
+            batch = tqc_cnhq.import_entries(
+                db,
+                [entries[index]],
+                client=client,
+                refresh_existing=refresh_existing,
+                max_entries=1,
+                commit=False,
+            )
+            result = _merge_tqc_import_result(result, batch, index)
+            cursor = index + 1
+            if cursor == requested or cursor % step_interval == 0 or cursor == 1:
+                job = db.get(JobRun, job_id)
+                if job is None:
+                    return
+                job.stats = json.dumps({
+                    "phase": "running",
+                    "progress": 5 + round(cursor / requested * 90),
+                    "requested": requested,
+                    "payload": payload,
+                    "cursor": cursor,
+                    "result": result,
+                }, ensure_ascii=False)
+                db.commit()
+        job = db.get(JobRun, job_id)
+        if job is None:
+            return
+        job.status = "success"
+        job.stats = json.dumps({"phase": "done", "progress": 100, "result": result}, ensure_ascii=False)
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as exc:  # Background boundary must leave a queryable safe failure.
+        db.rollback()
+        job = db.get(JobRun, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error = str(exc)[:1000] if isinstance(exc, tqc_cnhq.TqcCnhqError) else "Import TQC nền thất bại"
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
+    finally:
+        if client is not None:
+            client.close()
+        session_gen.close()
+        with _TQC_IMPORT_LOCK:
+            _TQC_IMPORT_ACTIVE.discard(job_id)
+
+
+def _submit_tqc_import_job(job_id: int) -> bool:
+    with _TQC_IMPORT_LOCK:
+        if job_id in _TQC_IMPORT_ACTIVE:
+            return False
+        _TQC_IMPORT_ACTIVE.add(job_id)
+    try:
+        _TQC_IMPORT_EXECUTOR.submit(_run_tqc_csv_import, job_id)
+    except RuntimeError:
+        with _TQC_IMPORT_LOCK:
+            _TQC_IMPORT_ACTIVE.discard(job_id)
+        raise
+    return True
+
+
+def resume_tqc_import_jobs() -> int:
+    """Resume durable CSV imports left running by a process restart."""
+    session_gen = get_session()
+    db = next(session_gen)
+    try:
+        job_ids = list(db.scalars(
+            select(JobRun.id)
+            .where(JobRun.kind == "tqc_csv_import", JobRun.status == "running")
+            .order_by(JobRun.id.asc())
+        ))
+    finally:
+        session_gen.close()
+    return sum(1 for job_id in job_ids if _submit_tqc_import_job(job_id))
+
+
+def _tqc_job_payload(job: JobRun) -> dict[str, Any]:
+    stats_payload = json.loads(job.stats or "{}")
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "phase": stats_payload.get("phase", ""),
+        "progress": int(stats_payload.get("progress", 0)),
+        "requested": int(stats_payload.get("requested", 0)),
+        "result": stats_payload.get("result") if job.status == "success" else None,
+        "error": job.error,
+        "started_at": job.started_at.isoformat(),
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+    }
 
 
 @router.get("/tqc/status")
@@ -116,20 +364,23 @@ def search_tqc_certificates(
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Search only records already verified into the local TQC index."""
-    if not any((q.strip(), model.strip(), manufacturer.strip(), applicant.strip(), certificate_no.strip())):
+    if not any((q.strip(), model.strip(), manufacturer.strip(), applicant.strip(), certificate_no.strip(), certificate_status.strip(), valid_on.strip())):
         raise HTTPException(status_code=422, detail="Cần ít nhất một điều kiện tìm kiếm")
-    result = tqc_cnhq.search_index(
-        db,
-        q=q,
-        model=model,
-        manufacturer=manufacturer,
-        applicant=applicant,
-        certificate_no=certificate_no,
-        status=certificate_status,
-        valid_on=valid_on,
-        page=page,
-        page_size=page_size,
-    )
+    try:
+        result = tqc_cnhq.search_index(
+            db,
+            q=q,
+            model=model,
+            manufacturer=manufacturer,
+            applicant=applicant,
+            certificate_no=certificate_no,
+            status=certificate_status,
+            valid_on=valid_on,
+            page=page,
+            page_size=page_size,
+        )
+    except tqc_cnhq.TqcCnhqError as exc:
+        raise _tqc_http_error(exc) from exc
     if not result["items"]:
         result["warning"] = "Chưa thấy trong chỉ mục nội bộ; điều này không khẳng định TQC không có chứng nhận."
         result["verification_status"] = "not_found_in_local_index"
@@ -145,14 +396,16 @@ def get_tqc_certificate(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Resolve one certificate live or from a fresh local cache."""
-    normalized = tqc_cnhq.normalize_certificate_no(certificate_no)
+    try:
+        normalized = tqc_cnhq.normalize_certificate_no(certificate_no)
+    except tqc_cnhq.TqcCnhqError as exc:
+        raise _tqc_http_error(exc) from exc
     row = db.scalar(select(TqcCertificate).where(TqcCertificate.certificate_no == normalized))
     cache_age = None
     if row and row.last_verified_at:
         cache_age = (datetime.now(timezone.utc) - row.last_verified_at.replace(tzinfo=timezone.utc)).total_seconds()
     if row and not refresh and cache_age is not None and cache_age <= settings.tqc_cnhq_cache_ttl_seconds:
         certificate = _cached_certificate(row)
-        certificate["provenance"]["verification_status"] = "verified_cached"
         certificate["provenance"]["cache_age_seconds"] = max(0, int(cache_age))
         return {"certificate": certificate}
 
@@ -201,31 +454,99 @@ def import_tqc_certificates(
     return result
 
 
-@router.post("/tqc/import/csv")
-async def import_tqc_csv(
+@router.post("/tqc/import/csv", status_code=status.HTTP_202_ACCEPTED)
+def import_tqc_csv(
     file: UploadFile = File(...),
     refresh_existing: bool = Query(False),
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
-    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Import a bounded CSV containing certificate numbers or TQC QR payloads."""
-    content = await file.read(5 * 1024 * 1024 + 1)
+    content = file.file.read(5 * 1024 * 1024 + 1)
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="CSV vượt quá giới hạn 5 MB")
     try:
         entries = tqc_cnhq.parse_import_csv(content.decode("utf-8-sig"))
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="CSV phải dùng UTF-8") from exc
-    client = tqc_cnhq.get_client(settings)
-    try:
-        result = tqc_cnhq.import_entries(db, entries, client=client, refresh_existing=refresh_existing)
-    except tqc_cnhq.TqcCnhqError as exc:
-        raise _tqc_http_error(exc) from exc
-    finally:
-        client.close()
-    audit_record(db, user.username, user.role, user.ip, "tqc_import", target="tqc_certificates", detail=json.dumps({"requested": result["requested"], "verified": result["verified"]}))
-    return result
+    job = JobRun(
+        kind="tqc_csv_import",
+        status="running",
+        stats=json.dumps({
+            "phase": "queued",
+            "progress": 1,
+            "requested": len(entries),
+            "payload": {"entries": entries, "refresh_existing": refresh_existing},
+            "cursor": 0,
+            "result": _empty_tqc_import_result(len(entries)),
+        }, ensure_ascii=False),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    audit_record(
+        db,
+        user.username,
+        user.role,
+        user.ip,
+        "tqc_import_queued",
+        target=f"job:{job.id}",
+        detail=json.dumps({"requested": len(entries)}),
+    )
+    _submit_tqc_import_job(job.id)
+    return {"job_id": job.id, "status": "running", "requested": len(entries)}
+
+
+@router.get("/tqc/import/jobs/latest")
+def get_latest_tqc_import_job(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    job = db.scalar(
+        select(JobRun)
+        .where(JobRun.kind == "tqc_csv_import")
+        .order_by(JobRun.id.desc())
+        .limit(1)
+    )
+    return {"job": _tqc_job_payload(job) if job else None}
+
+
+@router.get("/tqc/import/jobs/{job_id}")
+def get_tqc_import_job(
+    job_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    job = db.get(JobRun, job_id)
+    if job is None or job.kind != "tqc_csv_import":
+        raise HTTPException(status_code=404, detail="Không tìm thấy job import TQC")
+    return _tqc_job_payload(job)
+
+
+@router.post("/tqc/import/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+def retry_tqc_import_job(
+    job_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> dict[str, Any]:
+    job = db.get(JobRun, job_id)
+    if job is None or job.kind != "tqc_csv_import":
+        raise HTTPException(status_code=404, detail="Không tìm thấy job import TQC")
+    if job.status == "success":
+        return _tqc_job_payload(job)
+    if job.status == "running":
+        raise HTTPException(status_code=409, detail="Job import TQC đang chạy")
+    if job.status != "failed":
+        raise HTTPException(status_code=409, detail="Trạng thái job import TQC không thể retry")
+    with _TQC_IMPORT_LOCK:
+        if job.id in _TQC_IMPORT_ACTIVE:
+            raise HTTPException(status_code=409, detail="Worker cũ đang hoàn tất dọn dẹp; hãy retry lại")
+    job.status = "running"
+    job.error = ""
+    job.finished_at = None
+    db.commit()
+    _submit_tqc_import_job(job.id)
+    return _tqc_job_payload(job)
 
 
 @router.get("/hs-lookup/{hs_code}")

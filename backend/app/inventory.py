@@ -177,23 +177,89 @@ def validate_pairs(db: Session, pairs: set[tuple[int, int]]) -> None:
     """Replay cac cap bi anh huong; neu am kho -> raise NegativeStockError.
 
     Caller phai bat exception va db.rollback().
+    Tu dong lan truyen gia thanh lenh san xuat (production rollup) neu co sx_out thay doi.
     """
-    violations: list[Violation] = []
-    for item_id, wh_id in sorted(pairs):
-        violations.extend(replay(db, item_id, wh_id))
-    if violations:
+    to_process = set(pairs)
+    all_violations: list[Violation] = []
+    max_passes = 15
+
+    for _ in range(max_passes):
+        if not to_process:
+            break
+        current_pairs = sorted(to_process)
+        to_process = set()
+
+        for item_id, wh_id in current_pairs:
+            all_violations.extend(replay(db, item_id, wh_id))
+
+        affected_prods: set[int] = set()
+        for item_id, wh_id in current_pairs:
+            for m in db.scalars(
+                select(InvMove).where(
+                    InvMove.item_id == item_id,
+                    InvMove.warehouse_id == wh_id,
+                    InvMove.ref_type == "production",
+                    InvMove.loai == "sx_out",
+                )
+            ):
+                if m.ref_id:
+                    affected_prods.add(m.ref_id)
+
+        for pid in affected_prods:
+            prod = db.get(InvProduction, pid)
+            if not prod or prod.status != "posted":
+                continue
+
+            out_moves = list(db.scalars(
+                select(InvMove).where(
+                    InvMove.ref_type == "production",
+                    InvMove.ref_id == pid,
+                    InvMove.loai == "sx_out",
+                )
+            ))
+            in_moves = list(db.scalars(
+                select(InvMove).where(
+                    InvMove.ref_type == "production",
+                    InvMove.ref_id == pid,
+                    InvMove.loai == "sx_in",
+                )
+            ))
+            if not in_moves:
+                continue
+
+            nvl_cost = sum(m.gia_tri for m in out_moves)
+            total_cost = nvl_cost + (prod.cp_nhan_cong or 0.0) + (prod.cp_sxc or 0.0)
+            total_out_qty = sum(m.so_luong for m in in_moves)
+            don_gia_tp = total_cost / total_out_qty if total_out_qty else 0.0
+
+            prod.tong_gia_thanh = total_cost
+
+            allocated = 0.0
+            for i, m_in in enumerate(in_moves):
+                if i < len(in_moves) - 1:
+                    new_val = round(m_in.so_luong * don_gia_tp)
+                    allocated += new_val
+                else:
+                    new_val = round(total_cost - allocated)
+
+                if m_in.gia_tri != new_val or m_in.don_gia != don_gia_tp:
+                    m_in.don_gia = don_gia_tp
+                    m_in.gia_tri = new_val
+                    to_process.add((m_in.item_id, m_in.warehouse_id))
+
+    if all_violations:
         items = {
             i.id: i
             for i in db.scalars(
-                select(InvItem).where(InvItem.id.in_({v.item_id for v in violations}))
+                select(InvItem).where(InvItem.id.in_({v.item_id for v in all_violations}))
             )
         }
-        for v in violations:
+        for v in all_violations:
             it = items.get(v.item_id)
             if it:
                 v.ma_hang = it.ma_hang
                 v.ten = it.ten
-        raise NegativeStockError(violations)
+        raise NegativeStockError(all_violations)
 
 
 @dataclass
@@ -332,6 +398,8 @@ def stock_card(
                 "ton_gia_tri": value,
                 "ref_type": m.ref_type,
                 "ref_id": m.ref_id,
+                "lot_number": getattr(m, "lot_number", "") or "",
+                "serial_numbers": getattr(m, "serial_numbers", "") or "",
             }
         )
     return out
@@ -606,6 +674,8 @@ def post_production(db: Session, prod: InvProduction, override_reason: str | Non
             ref_type="production",
             ref_id=prod.id,
             ref_line_id=ln.id,
+            lot_number=getattr(ln, "lot_number", "") or "",
+            serial_numbers=getattr(ln, "serial_numbers", "") or "",
         )
         db.add(m)
         out_moves.append((ln, m))
@@ -643,6 +713,8 @@ def post_production(db: Session, prod: InvProduction, override_reason: str | Non
             allocated += gia_tri
         else:
             gia_tri = round(total_cost - allocated)  # dong cuoi nhan phan du
+        out_lot = getattr(ln, "lot_number", "") or getattr(prod, "lot_number", "") or ""
+        out_serials = getattr(ln, "serial_numbers", "") or getattr(prod, "serial_numbers", "") or ""
         db.add(InvMove(
             item_id=ln.item_id,
             warehouse_id=ln.warehouse_id,
@@ -654,6 +726,8 @@ def post_production(db: Session, prod: InvProduction, override_reason: str | Non
             ref_type="production",
             ref_id=prod.id,
             ref_line_id=ln.id,
+            lot_number=out_lot,
+            serial_numbers=out_serials,
         ))
         in_pairs.add((ln.item_id, ln.warehouse_id))
     db.flush()

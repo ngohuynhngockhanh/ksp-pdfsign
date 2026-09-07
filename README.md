@@ -71,6 +71,23 @@ docker compose up --build      # frontend: http://localhost:8080
 
 > Windows Agent **không** chạy trong Docker — nó phải chạy trên máy Windows cắm token.
 
+### Telegram thông báo Messenger
+
+Bot Telegram chạy long polling trong backend (không cần mở thêm webhook public). Tạo bot
+bằng `@BotFather`, đặt token mới vào `.env` rồi khởi động lại backend:
+
+```dotenv
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=<TOKEN_MOI_CUA_BOTFATHER>
+TELEGRAM_BOT_USERNAME=Webinut_bot
+```
+
+Trong menu quản trị chọn **Telegram thông báo** → **Tạo link đăng nhập Telegram** → mở
+link bằng Telegram và bấm **Start**. Link có hạn và chỉ dùng một lần; khi có tin
+Messenger mới, bot gửi bản xem trước kèm link mở hộp thư KSP. Có thể dùng `/disconnect`
+trong Telegram hoặc nút **Ngắt kết nối** trong KSP để thu hồi liên kết.
+Long polling nên chạy một process backend (không dùng nhiều `--workers` cho cùng một bot).
+
 ## Trust store (kiểm tra chữ ký báo "tin cậy")
 
 Đặt chứng thư gốc/trung gian vào `backend/app/trust/` — xem [`backend/app/trust/README.md`](backend/app/trust/README.md):

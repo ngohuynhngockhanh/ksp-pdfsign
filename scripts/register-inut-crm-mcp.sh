@@ -38,7 +38,33 @@ if command -v codex >/dev/null 2>&1; then
 fi
 
 if command -v agy >/dev/null 2>&1; then
-  agy mcp add --type http --header "Authorization: Bearer $token" inut-crm http://127.0.0.1:2037/sse >/dev/null
+  agy mcp add --type http --header "Authorization: Bearer $token" inut-crm http://127.0.0.1:2037/mcp >/dev/null
+  AGY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
+  node - "$AGY_SETTINGS" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const settingsPath = process.argv[2]
+fs.mkdirSync(path.dirname(settingsPath), { recursive: true, mode: 0o700 })
+const settings = fs.existsSync(settingsPath)
+  ? JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+  : {}
+const permissions = settings.permissions && typeof settings.permissions === 'object'
+  ? settings.permissions
+  : {}
+const allow = Array.isArray(permissions.allow) ? permissions.allow : []
+const rule = 'mcp(inut-crm/*)'
+const next = {
+  ...settings,
+  permissions: {
+    ...permissions,
+    allow: allow.includes(rule) ? allow : [...allow, rule],
+  },
+}
+const temporaryPath = `${settingsPath}.tmp`
+fs.writeFileSync(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 })
+fs.renameSync(temporaryPath, settingsPath)
+NODE
 fi
 
 echo "Codex and agy registrations updated for inut-crm; token contents were not printed."

@@ -185,7 +185,16 @@ def _folder_out(row: InvCustomsDriveFolder) -> dict:
 
 def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) -> dict:
     entries = _rclone_list(source.folder_id)
-    directories = [item for item in entries if item.get("IsDir") and "/" not in str(item.get("Path", "")).strip("/")]
+    top_dirs = [item for item in entries if item.get("IsDir") and "/" not in str(item.get("Path", "")).strip("/")]
+    directories = []
+    for d in top_dirs:
+        p = str(d.get("Path", "")).strip("/")
+        sub_dirs = [item for item in entries if item.get("IsDir") and str(item.get("Path", "")).startswith(p + "/") and str(item.get("Path", "")).strip("/").count("/") == 1]
+        order_sub_dirs = [sd for sd in sub_dirs if not any(skip in str(sd.get("Path", "")).lower() for skip in ("chứng nhận", "bộ chứng từ", "hình ảnh", "gửi các bên", "pcb"))]
+        if order_sub_dirs and ("mua cho" in p.lower() or "khach hang" in p.lower() or "khách hàng" in p.lower() or "công ty" in p.lower()):
+            directories.extend(order_sub_dirs)
+        else:
+            directories.append(d)
     files = [item for item in entries if not item.get("IsDir")]
     imported = linked = waiting = 0
     for directory in directories:
@@ -227,12 +236,26 @@ def _sync_source(db: Session, source: InvCustomsDriveSource, user: CurrentUser) 
                     document.kind = customs_drive.classify_customs_document(document.name, "")
                 dossier_files.append({"kind": document.kind, "text": ""})
                 continue
+            suffix = Path(document.name).suffix.lower() or ".bin"
+            if suffix in (".zip", ".rar", ".7z", ".tar", ".gz") and document.size > 5_000_000:
+                document.parse_error = "File nén dung lượng lớn; bỏ qua tải bản sao."
+                if not document.kind_manual:
+                    document.kind = "other"
+                dossier_files.append({"kind": document.kind, "text": ""})
+                continue
             try:
-                content = _rclone_download(source.folder_id, path)
-                suffix = Path(document.name).suffix.lower() or ".bin"
-                document.doc_id = storage.save_upload(content, suffix=suffix)
-                document.doc_suffix = suffix
-                document.extracted_text = _extract_text(document.name, content)
+                content = None
+                if document.doc_id:
+                    try:
+                        content = storage.read_doc(document.doc_id, document.doc_suffix)
+                    except Exception:
+                        content = None
+                if content is None:
+                    content = _rclone_download(source.folder_id, path)
+                    document.doc_id = storage.save_upload(content, suffix=suffix)
+                    document.doc_suffix = suffix
+                if not document.extracted_text:
+                    document.extracted_text = _extract_text(document.name, content)
                 if not document.kind_manual:
                     document.kind = customs_drive.classify_customs_document(document.name, document.extracted_text)
                 document.parse_error = ""
@@ -419,3 +442,51 @@ def document_file(document_id: int, db: Session = Depends(get_session),
         raise HTTPException(404, "Không tìm thấy bản sao chứng từ")
     return Response(storage.read_doc(document.doc_id, document.doc_suffix or ".bin"),
                     media_type=document.mime_type or "application/octet-stream")
+
+
+@router.post("/declarations/{decl_id}/fetch-barcode")
+def fetch_declaration_barcode(decl_id: int,
+                             customs_code: str | None = None,
+                             db: Session = Depends(get_session),
+                             user: CurrentUser = Depends(require_admin)):
+    """Tự động tra cứu mã vạch tờ khai từ pus1.customs.gov.vn, lưu PDF và upload lên Google Drive."""
+    try:
+        from . import customs_barcode
+        result = customs_barcode.fetch_and_sync_customs_barcode(
+            db=db,
+            decl_id=decl_id,
+            customs_code_override=customs_code,
+        )
+        audit.record(db, user.username, user.role, user.ip, "customs_barcode_fetch",
+                     f"decl:{decl_id}", f"Fetched barcode: {result.get('filename')}")
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/folders/{folder_id}/fetch-barcode")
+def fetch_folder_barcode(folder_id: int,
+                        customs_code: str | None = None,
+                        db: Session = Depends(get_session),
+                        user: CurrentUser = Depends(require_admin)):
+    """Tự động tra cứu mã vạch cho folder hồ sơ đã liên kết tờ khai."""
+    folder = db.get(InvCustomsDriveFolder, folder_id)
+    if not folder:
+        raise HTTPException(404, "Không tìm thấy folder")
+    if not folder.customs_id:
+        raise HTTPException(400, "Folder chưa được liên kết với tờ khai hải quan nào")
+    try:
+        from . import customs_barcode
+        result = customs_barcode.fetch_and_sync_customs_barcode(
+            db=db,
+            decl_id=folder.customs_id,
+            folder_id=folder.drive_folder_id,
+            customs_code_override=customs_code,
+        )
+        audit.record(db, user.username, user.role, user.ip, "customs_barcode_fetch",
+                     f"folder:{folder_id}", f"Fetched barcode: {result.get('filename')}")
+        db.refresh(folder)
+        return _folder_out(folder)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+

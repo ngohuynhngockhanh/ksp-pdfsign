@@ -134,6 +134,10 @@ def require_user(
         return mcp_user
     token = request.cookies.get(COOKIE_NAME)
     if not token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+    if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Chua dang nhap")
     try:
         p = jwt.decode(token, settings.effective_jwt_secret(), algorithms=["HS256"])

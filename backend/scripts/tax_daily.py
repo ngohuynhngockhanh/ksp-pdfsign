@@ -2,7 +2,12 @@
 """Job 02:00: dong bo hoa don va tao/cap nhat BCT cua quy vua ket thuc."""
 from __future__ import annotations
 
+import sys
 from datetime import date
+from pathlib import Path
+
+# Running this file by path puts ``scripts/`` (not ``backend/``) on sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import db as dbmod, tax_ops
 

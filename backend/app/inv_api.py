@@ -12,10 +12,11 @@ from datetime import datetime, timedelta, timezone
 import pypdfium2 as pdfium
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, audit, customs, ihoadon, ihoadon_delivery, ihoadon_sync, inv_export, inv_import, inventory, money, nas, storage, tax
+from . import ai, audit, customs, email_sync, ihoadon, ihoadon_delivery, ihoadon_sync, inv_export, inv_import, inventory, money, nas, storage, tax
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import (
@@ -38,6 +39,7 @@ from .db import (
     InvSale,
     InvSaleLine,
     InvWarehouse,
+    JobRun,
     Share,
     get_session,
 )
@@ -60,9 +62,10 @@ from .schemas import (
     InvItemCreate,
     InvItemOut,
     InvItemUpdate,
-    InvProductionIn,
-    InvProductionLineOut,
-    InvProductionOut,
+    EmailSyncRunIn,
+    EmailSyncSettingsIn,
+    EmailSyncSettingsOut,
+    EmailSyncTestIn,
     InvPurchaseLineOut,
     InvPurchaseOut,
     InvPurchaseUpdate,
@@ -76,11 +79,27 @@ from .schemas import (
     InvWarehouseOut,
     OpeningImportResult,
     SaleDraftExportIn,
-    StockCardRow,
     StockReport,
     SuggestInvoiceLinesIn,
     StockRowOut,
 )
+
+
+class StockCardRow(BaseModel):
+    id: int
+    ngay: str
+    loai: str
+    loai_label: str
+    nhap: float
+    xuat: float
+    don_gia: float
+    gia_tri: float
+    ton: float
+    ton_gia_tri: float
+    ref_type: str = ""
+    ref_id: int | None = None
+    lot_number: str = ""
+    serial_numbers: str = ""
 
 router = APIRouter(prefix="/api/inv")
 
@@ -650,13 +669,19 @@ def _purchase_out(db: Session, inv: InvPurchase, with_lines: bool = True) -> Inv
                 confidence=ln.confidence, warnings=_jload(ln.warnings),
                 suggestions=sugg,
             ))
+    dup_of = inv.dup_of
+    warnings = _jload(inv.warnings)
+    if dup_of and not db.get(InvPurchase, dup_of):
+        dup_of = None
+        warnings = [w for w in warnings if w.get("code") != "trung_hd"]
+
     return InvPurchaseOut(
         id=inv.id, so_hd=inv.so_hd, ky_hieu=inv.ky_hieu, mst_ban=inv.mst_ban,
         ten_ban=inv.ten_ban, ngay=inv.ngay,
         tong_truoc_thue=inv.tong_truoc_thue, tong_thue=inv.tong_thue,
         tong_tien=inv.tong_tien, source=inv.source, status=inv.status,
         loai=inv.loai or "hang_hoa",
-        confidence=inv.confidence, warnings=_jload(inv.warnings), dup_of=inv.dup_of,
+        confidence=inv.confidence, warnings=warnings, dup_of=dup_of,
         created_at=inv.created_at.isoformat() if inv.created_at else "",
         doc_url=f"/api/inv/purchase/{inv.id}/file" if inv.doc_id else "",
         lines=lines,
@@ -831,6 +856,222 @@ def purchase_sync_nas(
             failed += 1
     _audit(db, user, "inv_purchase_sync_nas", "HĐ mua", f"{synced} sync, {skipped} bỏ qua, {failed} lỗi")
     return {"ok": True, "synced": synced, "skipped": skipped, "failed": failed}
+
+
+# ---------------------------------------------------------------------------
+# Dong bo hoa don PDF/XML tu Zoho Mail (REST API OAuth 2.0 & IMAP)
+# ---------------------------------------------------------------------------
+@router.get("/email-sync/settings", response_model=EmailSyncSettingsOut)
+def email_sync_get_settings(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Lay cau hinh ket noi Zoho Mail REST API / IMAP."""
+    cfg = email_sync.get_zoho_settings(db, settings)
+    return EmailSyncSettingsOut(
+        enabled=cfg["enabled"],
+        mode=cfg.get("mode", "rest_api"),
+        client_id=cfg.get("client_id", ""),
+        has_client_secret=bool(cfg.get("client_secret")),
+        has_refresh_token=bool(cfg.get("refresh_token")),
+        accounts_url=cfg.get("accounts_url", "https://accounts.zoho.com"),
+        mail_api_url=cfg.get("mail_api_url", "https://mail.zoho.com"),
+        server=cfg["server"],
+        port=cfg["port"],
+        username=cfg["username"],
+        has_password=bool(cfg["password"]),
+        mailbox=cfg["mailbox"],
+        days=cfg["days"],
+    )
+
+
+@router.post("/email-sync/settings", response_model=EmailSyncSettingsOut)
+def email_sync_save_settings(
+    body: EmailSyncSettingsIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Luu cau hinh ket noi Zoho Mail REST API / IMAP vao AppSetting."""
+    current = email_sync.get_zoho_settings(db, settings)
+
+    client_id = body.client_id.strip() if body.client_id.strip() else current.get("client_id", "")
+    client_secret = body.client_secret.strip() if body.client_secret.strip() else current.get("client_secret", "")
+    refresh_token = body.refresh_token.strip() if body.refresh_token.strip() else current.get("refresh_token", "")
+    accounts_url = body.accounts_url.strip() or current.get("accounts_url", "https://accounts.zoho.com")
+    mail_api_url = body.mail_api_url.strip() or current.get("mail_api_url", "https://mail.zoho.com")
+
+    # Neu user nhap grant_token (code mot lan) -> tu dong exchange lay refresh_token
+    if body.grant_token.strip() and client_id and client_secret:
+        try:
+            token_resp = email_sync.exchange_grant_token(
+                client_id=client_id,
+                client_secret=client_secret,
+                grant_token=body.grant_token.strip(),
+                accounts_url=accounts_url,
+            )
+            if token_resp.get("refresh_token"):
+                refresh_token = token_resp["refresh_token"]
+        except Exception as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Lỗi đổi Grant Token Zoho: {exc}") from exc
+
+    pwd = body.password.strip() if body.password.strip() else current["password"]
+    config = {
+        "enabled": "true" if body.enabled else "false",
+        "mode": body.mode or "rest_api",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "accounts_url": accounts_url,
+        "mail_api_url": mail_api_url,
+        "server": body.server.strip() or "imappro.zoho.com",
+        "port": str(body.port or 993),
+        "username": body.username.strip(),
+        "password": pwd,
+        "mailbox": body.mailbox.strip() or "INBOX",
+        "days": str(body.days or 30),
+    }
+    email_sync.save_zoho_settings(db, config)
+    _audit(db, user, "email_sync_save_settings", body.mode, f"Mode: {body.mode}")
+    return EmailSyncSettingsOut(
+        enabled=body.enabled,
+        mode=config["mode"],
+        client_id=config["client_id"],
+        has_client_secret=bool(config["client_secret"]),
+        has_refresh_token=bool(config["refresh_token"]),
+        accounts_url=config["accounts_url"],
+        mail_api_url=config["mail_api_url"],
+        server=config["server"],
+        port=int(config["port"]),
+        username=config["username"],
+        has_password=bool(config["password"]),
+        mailbox=config["mailbox"],
+        days=int(config["days"]),
+    )
+
+
+@router.post("/email-sync/test")
+def email_sync_test(
+    body: EmailSyncTestIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Kiem tra ket noi Zoho Mail REST API OAuth 2.0 hoac IMAP SSL."""
+    current = email_sync.get_zoho_settings(db, settings)
+    mode = body.mode or current.get("mode") or ("rest_api" if (body.client_id or body.grant_token or body.refresh_token) else "imap")
+
+    if mode == "rest_api" and (body.client_id or body.grant_token or body.refresh_token or current.get("client_id")):
+        client_id = body.client_id.strip() or current.get("client_id", "")
+        client_secret = body.client_secret.strip() or current.get("client_secret", "")
+        refresh_token = body.refresh_token.strip() or current.get("refresh_token", "")
+        grant_token = body.grant_token.strip()
+        accounts_url = body.accounts_url.strip() or current.get("accounts_url", "https://accounts.zoho.com")
+        mail_api_url = body.mail_api_url.strip() or current.get("mail_api_url", "https://mail.zoho.com")
+
+        try:
+            res = email_sync.test_rest_api_connection(
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=refresh_token,
+                grant_token=grant_token,
+                accounts_url=accounts_url,
+                mail_api_url=mail_api_url,
+                timeout=getattr(settings, "zoho_imap_timeout", 15.0),
+            )
+            # Neu co refresh_token moi doi duoc thi luu lai luon
+            if res.get("refresh_token") and res["refresh_token"] != current.get("refresh_token"):
+                email_sync.save_zoho_settings(db, {"refresh_token": res["refresh_token"]})
+            return res
+        except email_sync.EmailAuthError as exc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+        except email_sync.EmailConnectionError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+        except Exception as exc:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi kiểm tra kết nối REST API: {exc}")
+
+    # IMAP mode
+    pwd = body.password.strip() if body.password.strip() else current["password"]
+    server = body.server.strip() or current["server"] or "imappro.zoho.com"
+    port = body.port or current["port"] or 993
+    username = body.username.strip() or current["username"]
+    mailbox = body.mailbox.strip() or current["mailbox"] or "INBOX"
+
+    try:
+        res = email_sync.test_connection(
+            server=server,
+            port=port,
+            username=username,
+            password=pwd,
+            mailbox=mailbox,
+            timeout=getattr(settings, "zoho_imap_timeout", 15.0),
+        )
+        return res
+    except email_sync.EmailAuthError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+    except email_sync.EmailConnectionError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    except Exception as exc:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi kiểm tra kết nối: {exc}")
+
+
+@router.post("/email-sync/run")
+def email_sync_run(
+    body: EmailSyncRunIn | None = None,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Chay quet va dong bo hoa don PDF/XML tu Zoho Mail."""
+    days = body.days if body and body.days > 0 else 30
+    try:
+        job = email_sync.run_sync(db, settings, days=days)
+    except email_sync.EmailSyncBusy as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    except email_sync.EmailAuthError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+    except email_sync.EmailConnectionError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    except email_sync.EmailSyncError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+    _audit(db, user, "email_sync_run", f"Job #{job.id}", job.status)
+    stats_data = json.loads(job.stats) if job.stats else {}
+    return {
+        "id": job.id,
+        "kind": job.kind,
+        "status": job.status,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "needs_action": bool(job.needs_action),
+        "error": job.error or "",
+        "stats": stats_data,
+    }
+
+
+@router.get("/email-sync/runs")
+def email_sync_runs(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Liet ke lich su cac lan chay dong bo email."""
+    rows = db.scalars(
+        select(JobRun).where(JobRun.kind == "email_invoice_sync").order_by(JobRun.id.desc()).limit(30)
+    )
+    res = []
+    for r in rows:
+        res.append({
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "needs_action": bool(r.needs_action),
+            "error": r.error or "",
+            "stats": json.loads(r.stats) if r.stats else {},
+        })
+    return res
 
 
 @router.get("/purchase", response_model=list[InvPurchaseOut])
@@ -2911,8 +3152,176 @@ def issue_void(
 
 
 # ---------------------------------------------------------------------------
-# San xuat
+# San xuat & Dinh muc & Truy vet lo / serial
 # ---------------------------------------------------------------------------
+
+class InvProductionLineIn(BaseModel):
+    chieu: str  # vao | ra
+    item_id: int
+    warehouse_id: int
+    so_luong: float
+    don_gia_tam: float = 0
+    lot_number: str = ""
+    serial_numbers: str = ""
+    note: str = ""
+    orig_item_id: int | None = None
+
+
+class InvProductionIn(BaseModel):
+    ngay: str
+    note: str = ""
+    description: str = ""
+    recipe_id: int | None = None
+    output_qty: float | None = None
+    output_item_id: int | None = None
+    warehouse_id: int | None = None
+    cp_nhan_cong: float = 0
+    cp_sxc: float = 0
+    gia_ban_du_kien: float = 0
+    lot_number: str = ""
+    serial_numbers: str = ""
+    mfg_date: str = ""
+    exp_date: str = ""
+    lines: list[InvProductionLineIn] = Field(default_factory=list)
+
+
+class InvProductionLineOut(BaseModel):
+    id: int
+    chieu: str
+    item_id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    warehouse_id: int
+    so_luong: float
+    don_gia_tam: float = 0
+    gia_tri: float = 0
+    gia_tri_uoc: float = 0
+    so_luong_dinh_muc: float | None = None
+    gia_tri_dinh_muc: float | None = None
+    lot_number: str = ""
+    serial_numbers: str = ""
+    note: str = ""
+    orig_item_id: int | None = None
+
+
+class InvProductionOut(BaseModel):
+    id: int
+    so_ct: str = ""
+    ngay: str
+    note: str
+    description: str = ""
+    status: str
+    recipe_id: int | None = None
+    cp_nhan_cong: float = 0
+    cp_sxc: float = 0
+    tong_gia_thanh: float = 0
+    tong_gia_thanh_uoc: float = 0
+    gia_thanh_dv_uoc: float = 0
+    gia_ban_du_kien: float = 0
+    sale_id: int | None = None
+    lot_number: str = ""
+    serial_numbers: str = ""
+    mfg_date: str = ""
+    exp_date: str = ""
+    am_kho_override: bool = False
+    created_at: str = ""
+    lines: list[InvProductionLineOut] = Field(default_factory=list)
+
+
+class ShortageCheckLineIn(BaseModel):
+    item_id: int
+    so_luong: float
+    warehouse_id: int | None = None
+
+
+class ShortageCheckIn(BaseModel):
+    recipe_id: int | None = None
+    output_item_id: int | None = None
+    output_qty: float = 1.0
+    warehouse_id: int | None = None
+    ngay: str = ""
+    lines: list[ShortageCheckLineIn] = Field(default_factory=list)
+
+
+class ShortageItemOut(BaseModel):
+    item_id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    warehouse_id: int = 0
+    warehouse_code: str = ""
+    required_qty: float
+    available_qty: float
+    shortage_qty: float
+    is_shortage: bool
+    warning_level: str  # "ok" | "amber" | "red"
+
+
+class ShortageCheckOut(BaseModel):
+    has_shortage: bool
+    can_produce: bool
+    items: list[ShortageItemOut]
+
+
+class TraceabilityOutputItemOut(BaseModel):
+    id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    qty: float
+    warehouse_id: int = 0
+    warehouse_code: str = ""
+
+
+class TraceabilityConsumedMaterialOut(BaseModel):
+    item_id: int
+    ma_hang: str = ""
+    ten: str = ""
+    dvt: str = ""
+    so_luong: float
+    lot_number: str = ""
+    batch_no: str = ""
+    serial_numbers: list[str] = Field(default_factory=list)
+    warehouse_id: int = 0
+    warehouse_code: str = ""
+
+
+class TraceabilityRecordOut(BaseModel):
+    production_id: int
+    so_ct: str = ""
+    ngay: str = ""
+    status: str = ""
+    batch_no: str = ""
+    lot_number: str = ""
+    serial_numbers: list[str] = Field(default_factory=list)
+    mfg_date: str = ""
+    exp_date: str = ""
+    output_item: TraceabilityOutputItemOut | None = None
+    consumed_materials: list[TraceabilityConsumedMaterialOut] = Field(default_factory=list)
+
+
+class TraceabilityResponseOut(BaseModel):
+    records: list[TraceabilityRecordOut]
+
+
+def _parse_serials(s: str | list | None) -> list[str]:
+    if not s:
+        return []
+    if isinstance(s, list):
+        return [str(x).strip() for x in s if str(x).strip()]
+    s = str(s).strip()
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            val = json.loads(s)
+            if isinstance(val, list):
+                return [str(x).strip() for x in val if str(x).strip()]
+        except Exception:
+            pass
+    parts = re.split(r"[,;\n\r]+", s)
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
     items = {i.id: i for i in db.scalars(select(InvItem))}
     moves = {
@@ -2968,6 +3377,8 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
             so_luong=ln.so_luong, don_gia_tam=ln.don_gia_tam or 0,
             gia_tri=mv.gia_tri if mv else 0, gia_tri_uoc=gia_tri_uoc,
             so_luong_dinh_muc=sl_dm, gia_tri_dinh_muc=gt_dm,
+            lot_number=getattr(ln, "lot_number", "") or "",
+            serial_numbers=getattr(ln, "serial_numbers", "") or "",
             note=ln.note or "", orig_item_id=ln.orig_item_id,
         ))
     out_qty = sum(l.so_luong for l in prod.lines if l.chieu == "ra")
@@ -2981,8 +3392,165 @@ def _prod_out(db: Session, prod: InvProduction) -> InvProductionOut:
         gia_thanh_dv_uoc=round(tong_uoc / out_qty) if out_qty else 0,
         gia_ban_du_kien=prod.gia_ban_du_kien or 0,
         sale_id=prod.sale_id,
+        lot_number=getattr(prod, "lot_number", "") or "",
+        serial_numbers=getattr(prod, "serial_numbers", "") or "",
+        mfg_date=getattr(prod, "mfg_date", "") or "",
+        exp_date=getattr(prod, "exp_date", "") or "",
         am_kho_override=bool(getattr(prod, "am_kho_override", False)),
         created_at=prod.created_at.isoformat() if prod.created_at else "", lines=lines,
+    )
+
+
+@router.post("/productions/check-shortage", response_model=ShortageCheckOut)
+def production_check_shortage(
+    body: ShortageCheckIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    items_map = {i.id: i for i in db.scalars(select(InvItem))}
+    whs_map = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    default_wh_id = next(iter(whs_map.keys()), 1) if whs_map else 1
+    ngay = body.ngay or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    needed: list[tuple[int, int, float]] = []
+    if body.lines:
+        for ln in body.lines:
+            if ln.so_luong > 0:
+                wh_id = ln.warehouse_id or body.warehouse_id or default_wh_id
+                needed.append((ln.item_id, wh_id, ln.so_luong))
+    elif body.recipe_id:
+        rec = db.get(InvRecipe, body.recipe_id)
+        if not rec:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy công thức định mức")
+        ratio = (body.output_qty / rec.output_qty) if rec.output_qty else 1.0
+        for rl in rec.lines:
+            wh_id = body.warehouse_id or rl.warehouse_id or default_wh_id
+            needed.append((rl.item_id, wh_id, round(rl.so_luong * ratio, 4)))
+    elif body.output_item_id:
+        rec = db.scalar(
+            select(InvRecipe)
+            .where(InvRecipe.output_item_id == body.output_item_id)
+            .order_by(InvRecipe.id.desc())
+        )
+        if rec:
+            ratio = (body.output_qty / rec.output_qty) if rec.output_qty else 1.0
+            for rl in rec.lines:
+                wh_id = body.warehouse_id or rl.warehouse_id or default_wh_id
+                needed.append((rl.item_id, wh_id, round(rl.so_luong * ratio, 4)))
+
+    req_by_pair: dict[tuple[int, int], float] = {}
+    for item_id, wh_id, qty in needed:
+        req_by_pair[(item_id, wh_id)] = req_by_pair.get((item_id, wh_id), 0.0) + qty
+
+    avail_rows = inventory.availability(db, ngay)
+    avail_map: dict[tuple[int, int], float] = {
+        (r.item_id, r.warehouse_id): r.kha_dung for r in avail_rows
+    }
+
+    out_items: list[ShortageItemOut] = []
+    for (item_id, wh_id), req_qty in req_by_pair.items():
+        it = items_map.get(item_id)
+        wh = whs_map.get(wh_id)
+        avail = max(0.0, avail_map.get((item_id, wh_id), 0.0))
+        if avail < req_qty - 1e-6:
+            shortage = round(req_qty - avail, 4)
+            is_short = True
+            warn = "red" if avail <= 1e-6 else "amber"
+        else:
+            shortage = 0.0
+            is_short = False
+            warn = "ok"
+        out_items.append(ShortageItemOut(
+            item_id=item_id,
+            ma_hang=it.ma_hang if it else "",
+            ten=it.ten if it else "",
+            dvt=it.dvt if it else "",
+            warehouse_id=wh_id,
+            warehouse_code=wh.code if wh else "",
+            required_qty=req_qty,
+            available_qty=avail,
+            shortage_qty=shortage,
+            is_shortage=is_short,
+            warning_level=warn,
+        ))
+
+    has_shortage = any(x.is_shortage for x in out_items)
+    return ShortageCheckOut(
+        has_shortage=has_shortage,
+        can_produce=not has_shortage,
+        items=out_items,
+    )
+
+
+@router.get("/productions/{pid}/readiness", response_model=ShortageCheckOut)
+def production_readiness(
+    pid: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    prod = db.get(InvProduction, pid)
+    if not prod:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lệnh sản xuất")
+    items_map = {i.id: i for i in db.scalars(select(InvItem))}
+    whs_map = {w.id: w for w in db.scalars(select(InvWarehouse))}
+    default_wh_id = next(iter(whs_map.keys()), 1) if whs_map else 1
+    ngay = prod.ngay or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    consumes = [ln for ln in prod.lines if ln.chieu == "vao"]
+    needed: list[tuple[int, int, float]] = []
+    if consumes:
+        for ln in consumes:
+            needed.append((ln.item_id, ln.warehouse_id, ln.so_luong))
+    elif prod.recipe_id:
+        rec = db.get(InvRecipe, prod.recipe_id)
+        if rec:
+            out_qty = sum(l.so_luong for l in prod.lines if l.chieu == "ra") or rec.output_qty or 1.0
+            ratio = (out_qty / rec.output_qty) if rec.output_qty else 1.0
+            for rl in rec.lines:
+                wh_id = rl.warehouse_id or default_wh_id
+                needed.append((rl.item_id, wh_id, round(rl.so_luong * ratio, 4)))
+
+    req_by_pair: dict[tuple[int, int], float] = {}
+    for item_id, wh_id, qty in needed:
+        req_by_pair[(item_id, wh_id)] = req_by_pair.get((item_id, wh_id), 0.0) + qty
+
+    avail_rows = inventory.availability(db, ngay)
+    avail_map: dict[tuple[int, int], float] = {
+        (r.item_id, r.warehouse_id): r.kha_dung for r in avail_rows
+    }
+
+    out_items: list[ShortageItemOut] = []
+    for (item_id, wh_id), req_qty in req_by_pair.items():
+        it = items_map.get(item_id)
+        wh = whs_map.get(wh_id)
+        avail = max(0.0, avail_map.get((item_id, wh_id), 0.0))
+        if avail < req_qty - 1e-6:
+            shortage = round(req_qty - avail, 4)
+            is_short = True
+            warn = "red" if avail <= 1e-6 else "amber"
+        else:
+            shortage = 0.0
+            is_short = False
+            warn = "ok"
+        out_items.append(ShortageItemOut(
+            item_id=item_id,
+            ma_hang=it.ma_hang if it else "",
+            ten=it.ten if it else "",
+            dvt=it.dvt if it else "",
+            warehouse_id=wh_id,
+            warehouse_code=wh.code if wh else "",
+            required_qty=req_qty,
+            available_qty=avail,
+            shortage_qty=shortage,
+            is_shortage=is_short,
+            warning_level=warn,
+        ))
+
+    has_shortage = any(x.is_shortage for x in out_items)
+    return ShortageCheckOut(
+        has_shortage=has_shortage,
+        can_produce=not has_shortage,
+        items=out_items,
     )
 
 
@@ -2993,20 +3561,90 @@ def production_create(
     db: Session = Depends(get_session),
 ):
     prod = InvProduction(
-        ngay=body.ngay, note=body.note, description=body.description,
+        ngay=body.ngay,
+        note=body.note,
+        description=body.description,
         recipe_id=body.recipe_id,
-        cp_nhan_cong=body.cp_nhan_cong or 0, cp_sxc=body.cp_sxc or 0,
+        cp_nhan_cong=body.cp_nhan_cong or 0,
+        cp_sxc=body.cp_sxc or 0,
         gia_ban_du_kien=body.gia_ban_du_kien or 0,
+        lot_number=body.lot_number or "",
+        serial_numbers=body.serial_numbers or "",
+        mfg_date=body.mfg_date or "",
+        exp_date=body.exp_date or "",
     )
     db.add(prod)
-    for ln in body.lines:
-        if ln.chieu not in ("vao", "ra"):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "chieu phải là 'vao' hoặc 'ra'")
-        db.add(InvProductionLine(
-            production=prod, chieu=ln.chieu, item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
-            don_gia_tam=ln.don_gia_tam or 0, note=ln.note or "", orig_item_id=ln.orig_item_id,
-        ))
+
+    has_consumes = any(ln.chieu == "vao" for ln in body.lines)
+    has_outputs = any(ln.chieu == "ra" for ln in body.lines)
+
+    if body.recipe_id and not has_consumes:
+        rec = db.get(InvRecipe, body.recipe_id)
+        if rec:
+            out_qty = sum(l.so_luong for l in body.lines if l.chieu == "ra")
+            if out_qty <= 0:
+                out_qty = body.output_qty or rec.output_qty or 1.0
+
+            if not has_outputs:
+                wh_out = body.warehouse_id or (rec.lines[0].warehouse_id if rec.lines else 1)
+                db.add(InvProductionLine(
+                    production=prod,
+                    chieu="ra",
+                    item_id=rec.output_item_id,
+                    warehouse_id=wh_out,
+                    so_luong=out_qty,
+                    don_gia_tam=0,
+                    lot_number=body.lot_number or "",
+                    serial_numbers=body.serial_numbers or "",
+                    note="",
+                ))
+            else:
+                for ln in body.lines:
+                    if ln.chieu == "ra":
+                        db.add(InvProductionLine(
+                            production=prod,
+                            chieu="ra",
+                            item_id=ln.item_id,
+                            warehouse_id=ln.warehouse_id,
+                            so_luong=ln.so_luong,
+                            don_gia_tam=ln.don_gia_tam or 0,
+                            lot_number=ln.lot_number or body.lot_number or "",
+                            serial_numbers=ln.serial_numbers or body.serial_numbers or "",
+                            note=ln.note or "",
+                            orig_item_id=ln.orig_item_id,
+                        ))
+
+            ratio = (out_qty / rec.output_qty) if rec.output_qty else 1.0
+            for rl in rec.lines:
+                db.add(InvProductionLine(
+                    production=prod,
+                    chieu="vao",
+                    item_id=rl.item_id,
+                    warehouse_id=rl.warehouse_id,
+                    so_luong=round(rl.so_luong * ratio, 4),
+                    don_gia_tam=0,
+                    lot_number="",
+                    serial_numbers="",
+                    note="",
+                    orig_item_id=None,
+                ))
+    else:
+        for ln in body.lines:
+            if ln.chieu not in ("vao", "ra"):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "chieu phải là 'vao' hoặc 'ra'")
+            db.add(InvProductionLine(
+                production=prod,
+                chieu=ln.chieu,
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                so_luong=ln.so_luong,
+                don_gia_tam=ln.don_gia_tam or 0,
+                lot_number=ln.lot_number or (body.lot_number if ln.chieu == "ra" else ""),
+                serial_numbers=ln.serial_numbers or (body.serial_numbers if ln.chieu == "ra" else ""),
+                note=ln.note or "",
+                orig_item_id=ln.orig_item_id,
+            ))
+
     db.commit()
     db.refresh(prod)
     _audit(db, user, "inv_production_create", f"LSX #{prod.id}", body.ngay)
@@ -3031,6 +3669,18 @@ def production_list(
         stmt = stmt.where(InvProduction.ngay <= den)
     stmt = stmt.order_by(InvProduction.id.desc()).limit(min(limit, 500))
     return [_prod_out(db, p) for p in db.scalars(stmt)]
+
+
+@router.get("/productions/{pid}", response_model=InvProductionOut)
+def production_get(
+    pid: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    prod = db.get(InvProduction, pid)
+    if not prod:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lệnh sản xuất")
+    return _prod_out(db, prod)
 
 
 @router.get("/productions/export-xlsx")
@@ -3095,13 +3745,20 @@ def production_update(
     prod.cp_nhan_cong = body.cp_nhan_cong or 0
     prod.cp_sxc = body.cp_sxc or 0
     prod.gia_ban_du_kien = body.gia_ban_du_kien or 0
+    prod.lot_number = body.lot_number or ""
+    prod.serial_numbers = body.serial_numbers or ""
+    prod.mfg_date = body.mfg_date or ""
+    prod.exp_date = body.exp_date or ""
     for ln in list(prod.lines):
         db.delete(ln)
     for ln in body.lines:
         db.add(InvProductionLine(
             production=prod, chieu=ln.chieu, item_id=ln.item_id,
             warehouse_id=ln.warehouse_id, so_luong=ln.so_luong,
-            don_gia_tam=ln.don_gia_tam or 0, note=ln.note or "", orig_item_id=ln.orig_item_id,
+            don_gia_tam=ln.don_gia_tam or 0,
+            lot_number=ln.lot_number or (body.lot_number if ln.chieu == "ra" else ""),
+            serial_numbers=ln.serial_numbers or (body.serial_numbers if ln.chieu == "ra" else ""),
+            note=ln.note or "", orig_item_id=ln.orig_item_id,
         ))
     db.commit()
     db.refresh(prod)
@@ -3166,6 +3823,111 @@ def production_void(
         raise _neg(e)
     _audit(db, user, "inv_production_void", f"LSX #{pid}")
     return _prod_out(db, prod)
+
+
+@router.get("/traceability", response_model=TraceabilityResponseOut)
+def inventory_traceability(
+    batch_no: str = "",
+    serial_no: str = "",
+    item_id: int | None = None,
+    production_id: int | None = None,
+    tu: str = "",
+    den: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    items_map = {i.id: i for i in db.scalars(select(InvItem))}
+    whs_map = {w.id: w for w in db.scalars(select(InvWarehouse))}
+
+    stmt = select(InvProduction)
+    if production_id:
+        stmt = stmt.where(InvProduction.id == production_id)
+    if tu:
+        stmt = stmt.where(InvProduction.ngay >= tu)
+    if den:
+        stmt = stmt.where(InvProduction.ngay <= den)
+    prods = list(db.scalars(stmt.order_by(InvProduction.id.desc())))
+
+    records: list[TraceabilityRecordOut] = []
+    b_clean = (batch_no or "").strip()
+    s_clean = (serial_no or "").strip()
+
+    for p in prods:
+        out_lines = [ln for ln in p.lines if ln.chieu == "ra"]
+        in_lines = [ln for ln in p.lines if ln.chieu == "vao"]
+
+        match = True
+        if b_clean:
+            p_lot = getattr(p, "lot_number", "") or ""
+            line_lots = [getattr(ln, "lot_number", "") or "" for ln in p.lines]
+            if b_clean.lower() not in p_lot.lower() and not any(b_clean.lower() in l.lower() for l in line_lots):
+                match = False
+
+        if s_clean and match:
+            p_serials = _parse_serials(getattr(p, "serial_numbers", "") or "")
+            line_serials = []
+            for ln in p.lines:
+                line_serials.extend(_parse_serials(getattr(ln, "serial_numbers", "") or ""))
+            all_serials = p_serials + line_serials
+            if not any(s_clean.lower() in x.lower() for x in all_serials):
+                match = False
+
+        if item_id and match:
+            if not any(ln.item_id == item_id for ln in p.lines):
+                match = False
+
+        if not match:
+            continue
+
+        first_out = out_lines[0] if out_lines else None
+        it_out = items_map.get(first_out.item_id) if first_out else None
+        wh_out = whs_map.get(first_out.warehouse_id) if first_out else None
+        out_obj = None
+        if first_out and it_out:
+            out_obj = TraceabilityOutputItemOut(
+                id=it_out.id,
+                ma_hang=it_out.ma_hang,
+                ten=it_out.ten,
+                dvt=it_out.dvt,
+                qty=sum(ln.so_luong for ln in out_lines if ln.item_id == it_out.id),
+                warehouse_id=first_out.warehouse_id,
+                warehouse_code=wh_out.code if wh_out else "",
+            )
+
+        consumed_list: list[TraceabilityConsumedMaterialOut] = []
+        for ln in in_lines:
+            it = items_map.get(ln.item_id)
+            wh = whs_map.get(ln.warehouse_id)
+            ln_lot = getattr(ln, "lot_number", "") or ""
+            consumed_list.append(TraceabilityConsumedMaterialOut(
+                item_id=ln.item_id,
+                ma_hang=it.ma_hang if it else "",
+                ten=it.ten if it else "",
+                dvt=it.dvt if it else "",
+                so_luong=ln.so_luong,
+                lot_number=ln_lot,
+                batch_no=ln_lot,
+                serial_numbers=_parse_serials(getattr(ln, "serial_numbers", "") or ""),
+                warehouse_id=ln.warehouse_id,
+                warehouse_code=wh.code if wh else "",
+            ))
+
+        p_lot = getattr(p, "lot_number", "") or ""
+        records.append(TraceabilityRecordOut(
+            production_id=p.id,
+            so_ct=p.so_ct,
+            ngay=p.ngay,
+            status=p.status,
+            batch_no=p_lot,
+            lot_number=p_lot,
+            serial_numbers=_parse_serials(getattr(p, "serial_numbers", "") or ""),
+            mfg_date=getattr(p, "mfg_date", "") or "",
+            exp_date=getattr(p, "exp_date", "") or "",
+            output_item=out_obj,
+            consumed_materials=consumed_list,
+        ))
+
+    return TraceabilityResponseOut(records=records)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, TaxSyncResult } from "../api";
+import { EmailSyncModal } from "../components/EmailSyncModal";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -23,6 +24,7 @@ export function TaxSync() {
   const [doImport, setDoImport] = useState(false);
   const [err, setErr] = useState("");
   const [res, setRes] = useState<TaxSyncResult | null>(null);
+  const [emailSyncOpen, setEmailSyncOpen] = useState(false);
 
   const [hasSavedPw, setHasSavedPw] = useState(false);
   const [sessionValid, setSessionValid] = useState<boolean | null>(null);
@@ -35,7 +37,6 @@ export function TaxSync() {
     }
   }
   useEffect(() => {
-    loadCaptcha();
     api
       .taxGetCredentials()
       .then((c) => {
@@ -43,7 +44,18 @@ export function TaxSync() {
         setHasSavedPw(c.has_password);
       })
       .catch(() => {});
-    api.taxSession().then((x) => setSessionValid(x.valid)).catch(() => setSessionValid(false));
+
+    // Only spend a CAPTCHA when the cached tax session is no longer usable.
+    api
+      .taxSession()
+      .then((x) => {
+        setSessionValid(x.valid);
+        if (!x.valid) loadCaptcha();
+      })
+      .catch(() => {
+        setSessionValid(false);
+        loadCaptcha();
+      });
   }, []);
   async function saveCreds() {
     try {
@@ -72,7 +84,6 @@ export function TaxSync() {
       });
       setRes(r);
       setSessionValid(true);
-      loadCaptcha(); // captcha dùng 1 lần
       if (r.import) {
         window.alert(
           `Đã nạp ${r.import.imported} HĐ mua vào Nhập hàng (bỏ qua ${r.import.skipped} đã có, lỗi ${r.import.errors}). Vào tab Nhập hàng để duyệt.`,
@@ -88,11 +99,23 @@ export function TaxSync() {
 
   return (
     <div className="docs-page" style={{ maxWidth: 900 }}>
-      <h2>Đồng bộ hóa đơn từ cơ quan thuế</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Đăng nhập cổng <b>hoadondientu.gdt.gov.vn</b> bằng tài khoản MST của công ty, tải hóa đơn
-        mua/bán năm <b>2026</b> rồi đối chiếu. Mật khẩu đã lưu được mã hóa trên máy chủ.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h2>Đồng bộ hóa đơn từ cơ quan thuế</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Đăng nhập cổng <b>hoadondientu.gdt.gov.vn</b> bằng tài khoản MST của công ty, tải hóa đơn
+            mua/bán năm <b>2026</b> rồi đối chiếu. Mật khẩu đã lưu được mã hóa trên máy chủ.
+          </p>
+        </div>
+        <button
+          className="btn-sm ghost"
+          style={{ fontWeight: 600, color: "var(--accent-color, #0f766e)", padding: "8px 14px" }}
+          onClick={() => setEmailSyncOpen(true)}
+          title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
+        >
+          📥 Đồng bộ Email Zoho
+        </button>
+      </div>
       <div className={`chip sm ${sessionValid ? "green" : "gray"}`} style={{ marginBottom: 10 }}>
         {sessionValid === null ? "Đang kiểm tra phiên cổng thuế…" : sessionValid ? "Phiên cổng thuế hiện còn hiệu lực" : "Phiên đã hết hạn — cần đăng nhập lại bằng CAPTCHA"}
       </div>
@@ -360,6 +383,11 @@ export function TaxSync() {
           )}
         </>
       )}
+
+      <EmailSyncModal
+        isOpen={emailSyncOpen}
+        onClose={() => setEmailSyncOpen(false)}
+      />
     </div>
   );
 }

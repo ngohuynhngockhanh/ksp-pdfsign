@@ -6,11 +6,13 @@ import hashlib
 import re
 import threading
 import time
+import unicodedata
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 
+from . import sales_assistant
 from .config import Settings
 
 
@@ -31,14 +33,37 @@ _EXECUTION_REQUEST = re.compile(
     r"(?:kết quả|output|result)\s+(?:của\s+)?"
     r"(?:lệnh|command|shell|terminal)\b)")
 _PROMPT_INJECTION_REQUEST = re.compile(
-    r"(?i)(?:ignore\s+(?:all\s+)?(?:previous|earlier|prior)\s+instructions?|"
-    r"bỏ qua\s+(?:(?:mọi|toàn bộ|các)\s+)?(?:hướng dẫn|quy tắc|chỉ dẫn|prompt)|"
-    r"system\s+prompt|developer\s+message|prompt\s+injection|jailbreak|\bDAN\b|"
-    r"reveal\s+(?:the\s+)?prompt|tiết lộ\s+(?:prompt|hướng dẫn))")
+    r"(?i)(?:ignore[\s\W_]*(?:all[\s\W_]*)?(?:previous|earlier|prior)[\s\W_]*instructions?|"
+    r"bỏ[\s\W_]*qua[\s\W_]*(?:(?:mọi|toàn[\s\W_]*bộ|các)[\s\W_]*)?"
+    r"(?:hướng[\s\W_]*dẫn|quy[\s\W_]*tắc|chỉ[\s\W_]*dẫn|prompt)|"
+    r"system[\s\W_]*prompt|developer[\s\W_]*message|prompt[\s\W_]*injection|"
+    r"jailbreak|\bDAN\b|reveal[\s\W_]*(?:the[\s\W_]*)?prompt|"
+    r"tiết[\s\W_]*lộ[\s\W_]*(?:prompt|hướng[\s\W_]*dẫn))")
+_FOLDED_PROMPT_INJECTION_REQUEST = re.compile(
+    r"(?i)(?:ignore[\s\W_]*(?:all[\s\W_]*)?(?:previous|earlier|prior)[\s\W_]*instructions?|"
+    r"bo[\s\W_]*qua[\s\W_]*(?:(?:moi|toan[\s\W_]*bo|cac)[\s\W_]*)?"
+    r"(?:huong[\s\W_]*dan|quy[\s\W_]*tac|chi[\s\W_]*dan|prompt)|"
+    r"system[\s\W_]*prompt|developer[\s\W_]*message|prompt[\s\W_]*injection|"
+    r"jailbreak|reveal[\s\W_]*(?:the[\s\W_]*)?prompt|"
+    r"tiet[\s\W_]*lo[\s\W_]*(?:prompt|huong[\s\W_]*dan))")
+_COMPACT_PROMPT_INJECTION_REQUEST = re.compile(
+    r"(?i)(?:ignore(?:all)?(?:previous|earlier|prior)instructions?|"
+    r"boqua(?:moi|toanbo|cac)?(?:huongdan|quytac|chidan|prompt)|"
+    r"systemprompt|developermessage|promptinjection|jailbreak|"
+    r"reveal(?:the)?prompt|tietlo(?:prompt|huongdan))")
 _PROGRAMMING_REQUEST = re.compile(
     r"(?i)(?:\blập\s*trình\b|\bviết\s+(?:code|mã\s*nguồn|script)\b|"
     r"\b(?:python|javascript|typescript|java|c\+\+|c#|bash|powershell)\b|"
     r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code|console|terminal|shell)\b)")
+_COMPACT_EXECUTION_REQUEST = re.compile(
+    r"(?i)(?:run|execute|chay|thucthi)(?:ls|pwd|whoami|cat|grep|curl|wget|rm|"
+    r"mkdir|chmod|docker|git|npm|pip|python|command|lenh|shell|terminal|console)"
+)
+_COMPACT_PROGRAMMING_TERMS = frozenset({
+    "python", "javascript", "typescript", "java", "cplusplus", "csharp", "bash",
+    "powershell", "sourcecode", "script", "debug", "compile", "npm", "pip",
+    "terminal", "console", "shell",
+})
 _SESSION_ID = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
 _MAX_TRAINING_MESSAGE_BYTES = 2000
 _AUTH_LOCK = threading.Lock()
@@ -71,6 +96,29 @@ def _truncate_utf8(value: str, max_bytes: int) -> str:
         byte_count += character_bytes
         end = index + 1
     return value[:end]
+
+
+def _normalise_unsafe_text(value: str, *, fold_accents: bool = False) -> str:
+    """Make separators and Unicode formatting characters visible to safety regexes."""
+    form = "NFKD" if fold_accents else "NFKC"
+    normalized = unicodedata.normalize(form, str(value or "")).casefold()
+    chars: list[str] = []
+    for character in normalized:
+        if fold_accents and unicodedata.combining(character):
+            continue
+        category = unicodedata.category(character)
+        if character.isalnum() or character.isspace():
+            chars.append(character)
+        elif category == "Cf":
+            chars.append(" ")
+        else:
+            chars.append(" ")
+    return re.sub(r"\s+", " ", "".join(chars)).strip()
+
+
+def _compact_unsafe_text(value: str) -> str:
+    """Remove all separators for attacks that hide words with spacing tricks."""
+    return "".join(character for character in value if character.isalnum())
 
 
 def _rate_settings(settings: Settings) -> tuple[int, int]:
@@ -129,7 +177,26 @@ def runtime_stats(settings: Settings) -> dict[str, Any]:
 def unsafe_question_reason(question: str) -> str:
     """Return a stable refusal reason before any model/tool request is opened."""
     value = str(question or "").strip()
-    if _EXECUTION_REQUEST.search(value) or _PROMPT_INJECTION_REQUEST.search(value) or _PROGRAMMING_REQUEST.search(value):
+    normalized = _normalise_unsafe_text(value)
+    folded = _normalise_unsafe_text(value, fold_accents=True)
+    compact = _compact_unsafe_text(folded)
+    prompt_injection = (
+        _PROMPT_INJECTION_REQUEST.search(value)
+        or _PROMPT_INJECTION_REQUEST.search(normalized)
+        or _FOLDED_PROMPT_INJECTION_REQUEST.search(folded)
+        or _COMPACT_PROMPT_INJECTION_REQUEST.search(compact)
+    )
+    compact_execution = bool(_COMPACT_EXECUTION_REQUEST.search(compact))
+    compact_programming = any(term in compact for term in _COMPACT_PROGRAMMING_TERMS)
+    if (
+        _EXECUTION_REQUEST.search(value)
+        or _EXECUTION_REQUEST.search(normalized)
+        or compact_execution
+        or prompt_injection
+        or _PROGRAMMING_REQUEST.search(value)
+        or _PROGRAMMING_REQUEST.search(normalized)
+        or compact_programming
+    ):
         return "Training chi ho tro tra cuu co nguon; khong thuc thi tool, lenh hoac ho tro lap trinh"
     return ""
 
@@ -258,13 +325,42 @@ def archived_eval_report(settings: Settings) -> bytes:
         raise TrainingError("Khong doc duoc bao cao Hermes") from exc
 
 
-def ask(settings: Settings, question: str, session_id: str = "", personal_context: str = "") -> dict[str, Any]:
+def ask(
+    settings: Settings,
+    question: str,
+    session_id: str = "",
+    personal_context: str = "",
+    assistant_mode: str = "technical",
+) -> dict[str, Any]:
     question = question.strip()
     if not question or _utf8_bytes(question) > _MAX_TRAINING_MESSAGE_BYTES:
         raise TrainingError("Cau hoi phai tu 1 den 2000 ky tu")
+    mode = sales_assistant.normalize_mode(assistant_mode)
+    if sales_assistant.contains_abuse(question):
+        return sales_assistant.refusal_result(session_id=session_id)
+    if mode == sales_assistant.SALES_MODE and sales_assistant.contains_private_request(question):
+        return sales_assistant.private_refusal_result(session_id=session_id)
     unsafe_reason = unsafe_question_reason(question)
     if unsafe_reason:
         raise TrainingError(unsafe_reason)
+    if mode == sales_assistant.SALES_MODE:
+        local_reply = sales_assistant.local_reply(question)
+        if local_reply:
+            return sales_assistant.sanitize_result(
+                {
+                    "sessionId": session_id,
+                    "answer": {
+                        "answer": local_reply,
+                        "sourceBasis": "documentation-only",
+                        "documentationEvidence": [],
+                        "videoEvidence": [],
+                        "generalGuidance": "Nhân viên iNut sẽ xác nhận cấu hình hoặc giá chính thức khi cần.",
+                        "warnings": [],
+                        "followUps": [],
+                    },
+                },
+                mode=mode,
+            )
     if not settings.training_password:
         raise TrainingError("TRAINING_PASSWORD chua duoc cau hinh")
     _reserve_request(settings)
@@ -276,7 +372,9 @@ def ask(settings: Settings, question: str, session_id: str = "", personal_contex
         with httpx.Client(timeout=settings.training_timeout, transport=transport) as client:
             cache_key = _auth_cache_key(base, settings.training_password, transport)
             cookie = _login(client, base, origin, settings.training_password, cache_key)
-            safe_context = _truncate_utf8(personal_context.strip(), 24000)
+            mode_context = sales_assistant.context(question) if mode == sales_assistant.SALES_MODE else ""
+            combined_context = "\n\n".join(part for part in (mode_context, personal_context.strip()) if part)
+            safe_context = _truncate_utf8(combined_context, 24000)
             enriched_question = question
             if safe_context:
                 prefix = (
@@ -307,7 +405,8 @@ def ask(settings: Settings, question: str, session_id: str = "", personal_contex
             data = response.json()["data"]
             answer = data.get("answer", {})
             if isinstance(answer, dict) and (answer.get("sourceBasis") == "unstructured" or str(answer.get("answer", "")).startswith("call:default_api:")):
-                data["answer"] = _safe_fallback(question)
+                data["answer"] = sales_assistant.sales_fallback(question) if mode == sales_assistant.SALES_MODE else _safe_fallback(question)
+            data = sales_assistant.sanitize_result(data, mode=mode)
             success = True
             return data
     except TrainingError as exc:

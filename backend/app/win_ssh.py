@@ -16,10 +16,11 @@ import base64
 import json
 import os
 import subprocess
+from pathlib import Path
 
 from .config import Settings
+from .host_discovery import resolve_windows_host
 from .schemas import CertInfo
-
 # digest_algorithm -> (lop hash .NET, OID)
 _HASH_OID = {
     "sha1": ("SHA1", "1.3.14.3.2.26"),
@@ -39,22 +40,46 @@ def _encode_ps(script: str) -> str:
 
 def _run(settings: Settings, host: str, admin_password: str, script: str) -> str:
     """Chay PowerShell tren may Windows qua SSH, tra ve stdout (text)."""
+    # Tu dong resolve host qua nmap neu IP khong thong
+    resolved_host = resolve_windows_host(host or settings.agent_default_ip)
     enc = _encode_ps(script)
-    cmd = [
-        "sshpass",
-        "-e",
-        "ssh",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "UserKnownHostsFile=/dev/null",
-        "-o",
-        f"ConnectTimeout={settings.ssh_connect_timeout}",
-        f"{settings.ssh_user}@{host}",
-        f"powershell -NoProfile -OutputFormat Text -EncodedCommand {enc}",
-    ]
-    env = dict(os.environ)
-    env["SSHPASS"] = admin_password
+    key_path = Path(getattr(settings, "ecus_ssh_key_path", "/home/ksp/.ssh/id_ed25519"))
+    if not key_path.is_file():
+        key_path = Path.home() / ".ssh" / "id_ed25519"
+
+    if key_path.is_file():
+        cmd = [
+            "ssh",
+            "-n",
+            "-i",
+            str(key_path),
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            f"ConnectTimeout={settings.ssh_connect_timeout}",
+            f"{settings.ssh_user}@{resolved_host}",
+            f"powershell -NoProfile -NonInteractive -InputFormat None -OutputFormat Text -EncodedCommand {enc}",
+        ]
+        env = dict(os.environ)
+    else:
+        cmd = [
+            "sshpass",
+            "-e",
+            "ssh",
+            "-n",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            f"ConnectTimeout={settings.ssh_connect_timeout}",
+            f"{settings.ssh_user}@{resolved_host}",
+            f"powershell -NoProfile -NonInteractive -InputFormat None -OutputFormat Text -EncodedCommand {enc}",
+        ]
+        env = dict(os.environ)
+        env["SSHPASS"] = admin_password
     try:
         proc = subprocess.run(
             cmd,
@@ -133,12 +158,16 @@ $tp="__TP__"
 $cert=Get-Item ("Cert:\CurrentUser\My\" + $tp)
 $chain=New-Object System.Security.Cryptography.X509Certificates.X509Chain
 $chain.ChainPolicy.RevocationMode="NoCheck"
-[void]$chain.Build($cert)
+$chain.ChainPolicy.UrlRetrievalTimeout=New-Object TimeSpan(0,0,2)
+$chain.ChainPolicy.VerificationFlags="AllFlags"
+try { [void]$chain.Build($cert) } catch {}
 $ders=@()
 $ders += [Convert]::ToBase64String($cert.RawData)
-foreach ($el in $chain.ChainElements) {
-  $b=[Convert]::ToBase64String($el.Certificate.RawData)
-  if ($ders -notcontains $b) { $ders += $b }
+if ($chain.ChainElements) {
+  foreach ($el in $chain.ChainElements) {
+    $b=[Convert]::ToBase64String($el.Certificate.RawData)
+    if ($ders -notcontains $b) { $ders += $b }
+  }
 }
 $json=$ders | ConvertTo-Json -Compress
 $bytes=[System.Text.Encoding]::UTF8.GetBytes($json)

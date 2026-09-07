@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 import { createHttpServer, createRuntime } from '../src/server.js'
@@ -44,6 +45,35 @@ test('Streamable HTTP MCP handshake discovers and calls a typed read tool', asyn
     const tools = await client.listTools()
     assert.ok(tools.tools.some((tool) => tool.name === 'bidding_search'))
     const result = await client.callTool({ name: 'inut_crm_health', arguments: {} })
+    assert.equal(result.structuredContent.status, 'success')
+  } finally {
+    await client.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('legacy SSE MCP handshake keeps the session alive for Agy clients', async () => {
+  const runtime = createRuntime({
+    token: ['unit', 'fixture', 'value'].join('-'),
+    backendClient: {
+      baseUrl: 'http://backend',
+      request: async () => ({ search_mode: 'official_exact_plus_local_index' }),
+      dispatch: async () => ({ search_mode: 'official_exact_plus_local_index' }),
+    },
+    auditPath: '/tmp/inut-crm-mcp-sse-test-audit.jsonl',
+  })
+  const server = createHttpServer(runtime)
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const client = new Client({ name: 'agy-unit-client', version: '1.0.0' })
+  const auth = { authorization: 'Bearer unit-fixture-value' }
+  const transport = new SSEClientTransport(new URL(`http://127.0.0.1:${address.port}/sse`), {
+    eventSourceInit: { fetch: (url, init = {}) => fetch(url, { ...init, headers: { ...init.headers, ...auth } }) },
+    requestInit: { headers: auth },
+  })
+  try {
+    await client.connect(transport)
+    const result = await client.callTool({ name: 'standards_tqc_status', arguments: {} })
     assert.equal(result.structuredContent.status, 'success')
   } finally {
     await client.close()

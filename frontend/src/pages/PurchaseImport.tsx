@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
+import { EmailSyncModal } from "../components/EmailSyncModal";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -73,7 +74,13 @@ export function PurchaseImport({
   const [dragActive, setDragActive] = useState(false);
   const [sortBy, setSortBy] = useState<PurchaseSortKey>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [hidePre2026, setHidePre2026] = useState(true);
+  const [emailSyncOpen, setEmailSyncOpen] = useState(false);
   const autoHdRef = useRef(false);
+
+  const pre2026Count = list.filter((p) => (p.ngay || "") < "2026-01-01").length;
+  const from2026Count = list.filter((p) => (p.ngay || "") >= "2026-01-01").length;
+  const activeList = hidePre2026 ? list.filter((p) => (p.ngay || "") >= "2026-01-01") : list;
 
   function toggleSel(id: number) {
     setSel((s) => {
@@ -82,7 +89,7 @@ export function PurchaseImport({
       return n;
     });
   }
-  const dupIds = list.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
+  const dupIds = activeList.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
   function changeSort(nextKey: PurchaseSortKey) {
     if (sortBy === nextKey) {
       setSortDir((dir) => dir === "desc" ? "asc" : "desc");
@@ -93,7 +100,7 @@ export function PurchaseImport({
   }
 
   // Server returns newest first; the local sort keeps the order stable after filters.
-  const shown = [...list].sort((a, b) => {
+  const shown = [...activeList].sort((a, b) => {
     const direction = sortDir === "desc" ? -1 : 1;
     if (sortBy === "id") return (a.id - b.id) * direction;
     if (sortBy === "invoice") return invoiceNumberCollator.compare(a.so_hd || "", b.so_hd || "") * direction;
@@ -108,7 +115,11 @@ export function PurchaseImport({
   function exportParams() {
     return sel.size > 0
       ? { ids: [...sel].join(",") }
-      : { status_f: statusF, tu: dateRange.tu, den: dateRange.den };
+      : {
+          status_f: statusF,
+          tu: dateRange.tu || (hidePre2026 ? "2026-01-01" : ""),
+          den: dateRange.den,
+        };
   }
 
   async function bulkDelete(ids: number[], label: string) {
@@ -353,11 +364,11 @@ export function PurchaseImport({
   const isDichVu = cur?.loai === "dich_vu";
   // HD dich vu khong nhap kho -> khong can khop mat hang
   const unmatched = cur && !isDichVu ? cur.lines.filter((ln) => !ln.item_id).length : 0;
-  const draftCount = list.filter((p) => p.status === "draft").length;
-  const postedCount = list.filter((p) => p.status === "posted").length;
-  const warningCount = list.reduce((sum, p) => sum + p.warnings.length, 0);
-  const totalValue = list.reduce((sum, p) => sum + (p.tong_tien || 0), 0);
-  const filtersActive = Boolean(statusF || vatF || dateRange.tu || dateRange.den);
+  const draftCount = activeList.filter((p) => p.status === "draft").length;
+  const postedCount = activeList.filter((p) => p.status === "posted").length;
+  const warningCount = activeList.reduce((sum, p) => sum + p.warnings.length, 0);
+  const totalValue = activeList.reduce((sum, p) => sum + (p.tong_tien || 0), 0);
+  const filtersActive = Boolean(statusF || vatF || dateRange.tu || dateRange.den || !hidePre2026);
 
   async function toggleLoai() {
     if (!cur) return;
@@ -464,6 +475,14 @@ export function PurchaseImport({
             >
               Đồng bộ NAS
             </button>
+            <button
+              className="btn-sm ghost"
+              style={{ fontWeight: 600, color: "var(--accent-color, #0f766e)" }}
+              title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
+              onClick={() => setEmailSyncOpen(true)}
+            >
+              📥 Đồng bộ Email Zoho
+            </button>
           </div>
         </div>
       </section>
@@ -513,6 +532,38 @@ export function PurchaseImport({
             </button>
           </div>
         </header>
+        <div className="purchase-scope-pills" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", padding: "8px 12px", background: "var(--card-bg, #f8fafc)", borderRadius: "8px", border: "1px solid var(--border-color, #e2e8f0)", marginBottom: "10px" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted, #64748b)" }}>Phạm vi:</span>
+          <button
+            type="button"
+            className={`btn-sm ${hidePre2026 ? "primary" : "ghost"}`}
+            style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+            onClick={() => setHidePre2026(true)}
+            title="Chỉ hiển thị hóa đơn chính thức từ ngày 01/01/2026"
+          >
+            <span>✨ Chính thức từ 2026</span>
+            <span style={{ background: hidePre2026 ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: hidePre2026 ? "#fff" : "#334155", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
+              {from2026Count}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`btn-sm ${!hidePre2026 ? "primary" : "ghost"}`}
+            style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+            onClick={() => setHidePre2026(false)}
+            title="Xem toàn bộ bao gồm 47 hóa đơn lịch sử cũ trước năm 2026"
+          >
+            <span>🕰️ Tất cả bao gồm lịch sử cũ (&lt; 2026)</span>
+            <span style={{ background: !hidePre2026 ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: !hidePre2026 ? "#fff" : "#334155", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
+              {list.length}
+            </span>
+          </button>
+          {hidePre2026 && pre2026Count > 0 && (
+            <span style={{ fontSize: "12px", color: "var(--muted, #64748b)", marginLeft: "auto" }}>
+              💡 Đang tạm quên <b>{pre2026Count}</b> HĐ nháp lịch sử cũ (&lt; 2026) cho đỡ rối mắt
+            </span>
+          )}
+        </div>
         <div className="purchase-filters">
           <label>Trạng thái<select className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
             <option value="">Tất cả trạng thái</option><option value="draft">Nháp chờ duyệt</option><option value="posted">Đã ghi sổ</option>
@@ -521,7 +572,7 @@ export function PurchaseImport({
           <label>Thuế suất<select className="tb-select" value={vatF} onChange={(e) => setVatF(e.target.value)} title="Lọc theo thuế suất dòng hàng">
             <option value="">Tất cả VAT</option><option value="0">0% / KCT</option><option value="5">5%</option><option value="8">8%</option><option value="10">10%</option>
           </select></label>
-          {filtersActive && <button className="purchase-clear-filter" onClick={() => { setStatusF(""); setVatF(""); setDateRange({ tu: "", den: "" }); }}>Xóa bộ lọc</button>}
+          {filtersActive && <button className="purchase-clear-filter" onClick={() => { setStatusF(""); setVatF(""); setDateRange({ tu: "", den: "" }); setHidePre2026(true); }}>Xóa bộ lọc</button>}
         </div>
         <div className="purchase-bulkbar">
           <span>{sel.size > 0 ? `Đang chọn ${sel.size}` : "Chọn hóa đơn để thao tác theo lô"}</span>
@@ -1176,6 +1227,12 @@ export function PurchaseImport({
           </div>
         </div>
       )}
+
+      <EmailSyncModal
+        isOpen={emailSyncOpen}
+        onClose={() => setEmailSyncOpen(false)}
+        onSyncSuccess={load}
+      />
     </div>
   );
 }

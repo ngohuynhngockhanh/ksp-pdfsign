@@ -17,3 +17,7 @@ Jinja2==3.1.6
 rapidocr-onnxruntime==1.4.4
 openpyxl==3.1.5
 gdown==5.2.0
+reportlab>=4.0.0
+python-barcode>=0.15.0
+qrcode>=7.4.2
+

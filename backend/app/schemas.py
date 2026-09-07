@@ -253,6 +253,37 @@ class BBBGGenerate(BaseModel):
     filename: str = "bien-ban-ban-giao.pdf"
 
 
+# --- Giay chung nhan xuat xuong ---
+class FactoryCertificateSpec(BaseModel):
+    label: str = ""
+    value: str = ""
+
+
+class FactoryCertificateGenerate(BaseModel):
+    certificate_no: str = ""
+    noi_lap: str = "Đắk Lắk"
+    ngay: BBBGDate | None = None
+    ben_b: BBBGBenB
+    product_name: str = ""
+    model: str = ""
+    ma_thiet_bi: str = ""
+    serial_number: str = ""
+    quantity: float = 1
+    unit: str = "Bộ"
+    ngay_san_xuat: BBBGDate | None = None
+    firmware_version: str = ""
+    hardware_revision: str = ""
+    features: list[str] = Field(default_factory=list)
+    specs: list[FactoryCertificateSpec] = Field(default_factory=list)
+    quality_status: str = "Đạt"
+    quality_note: str = ""
+    reference_quote: str = ""
+    warranty: str = ""
+    note: str = ""
+    ben_a: dict | None = None
+    filename: str = "giay-chung-nhan-xuat-xuong.pdf"
+
+
 # --- Bao gia / De nghi thanh toan ---
 class QuoteItem(BaseModel):
     ten: str = ""
@@ -270,6 +301,7 @@ class QuoteGenerate(BaseModel):
     ben_b: BBBGBenB
     items: list[QuoteItem] = Field(default_factory=list)
     thuyet_minh: str = ""
+    bao_hanh: str = ""
     hieu_luc: int = 30  # so ngay hieu luc bao gia
     filename: str = "bao-gia.pdf"
     # De nghi thanh toan
@@ -928,3 +960,352 @@ class DescribeBomIn(BaseModel):
     output_dvt: str = ""
     output_qty: float = 1
     lines: list[DescribeNvlLine] = Field(default_factory=list)
+
+
+# --- Dong bo hoa don qua Zoho Mail (REST API OAuth 2.0 & IMAP) ---
+class EmailSyncSettingsIn(BaseModel):
+    enabled: bool = True
+    mode: str = "rest_api"  # "rest_api" | "imap"
+    # REST API OAuth 2.0
+    client_id: str = ""
+    client_secret: str = ""
+    refresh_token: str = ""
+    grant_token: str = ""  # Nhap code mot lan tu Zoho Developer Console
+    accounts_url: str = "https://accounts.zoho.com"
+    mail_api_url: str = "https://mail.zoho.com"
+    # IMAP
+    server: str = "imappro.zoho.com"
+    port: int = 993
+    username: str = "khanhnhn@inut.vn"
+    password: str = ""
+    mailbox: str = "INBOX"
+    days: int = 30
+
+
+class EmailSyncSettingsOut(BaseModel):
+    enabled: bool
+    mode: str
+    client_id: str
+    has_client_secret: bool
+    has_refresh_token: bool
+    accounts_url: str
+    mail_api_url: str
+    server: str
+    port: int
+    username: str
+    has_password: bool
+    mailbox: str
+    days: int
+
+
+class EmailSyncTestIn(BaseModel):
+    mode: str = ""
+    # REST API
+    client_id: str = ""
+    client_secret: str = ""
+    refresh_token: str = ""
+    grant_token: str = ""
+    accounts_url: str = "https://accounts.zoho.com"
+    mail_api_url: str = "https://mail.zoho.com"
+    # IMAP
+    server: str = "imappro.zoho.com"
+    port: int = 993
+    username: str = "khanhnhn@inut.vn"
+    password: str = ""
+    mailbox: str = "INBOX"
+
+
+class EmailSyncExchangeCodeIn(BaseModel):
+    client_id: str
+    client_secret: str
+    grant_token: str
+    accounts_url: str = "https://accounts.zoho.com"
+
+
+class EmailSyncRunIn(BaseModel):
+    days: int = 30
+
+
+# SPX Express schemas
+class SpxSettingsIn(BaseModel):
+    spx_username: str = ""
+    spx_password: str = ""
+    spx_shop_id: str = ""
+    spx_api_token: str = ""
+    spx_cookies: str = ""
+    spx_sender_name: str = ""
+    spx_sender_phone: str = ""
+    spx_sender_address: str = ""
+    spx_sender_province: str = ""
+    spx_sender_district: str = ""
+    spx_sender_ward: str = ""
+
+
+class SpxSettingsOut(BaseModel):
+    spx_username: str
+    spx_password: str
+    spx_shop_id: str
+    spx_api_token: str
+    spx_cookies: str = ""
+    spx_sender_name: str
+    spx_sender_phone: str
+    spx_sender_address: str
+    spx_sender_province: str
+    spx_sender_district: str
+    spx_sender_ward: str
+
+
+class SpxTestIn(BaseModel):
+    username: str = ""
+    password: str = ""
+    shop_id: str = ""
+    api_token: str = ""
+    cookies: str = ""
+
+
+
+class SpxOrderCreateIn(BaseModel):
+    recipient_name: str
+    recipient_phone: str
+    recipient_address: str
+    province: str = ""
+    district: str = ""
+    ward: str = ""
+    cod_amount: float = 0.0
+    weight_gram: int = 500
+    length_cm: int = 10
+    width_cm: int = 10
+    height_cm: int = 10
+    item_description: str = "Thiết bị điện tử / Phụ kiện INUT"
+    note: str = "Cho xem hàng, không cho thử"
+    payer: str = "sender"
+    order_code: str = ""
+    sender_name: str = ""
+    sender_phone: str = ""
+    sender_address: str = ""
+
+
+class SpxOrderOut(BaseModel):
+    id: int
+    tracking_no: str
+    order_code: str
+    recipient_name: str
+    recipient_phone: str
+    recipient_address: str
+    province: str
+    district: str
+    ward: str
+    cod_amount: float
+    weight_gram: int
+    length_cm: int
+    width_cm: int
+    height_cm: int
+    item_description: str
+    note: str
+    payer: str
+    status: str
+    shipping_fee: float
+    label_doc_id: str
+    sender_name: str
+    sender_phone: str
+    sender_address: str
+    is_printed: bool = False
+    printed_at: str = ""
+    created_at: str
+    updated_at: str
+
+
+class SpxOrderListOut(BaseModel):
+    items: list[SpxOrderOut]
+    total: int
+    unprinted_count: int = 0
+    printed_count: int = 0
+
+
+class SpxStatsOut(BaseModel):
+    total: int
+    unprinted: int
+    printed: int
+
+
+class SpxQuickPrintIn(BaseModel):
+    tracking_no: str
+    printer_name: str = "TP732H"
+    host: str = "192.168.1.10"
+    print_remote: bool = True
+
+
+class SpxSyncOrdersIn(BaseModel):
+    raw_text: str = ""
+    from_date: str = ""
+    to_date: str = ""
+
+
+class SpxBatchPrintIn(BaseModel):
+    tracking_numbers: list[str] = []
+    from_date: str = ""
+    to_date: str = ""
+    printer_name: str = "TP732H"
+    host: str = "192.168.1.10"
+
+
+
+# --- Dau Thau / Mua Sam Cong (Bidding Procurement & Hunting) ---
+
+class TenderItemOut(BaseModel):
+    tbmt_code: str
+    tender_name: str
+    procuring_entity: str = ""
+    investor: str = ""
+    field: str = ""
+    bid_price: float = 0.0
+    bid_deadline: str = ""
+    bid_opening_date: str = ""
+    province: str = ""
+    bidding_method: str = ""
+    source_url: str = ""
+    bid_validity_period_days: int | None = None
+    execution_period_days: int | None = None
+    decision_number: str = ""
+    description: str = ""
+    is_bookmarked: bool = False
+    bookmark_id: int | None = None
+    bookmark_status: str | None = None
+    ai_summary: str | None = None
+    is_mock: bool = False
+
+
+class BiddingSearchResponse(BaseModel):
+    items: list[TenderItemOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    is_mock: bool = False
+
+
+class BiddingBookmarkCreate(BaseModel):
+    tbmt_code: str
+    tender_name: str
+    procuring_entity: str = ""
+    investor: str = ""
+    field: str = ""
+    bid_price: float = 0.0
+    bid_deadline: str = ""
+    bid_opening_date: str = ""
+    province: str = ""
+    bidding_method: str = ""
+    source_url: str = ""
+    status: str = "watching"
+    note: str = ""
+    ai_summary: str = ""
+
+
+class BiddingBookmarkUpdate(BaseModel):
+    status: str | None = None
+    note: str | None = None
+    ai_summary: str | None = None
+    tender_name: str | None = None
+    procuring_entity: str | None = None
+    investor: str | None = None
+    field: str | None = None
+    bid_price: float | None = None
+    bid_deadline: str | None = None
+    bid_opening_date: str | None = None
+    province: str | None = None
+    bidding_method: str | None = None
+    source_url: str | None = None
+
+
+class BiddingBookmarkOut(BaseModel):
+    id: int
+    tbmt_code: str
+    tender_name: str
+    procuring_entity: str
+    investor: str
+    field: str
+    bid_price: float
+    bid_deadline: str
+    bid_opening_date: str
+    province: str
+    bidding_method: str
+    source_url: str
+    status: str
+    note: str
+    ai_summary: str
+    created_by: int | None = None
+    created_at: str
+    updated_at: str
+
+
+class BiddingBookmarkListOut(BaseModel):
+    items: list[BiddingBookmarkOut]
+    total: int
+
+
+class BiddingWatchlistCreate(BaseModel):
+    name: str
+    keyword: str = ""
+    province: str = ""
+    field: str = ""
+    min_price: float = 0.0
+    max_price: float = 0.0
+    method: str = ""
+    notify_telegram: bool = True
+    is_active: bool = True
+
+
+class BiddingWatchlistUpdate(BaseModel):
+    name: str | None = None
+    keyword: str | None = None
+    province: str | None = None
+    field: str | None = None
+    min_price: float | None = None
+    max_price: float | None = None
+    method: str | None = None
+    notify_telegram: bool | None = None
+    is_active: bool | None = None
+
+
+class BiddingWatchlistOut(BaseModel):
+    id: int
+    name: str
+    keyword: str
+    province: str
+    field: str
+    min_price: float
+    max_price: float
+    method: str
+    notify_telegram: bool
+    is_active: bool
+    last_checked_at: str | None = None
+    created_by: int | None = None
+    created_at: str
+    updated_at: str
+
+
+class BiddingWatchlistListOut(BaseModel):
+    items: list[BiddingWatchlistOut]
+    total: int
+
+
+class BiddingAIAnalyzeRequest(BaseModel):
+    custom_context: str = ""
+
+
+class BiddingAIAnalyzeResponse(BaseModel):
+    tbmt_code: str
+    analysis: dict
+    saved_to_bookmark: bool = False
+
+
+class BiddingScanResultOut(BaseModel):
+    watchlists_scanned: int = 0
+    new_tenders_found: int = 0
+    alerts_sent: int = 0
+    alerts_failed: int = 0
+    details: list[dict] = Field(default_factory=list)
+
+
+
+

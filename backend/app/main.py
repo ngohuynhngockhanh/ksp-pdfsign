@@ -4,11 +4,14 @@ from __future__ import annotations
 import io as _io
 import html
 import json
+import logging
 import math
 import re
 import secrets
 import zipfile
-from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger("ksp_pdfsign")
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -25,6 +28,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from PIL import Image
 from fastapi.responses import (
     FileResponse,
@@ -60,6 +64,7 @@ from . import (
     public_training_jobs,
     storage,
     token_backend,
+    telegram,
     verify,
 )
 from .customs_drive_api import router as customs_drive_router
@@ -125,6 +130,7 @@ from .schemas import (
     ContractAIRequest,
     ContractDraftSave,
     ContractGenerate,
+    FactoryCertificateGenerate,
     DocumentOut,
     DocumentsPage,
     LoginRequest,
@@ -145,6 +151,9 @@ from .security import hash_password, verify_password
 from .inv_api import router as inv_router  # noqa: E402
 from .payroll_api import router as payroll_router  # noqa: E402
 from .facebook_api import router as facebook_router  # noqa: E402
+from .spx_api import router as spx_router  # noqa: E402
+from .bidding_api import router as bidding_router  # noqa: E402
+from .standards_api import resume_tqc_import_jobs, router as standards_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -152,6 +161,10 @@ app.include_router(payroll_router)
 app.include_router(customs_drive_router)
 app.include_router(pymid_router)
 app.include_router(facebook_router)
+app.include_router(spx_router)
+app.include_router(bidding_router)
+app.include_router(standards_router)
+
 
 
 def _training_error(exc: training.TrainingError) -> HTTPException:
@@ -247,8 +260,10 @@ def _startup():
         ensure_admin_seed(db, settings)
         _cleanup_public_training_data(db, settings)
         _cleanup_facebook_messages(db, settings)
+        telegram.start_poller(settings)
     finally:
         gen.close()
+    resume_tqc_import_jobs()
 
 
 def _cleanup_public_training_data(db: Session, settings: Settings) -> None:
@@ -424,6 +439,83 @@ def me(
         "must_change_password": bool(db_user and db_user.must_change_password),
         "training_access": bool(db_user and (db_user.role == "admin" or db_user.training_access)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Telegram notifications (admin account linking)
+# ---------------------------------------------------------------------------
+@app.get("/api/telegram/status")
+def telegram_status(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    connected = telegram.connection_status(db, user.id)
+    configured = telegram.is_configured(settings)
+    return {
+        "enabled": configured,
+        "bot_username": settings.telegram_bot_username.lstrip("@"),
+        **connected,
+    }
+
+
+@app.post("/api/telegram/connect")
+def telegram_connect(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    if not telegram.is_configured(settings):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Telegram chưa được cấu hình trên máy chủ")
+    try:
+        return {"ok": True, **telegram.create_connect_link(db, user.id, settings)}
+    except telegram.TelegramError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+
+@app.delete("/api/telegram/connection")
+def telegram_disconnect(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    telegram.revoke_connection(db, user.id)
+    return {"ok": True}
+
+
+class TelegramSendMessageIn(BaseModel):
+    message: str
+    chat_id: str | None = None
+
+
+@app.post("/api/telegram/send")
+def telegram_send_message(
+    payload: TelegramSendMessageIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Gửi tin nhắn Telegram trực tiếp tới Admin chat hoặc chat_id chỉ định."""
+    if not telegram.is_configured(settings):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Telegram chưa được cấu hình trên máy chủ")
+
+    chats = [payload.chat_id] if payload.chat_id else telegram.admin_chat_ids(db)
+    if not chats:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có tài khoản Telegram Admin nào được liên kết")
+
+    client = telegram.TelegramClient(settings)
+    delivered = 0
+    try:
+        for cid in chats:
+            if cid and str(cid).isdigit():
+                try:
+                    client.send_message(cid, payload.message)
+                    delivered += 1
+                except Exception as e:
+                    logger.warning("Lỗi gửi Telegram tới chat %s: %s", cid, e)
+    finally:
+        client.close()
+
+    return {"ok": True, "delivered_count": delivered, "message": payload.message}
 
 
 # ---------------------------------------------------------------------------
@@ -771,7 +863,10 @@ def login_by_link(
         db, account.username, account.role,
         request.client.host if request.client else "", "login_link",
     )
-    resp = RedirectResponse(url="/ho-so-cua-toi", status_code=302)
+    # Customers with Training access should land on the question desk directly;
+    # document-only accounts keep the existing portal landing page.
+    landing = "/training" if account.role == "admin" or account.training_access else "/ho-so-cua-toi"
+    resp = RedirectResponse(url=landing, status_code=302)
     resp.set_cookie(
         COOKIE_NAME, jwt_token, httponly=True, samesite="lax",
         secure=(request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"),
@@ -1652,8 +1747,15 @@ def training_ask(
 ):
     question = str(body.get("question", ""))
     session_id = str(body.get("session_id", ""))
+    assistant_mode = str(body.get("mode", "technical"))
     try:
-        data = training.ask(settings, question, session_id, _training_personal_context(db, user.id))
+        data = training.ask(
+            settings,
+            question,
+            session_id,
+            _training_personal_context(db, user.id),
+            assistant_mode=assistant_mode,
+        )
     except training.TrainingError as exc:
         raise _training_error(exc) from exc
     return data
@@ -1666,6 +1768,7 @@ def training_job_start(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
+    assistant_mode = str(body.get("mode", "technical"))
     try:
         personal_context = _training_personal_context(db, user.id)
         job_id = training_jobs.start(
@@ -1674,6 +1777,7 @@ def training_job_start(
             str(body.get("question", "")),
             str(body.get("session_id", "")),
             personal_context,
+            assistant_mode,
         )
     except training.TrainingError as exc:
         raise _training_error(exc) from exc
@@ -2534,6 +2638,81 @@ def bbbg_generate(
     return {"doc_id": doc_id, "filename": body.filename, "customer_id": customer_id}
 
 
+@app.get("/api/factory-certificate/templates")
+def factory_certificate_templates(user: CurrentUser = Depends(require_admin)):
+    return {"templates": bbbg.list_factory_certificate_templates()}
+
+
+@app.post("/api/factory-certificate/preview")
+def factory_certificate_preview(
+    body: FactoryCertificateGenerate,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        pdf = bbbg.render_factory_certificate(settings, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh giay xuat xuong that bai: {e}")
+    return Response(content=pdf, media_type="application/pdf")
+
+
+@app.post("/api/factory-certificate/generate")
+def factory_certificate_generate(
+    body: FactoryCertificateGenerate,
+    background: BackgroundTasks,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    if not body.ben_b.name.strip() or not body.ben_b.mst.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bên nhận phải có tên và mã số thuế")
+    try:
+        pdf = bbbg.render_factory_certificate(settings, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh giay xuat xuong that bai: {e}")
+
+    doc_id = storage.save_upload(pdf)
+    customer_id = _upsert_customer(db, body.ben_b)
+    if customer_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Không thể tạo hồ sơ khách hàng")
+
+    note = "Giấy chứng nhận xuất xưởng"
+    if body.ma_thiet_bi:
+        note += f" · mã thiết bị {body.ma_thiet_bi}"
+    if body.reference_quote:
+        note += f" · căn cứ báo giá {body.reference_quote}"
+    doc = Document(
+        doc_id=doc_id,
+        filename=body.filename,
+        signed=False,
+        customer_id=customer_id,
+        doc_type="xuat_xuong",
+        note=note,
+    )
+    db.add(doc)
+    db.flush()
+    share_token = secrets.token_urlsafe(16)
+    share_expires = datetime.utcnow() + timedelta(days=settings.share_default_days)
+    db.add(Share(token=share_token, document_id=doc.id, expires_at=share_expires))
+    db.commit()
+    db.refresh(doc)
+    _audit(db, user, "factory_certificate_generate", body.filename, body.ben_b.name)
+    background.add_task(_bg_nas_sync, doc.id)
+    return {
+        "doc_id": doc_id,
+        "document_id": doc.id,
+        "filename": body.filename,
+        "customer_id": customer_id,
+        "doc_type": "xuat_xuong",
+        "share_url": _share_url(settings, share_token),
+        "share_expires_at": share_expires.isoformat(),
+    }
+
+
 @app.post("/api/invoice/parse-doc/{doc_pk}")
 def invoice_parse_stored(
     doc_pk: int,
@@ -3180,11 +3359,7 @@ def tax_save_credentials(
 
 
 def _tax_stored_password(db) -> str:
-    from . import crypto
-    from .db import AppSetting
-
-    pw = db.get(AppSetting, "tax_password_enc")
-    return crypto.decrypt(pw.value) if pw else ""
+    return tax_ops.stored_tax_credentials(db)[1]
 
 
 @app.post("/api/tax/sync")
@@ -3251,6 +3426,62 @@ def tax_sync(
     else:
         _audit(db, user, "tax_sync", mst, f"{tu}→{den}: thiếu {len(result['missing_mua'])} mua, {len(result['missing_ban'])} bán")
     return result
+
+
+@app.post("/api/tax/auto-sync")
+def tax_auto_sync(
+    days_back: int = 7,
+    do_import: bool = True,
+    send_telegram: bool = True,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Tự động giải CAPTCHA, đăng nhập và đồng bộ theo ngày hoặc khoảng chỉ định."""
+    from . import tax_auto_sync
+    try:
+        res = tax_auto_sync.sync_daily_tax_invoices(
+            db=db,
+            days_back=days_back,
+            do_import=do_import,
+            send_telegram=send_telegram,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        _audit(db, user, "tax_auto_sync", "hoadondientu.gdt.gov.vn",
+               f"Đồng bộ {res.get('range', {}).get('tu')}→{res.get('range', {}).get('den')}: "
+               f"nạp +{res.get('import', {}).get('imported', 0)} HĐ mua")
+        return res
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc)) from exc
+
+
+@app.get("/api/tax/auto-sync/status")
+def tax_auto_sync_status(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Kiểm tra tính hợp lệ của token và cấu hình Cổng Thuế."""
+    from . import crypto, tax
+    from .db import AppSetting
+
+    mst_row = db.get(AppSetting, "tax_mst")
+    pwd_row = db.get(AppSetting, "tax_password_enc")
+    tok_row = db.get(AppSetting, "tax_token_enc")
+
+    has_mst = bool(mst_row and mst_row.value)
+    has_pwd = bool(pwd_row and pwd_row.value)
+    token = crypto.decrypt(tok_row.value) if (tok_row and tok_row.value) else ""
+    token_valid = tax.check_token(token) if token else False
+
+    return {
+        "mst": mst_row.value if mst_row else "",
+        "configured": has_mst and has_pwd,
+        "token_active": token_valid,
+    }
 
 
 def _ky_from_range(tu: str, den: str) -> str:
@@ -3487,10 +3718,58 @@ def tax_sync_runs(user: CurrentUser = Depends(require_admin), db: Session = Depe
 
 
 @app.post("/api/jobs/tax-sync/run")
-def tax_sync_run_now(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
-    run = tax_ops.run_tax_sync(db)
+def tax_sync_run_now(
+    body: dict | None = Body(default=None),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    body = body or {}
+    tu = str(body.get("tu") or "").strip()
+    den = str(body.get("den") or "").strip()
+    if bool(tu) != bool(den):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Phải nhập đủ ngày bắt đầu và ngày kết thúc")
+    if tu and den:
+        try:
+            start, end = date.fromisoformat(tu), date.fromisoformat(den)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ngày phải có dạng YYYY-MM-DD") from exc
+        if start > end:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ngày bắt đầu không được sau ngày kết thúc")
+    run = tax_ops.run_tax_sync(db, tu=tu or None, den=den or None)
     _audit(db, user, "tax_sync_job", str(run.id), run.status)
     return tax_ops.serialize_run(run)
+
+
+@app.get("/api/jobs/email-sync")
+def email_sync_runs_job(user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
+    from .db import JobRun
+    rows = db.scalars(select(JobRun).where(JobRun.kind == "email_invoice_sync").order_by(JobRun.id.desc()).limit(30))
+    return [tax_ops.serialize_run(x) for x in rows]
+
+
+@app.post("/api/jobs/email-sync/run")
+def email_sync_run_now(
+    body: dict | None = Body(default=None),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    from . import email_sync
+    body = body or {}
+    days = int(body.get("days") or 30)
+    try:
+        run = email_sync.run_sync(db, settings, days=days)
+    except email_sync.EmailSyncBusy as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    except email_sync.EmailAuthError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+    except email_sync.EmailConnectionError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    except email_sync.EmailSyncError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    _audit(db, user, "email_sync_job", str(run.id), run.status)
+    return tax_ops.serialize_run(run)
+
 
 
 @app.get("/api/tax/reports")
@@ -3572,5 +3851,9 @@ if (_FRONTEND_DIST / "index.html").exists():
         # (assets/*.js|css co hash trong ten nen van duoc cache binh thuong)
         return FileResponse(
             _FRONTEND_DIST / "index.html",
-            headers={"Cache-Control": "no-cache, must-revalidate"},
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )

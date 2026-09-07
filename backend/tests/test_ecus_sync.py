@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import sqlite3
 from pathlib import Path
-from xml.sax.saxutils import escape
 
 import pytest
 
@@ -57,7 +56,7 @@ def _map_declaration(dbmod, number: str):
     from app.db import InvCustomsDecl, InvCustomsDriveFolder, InvCustomsDriveSource
 
     with dbmod._SessionLocal() as db:
-        source = InvCustomsDriveSource(year=2026, folder_id="source-folder")
+        source = InvCustomsDriveSource(year=2027, folder_id="source-folder")
         db.add(source)
         db.flush()
         declaration = InvCustomsDecl(
@@ -133,4 +132,3 @@ def test_sync_upload_is_idempotent(tmp_path, monkeypatch):
         assert second["skipped"] == 1
         assert len(uploads) == 1
         assert db.query(InvCustomsEcusExport).count() == 1
-

@@ -157,6 +157,27 @@ export function createMcpServer(runtime, requestContext = {}) {
   mcp.registerResource('audit-recent', 'inut://audit/recent', { title: 'Recent redacted MCP audit', mimeType: 'application/json' }, async () => ({
     contents: [{ uri: 'inut://audit/recent', mimeType: 'application/json', text: JSON.stringify((await invokeTool(getToolDefinition('inut_crm_audit_recent'), {}, runtime)).data, null, 2) }],
   }))
+  mcp.registerResource('standards-tqc', 'inut://standards/tqc', { title: 'TQC CNHQ lookup semantics', mimeType: 'application/json' }, async () => {
+    let status = null
+    try {
+      status = await runtime.backendClient.request('/api/standards/tqc/status')
+    } catch {
+      status = { available: false }
+    }
+    return {
+      contents: [{
+        uri: 'inut://standards/tqc',
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          search_scope: 'local_index',
+          exact_lookup: 'official_tqc_api',
+          provenance: ['verified_live', 'verified_cached', 'not_found_live', 'not_found_in_local_index'],
+          warning: 'Không thấy trong local index không đồng nghĩa TQC không có chứng nhận.',
+          status,
+        }, null, 2),
+      }],
+    }
+  })
   mcp.registerPrompt('crm-review', 'Review a CRM customer or tender using read-only tools first.', { subject: { description: 'Customer name, tax code, or TBMT', required: true } }, ({ subject }) => ({
     messages: [{ role: 'user', content: { type: 'text', text: `Review ${subject} with INUT CRM read-only tools. Do not mutate records without prepare/execute confirmation.` } }],
   }))

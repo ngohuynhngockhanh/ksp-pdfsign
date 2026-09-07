@@ -117,6 +117,32 @@ def test_public_site_config_contains_only_contact_fields(client):
     assert "jwt_secret" not in response.text
 
 
+def test_factory_certificate_generate_creates_shareable_document(client):
+    _login(client)
+    response = client.post("/api/factory-certificate/generate", json={
+        "certificate_no": "GCXX-TEST-732",
+        "ngay": {"day": 17, "month": 8, "year": 2026},
+        "ben_b": {
+            "name": "MERAP TEST",
+            "address": "Hưng Yên",
+            "mst": "0101400572",
+        },
+        "product_name": "iNut Smartcity - Data Logger v2",
+        "model": "iNut Smartcity - Data Logger v2",
+        "ma_thiet_bi": "7.32",
+        "quality_status": "Chờ xác nhận QC",
+        "reference_quote": "17-08-2026/BG-INUT",
+        "warranty": "Bảo hành 12 tháng, 1 đổi 1 kể từ ngày mua hàng.",
+        "filename": "factory-test.pdf",
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["doc_type"] == "xuat_xuong"
+    token = body["share_url"].rsplit("/", 1)[-1]
+    assert client.get(f"/api/share/{token}").json()["filename"] == "factory-test.pdf"
+    assert client.get(f"/api/share/{token}/download").content.startswith(b"%PDF")
+
+
 def test_login_bad(client):
     r = client.post("/api/login", json={"username": "admin", "password": "wrong"})
     assert r.status_code == 401
@@ -284,6 +310,19 @@ def test_customer_login_link(client):
     assert opened.status_code == 302
     assert opened.headers["location"] == "/ho-so-cua-toi"
     assert client.get("/api/me").status_code == 200
+
+    # Training-enabled customer links land on the question desk directly.
+    _login(client)
+    user = next(item for item in client.get("/api/users").json() if item["username"] == "khach_link")
+    enabled = client.patch(f"/api/users/{user['id']}/training-access", json={"enabled": True})
+    assert enabled.status_code == 200
+    made_training = client.post(f"/api/customers/{customer['id']}/login-link?days=7")
+    assert made_training.status_code == 200
+    training_path = made_training.json()["url"].split("/api", 1)[1]
+    client.post("/api/logout")
+    opened_training = client.get("/api" + training_path, follow_redirects=False)
+    assert opened_training.status_code == 302
+    assert opened_training.headers["location"] == "/training"
 
 
 def _make_zip(entries: dict[str, bytes]) -> bytes:

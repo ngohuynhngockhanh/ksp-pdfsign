@@ -7,7 +7,7 @@
   * { box-sizing: border-box; }
   body {
     font-family: "DejaVu Serif", "Times New Roman", serif;
-    font-size: 13px; color: #000; line-height: 1.5;
+    font-size: 13px; color: #000; line-height: 1.55;
     position: relative;
   }
   /* Logo chìm */
@@ -18,29 +18,31 @@
   }
   .letterhead { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1e6fd9; padding-bottom: 8px; }
   .letterhead img.logo { width: 64px; height: 64px; object-fit: contain; }
-  .letterhead .info { font-size: 11px; line-height: 1.45; }
-  .letterhead .info .name { font-weight: bold; font-size: 12.5px; text-transform: uppercase; color: #1e2a3a; }
+  .letterhead .info { font-size: 10px; line-height: 1.45; }
+  .letterhead .info .name { font-weight: bold; font-size: 13px; text-transform: uppercase; color: #1e2a3a; }
   .place { text-align: right; font-style: italic; margin: 8px 0 4px; }
-  h1 { text-align: center; font-size: 19px; letter-spacing: 1px; margin: 10px 0 2px; }
-  .soline { text-align: center; font-size: 12px; margin-bottom: 12px; }
+  h1 { text-align: center; font-size: 20px; letter-spacing: 1px; margin: 10px 0 2px; }
+  .soline { text-align: center; font-size: 10px; margin-bottom: 12px; }
   .kg { margin: 10px 0 2px; }
   .kg b { text-transform: uppercase; }
   .intro, .thuyet-minh { text-align: justify; margin: 6px 0; }
   .thuyet-minh { white-space: pre-line; }
   table { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
-  th, td { border: 1px solid #000; padding: 4px 6px; font-size: 12px; }
+  th, td { border: 1px solid #000; padding: 4px 6px; font-size: 10px; }
   th { text-align: center; font-weight: bold; background: #eef2f7; }
   td.c { text-align: center; }
   td.r { text-align: right; }
   tr.sum td { font-weight: bold; }
-  tr.grand td { font-weight: bold; font-size: 13px; }
+  tr.grand td { font-weight: bold; font-size: 16px; }
   .bang-chu { font-style: italic; margin: 4px 0 10px; }
-  .note { font-size: 12px; margin: 8px 0; }
+  .note { font-size: 10px; margin: 8px 0; }
   .note li { margin: 2px 0; }
+  .bank { border: 1px solid #000; padding: 8px 12px; margin: 10px 0; font-size: 10px; }
+  .bank .title { font-weight: bold; margin-bottom: 3px; }
   .signs { display: flex; justify-content: flex-end; margin-top: 20px; text-align: center; }
   .signs .col { width: 46%; }
   .signs .role { font-weight: bold; text-transform: uppercase; }
-  .signs .hint { font-style: italic; font-size: 11.5px; }
+  .signs .hint { font-style: italic; font-size: 10px; }
   .signs .space { height: 80px; }
   .signs .name { font-weight: bold; }
 </style>
@@ -122,10 +124,17 @@
 
   <div class="note">
     <ul>
-      <li>Đơn giá chưa bao gồm thuế GTGT; tiền thuế tính riêng theo thuế suất từng dòng.</li>
+      <li>{% if bao_hanh %}{{ bao_hanh }}{% else %}Đơn giá chưa bao gồm thuế GTGT; tiền thuế tính riêng theo thuế suất từng dòng.{% endif %}</li>
       <li>Báo giá có hiệu lực trong vòng <b>{{ hieu_luc }} ngày</b> kể từ ngày phát hành.</li>
       <li>Rất mong nhận được sự quan tâm và hợp tác của Quý khách hàng.</li>
     </ul>
+  </div>
+
+  <div class="bank">
+    <div class="title">Thông tin tài khoản nhận thanh toán</div>
+    <div>Tên tài khoản: <b>{{ bank.account_name }}</b></div>
+    <div>Số tài khoản: <b>{{ bank.account_number }}</b></div>
+    <div>Ngân hàng: <b>{{ bank.bank_name }}</b></div>
   </div>
 
   <div class="signs">

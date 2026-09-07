@@ -1208,6 +1208,7 @@ class TqcCertificate(Base):
         Index("ix_tqc_certificates_model_norm", "model_norm"),
         Index("ix_tqc_certificates_manufacturer_norm", "manufacturer_norm"),
         Index("ix_tqc_certificates_applicant_norm", "applicant_norm"),
+        Index("ix_tqc_certificates_tax_code_norm", "tax_code_norm"),
         Index("ix_tqc_certificates_status", "derived_status"),
         Index("ix_tqc_certificates_expiry", "expiry_date"),
     )
@@ -1215,6 +1216,8 @@ class TqcCertificate(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     certificate_no: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     certificate_no_norm: Mapped[str] = mapped_column(String(120), index=True)
+    tax_code: Mapped[str | None] = mapped_column(String(32), nullable=True, default="")
+    tax_code_norm: Mapped[str | None] = mapped_column(String(32), nullable=True, default="")
     issue_date: Mapped[str] = mapped_column(String(40), default="")
     expiry_date: Mapped[str] = mapped_column(String(40), default="")
     applicant_name: Mapped[str] = mapped_column(String(500), default="")
@@ -1395,11 +1398,23 @@ def _seed_pymid_catalog() -> None:
             db.commit()
 
 
+def _seed_standards_benchmarks() -> None:
+    """Khoi tao tap du lieu chuan (benchmark) cho tra cuu QCVN va MST neu chua co."""
+    from .standards import seed_benchmark_certificates
+
+    with _SessionLocal() as db:
+        seed_benchmark_certificates(db)
+
+
 def _migrate_add_columns() -> None:
     """Them cot moi vao bang da ton tai (SQLite create_all khong tu ALTER)."""
     from sqlalchemy import text
 
     wanted = {
+        "tqc_certificates": {
+            "tax_code": "VARCHAR(32) DEFAULT ''",
+            "tax_code_norm": "VARCHAR(32) DEFAULT ''",
+        },
         "documents": {
             "nas_path": "VARCHAR(500) DEFAULT ''",
             "nas_synced_at": "DATETIME",
@@ -1574,6 +1589,7 @@ def _migrate_add_columns() -> None:
             for col, ddl in cols.items():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tqc_certificates_tax_code_norm ON tqc_certificates(tax_code_norm)"))
 
 
 def get_session():

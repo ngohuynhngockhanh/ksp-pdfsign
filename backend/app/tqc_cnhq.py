@@ -13,10 +13,12 @@ import hashlib
 import io
 import json
 import re
+import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Iterable
 from urllib.parse import parse_qs, quote, urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import func, or_, select
@@ -29,6 +31,9 @@ from .standards import _strip_accents
 TQC_PUBLIC_QR_HOSTS = {"data-cnhq.tqc.gov.vn"}
 _CERTIFICATE_RE = re.compile(r"^[A-Za-z0-9]{6,120}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+_RATE_LIMIT_LOCK = threading.Lock()
+_RATE_LIMIT_WINDOWS: dict[str, tuple[float, int]] = {}
+_VIETNAM_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 class TqcCnhqError(RuntimeError):
@@ -85,12 +90,22 @@ def _parse_date(value: Any) -> datetime | None:
     return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc)
 
 
+def _vietnam_calendar_date(value: Any) -> date | None:
+    text = _text(value, 80)
+    parsed = _parse_date(text)
+    if parsed is None:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return parsed.date()
+    return parsed.astimezone(_VIETNAM_TIMEZONE).date()
+
+
 def _derived_status(source_status: str, expiry_date: str) -> str:
     source = _strip_accents(source_status).lower()
     if any(word in source for word in ("huy", "thu hoi", "vo hieu")):
         return "cancelled"
-    expiry = _parse_date(expiry_date)
-    if expiry and expiry < datetime.now(timezone.utc):
+    expiry = _vietnam_calendar_date(expiry_date)
+    if expiry and expiry < datetime.now(_VIETNAM_TIMEZONE).date():
         return "expired"
     if "con hieu luc" in source:
         return "active"
@@ -110,10 +125,12 @@ def normalize_certificate(
     issue_date = _text(raw.get("ngay_cap_giay_chung_nhan"), 80)
     expiry_date = _text(raw.get("ngay_het_han"), 80)
     source_status = _text(raw.get("tinh_trang_giay_chung_nhan"), 100)
+    tax_code = _text(raw.get("tax_code") or raw.get("ma_so_thue") or raw.get("mst"), 32)
     regulations = _parse_regulations(raw.get("quy_chuan_ky_thuat"))
     checked_at = fetched_at or datetime.now(timezone.utc)
     return {
         "certificate_no": certificate_no,
+        "tax_code": tax_code,
         "issue_date": issue_date,
         "expiry_date": expiry_date,
         "applicant_name": _text(raw.get("don_vi_nop_ho_so_vn"), 500),
@@ -195,6 +212,7 @@ class TqcCnhqClient:
         api_key: str = "",
         timeout: float | None = None,
         rate_limit_per_minute: int | None = None,
+        wait_on_rate_limit: bool = False,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         settings = get_settings()
@@ -202,21 +220,26 @@ class TqcCnhqClient:
         self.api_key = _text(api_key or settings.tqc_cnhq_api_key, 500)
         self.timeout = float(timeout or settings.tqc_cnhq_timeout)
         self.rate_limit_per_minute = max(1, int(rate_limit_per_minute or settings.tqc_cnhq_rate_limit_per_minute))
-        self._window_started = 0.0
-        self._window_calls = 0
+        self.wait_on_rate_limit = bool(wait_on_rate_limit)
         self._http = httpx.Client(timeout=self.timeout, transport=transport)
 
     def close(self) -> None:
         self._http.close()
 
     def _throttle(self) -> None:
-        now = time.monotonic()
-        if now - self._window_started >= 60:
-            self._window_started = now
-            self._window_calls = 0
-        if self._window_calls >= self.rate_limit_per_minute:
-            raise TqcCnhqError("Đã chạm giới hạn gọi API TQC trong phút hiện tại", code="rate_limited", status=429)
-        self._window_calls += 1
+        while True:
+            now = time.monotonic()
+            with _RATE_LIMIT_LOCK:
+                started, calls = _RATE_LIMIT_WINDOWS.get(self.base_url, (now, 0))
+                if now - started >= 60:
+                    started, calls = now, 0
+                if calls < self.rate_limit_per_minute:
+                    _RATE_LIMIT_WINDOWS[self.base_url] = (started, calls + 1)
+                    return
+                if not self.wait_on_rate_limit:
+                    raise TqcCnhqError("Đã chạm giới hạn gọi API TQC trong phút hiện tại", code="rate_limited", status=429)
+                wait_seconds = max(0.01, 60 - (now - started))
+            time.sleep(wait_seconds)
 
     def lookup(self, certificate_no: str) -> dict[str, Any] | None:
         normalized = normalize_certificate_no(certificate_no)
@@ -235,7 +258,14 @@ class TqcCnhqClient:
                     continue
                 raise TqcCnhqError("Không kết nối được API TQC", code="upstream_unavailable") from exc
             if response.status_code == 200:
-                payload = response.json()
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    raise TqcCnhqError(
+                        "API TQC trả dữ liệu không hợp lệ",
+                        code="invalid_upstream_response",
+                        status=502,
+                    ) from exc
                 if isinstance(payload, dict) and payload.get("success") and isinstance(payload.get("data"), dict):
                     return normalize_certificate(
                         payload["data"],
@@ -260,9 +290,15 @@ def _norm(value: Any) -> str:
     return re.sub(r"\s+", " ", _strip_accents(_text(value, 2000))).strip()
 
 
-def _model_to_dict(row: TqcCertificate) -> dict[str, Any]:
+def certificate_to_dict(
+    row: TqcCertificate,
+    *,
+    verification_status: str | None = None,
+) -> dict[str, Any]:
+    derived_status = _derived_status(row.source_status, row.expiry_date)
     return {
         "certificate_no": row.certificate_no,
+        "tax_code": getattr(row, "tax_code", "") or "",
         "issue_date": row.issue_date,
         "expiry_date": row.expiry_date,
         "applicant_name": row.applicant_name,
@@ -275,9 +311,9 @@ def _model_to_dict(row: TqcCertificate) -> dict[str, Any]:
         "certification_method": row.certification_method,
         "serial_form_no": row.serial_form_no,
         "source_status": row.source_status,
-        "derived_status": row.derived_status,
+        "derived_status": derived_status,
         "provenance": {
-            "verification_status": row.verification_status,
+            "verification_status": verification_status or row.verification_status,
             "source_url": row.source_url,
             "checked_at": row.last_verified_at.isoformat() if row.last_verified_at else None,
         },
@@ -305,6 +341,8 @@ def upsert_certificate(
         row = TqcCertificate(certificate_no=cert_no)
         db.add(row)
     row.certificate_no_norm = _norm(cert_no)
+    row.tax_code = normalized.get("tax_code") or getattr(row, "tax_code", "") or ""
+    row.tax_code_norm = _norm(row.tax_code)
     row.issue_date = normalized["issue_date"]
     row.expiry_date = normalized["expiry_date"]
     row.applicant_name = normalized["applicant_name"]
@@ -330,7 +368,7 @@ def upsert_certificate(
         db.commit()
     else:
         db.flush()
-    return _model_to_dict(row)
+    return certificate_to_dict(row, verification_status=verification_status)
 
 
 def search_index(
@@ -348,6 +386,14 @@ def search_index(
 ) -> dict[str, Any]:
     page = max(1, int(page))
     page_size = min(100, max(1, int(page_size)))
+    status_changed = False
+    for indexed in db.scalars(select(TqcCertificate)):
+        current_status = _derived_status(indexed.source_status, indexed.expiry_date)
+        if indexed.derived_status != current_status:
+            indexed.derived_status = current_status
+            status_changed = True
+    if status_changed:
+        db.commit()
     stmt = select(TqcCertificate)
     terms = []
     if q:
@@ -370,7 +416,14 @@ def search_index(
     if status:
         terms.append(TqcCertificate.derived_status == _text(status, 30).lower())
     if valid_on:
-        terms.extend((TqcCertificate.issue_date <= valid_on, TqcCertificate.expiry_date >= valid_on))
+        parsed_valid_on = _parse_date(valid_on)
+        if parsed_valid_on is None or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", valid_on):
+            raise TqcCnhqError("valid_on phải có dạng YYYY-MM-DD", code="invalid_valid_on", status=422)
+        terms.extend((
+            func.date(TqcCertificate.issue_date, "+7 hours") <= valid_on,
+            func.date(TqcCertificate.expiry_date, "+7 hours") >= valid_on,
+            TqcCertificate.derived_status != "cancelled",
+        ))
     if terms:
         stmt = stmt.where(*terms)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
@@ -381,7 +434,7 @@ def search_index(
     ).all()
     latest = db.scalar(select(func.max(TqcCertificate.updated_at)))
     return {
-        "items": [_model_to_dict(row) for row in rows],
+        "items": [certificate_to_dict(row, verification_status="verified_cached") for row in rows],
         "total": int(total),
         "page": page,
         "page_size": page_size,
@@ -417,10 +470,12 @@ def import_entries(
     *,
     client: TqcCnhqClient,
     refresh_existing: bool = False,
+    max_entries: int = 100,
+    commit: bool = True,
 ) -> dict[str, Any]:
     entries = list(entries)
-    if len(entries) > 100:
-        raise TqcCnhqError("Mỗi lần import tối đa 100 entry", code="import_too_large", status=413)
+    if len(entries) > max_entries:
+        raise TqcCnhqError(f"Mỗi lần import tối đa {max_entries} entry", code="import_too_large", status=413)
     results: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -445,6 +500,7 @@ def import_entries(
                 record["raw"],
                 verification_status="verified_live",
                 source_url=record["provenance"]["source_url"],
+                commit=commit,
             ) | {"status": "verified_live"})
         except TqcCnhqError as exc:
             errors.append({"index": index, "code": exc.code, "message": str(exc)})
@@ -462,12 +518,12 @@ def import_entries(
     }
 
 
-def get_client(settings: Settings | None = None) -> TqcCnhqClient:
+def get_client(settings: Settings | None = None, *, wait_on_rate_limit: bool = False) -> TqcCnhqClient:
     settings = settings or get_settings()
     return TqcCnhqClient(
         base_url=settings.tqc_cnhq_base_url,
         api_key=settings.tqc_cnhq_api_key,
         timeout=settings.tqc_cnhq_timeout,
         rate_limit_per_minute=settings.tqc_cnhq_rate_limit_per_minute,
+        wait_on_rate_limit=wait_on_rate_limit,
     )
-

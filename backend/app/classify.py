@@ -10,6 +10,11 @@ import pypdfium2 as pdfium
 # Thu tu uu tien: BBBG truoc hoa_don (BBBG khong chua 'HOA DON', nguoc lai co the);
 # de_nghi_tt truoc hop_dong (de nghi TT co dong 'Tong gia tri hop dong').
 KEYWORDS: list[tuple[str, list[str]]] = [
+    ("xuat_xuong", [
+        "GIẤY CHỨNG NHẬN XUẤT XƯỞNG",
+        "GIAY CHUNG NHAN XUAT XUONG",
+        "FACTORY RELEASE CERTIFICATE",
+    ]),
     ("bbbg", ["BIÊN BẢN BÀN GIAO", "BIEN BAN BAN GIAO"]),
     ("bbnt", ["BIÊN BẢN NGHIỆM THU", "BIEN BAN NGHIEM THU"]),
     ("de_nghi_tt", ["ĐỀ NGHỊ THANH TOÁN", "DE NGHI THANH TOAN"]),
@@ -19,6 +24,7 @@ KEYWORDS: list[tuple[str, list[str]]] = [
 ]
 
 LABELS = {
+    "xuat_xuong": "Giấy chứng nhận xuất xưởng",
     "bbbg": "Biên bản bàn giao",
     "bbnt": "Biên bản nghiệm thu",
     "de_nghi_tt": "Đề nghị thanh toán",

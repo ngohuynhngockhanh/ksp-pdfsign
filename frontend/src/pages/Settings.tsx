@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react";
-import { api, AppSettings, type Customer, type CustomerInvoice } from "../api";
+import {
+  api,
+  AppSettings,
+  EmailSyncSettings,
+  SpxSettings,
+  fetchSpxSettings,
+  saveSpxSettings,
+  testSpxConnection,
+  type Customer,
+  type CustomerInvoice,
+} from "../api";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
 
-type SettingIconName = "settings" | "ai" | "nas" | "invoice" | "mail";
+type SettingIconName = "settings" | "ai" | "nas" | "invoice" | "mail" | "spx";
 
 function SettingIcon({ name }: { name: SettingIconName }) {
   const paths: Record<SettingIconName, React.ReactNode> = {
@@ -14,9 +24,11 @@ function SettingIcon({ name }: { name: SettingIconName }) {
     nas: <><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h7M11 16.5h7"/></>,
     invoice: <><path d="M6 3h9l3 3v15l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></>,
     mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
+    spx: <><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></>,
   };
   return <svg className="setting-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
+
 
 export function Settings({
   usingDefaultSecrets = false,
@@ -45,19 +57,157 @@ export function Settings({
   const [unmatched, setUnmatched] = useState<CustomerInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [disk, setDisk] = useState<Awaited<ReturnType<typeof api.nasDisk>> | null>(null);
+  const [zohoSettings, setZohoSettings] = useState<EmailSyncSettings | null>(null);
+  const [zohoClientSecret, setZohoClientSecret] = useState("");
+  const [zohoGrantToken, setZohoGrantToken] = useState("");
+  const [zohoRefreshToken, setZohoRefreshToken] = useState("");
+  const [zohoPass, setZohoPass] = useState("");
+  const [zohoTestMsg, setZohoTestMsg] = useState("");
+  const [zohoSyncMsg, setZohoSyncMsg] = useState("");
+  const [zohoBusy, setZohoBusy] = useState(false);
+
+  // SPX Express Logistics State
+  const [spxSettings, setSpxSettings] = useState<SpxSettings | null>(null);
+  const [spxPass, setSpxPass] = useState("");
+  const [spxApiToken, setSpxApiToken] = useState("");
+  const [spxCookies, setSpxCookies] = useState("");
+  const [spxTestMsg, setSpxTestMsg] = useState("");
+  const [spxBusy, setSpxBusy] = useState(false);
 
   async function load() {
     setErr("");
     try {
-      const [settings, status, unmatchedRows, customerRows] = await Promise.all([
-        api.getAppSettings(), api.ihoadonCustomerSyncStatus(), api.ihoadonUnmatched(), api.listCustomers(),
+      const [settings, status, unmatchedRows, customerRows, zohoCfg, spxCfg] = await Promise.all([
+        api.getAppSettings(),
+        api.ihoadonCustomerSyncStatus(),
+        api.ihoadonUnmatched(),
+        api.listCustomers(),
+        api.emailSyncSettings().catch(() => null),
+        fetchSpxSettings().catch(() => null),
       ]);
       setS(settings);
       setSyncStatus(status);
       setUnmatched(unmatchedRows);
       setCustomers(customerRows);
+      if (zohoCfg) setZohoSettings(zohoCfg);
+      if (spxCfg) setSpxSettings(spxCfg);
     } catch (e) {
       setErr((e as Error).message);
+    }
+  }
+
+  async function testSpx() {
+    if (!spxSettings) return;
+    setSpxBusy(true);
+    setSpxTestMsg("");
+    try {
+      const res = await testSpxConnection({
+        username: spxSettings.spx_username,
+        password: spxPass || undefined,
+        shop_id: spxSettings.spx_shop_id || undefined,
+        api_token: spxApiToken || undefined,
+        cookies: spxCookies || undefined,
+      });
+      setSpxTestMsg(res.success ? `✅ ${res.message}` : `❌ ${res.message}`);
+    } catch (e: any) {
+      setSpxTestMsg(`❌ ${e.message || "Lỗi kiểm tra kết nối SPX"}`);
+    } finally {
+      setSpxBusy(false);
+    }
+  }
+
+  async function saveSpx() {
+    if (!spxSettings) return;
+    setSpxBusy(true);
+    setSpxTestMsg("");
+    try {
+      const payload: Partial<SpxSettings> = {
+        ...spxSettings,
+      };
+      if (spxPass) payload.spx_password = spxPass;
+      if (spxApiToken) payload.spx_api_token = spxApiToken;
+      if (spxCookies) payload.spx_cookies = spxCookies;
+      const res = await saveSpxSettings(payload);
+      setSpxSettings(res);
+      setSpxPass("");
+      setSpxApiToken("");
+      setSpxCookies("");
+      setSpxTestMsg("✅ Đã lưu cấu hình SPX Express an toàn.");
+    } catch (e: any) {
+      setSpxTestMsg(`❌ ${e.message || "Lỗi lưu cấu hình SPX"}`);
+    } finally {
+      setSpxBusy(false);
+    }
+  }
+
+
+
+  async function testZoho() {
+    if (!zohoSettings) return;
+    setZohoBusy(true);
+    setZohoTestMsg("");
+    try {
+      const res = await api.emailSyncTest({
+        mode: zohoSettings.mode,
+        client_id: zohoSettings.client_id,
+        client_secret: zohoClientSecret || undefined,
+        refresh_token: zohoRefreshToken || undefined,
+        grant_token: zohoGrantToken || undefined,
+        accounts_url: zohoSettings.accounts_url,
+        mail_api_url: zohoSettings.mail_api_url,
+        server: zohoSettings.server,
+        port: zohoSettings.port,
+        username: zohoSettings.username,
+        password: zohoPass || undefined,
+        mailbox: zohoSettings.mailbox,
+      });
+      setZohoTestMsg(res.ok ? `✅ ${res.message}` : `❌ ${res.message}`);
+      if (res.refresh_token) {
+        setZohoSettings((prev) => (prev ? { ...prev, has_refresh_token: true } : prev));
+        setZohoGrantToken("");
+      }
+    } catch (e) {
+      setZohoTestMsg(`❌ ${(e as Error).message}`);
+    } finally {
+      setZohoBusy(false);
+    }
+  }
+
+  async function saveZoho() {
+    if (!zohoSettings) return;
+    setZohoBusy(true);
+    try {
+      const updated = await api.emailSyncSaveSettings({
+        ...zohoSettings,
+        client_secret: zohoClientSecret || undefined,
+        refresh_token: zohoRefreshToken || undefined,
+        grant_token: zohoGrantToken || undefined,
+        password: zohoPass || undefined,
+      });
+      setZohoSettings(updated);
+      setZohoClientSecret("");
+      setZohoGrantToken("");
+      setZohoPass("");
+      setZohoTestMsg("✅ Đã lưu cấu hình Zoho Mail thành công.");
+    } catch (e) {
+      setZohoTestMsg(`❌ ${(e as Error).message}`);
+    } finally {
+      setZohoBusy(false);
+    }
+  }
+
+  async function syncZoho() {
+    setZohoBusy(true);
+    setZohoSyncMsg("");
+    try {
+      const run = await api.emailSyncRun(zohoSettings?.days || 30);
+      setZohoSyncMsg(
+        `✅ Đã quét xong: ${run.stats?.attachments_found ?? 0} file tìm thấy, ${run.stats?.created_new_draft ?? 0} HĐ mới, ${run.stats?.pdf_attached_to_existing ?? 0} gắn PDF.`
+      );
+    } catch (e) {
+      setZohoSyncMsg(`❌ ${(e as Error).message}`);
+    } finally {
+      setZohoBusy(false);
     }
   }
   useEffect(() => {
@@ -451,6 +601,278 @@ export function Settings({
         {unmatched.length > 0 && <div className="ihoadon-unmatched"><b>Hóa đơn chưa ghép MST ({unmatched.length})</b>{unmatched.slice(0, 20).map((inv) => <div className="ihoadon-unmatched-row" key={inv.id}><span>{inv.invoice_date} · {inv.invoice_series} {inv.invoice_number}<small>{inv.buyer_name} · MST {inv.buyer_tax_code || "trống"}</small></span><select defaultValue="" onChange={(e) => assignInvoice(inv.id, Number(e.target.value))}><option value="">Chọn khách hàng…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.tax_code}</option>)}</select></div>)}</div>}
       </section>
 
+      {/* ---- Zoho Mail (Dong bo hoa don) ---- */}
+      {zohoSettings && (
+        <section className="panel setting-card setting-mail">
+          <header className="setting-card-head">
+            <span className="setting-card-icon"><SettingIcon name="mail" /></span>
+            <div>
+              <span className="setting-card-kicker">HỘP THƯ HÓA ĐƠN</span>
+              <h3>Zoho Mail ({zohoSettings.mode === "rest_api" ? "REST API OAuth 2.0" : "IMAP Sync"})</h3>
+              <p>Tự động quét tệp PDF / XML hóa đơn mua vào gửi về hộp thư</p>
+            </div>
+            <span className={`setting-state ${zohoSettings.enabled && ((zohoSettings.mode === "rest_api" && (zohoSettings.has_refresh_token || zohoRefreshToken || zohoGrantToken)) || (zohoSettings.mode === "imap" && (zohoSettings.has_password || zohoPass))) ? "on" : "off"}`}>
+              {zohoSettings.enabled ? "Đang bật" : "Đang tắt"}
+            </span>
+          </header>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={zohoSettings.enabled}
+              onChange={(e) => setZohoSettings({ ...zohoSettings, enabled: e.target.checked })}
+            />
+            Bật tự động quét & đồng bộ hóa đơn từ Zoho Mail
+          </label>
+
+          {/* Chon Mode */}
+          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="settings_zoho_mode"
+                checked={zohoSettings.mode === "rest_api"}
+                onChange={() => setZohoSettings({ ...zohoSettings, mode: "rest_api" })}
+              />
+              <b>Zoho REST API (OAuth 2.0)</b> <span className="chip green sm">Miễn phí & Khuyên dùng</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="settings_zoho_mode"
+                checked={zohoSettings.mode === "imap"}
+                onChange={() => setZohoSettings({ ...zohoSettings, mode: "imap" })}
+              />
+              <b>IMAP SSL</b>
+            </label>
+          </div>
+
+          {zohoSettings.mode === "rest_api" ? (
+            <div>
+              <div className="form-grid-2">
+                <label>
+                  Client ID
+                  <input
+                    value={zohoSettings.client_id}
+                    placeholder="1000.XXXXXXXXXX..."
+                    onChange={(e) => setZohoSettings({ ...zohoSettings, client_id: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Client Secret {zohoSettings.has_client_secret && <span className="chip green sm">đã đặt</span>}
+                  <input
+                    type="password"
+                    value={zohoClientSecret}
+                    placeholder={zohoSettings.has_client_secret ? "•••• (để trống = giữ nguyên)" : "nhập Client Secret"}
+                    onChange={(e) => setZohoClientSecret(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="form-grid-2" style={{ marginTop: 8 }}>
+                <label>
+                  Mã Code một lần (Grant Token) {zohoSettings.has_refresh_token && <span className="chip green sm">Đã có Refresh Token vĩnh viễn</span>}
+                  <input
+                    value={zohoGrantToken}
+                    placeholder={zohoSettings.has_refresh_token ? "Đã cấp token (nhập code mới nếu cấp lại)" : "1000.xxxx (Tạo từ Zoho Console -> Generate Code)"}
+                    onChange={(e) => setZohoGrantToken(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Số ngày quét mặc định
+                  <input
+                    type="number"
+                    value={zohoSettings.days}
+                    onChange={(e) => setZohoSettings({ ...zohoSettings, days: Number(e.target.value) || 30 })}
+                  />
+                </label>
+              </div>
+
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: 10, fontSize: 12, color: "#334155", marginTop: 10, lineHeight: 1.5 }}>
+                <b>💡 Hướng dẫn tạo miễn phí:</b> Truy cập <a href="https://api-console.zoho.com/" target="_blank" rel="noreferrer" style={{ color: "#0284c7", fontWeight: 600 }}>Zoho Developer Console (api-console.zoho.com)</a> &rarr; Bấm <b>Add Client</b> &rarr; Chọn <b>Self Client</b> &rarr; Copy <b>Client ID</b> & <b>Client Secret</b> &rarr; Vào tab <b>Generate Code</b> nhập Scope <code style={{ background: "#e2e8f0", padding: "1px 4px", borderRadius: 3 }}>ZohoMail.messages.READ,ZohoMail.accounts.READ</code> (10 minutes) rồi dán mã Code vào đây &rarr; Bấm <b>Test kết nối</b>.
+              </div>
+            </div>
+          ) : (
+            <div className="form-grid-2">
+              <label>
+                Máy chủ IMAP
+                <input
+                  value={zohoSettings.server}
+                  placeholder="imappro.zoho.com"
+                  onChange={(e) => setZohoSettings({ ...zohoSettings, server: e.target.value })}
+                />
+              </label>
+              <label>
+                Cổng SSL
+                <input
+                  type="number"
+                  value={zohoSettings.port}
+                  placeholder="993"
+                  onChange={(e) => setZohoSettings({ ...zohoSettings, port: Number(e.target.value) || 993 })}
+                />
+              </label>
+              <label>
+                Tài khoản Email
+                <input
+                  value={zohoSettings.username}
+                  placeholder="khanhnhn@inut.vn"
+                  onChange={(e) => setZohoSettings({ ...zohoSettings, username: e.target.value })}
+                />
+              </label>
+              <label>
+                Mật khẩu ứng dụng (App Password) {zohoSettings.has_password && <span className="chip green sm">đã đặt</span>}
+                <input
+                  type="password"
+                  value={zohoPass}
+                  placeholder={zohoSettings.has_password ? "•••• (để trống = giữ nguyên)" : "nhập App Password Zoho"}
+                  onChange={(e) => setZohoPass(e.target.value)}
+                />
+              </label>
+              <label>
+                Hộp thư (Mailbox)
+                <input
+                  value={zohoSettings.mailbox}
+                  placeholder="INBOX"
+                  onChange={(e) => setZohoSettings({ ...zohoSettings, mailbox: e.target.value })}
+                />
+              </label>
+              <label>
+                Số ngày quét mặc định
+                <input
+                  type="number"
+                  value={zohoSettings.days}
+                  onChange={(e) => setZohoSettings({ ...zohoSettings, days: Number(e.target.value) || 30 })}
+                />
+              </label>
+            </div>
+          )}
+
+          <div className="setting-card-action" style={{ marginTop: 12 }}>
+            <span style={{ fontSize: 13 }}>{zohoTestMsg || zohoSyncMsg || (zohoSettings.mode === "rest_api" ? "Zoho REST API OAuth 2.0 hoàn toàn miễn phí." : "IMAP SSL dùng App Password.")}</span>
+            <div className="setting-action-buttons">
+              <button type="button" disabled={zohoBusy} onClick={testZoho}>
+                Test kết nối
+              </button>
+              <button type="button" disabled={zohoBusy || (zohoSettings.mode === "rest_api" ? (!zohoSettings.has_refresh_token && !zohoRefreshToken && !zohoGrantToken) : !zohoSettings.has_password)} onClick={syncZoho}>
+                {zohoBusy ? "Đang quét…" : "Quét email ngay"}
+              </button>
+              <button className="primary" disabled={zohoBusy} onClick={saveZoho}>
+                {zohoBusy ? "Đang lưu…" : "Lưu cấu hình Zoho"}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {spxSettings && (
+        <section className="panel setting-card setting-spx">
+          <header className="setting-card-head">
+            <span className="setting-card-icon">
+              <SettingIcon name="spx" />
+            </span>
+            <div>
+              <span className="setting-card-kicker">GIAO HÀNG & LOGISTICS</span>
+              <h3>Vận Đơn SPX Express (spx.vn)</h3>
+              <p>Tự động tạo đơn, lấy mã vận đơn SPXVN & in tem nhiệt khổ A6</p>
+            </div>
+            <span className={`setting-state ${spxSettings.spx_username ? "on" : "off"}`}>
+              {spxSettings.spx_username ? "Đã liên thông" : "Chưa cấu hình"}
+            </span>
+          </header>
+
+          <div className="form-grid-2">
+            <label>
+              Tài khoản / SĐT Đăng nhập SPX
+              <input
+                value={spxSettings.spx_username}
+                placeholder="0345296757"
+                onChange={(e) => setSpxSettings({ ...spxSettings, spx_username: e.target.value })}
+              />
+            </label>
+            <label>
+              Mật khẩu SPX {spxSettings.spx_password && <span className="chip green sm">đã lưu AES-128</span>}
+              <input
+                type="password"
+                value={spxPass}
+                placeholder="để trống = giữ nguyên"
+                onChange={(e) => setSpxPass(e.target.value)}
+              />
+            </label>
+            <label>
+              Shop ID (Tùy chọn)
+              <input
+                value={spxSettings.spx_shop_id}
+                placeholder="Mã Shop trên SPX Portal (nếu có)"
+                onChange={(e) => setSpxSettings({ ...spxSettings, spx_shop_id: e.target.value })}
+              />
+            </label>
+            <label>
+              API Token / Secret Key (Tùy chọn) {spxSettings.spx_api_token && <span className="chip green sm">đã có token</span>}
+              <input
+                type="password"
+                value={spxApiToken}
+                placeholder="API Key do SPX cấp (nếu có)"
+                onChange={(e) => setSpxApiToken(e.target.value)}
+              />
+            </label>
+            <label style={{ gridColumn: "span 2" }}>
+              Session Cookies (SPC_EC / spx_sid / spx_token) {spxSettings.spx_cookies && <span className="chip green sm">đã lưu phiên Live</span>}
+              <input
+                type="password"
+                value={spxCookies}
+                placeholder="Dán chuỗi Cookie từ trình duyệt (để trống = giữ nguyên)"
+                onChange={(e) => setSpxCookies(e.target.value)}
+              />
+            </label>
+          </div>
+
+
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+            <h4 style={{ fontSize: 13, fontWeight: 600, color: "#475569", marginBottom: 8 }}>
+              Thông Tin Kho Người Gửi Mặc Định
+            </h4>
+            <div className="form-grid-2">
+              <label>
+                Tên Shop / Doanh nghiệp
+                <input
+                  value={spxSettings.spx_sender_name}
+                  placeholder="CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT"
+                  onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_name: e.target.value })}
+                />
+              </label>
+              <label>
+                Số điện thoại kho
+                <input
+                  value={spxSettings.spx_sender_phone}
+                  placeholder="0345296757"
+                  onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_phone: e.target.value })}
+                />
+              </label>
+              <label style={{ gridColumn: "span 2" }}>
+                Địa chỉ kho lấy hàng
+                <input
+                  value={spxSettings.spx_sender_address}
+                  placeholder="Khu Công Nghệ Cao, TP. Thủ Đức, TP. Hồ Chí Minh"
+                  onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_address: e.target.value })}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="setting-card-action" style={{ marginTop: 12 }}>
+            <span style={{ fontSize: 13 }}>{spxTestMsg || "Liên thông trực tiếp cổng SPX Express & In tem nhãn nhiệt A6."}</span>
+            <div className="setting-action-buttons">
+              <button type="button" disabled={spxBusy} onClick={testSpx}>
+                {spxBusy ? "Đang kiểm tra…" : "Test kết nối SPX"}
+              </button>
+              <button className="primary" disabled={spxBusy} onClick={saveSpx}>
+                {spxBusy ? "Đang lưu…" : "Lưu cấu hình SPX"}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="panel setting-card setting-mail">
         <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="mail" /></span><div><span className="setting-card-kicker">CẢNH BÁO VẬN HÀNH</span><h3>Email SMTP</h3><p>Thông báo khi phiên thuế hết hạn hoặc cron thất bại</p></div><span className={`setting-state ${s.smtp_host && s.smtp_password_set ? "on" : "off"}`}>{s.smtp_host && s.smtp_password_set ? "Đã cấu hình" : "Chưa đủ"}</span></header>
         <div className="form-grid-2">
@@ -462,6 +884,7 @@ export function Settings({
           <label>Email nhận<input value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
         </div>
       </section>
+
       </div>
 
       <div className="settings-savebar">

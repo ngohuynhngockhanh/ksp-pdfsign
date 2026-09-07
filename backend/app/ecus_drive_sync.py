@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from . import storage
 from .config import Settings
+from .host_discovery import resolve_windows_host
 from .db import InvCustomsDecl, InvCustomsDriveFolder, InvCustomsEcusExport
 
 _DECLARATION_RE = re.compile(r"(?<!\d)(\d{12})(?!\d)")
@@ -347,7 +348,8 @@ def remote_db_snapshot(settings: Settings) -> Iterator[Path]:
     remote_path = settings.ecus_db_path.replace("\\", "/")
     if ".." in PurePosixPath(remote_path).parts or not remote_path.lower().endswith(".db"):
         raise RuntimeError("Đường dẫn database ECUS không hợp lệ")
-    source = f"{settings.ecus_ssh_user}@{settings.ecus_ssh_host}:{remote_path}"
+    resolved_host = resolve_windows_host(settings.ecus_ssh_host)
+    source = f"{settings.ecus_ssh_user}@{resolved_host}:{remote_path}"
     with tempfile.TemporaryDirectory(prefix="ecus-db-") as temp_dir:
         target = Path(temp_dir) / "ecus.db"
         command = [

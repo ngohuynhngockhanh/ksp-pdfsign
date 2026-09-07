@@ -128,3 +128,46 @@ test('tax auto-sync sends explicit date ranges as query parameters', async () =>
   assert.equal(request.url, 'http://127.0.0.1:2032/api/tax/auto-sync?from_date=2026-08-01&to_date=2026-08-24&do_import=true&send_telegram=false')
   assert.equal(request.options.body, undefined)
 })
+
+test('TQC MCP routes search, exact lookup, and bounded import', async () => {
+  const calls = []
+  const client = new BackendClient({
+    username: 'admin',
+    password: 'fixture',
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options })
+      if (String(url).endsWith('/api/login')) return response(200, {}, { 'set-cookie': 'ksp_session=fixture' })
+      return response(200, { ok: true })
+    },
+  })
+
+  await client.dispatch('standards_tqc_status', {})
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/status')
+
+  await client.dispatch('standards_tqc_search', { query: 'T27G16', filters: { manufacturer: 'TOMKO', page: 2 } })
+  assert.match(calls.at(-1).url, /\/api\/standards\/tqc\/search\?/)
+  assert.match(calls.at(-1).url, /q=T27G16/)
+  assert.match(calls.at(-1).url, /manufacturer=TOMKO/)
+
+  await client.dispatch('standards_tqc_get', { id: 'C0955191224AE15A3', filters: { refresh: true } })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/certificates/C0955191224AE15A3?refresh=true')
+
+  await client.dispatch('standards_tqc_import', {
+    operation: 'import',
+    payload: { entries: [{ certificate_no: 'C0955191224AE15A3' }] },
+  })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/import')
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), { entries: [{ certificate_no: 'C0955191224AE15A3' }] })
+
+  await client.dispatch('standards_tqc_import_job', { id: 42 })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/import/jobs/42')
+
+  await client.dispatch('standards_tqc_import_job', { filters: { latest: true } })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/import/jobs/latest')
+
+  await client.dispatch('standards_tqc_import_retry', {
+    operation: 'retry',
+    payload: { id: 42 },
+  })
+  assert.equal(calls.at(-1).url, 'http://127.0.0.1:2032/api/standards/tqc/import/jobs/42/retry')
+})

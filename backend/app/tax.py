@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import calendar
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
 BASE = "https://hoadondientu.gdt.gov.vn/api"
 _TIMEOUT = 30.0
+_LOCAL_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 def _client() -> httpx.Client:
@@ -33,6 +36,20 @@ def _client() -> httpx.Client:
 
 class TaxError(RuntimeError):
     pass
+
+
+def _invoice_date(value: object) -> str:
+    """Convert tax API timestamps to the invoice date in Vietnam time."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(_LOCAL_TZ)
+        return parsed.date().isoformat()
+    except ValueError:
+        return raw[:10]
 
 
 def get_captcha() -> dict:
@@ -301,16 +318,24 @@ def detail_to_purchase(d: dict) -> dict:
             "thanh_tien": ln.get("thtien") or 0,
             "thue_suat": ts_num,  # SO (vd 8), khong phai '8%' (parse_num hong dau %)
         })
+    line_total = sum(float(item["thanh_tien"] or 0) for item in items)
+    before_tax = d.get("tgtcthue")
+    tax_total = d.get("tgtthue") or 0
+    total = d.get("tgtttbso")
+    if not before_tax and line_total:
+        before_tax = line_total
+    if not total and before_tax:
+        total = float(before_tax) + float(tax_total or 0)
     return {
         "source": "tax_gdt",
         "so_hd": str(d.get("shdon") or ""),
         "ky_hieu": str(d.get("khhdon") or ""),
         "mst_ban": str(d.get("nbmst") or ""),
         "ten_ban": str(d.get("nbten") or ""),
-        "ngay": (d.get("tdlap") or "")[:10],
-        "tong_truoc_thue": d.get("tgtcthue") or 0,
-        "tong_thue": d.get("tgtthue") or 0,
-        "tong_tien": d.get("tgtttbso") or 0,
+        "ngay": _invoice_date(d.get("tdlap")),
+        "tong_truoc_thue": before_tax or 0,
+        "tong_thue": tax_total,
+        "tong_tien": total or 0,
         "items": items,
         "confidence": 0.9,
         "warnings": [{
@@ -333,7 +358,7 @@ def import_missing_purchases(db, token: str, missing: list[dict]) -> dict:
         h = {
             "nbmst": m.get("mst_ban"), "khhdon": m.get("ky_hieu"),
             "khmshdon": m.get("khmshdon", 1), "shdon": m.get("so_hd"),
-            "tdlap": (m.get("ngay") or "") + "T00:00:00Z",
+            "tdlap": m.get("tdlap") or ((m.get("ngay") or "") + "T00:00:00Z"),
         }
         d = invoice_detail(token, h)
         if not d:
@@ -440,7 +465,7 @@ def reconcile(db, tax: dict, tu: str, den: str) -> dict:
             tien_ht = sys_mua_tien.get((so, mst), 0)
             if abs(tien_cong - tien_ht) > 1:
                 mismatch_mua.append({
-                    "ngay": (h.get("tdlap") or "")[:10],
+                    "ngay": _invoice_date(h.get("tdlap")),
                     "so_hd": h.get("shdon"), "ky_hieu": h.get("khhdon", ""),
                     "ten_ban": h.get("nbten", ""), "mst_ban": h.get("nbmst", ""),
                     "tien_he_thong": tien_ht, "tien_cong_thue": tien_cong,
@@ -448,10 +473,11 @@ def reconcile(db, tax: dict, tu: str, den: str) -> dict:
                 })
             continue
         missing_mua.append({
-            "ngay": (h.get("tdlap") or "")[:10],
+            "ngay": _invoice_date(h.get("tdlap")),
             "so_hd": h.get("shdon"),
             "ky_hieu": h.get("khhdon", ""),
             "khmshdon": h.get("khmshdon"),
+            "tdlap": h.get("tdlap"),
             "ten_ban": h.get("nbten", ""),
             "mst_ban": h.get("nbmst", ""),
             "tong_tien": h.get("tgtttbso", 0),
@@ -466,7 +492,7 @@ def reconcile(db, tax: dict, tu: str, den: str) -> dict:
     for h in tax.get("ban", []):
         if ((h.get("khhdon") or "").strip().upper(), _norm(h.get("shdon"))) not in sys_ban_keys:
             missing_ban.append({
-                "ngay": (h.get("tdlap") or "")[:10],
+                "ngay": _invoice_date(h.get("tdlap")),
                 "so_hd": h.get("shdon"),
                 "ky_hieu": h.get("khhdon", ""),
                 "ten_mua": h.get("nmten", ""),
@@ -477,7 +503,7 @@ def reconcile(db, tax: dict, tu: str, den: str) -> dict:
     # AN TOAN: chi xet trong khoang NGAY ma cong THUC SU tra ve (cong cham hay
     # timeout thang sau -> neu xet ngoai khoang se BAO NHAM HD that thanh mo coi).
     def _span(rows, key):
-        ds = [d for d in ((r.get(key) or "")[:10] for r in rows) if d]
+        ds = [d for d in (_invoice_date(r.get(key)) for r in rows) if d]
         return (min(ds), max(ds)) if ds else (None, None)
 
     cong_mua_keys = {(_norm(h.get("shdon")), _base_mst(h.get("nbmst"))) for h in tax.get("mua", [])}

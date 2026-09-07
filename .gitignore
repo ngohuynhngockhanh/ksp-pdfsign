@@ -17,6 +17,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.coverage
+*.db
 
 # Node / frontend
 node_modules/
@@ -24,6 +26,12 @@ frontend/dist/
 frontend/.vite/
 frontend/playwright-report/
 frontend/test-results/
+test-results/
+pytest-of-ksp/
+
+# Agents & harness
+.agents/
+.gemini/
 
 # Data / uploads
 backend/data/

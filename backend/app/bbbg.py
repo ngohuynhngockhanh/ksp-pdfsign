@@ -5,6 +5,7 @@ Them mau moi: bo 1 file .html vao templates_bbbg/ va dang ky vao TEMPLATES.
 from __future__ import annotations
 
 import base64
+from datetime import date
 import html
 import ipaddress
 from pathlib import Path
@@ -39,7 +40,29 @@ QUOTE_TEMPLATES: dict[str, dict] = {
         "label": "Biên bản nghiệm thu",
         "doc_type": "bbnt",
     },
+    "phieu_mua_hang": {
+        "file": "phieu_mua_hang.html",
+        "label": "Phiếu mua hàng",
+        "doc_type": "phieu_mua_hang",
+    },
 }
+
+# Giay xuat xuong co bo truong rieng, khong tron voi BBBG/bao gia.
+FACTORY_CERTIFICATE_TEMPLATES: dict[str, dict] = {
+    "giay_chung_nhan_xuat_xuong": {
+        "file": "giay_chung_nhan_xuat_xuong.html",
+        "label": "Giấy chứng nhận xuất xưởng",
+        "doc_type": "xuat_xuong",
+    },
+}
+
+FACTORY_CERTIFICATE_FEATURES = [
+    "Thu thập và hiển thị dữ liệu thời gian thực.",
+    "Kết nối MQTT theo cấu hình triển khai.",
+    "Tích hợp Modbus/SCADA theo cấu hình thiết bị.",
+    "Dashboard, thống kê và xuất báo cáo trong hệ sinh thái iNut.",
+    "Kết nối từ xa và sao lưu cấu hình theo cấu hình/firmware được bàn giao.",
+]
 
 CONTRACT_TEMPLATE = "hop_dong_phan_mem.html"
 _CONTRACT_SOURCE_DIR = Path(__file__).parent / "contract_templates"
@@ -132,6 +155,13 @@ def list_quote_templates() -> list[dict]:
     return [{"key": k, "label": v["label"]} for k, v in QUOTE_TEMPLATES.items()]
 
 
+def list_factory_certificate_templates() -> list[dict]:
+    return [
+        {"key": k, "label": v["label"]}
+        for k, v in FACTORY_CERTIFICATE_TEMPLATES.items()
+    ]
+
+
 def _logo_data_uri(settings: Settings) -> str:
     p = settings.logo_path
     if p.exists():
@@ -196,6 +226,72 @@ def render_bbbg(settings: Settings, data: dict) -> bytes:
     return HTML(string=html).write_pdf()
 
 
+def render_factory_certificate(settings: Settings, data: dict) -> bytes:
+    """Render a factory-release certificate with auditable device identity fields.
+
+    Feature text is intentionally marked as configuration-dependent in the
+    template; the certificate must not turn a public help page into an
+    unconditional hardware specification.
+    """
+    key = data.get("template_key") or "giay_chung_nhan_xuat_xuong"
+    if key not in FACTORY_CERTIFICATE_TEMPLATES:
+        raise ValueError(f"Template khong ton tai: {key}")
+    if not (data.get("product_name") or data.get("model")):
+        raise ValueError("Thieu ten san pham hoac model")
+    if not (data.get("ma_thiet_bi") or "").strip():
+        raise ValueError("Thieu ma thiet bi")
+    ngay = data.get("ngay")
+    if not ngay:
+        today = date.today()
+        ngay = {"day": today.day, "month": today.month, "year": today.year}
+    ngay_san_xuat = data.get("ngay_san_xuat") or ngay
+    features = [str(x).strip() for x in (data.get("features") or []) if str(x).strip()]
+    specs = [
+        {"label": str(item.get("label") or "").strip(), "value": str(item.get("value") or "").strip()}
+        for item in (data.get("specs") or [])
+        if str(item.get("label") or "").strip() or str(item.get("value") or "").strip()
+    ]
+    ctx = {
+        "certificate_no": (data.get("certificate_no") or "").strip(),
+        "noi_lap": data.get("noi_lap") or settings.default_location,
+        "ngay": {
+            "day": int(ngay.get("day", 1)),
+            "month": int(ngay.get("month", 1)),
+            "year": int(ngay.get("year", 2026)),
+        },
+        "ngay_san_xuat": (
+            {
+                "day": int(ngay_san_xuat.get("day", 1)),
+                "month": int(ngay_san_xuat.get("month", 1)),
+                "year": int(ngay_san_xuat.get("year", 2026)),
+            }
+            if ngay_san_xuat
+            else None
+        ),
+        "ben_a": {**default_ben_a(settings), **(data.get("ben_a") or {})},
+        "ben_b": data.get("ben_b") or {},
+        "product_name": (data.get("product_name") or "").strip(),
+        "model": (data.get("model") or data.get("product_name") or "").strip(),
+        "ma_thiet_bi": (data.get("ma_thiet_bi") or "").strip(),
+        "serial_number": (data.get("serial_number") or f"cast20{(data.get('ma_thiet_bi') or '').strip()}").strip(),
+        "quantity": data.get("quantity") or 1,
+        "unit": (data.get("unit") or "Bộ").strip(),
+        "firmware_version": (data.get("firmware_version") or "").strip(),
+        "hardware_revision": (data.get("hardware_revision") or "").strip(),
+        "features": features or FACTORY_CERTIFICATE_FEATURES,
+        "specs": specs,
+        "quality_status": (data.get("quality_status") or "Đạt").strip(),
+        "quality_note": (data.get("quality_note") or "").strip(),
+        "reference_quote": (data.get("reference_quote") or "").strip(),
+        "warranty": (data.get("warranty") or "").strip(),
+        "note": (data.get("note") or "").strip(),
+        "help_url": "https://inut.vn/help",
+        "logo_data_uri": _logo_data_uri(settings),
+    }
+    html = _env.get_template(FACTORY_CERTIFICATE_TEMPLATES[key]["file"]).render(**ctx)
+    return HTML(string=html).write_pdf()
+
+
 def dntt_ben_a(settings: Settings) -> dict:
     """Letterhead de nghi TT: cong ty nhu BBBG nhung ky Tong giam doc."""
     return {
@@ -212,7 +308,7 @@ def render_quote(settings: Settings, data: dict) -> tuple[bytes, dict]:
     """Sinh PDF bao gia / de nghi thanh toan. Tra ve (pdf, totals) de log/tra API.
 
     data: template_key, so, ngay, noi_lap, ben_b, items (ten/dvt/so_luong/don_gia/
-    thue_suat), thuyet_minh, hieu_luc; rieng de_nghi_tt: loai_tt (toan_bo|co_coc|
+    thue_suat), thuyet_minh, bao_hanh, hieu_luc; rieng de_nghi_tt: loai_tt (toan_bo|co_coc|
     nhieu_phan), tien_coc, da_thanh_toan, so_tien_dot_nay, dot_thu, tong_so_dot,
     han_thanh_toan, can_cu.
     """
@@ -256,6 +352,7 @@ def render_quote(settings: Settings, data: dict) -> tuple[bytes, dict]:
         "tong_thue": totals["tong_thue"],
         "tong_thanh_toan": tong,
         "thuyet_minh": (data.get("thuyet_minh") or "").strip(),
+        "bao_hanh": (data.get("bao_hanh") or "").strip(),
         "hieu_luc": int(data.get("hieu_luc") or 30),
         "loai_tt": loai_tt,
         "tien_coc": round(tien_coc),
@@ -277,6 +374,7 @@ def render_quote(settings: Settings, data: dict) -> tuple[bytes, dict]:
             "bank_name": settings.bank_name,
         },
         "logo_data_uri": _logo_data_uri(settings),
+        "qr_data_uri": data.get("qr_data_uri") or "",
     }
     html = _env.get_template(QUOTE_TEMPLATES[key]["file"]).render(**ctx)
     totals["con_lai"] = con_lai

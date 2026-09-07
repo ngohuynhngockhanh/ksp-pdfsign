@@ -42,10 +42,24 @@ const READ_ROUTES = {
   customs_drive: ({ args }) => [`/api/inv/customs-drive/${args.filters?.resource || 'sources'}`, args.filters || {}],
   nas: ({ args }) => [`/api/nas/${args.filters?.resource || 'status'}`, args.filters || {}],
   spx: ({ args }) => [`/api/spx/${args.filters?.resource || 'stats'}`, args.filters || {}],
+  spx_print_by_label: ({ args }) => ['/api/spx/stats', args.filters || {}],
   pymid: ({ args }) => [`/api/pymid/${args.filters?.resource || 'catalog'}`, args.filters || {}],
   training: ({ args }) => [`/api/training/${args.filters?.resource || 'search'}`, { q: args.query, ...(args.filters || {}) }],
   ai: () => ['/api/ai/status'],
   standards: ({ args }) => [`/api/standards/${args.filters?.resource || 'statistics'}`, args.filters || {}],
+  standards_tqc_status: () => ['/api/standards/tqc/status'],
+  standards_tqc_search: ({ args }) => ['/api/standards/tqc/search', {
+    q: args.query,
+    ...(args.filters || {}),
+    page: args.page,
+    page_size: args.page_size,
+  }],
+  standards_tqc_get: ({ args }) => [`/api/standards/tqc/certificates/${segment(args.id || args.query)}`, {
+    refresh: args.filters?.refresh,
+  }],
+  standards_tqc_import_job: ({ args }) => [
+    args.filters?.latest ? '/api/standards/tqc/import/jobs/latest' : `/api/standards/tqc/import/jobs/${segment(args.id || args.query)}`,
+  ],
   operations_dashboard: () => ['/api/operations/dashboard'],
   inut_crm_job_status: ({ args }) => [`/api/training/jobs/${segment(args.id || args.query)}`],
 }
@@ -84,14 +98,17 @@ const MUTATION_ROUTES = {
   ihoadon: { sync: ['POST', '/api/ihoadon/customer-sync'], draft_sync: ['POST', '/api/inv/ihoadon/drafts/{id}/sync-to-crm'], deliver: ['POST', '/api/inv/ihoadon/drafts/deliver'] },
   payroll: { create_employee: ['POST', '/api/payroll/employees'], create_period: ['POST', '/api/payroll/periods'], review: ['POST', '/api/payroll/periods/{id}/review'], lock: ['POST', '/api/payroll/periods/{id}/lock'], payment: ['POST', '/api/payroll/payments'], sync_drive: ['POST', '/api/payroll/sync-drive'] },
   email_sync: { update_settings: ['POST', '/api/inv/email-sync/settings'], test: ['POST', '/api/inv/email-sync/test'], run: ['POST', '/api/inv/email-sync/run'] },
-  telegram: { connect: ['POST', '/api/telegram/connect'], disconnect: ['DELETE', '/api/telegram/connection'] },
+  telegram: { connect: ['POST', '/api/telegram/connect'], disconnect: ['DELETE', '/api/telegram/connection'], send: ['POST', '/api/telegram/send'], notify: ['POST', '/api/telegram/send'] },
   customs_drive: { sync: ['POST', '/api/inv/customs-drive/sync/{id}'], assign: ['POST', '/api/inv/customs-drive/folders/{id}/assign'], review: ['POST', '/api/inv/customs-drive/folders/{id}/review'] },
   nas: { test: ['POST', '/api/nas/test'], sync_all: ['POST', '/api/nas/sync-all'] },
-  spx: { settings: ['POST', '/api/spx/settings'], test: ['POST', '/api/spx/test-connection'], sync: ['POST', '/api/spx/sync-orders'], print: ['POST', '/api/spx/orders/{id}/print-remote'], cancel: ['POST', '/api/spx/orders/{id}/cancel'] },
+  spx: { settings: ['POST', '/api/spx/settings'], test: ['POST', '/api/spx/test-connection'], sync: ['POST', '/api/spx/sync-orders'], quick_print: ['POST', '/api/spx/quick-print'], print_by_label: ['POST', '/api/spx/quick-print'], print: ['POST', '/api/spx/orders/{id}/print-remote'], cancel: ['POST', '/api/spx/orders/{id}/cancel'] },
+  spx_print_by_label: { print: ['POST', '/api/spx/quick-print'], quick_print: ['POST', '/api/spx/quick-print'], print_by_label: ['POST', '/api/spx/quick-print'], execute: ['POST', '/api/spx/quick-print'] },
   pymid: { create_staff: ['POST', '/api/pymid/staff'], create_order: ['POST', '/api/pymid/orders'], submit: ['POST', '/api/pymid/orders/{id}/submit'], approve: ['POST', '/api/pymid/orders/{id}/approve'] },
   training: { ask: ['POST', '/api/training/ask'], knowledge_create: ['POST', '/api/training/knowledge'], knowledge_update: ['PATCH', '/api/training/knowledge/{id}'], knowledge_delete: ['DELETE', '/api/training/knowledge/{id}'] },
   ai: { test: ['POST', '/api/ai/test'], narrative: ['POST', '/api/ai/quote-narrative'] },
   standards: { generate_pdf: ['POST', '/api/standards/generate-cr-declaration/pdf'], generate_docx: ['POST', '/api/standards/generate-cr-declaration/docx'], game_complete: ['POST', '/api/standards/game/complete'], game_note: ['POST', '/api/standards/game/note'], game_reset: ['POST', '/api/standards/game/reset'] },
+  standards_tqc_import: { import: ['POST', '/api/standards/tqc/import'] },
+  standards_tqc_import_retry: { retry: ['POST', '/api/standards/tqc/import/jobs/{id}/retry'] },
 }
 
 function id(args) {
@@ -113,14 +130,13 @@ function contractorRoute(args) {
 
 function buildMutationRequest(toolName, args) {
   const routes = MUTATION_ROUTES[toolName]
-  const route = routes?.[args.operation]
-  if (!route) throw new Error(`unsupported_operation:${toolName}:${args.operation}`)
-  let path = route[1]
-  const payload = normalizePayload(toolName, args.payload || {})
-  const targetId = payload.id ?? args.id
-  if (path.includes('{id}')) path = path.replace('{id}', segment(targetId))
-  delete payload.id
-  return { method: route[0], path, body: route[0] === 'DELETE' ? undefined : payload }
+  if (!routes) throw new Error(`unsupported_mutation_tool:${toolName}`)
+  const operation = String(args.operation || '').trim()
+  const mapping = routes[operation]
+  if (!mapping) throw new Error(`unsupported_operation:${toolName}:${operation}`)
+  const [method, template] = mapping
+  const path = template.replace(/{id}/g, () => id(args))
+  return { method, path, body: method === 'DELETE' ? undefined : normalizePayload(toolName, args.payload || {}) }
 }
 
 function normalizePayload(toolName, source) {

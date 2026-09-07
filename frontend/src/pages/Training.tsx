@@ -1,11 +1,22 @@
 import { FormEvent, useEffect, useState } from "react";
-import { api, TrainingAnswer, TrainingEvidence, TrainingSearchResult, TrainingPublicLead, TrainingPublicQuery } from "../api";
+import { api, DOC_TYPES, TrainingAnswer, TrainingEvidence, TrainingSearchResult, TrainingMode, TrainingPublicLead, TrainingPublicQuery, type DocRecord } from "../api";
 
 const QUICK_QUESTIONS = [
   "Cài FRPC lỗi giờ sao?",
   "iNut PC kết nối Modbus TCP thế nào?",
   "iNut Datalogger phù hợp cho bài toán nào?",
   "Giá iNut RS485 hiện tại bao nhiêu?",
+];
+const SALES_QUICK_QUESTIONS = [
+  "Khách cần gateway RS485 cho 20 thiết bị, nên tư vấn gì?",
+  "iNut Datalogger phù hợp trạm đo nào?",
+  "Cho mình catalog sản phẩm iNut để gửi khách",
+  "Khách hỏi giá iNut RS485 và bước tiếp theo",
+];
+
+const TRAINING_MODES: { id: TrainingMode; label: string; hint: string }[] = [
+  { id: "technical", label: "Kỹ thuật / nguồn", hint: "Tra cứu tài liệu, video và hướng dẫn triển khai." },
+  { id: "sales", label: "Tư vấn bán hàng / Marketing", hint: "Định hướng nhu cầu, lợi ích và bước tiếp theo cho khách." },
 ];
 
 function EvidenceList({ title, items }: { title: string; items?: TrainingEvidence[] }) {
@@ -60,6 +71,8 @@ type TrainingKnowledge = Awaited<ReturnType<typeof api.trainingKnowledge>>["item
 export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [question, setQuestion] = useState("");
   const [sessionId, setSessionId] = useState("");
+  const [mode, setMode] = useState<TrainingMode>("sales");
+  const [answerMode, setAnswerMode] = useState<TrainingMode>("sales");
   const [answer, setAnswer] = useState<TrainingAnswer | null>(null);
   const [results, setResults] = useState<TrainingSearchResult[]>([]);
   const [busy, setBusy] = useState(false);
@@ -70,6 +83,8 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [history, setHistory] = useState<TrainingHistory>([]);
   const [knowledge, setKnowledge] = useState<TrainingKnowledge>([]);
+  const [customerDocuments, setCustomerDocuments] = useState<DocRecord[]>([]);
+  const [customerDocumentsLoading, setCustomerDocumentsLoading] = useState(false);
   const [knowledgeUserId, setKnowledgeUserId] = useState(0);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
@@ -78,6 +93,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
   const [leadNote, setLeadNote] = useState("");
   const [leadStatus, setLeadStatus] = useState("new");
   const [leadBusy, setLeadBusy] = useState(false);
+  const quickQuestions = mode === "sales" ? SALES_QUICK_QUESTIONS : QUICK_QUESTIONS;
 
   async function loadAccessUsers() {
     if (isAdmin) {
@@ -92,8 +108,24 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     }
   }
 
+  async function loadCustomerDocuments() {
+    if (isAdmin) {
+      setCustomerDocuments([]);
+      return;
+    }
+    setCustomerDocumentsLoading(true);
+    try {
+      setCustomerDocuments(await api.myDocuments());
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setCustomerDocumentsLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAccessUsers().catch((caught) => setError((caught as Error).message));
+    loadCustomerDocuments().catch((caught) => setError((caught as Error).message));
     Promise.all([api.trainingHistory(), api.trainingKnowledge()]).then(([past, notes]) => {
       setHistory(past.items); setKnowledge(notes.items);
     }).catch((caught) => setError((caught as Error).message));
@@ -114,7 +146,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     setThinkingStep("Đang gửi câu hỏi tới Hermes");
     try {
       const searchPromise = api.trainingSearch(value).catch(() => ({ results: [] }));
-      const job = await api.trainingJobStart(value, sessionId);
+      const job = await api.trainingJobStart(value, sessionId, mode);
       setThinkingStep(job.stage);
       let status = await api.trainingJobStatus(job.jobId);
       while (status.status === "running") {
@@ -125,6 +157,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       if (status.status === "failed" || !status.result) throw new Error(status.error || "Hermes chưa thể hoàn tất câu trả lời");
       const [chat, search] = await Promise.all([Promise.resolve(status.result), searchPromise]);
       setAnswer(chat.answer);
+      setAnswerMode(mode);
       setSessionId(chat.sessionId);
       setResults(search.results);
       const past = await api.trainingHistory();
@@ -223,6 +256,31 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <p>Hermes tra đồng thời Help iNut PC, video thực hành và nội dung công khai trên iNut.vn. Không cần đăng nhập lần hai.</p>
       </header>
 
+      <section className="training-mode-panel" aria-labelledby="training-mode-title">
+        <div>
+          <span id="training-mode-title">MỤC TIÊU TRẢ LỜI</span>
+          <p>{TRAINING_MODES.find((item) => item.id === mode)?.hint}</p>
+        </div>
+        <div className="training-mode-switch" role="group" aria-label="Chọn chế độ Training">
+          {TRAINING_MODES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={mode === item.id ? "active" : ""}
+              aria-pressed={mode === item.id}
+              onClick={() => setMode(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {mode === "sales" && <aside className="training-sales-policy" role="note">
+        <strong>Marketing assistant an toàn</strong>
+        <span>Chỉ dùng thông tin sản phẩm công khai và nguồn đã trích dẫn. Không hứa tồn kho, giao hàng, khuyến mãi hay báo giá nội bộ; khi cần cấu hình/custom, hãy chuyển nhân viên xác nhận.</span>
+      </aside>}
+
       <form className="training-prompt" onSubmit={ask}>
         <textarea aria-label="Câu hỏi cho iNut Training" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Khách đang hỏi gì? Ví dụ: cài frpc lỗi giờ sao..." maxLength={2000} />
         <div className="training-prompt-foot"><small>Giá và chính sách cần đối chiếu nguồn tại thời điểm trả lời.</small><button disabled={busy || !question.trim()}>{busy ? "Đang tra cứu…" : "Hỏi Hermes →"}</button></div>
@@ -232,7 +290,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       {busy && <section className="training-thinking" role="status" aria-live="polite"><span className="training-thinking-pulse" /><div><strong>Hermes đang làm việc</strong><p>{thinkingStep}</p></div><small>Câu hỏi khó có thể cần đến 3 phút. Bạn có thể giữ nguyên trang này.</small></section>}
 
       <div className="training-quick">
-        {QUICK_QUESTIONS.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
+        {quickQuestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
       </div>
       {isAdmin && (
         <section className="training-access-panel">
@@ -255,7 +313,25 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="training-public-leads-head"><div><span>PUBLIC DESK</span><h2>Lead từ trợ lý iNut.vn</h2><p>Số điện thoại được mã hóa; chỉ admin mới có thể chủ động mở số đầy đủ.</p></div><button type="button" onClick={loadAccessUsers}>Làm mới</button></div>
         {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => { const publicAnswer = unwrapPublicAnswer(query.answer); return <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{publicAnswer?.answer && <p>{publicAnswer.answer}</p>}</article>; })}</div></article>}</div>}
       </section>}
-      <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
+      {!isAdmin && <section className="training-history training-customer-documents">
+        <div>
+          <span>TÀI LIỆU CỦA BẠN</span>
+          <h2>Hồ sơ liên quan</h2>
+          <p>Tải nhanh các tài liệu INUT đã được chia sẻ cho tài khoản của bạn.</p>
+        </div>
+        {customerDocumentsLoading ? <p>Đang tải tài liệu...</p> : customerDocuments.length === 0 ? (
+          <p>Chưa có tài liệu nào được chia sẻ cho tài khoản này.</p>
+        ) : <div className="training-customer-document-list">
+          {customerDocuments.map((document) => (
+            <a className="training-customer-document" href={document.download_url} key={document.id}>
+              <span><strong>{document.filename}</strong><small>{DOC_TYPES[document.doc_type] || document.doc_type || "Chưa phân loại"}</small></span>
+              <time dateTime={document.created_at}>{new Date(document.created_at).toLocaleDateString("vi-VN")}</time>
+              <b>Tải xuống</b>
+            </a>
+          ))}
+        </div>}
+      </section>}
+      <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setAnswerMode("technical"); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (
         <section className="training-stats">
           <div className="training-stat-head"><span>USAGE</span><h2>Nhịp sử dụng Training</h2><p>{stats.tokenNote}</p></div>
@@ -272,7 +348,11 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       {answer && (
         <div className="training-grid">
           <article className="training-answer">
-            <div className="training-answer-head"><span>TRẢ LỜI CÓ NGUỒN</span><div><button onClick={copyAnswer}>Copy nội dung</button><button className="training-share" onClick={share}>Tạo link gửi khách</button></div></div>
+            <div className="training-answer-head"><span>{answerMode === "sales" ? "TƯ VẤN BÁN HÀNG CÓ NGUỒN" : "TRẢ LỜI CÓ NGUỒN"}</span><div><button onClick={copyAnswer}>Copy nội dung</button><button className="training-share" onClick={share}>Tạo link gửi khách</button></div></div>
+            {answerMode === "sales" && <section className="training-sales-cta" aria-label="Bước tiếp theo cho khách">
+              <div><strong>Bước tiếp theo cho khách</strong><p>Gửi link trả lời có nguồn hoặc chuyển nhân viên iNut xác nhận cấu hình, giá và yêu cầu tùy chỉnh.</p></div>
+              <span>CTA đề xuất</span>
+            </section>}
             <NarrativeAnswer text={answer.answer} />
             {answer.generalGuidance && <section><h3>Hướng dẫn thêm</h3><p>{answer.generalGuidance}</p></section>}
             {!!answer.warnings?.length && <section className="training-warning"><h3>Lưu ý</h3><p>{answer.warnings.join("\n")}</p></section>}
