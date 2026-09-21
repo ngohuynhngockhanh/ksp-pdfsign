@@ -85,7 +85,27 @@ host = resolve_windows_host(settings.agent_default_ip)
   - Nhúng `details.js` trực tiếp vào thẻ `<script>` và chuyển đổi mọi ảnh nhúng sang Base64 Data URI để lưu trữ vĩnh viễn ngoại tuyến.
 - **Lập tờ khai Quý Mẫu 01-GTGT (`tax_ops.py`)**:
   - Tự động tổng hợp chỉ tiêu `[22]` đến `[43]` và xuất file Excel đối soát thuế.
-
+- **Phân hệ Giải trình Thuế & Thẩm tra Doanh thu 2022-2025 (`tax_defense.py` & `tax_defense_api.py`)**:
+  - **Mục tiêu**: Phục vụ thanh tra, kiểm tra thuế chuyên sâu, lập luận vững chắc **KHÔNG PHỤ THUỘC TỒN KHO VẬT LÝ**.
+  - **Ma trận 4 năm**: Doanh thu chưa thuế: `3.580.884.956 VNĐ` (127 HĐ có mã CQT), Thuế GTGT: `167.335.245 VNĐ`.
+  - **Phân bổ phân khúc (Tiers)**: Nhỏ (<10M), Vừa (10-50M), Lớn (50-100M), Rất lớn (>100M).
+  - **Cơ cấu thuế suất**: 51,4% DT là phần mềm Không chịu thuế (KCT - Chỉ tiêu [26]), 39,2% DT chịu thuế 10%, 9,4% DT giảm 8%.
+  - **Cơ cấu chi phí mua vào**: Phân rã Hàng hóa, Dịch vụ viễn thông/máy chủ/kế toán, và Nhập khẩu hải quan. Cảnh báo HĐ $\ge 20$ triệu bắt buộc lưu kèm Ủy nhiệm chi (UNC).
+  - **Luận điểm giải trình không tồn kho**: Doanh nghiệp giải pháp IoT / phần mềm áp dụng mô hình tinh gọn (Just-In-Time / On-Demand), chi phí giá vốn chủ yếu là R&D, chất xám nhân công, linh kiện gia công theo đơn đặt hàng, giao ngay cho khách hàng, không đọng vốn tồn kho.
+  - **Endpoints API**:
+    + `GET /api/tax-defense/overview`: Ma trận số liệu Doanh thu & Chi phí 4 năm.
+    + `GET /api/tax-defense/justification-dossier`: Toàn văn bản thuyết minh giải trình pháp lý.
+    + `GET /api/tax-defense/export-excel`: Tải tệp Excel báo cáo giải trình 4 sheets.
+    + `POST /api/tax-defense/import-historical-purchase`: Nạp bảng kê mua vào Excel các năm cũ (2022-2024).
+    + `GET /api/tax-defense/partner-status`: Rà soát trạng thái hoạt động toàn bộ đối tác mua/bán (phát hiện NNT Trạng thái 06).
+    + `GET /api/tax-defense/check-mst?mst=...`: Tra cứu thời gian thực trạng thái pháp lý 1 MST bất kỳ.
+  - **Cổng Thông Tin Công Quyền Đối Chứng (Official Referers)**:
+    + 🏛️ **Tổng Cục Thuế - Chuyên trang Công khai NNT**: `https://congkhaithongtin.gdt.gov.vn` (Chuyên trang tra cứu Trạng thái 06 - Bỏ địa chỉ kinh doanh).
+    + 🔎 **Cổng Tra Cứu Thông Tin NNT (GDT)**: `https://tracuunnt.gdt.gov.vn/tcnnt/mstdn.jsp`.
+    + 🏢 **Cổng Thông Tin Quốc Gia Đăng Ký Doanh Nghiệp**: `https://dangkykinhdoanh.gov.vn`.
+    + ⚡ **Hệ thống CSDL Doanh nghiệp VietQR API**: `https://api.vietqr.io/v2/business/{mst}`.
+  - **Điểm nóng thực tế**: Khách hàng **CÔNG TY TNHH TM DV KHÁNH LỢI (MST: `0316764844`)** xuất hóa đơn năm 2024 (159M) hiện thuộc **Trạng thái 06**. Hệ thống tự động sinh luận điểm giải trình bảo vệ: HĐ xuất năm 2024 khi đối tác đang hoạt động, có mã CQT hợp lệ, đầy đủ biên bản bàn giao, INUT đã nộp 100% thuế GTGT đầu ra vào NSNN; việc đối tác sau đó bỏ địa chỉ không làm ảnh hưởng tính hợp pháp của doanh thu INUT.
+  - **Giao diện Web**: Tab `⚖️ Giải trình thuế (2022-2025)` tại URL `/giai-trinh-thue` (gồm 4 phân hệ con: Ma trận doanh thu, Cơ cấu chi phí, Rà soát MST Trạng thái 06, Thuyết minh giải trình).
 ---
 
 ## 🚢 5. HẢI QUAN VNACCS, ECUS5 & LOGISTICS IN NHIỆT

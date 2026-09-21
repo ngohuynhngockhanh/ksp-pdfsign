@@ -3,6 +3,7 @@ import {
   SpxOrder,
   fetchSpxOrders,
   quickPrintSpxOrder,
+  printCustomShippingLabel,
   syncSpxOrders,
   batchPrintSpxOrders,
   markSpxOrderPrinted,
@@ -63,6 +64,18 @@ export function ShippingSPX() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncRawText, setSyncRawText] = useState("");
   const [syncing, setSyncing] = useState(false);
+
+  // Custom Label Modal State (Don ngoai san / chanh xe)
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    code: "",
+    recipient_name: "",
+    recipient_phone: "",
+    recipient_address: "",
+    item_desc: "",
+    note: "Cho xem hàng, không cho thử",
+  });
+  const [customPrinting, setCustomPrinting] = useState(false);
 
   // Preview Modal State
   const [previewOrder, setPreviewOrder] = useState<SpxOrder | null>(null);
@@ -135,6 +148,46 @@ export function ShippingSPX() {
       console.error("Lỗi tải danh sách vận đơn SPX:", err);
     } finally {
       setLoadingOrders(false);
+    }
+  };
+  // Handle Custom Label Print (Don ngoai san / chanh xe)
+  const handlePrintCustom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customForm.code.trim() || !customForm.recipient_name.trim() || !customForm.recipient_phone.trim()) {
+      alert("Vui lòng điền đầy đủ Mã kiện/Nội dung, Tên người nhận và Số điện thoại!");
+      return;
+    }
+    setCustomPrinting(true);
+    try {
+      const res = await printCustomShippingLabel({
+        code: customForm.code.trim(),
+        recipient_name: customForm.recipient_name.trim(),
+        recipient_phone: customForm.recipient_phone.trim(),
+        recipient_address: customForm.recipient_address.trim(),
+        item_desc: customForm.item_desc.trim() || customForm.code.trim(),
+        note: customForm.note.trim(),
+        printer_name: "TP732H",
+        host: "192.168.1.10",
+        print_remote: true,
+      });
+      playScannerBeep("success", soundEnabled);
+      setActionMsg({ type: "success", text: `🖨️ ${res.message}` });
+      setShowCustomModal(false);
+      setCustomForm({
+        code: "",
+        recipient_name: "",
+        recipient_phone: "",
+        recipient_address: "",
+        item_desc: "",
+        note: "Cho xem hàng, không cho thử",
+      });
+      loadOrders();
+    } catch (err: unknown) {
+      playScannerBeep("error", soundEnabled);
+      const msg = err instanceof Error ? err.message : "Lỗi khi in tem ngoài sàn";
+      alert(msg);
+    } finally {
+      setCustomPrinting(false);
     }
   };
 
@@ -378,6 +431,16 @@ export function ShippingSPX() {
             className="spx-btn-sync"
           >
             📥 Nhập / Đồng Bộ Đơn
+          </button>
+          {/* Custom Label Button */}
+          <button
+            type="button"
+            onClick={() => setShowCustomModal(true)}
+            className="spx-btn-sync"
+            style={{ background: "#0c6b58", color: "#fff", borderColor: "#0c6b58" }}
+            title="Tạo và in tem giao hàng ngoài sàn / chành xe sang máy in TP732H"
+          >
+            🏷️ In Tem Ngoài Sàn
           </button>
         </div>
       </div>
@@ -1009,6 +1072,145 @@ export function ShippingSPX() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 🏷️ MODAL IN TEM GIAO HÀNG NGOÀI SÀN (CUSTOM LABEL MODAL) ──────── */}
+      {showCustomModal && (
+        <div className="spx-modal-backdrop">
+          <div className="spx-modal-card" style={{ maxWidth: "560px" }}>
+            <div className="spx-modal-head">
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "20px" }}>🏷️</span>
+                <div>
+                  <h3 style={{ margin: 0 }}>In Tem Giao Hàng Ngoài Sàn</h3>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#64748b" }}>
+                    In trực tiếp tem nhiệt 100x50mm (tỉ lệ vàng 65%) sang máy in TP732H
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(false)}
+                style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handlePrintCustom}>
+              <div className="spx-modal-body" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                      Mã kiện / Mã đơn <span style={{ color: "#e11d48" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customForm.code}
+                      onChange={(e) => setCustomForm({ ...customForm, code: e.target.value })}
+                      placeholder="VD: THI 058 601 1011"
+                      className="spx-quick-input"
+                      style={{ height: "38px", fontSize: "13px" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                      Số điện thoại nhận <span style={{ color: "#e11d48" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={customForm.recipient_phone}
+                      onChange={(e) => setCustomForm({ ...customForm, recipient_phone: e.target.value })}
+                      placeholder="VD: 0902644315"
+                      className="spx-quick-input"
+                      style={{ height: "38px", fontSize: "13px" }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                    Tên người nhận <span style={{ color: "#e11d48" }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customForm.recipient_name}
+                    onChange={(e) => setCustomForm({ ...customForm, recipient_name: e.target.value })}
+                    placeholder="VD: Thiết bị điện Cao Thắng"
+                    className="spx-quick-input"
+                    style={{ height: "38px", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                    Địa chỉ nhận hàng <span style={{ color: "#e11d48" }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customForm.recipient_address}
+                    onChange={(e) => setCustomForm({ ...customForm, recipient_address: e.target.value })}
+                    placeholder="VD: 48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh"
+                    className="spx-quick-input"
+                    style={{ height: "38px", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                      Nội dung hàng hóa
+                     </label>
+                    <input
+                      type="text"
+                      value={customForm.item_desc}
+                      onChange={(e) => setCustomForm({ ...customForm, item_desc: e.target.value })}
+                      placeholder="Mặc định lấy theo mã đơn"
+                      className="spx-quick-input"
+                      style={{ height: "38px", fontSize: "13px" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
+                      Chỉ dẫn giao hàng
+                    </label>
+                    <input
+                      type="text"
+                      value={customForm.note}
+                      onChange={(e) => setCustomForm({ ...customForm, note: e.target.value })}
+                      placeholder="VD: Cho xem hàng, không cho thử"
+                      className="spx-quick-input"
+                      style={{ height: "38px", fontSize: "13px" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="spx-modal-foot" style={{ justifyContent: "flex-end", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomModal(false)}
+                  className="spx-btn-date"
+                  style={{ height: "38px", padding: "0 16px" }}
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={customPrinting}
+                  className="spx-btn-print-action"
+                  style={{ height: "38px", fontSize: "13px", padding: "0 20px" }}
+                >
+                  {customPrinting ? "⏳ Đang gửi in..." : "🖨️ In Máy TP732H (.10)"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

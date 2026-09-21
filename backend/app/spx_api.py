@@ -14,6 +14,7 @@ from . import db as db_module, spx
 from .auth import CurrentUser, require_admin
 from .db import get_session
 from .schemas import (
+    CustomLabelPrintIn,
     SpxBatchPrintIn,
     SpxOrderCreateIn,
     SpxOrderListOut,
@@ -132,6 +133,36 @@ def quick_print(
         logger.exception("Loi in nhanh SPX: %s", e)
         raise HTTPException(status_code=500, detail=f"Lỗi in nhanh: {e}")
 
+
+
+@router.post("/custom-label/print")
+def print_custom_label(
+    payload: CustomLabelPrintIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """In tem nhan giao hang tu do (ngoai san, chanh xe) sang may in nhiet TP732H."""
+    try:
+        return spx.print_custom_shipping_label(
+            db=db,
+            code=payload.code,
+            recipient_name=payload.recipient_name,
+            recipient_phone=payload.recipient_phone,
+            recipient_address=payload.recipient_address,
+            item_desc=payload.item_desc,
+            note=payload.note,
+            sender_name=payload.sender_name,
+            sender_phone=payload.sender_phone,
+            sender_address=payload.sender_address,
+            printer_name=payload.printer_name,
+            host=payload.host,
+            print_remote=payload.print_remote,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Loi in tem nhan giao hang: %s", e)
+        raise HTTPException(status_code=500, detail=f"Loi in tem nhan giao hang: {e}")
 
 @router.post("/sync-orders")
 def sync_orders(

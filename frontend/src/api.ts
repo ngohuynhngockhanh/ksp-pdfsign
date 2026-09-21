@@ -51,6 +51,160 @@ export interface TaxReviewItem {
   uploaded_by: string;
   uploaded_at: string;
 }
+export interface TaxDefenseSummaryItem {
+  year: string;
+  sale_invoices_count: number;
+  sale_invoices_gross: number;
+  revenue_pretax: number;
+  revenue_vat: number;
+  revenue_payment: number;
+  purchase_invoices_count: number;
+  cost_pretax: number;
+  cost_vat_input: number;
+  cost_total: number;
+  cost_to_revenue_pct: number;
+  vat_input_to_output_pct: number;
+  net_vat_payable: number;
+  vat_payable_to_rev_pct: number;
+  has_purchase_records: boolean;
+  benchmark_norm_cost_pct?: number | null;
+}
+
+export interface TaxDefenseOverview {
+  years: string[];
+  summary_matrix: TaxDefenseSummaryItem[];
+  revenue_details: Record<string, {
+    year: string;
+    invoice_count_gross: number;
+    invoice_count_net: number;
+    total_pretax: number;
+    total_vat: number;
+    total_payment: number;
+    gross_payment: number;
+    adjusted_cancelled_count: number;
+    quarters: Record<string, { pretax: number; vat: number; payment: number; count: number }>;
+    tiers: Record<string, { count: number; amount: number }>;
+    tax_rates: Record<string, { pretax: number; vat: number; count: number }>;
+    customers: Record<string, { mst: string; name: string; amount: number; count: number }>;
+  }>;
+  cost_details: Record<string, {
+    year: string;
+    purchase_count: number;
+    pretax_cost: number;
+    vat_input: number;
+    total_payment: number;
+    by_category: Record<string, { pretax: number; vat: number; count: number }>;
+    suppliers: Record<string, { mst: string; name: string; pretax: number; vat: number; total: number; count: number }>;
+    high_value_invoices: Array<{
+      so_hd: number;
+      ky_hieu: string;
+      ngay: string;
+      ten_ban: string;
+      mst_ban: string;
+      tong_truoc_thue: number;
+      tong_thue: number;
+      tong_tien: number;
+      yeu_cau_unc: boolean;
+    }>;
+  }>;
+  generated_at: string;
+}
+
+export interface TaxDefenseDossier {
+  title: string;
+  company_name: string;
+  tax_code: string;
+  director: string;
+  years: string[];
+  markdown_content: string;
+  generated_at: string;
+}
+
+export interface TaxDefensePartnerItem {
+  mst: string;
+  name: string;
+  db_name: string;
+  role: string;
+  years: string[];
+  invoice_count: number;
+  total_amount: number;
+  total_buyer_amount: number;
+  total_supplier_amount: number;
+  address: string;
+  status_code: string;
+  status_desc: string;
+  risk_level: "low" | "medium" | "high" | "unknown";
+  is_abandoned: boolean;
+  is_active: boolean;
+  is_suspended: boolean;
+  is_closed: boolean;
+  defense_note: string;
+}
+
+export interface TaxDefensePartnerStatusReport {
+  total_checked: number;
+  active_count: number;
+  abandoned_count: number;
+  suspended_count: number;
+  closed_count: number;
+  high_risk_amount: number;
+  referers: Record<string, { name: string; url: string; desc: string; authority: string }>;
+  partners: TaxDefensePartnerItem[];
+  generated_at: string;
+}
+
+export interface TaxDefenseInvestigationReport {
+  title: string;
+  legal_basis: string[];
+  official_referers: Record<string, { name: string; url: string; desc: string; authority: string }>;
+  input_risks: {
+    total_invoices: number;
+    total_pretax: number;
+    total_vat: number;
+    total_payment: number;
+    suspect_suppliers_count: number;
+    invoices: Array<{
+      id: number;
+      so_hd: number;
+      ky_hieu: string;
+      ngay: string;
+      mst_ban: string;
+      ten_ban: string;
+      tong_truoc_thue: number;
+      tong_thue: number;
+      tong_tien: number;
+      loai: string;
+      requires_bank_transfer: boolean;
+      investigation_reference: string;
+      current_status: string;
+      action_advice: string;
+    }>;
+    guidance: string;
+  };
+  output_risks: {
+    total_invoices: number;
+    total_pretax: number;
+    total_vat: number;
+    total_payment: number;
+    invoices: Array<{
+      id: number;
+      so_hd: string;
+      ky_hieu: string;
+      ngay: string;
+      mst_mua: string;
+      ten_mua: string;
+      tong_truoc_thue: number;
+      tong_thue: number;
+      tong_tien: number;
+      status: string;
+      is_in_524_list: boolean;
+      current_status: string;
+      safety_assessment: string;
+    }>;
+    guidance: string;
+  };
+  generated_at: string;
+}
 
 export interface TqcCertificate {
   certificate_no: string;
@@ -106,6 +260,57 @@ export interface TqcImportJob {
   error: string;
   started_at: string;
   finished_at: string | null;
+}
+
+export interface BkhcnRiskItem {
+  id: number;
+  annex: number;
+  risk_level: "CAO" | "TRUNG_BINH" | string;
+  risk_label: string;
+  group: string;
+  stt: string;
+  product_name: string;
+  qcvn: string;
+  hs_codes: string[];
+  hs_raw: string;
+  description: string;
+  management_requirement: string;
+  page: number;
+}
+
+export interface BkhcnRiskStatistics {
+  total_items: number;
+  high_risk_count: number;
+  medium_risk_count: number;
+  unique_hs_count: number;
+  groups_count: number;
+  groups: string[];
+  legal_basis: {
+    circular_no: string;
+    issued_by: string;
+    title: string;
+    under_laws: string[];
+    annex_i: string;
+    annex_ii: string;
+  };
+}
+
+export interface BkhcnRiskClassifyResult {
+  status: "matched_exact" | "matched_prefix" | "matched_text" | "low_risk" | string;
+  risk_level: "CAO" | "TRUNG_BINH" | "THAP" | string;
+  risk_label: string;
+  annex: number;
+  matched_item: BkhcnRiskItem | null;
+  all_matches: BkhcnRiskItem[];
+  guidance: string;
+}
+
+export interface BkhcnRiskCatalogResponse {
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+  items: BkhcnRiskItem[];
 }
 export interface TaxGrid {
   name: string;
@@ -676,6 +881,80 @@ async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+export interface IpTrademarkFeeItem {
+  code: string;
+  name: string;
+  amount: number;
+  note: string;
+}
+
+export interface IpTrademarkValidity {
+  filing_date: string;
+  grant_date: string;
+  expiry_date: string;
+  renewal_window_start: string;
+  grace_period_end: string;
+  days_remaining: number;
+  time_remaining_formatted: string;
+  phase: "active" | "in_renewal_window" | "in_grace_period" | "expired" | "unknown";
+  phase_label: string;
+  is_renewable_now: boolean;
+}
+
+export interface IpTrademarkFeeBreakdown {
+  num_classes: number;
+  classes: string[];
+  is_late: boolean;
+  late_months: number;
+  items: IpTrademarkFeeItem[];
+  total_amount: number;
+  total_formatted: string;
+}
+
+export interface IpTrademark {
+  id: number;
+  application_number: string;
+  application_id: string;
+  registration_number: string;
+  mark_name: string;
+  owner_name: string;
+  owner_address: string;
+  filing_date: string;
+  publication_date: string;
+  grant_date: string;
+  expiry_date: string;
+  nice_classes: string;
+  goods_services: string;
+  status: string;
+  colors: string;
+  mark_type: string;
+  remote_logo_url: string;
+  logo_doc_id: string | null;
+  logo_suffix: string;
+  renewal_window_start: string;
+  created_at: string | null;
+  updated_at: string | null;
+  validity: IpTrademarkValidity;
+  fee_breakdown: IpTrademarkFeeBreakdown;
+}
+
+export interface TrademarkLookupResult {
+  application_number: string;
+  application_id: string;
+  mark_name: string;
+  registration_number: string;
+  filing_date: string;
+  publication_date: string;
+  grant_date: string;
+  owner_name: string;
+  nice_classes: string;
+  status: string;
+  thumbnail_url: string;
+  detail_url: string;
+  validity?: IpTrademarkValidity;
+  fee_breakdown?: IpTrademarkFeeBreakdown;
+}
+
 
 export const api = {
   bidding: {
@@ -1141,6 +1420,33 @@ export const api = {
       return req<any>("/api/standards/game/reset", {
         method: "POST",
       });
+    },
+
+    async getRiskStatistics() {
+      return req<BkhcnRiskStatistics>("/api/standards/risk-classification/statistics");
+    },
+
+    async classifyRisk(params: { hs_code?: string; q?: string } = {}) {
+      const p = new URLSearchParams();
+      if (params.hs_code) p.set("hs_code", params.hs_code);
+      if (params.q) p.set("q", params.q);
+      const qs = p.toString();
+      return req<BkhcnRiskClassifyResult>(`/api/standards/risk-classification/classify${qs ? `?${qs}` : ""}`);
+    },
+
+    async getRiskCatalog(params: { risk_level?: string; group?: string; q?: string; page?: number; limit?: number } = {}) {
+      const p = new URLSearchParams();
+      if (params.risk_level) p.set("risk_level", params.risk_level);
+      if (params.group) p.set("group", params.group);
+      if (params.q) p.set("q", params.q);
+      if (params.page) p.set("page", String(params.page));
+      if (params.limit) p.set("limit", String(params.limit));
+      const qs = p.toString();
+      return req<BkhcnRiskCatalogResponse>(`/api/standards/risk-classification/catalog${qs ? `?${qs}` : ""}`);
+    },
+
+    getRiskCircularPdfUrl() {
+      return "/api/standards/risk-classification/pdf";
     },
   },
   async trainingSearch(query: string) {
@@ -1629,6 +1935,42 @@ export const api = {
   async operationsDashboard() {
     return req<OperationsDashboard>("/api/operations/dashboard");
   },
+  async taxDefenseOverview(years = "2022,2023,2024,2025,2026") {
+    return req<TaxDefenseOverview>(`/api/tax-defense/overview?years=${encodeURIComponent(years)}`);
+  },
+  async taxDefenseDossier(years = "2022,2023,2024,2025") {
+    return req<TaxDefenseDossier>(`/api/tax-defense/justification-dossier?years=${encodeURIComponent(years)}`);
+  },
+  taxDefenseExcelUrl(years = "2022,2023,2024,2025,2026") {
+    return `/api/tax-defense/export-excel?years=${encodeURIComponent(years)}`;
+  },
+  async importHistoricalPurchase(file: File, year: string) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<{ success: boolean; imported: number; skipped: number; year: string; errors: string[] }>(
+      `/api/tax-defense/import-historical-purchase?year=${encodeURIComponent(year)}`,
+      { method: "POST", body: fd }
+    );
+  },
+  async taxDefensePartnerStatus(years = "2022,2023,2024,2025,2026", limit = 50) {
+    return req<TaxDefensePartnerStatusReport>(`/api/tax-defense/partner-status?years=${encodeURIComponent(years)}&limit=${limit}`);
+  },
+  async taxDefenseCheckMst(mst: string) {
+    return req<{
+      mst: string;
+      company_name: string;
+      address?: string;
+      status_code: string;
+      status_desc: string;
+      is_active: boolean;
+      is_abandoned: boolean;
+      is_suspended: boolean;
+      is_closed: boolean;
+      risk_level: string;
+      defense_note: string;
+      referers: Record<string, { name: string; url: string; desc: string; authority: string }>;
+    }>(`/api/tax-defense/check-mst?mst=${encodeURIComponent(mst)}`);
+  },
   async attachPurchasePdf(id: number, file: File) {
     const fd = new FormData(); fd.append("file", file);
     return req<{ ok: boolean; state: string }>(`/api/inv/purchase/${id}/attach-pdf`, { method: "POST", body: fd });
@@ -1660,6 +2002,15 @@ export const api = {
   async compareTaxReport(reportId: number, reviewId: number) {
     return req<{ differences: { indicator: string; crm: number; accountant: number; difference: number; match: boolean }[] }>(
       `/api/tax/reports/${reportId}/compare/${reviewId}`,
+    );
+  },
+  async taxDefenseInvestigationReport() {
+    return req<TaxDefenseInvestigationReport>("/api/tax-defense/investigation-blacklist");
+  },
+  async syncGdtPurchases(from_year = 2022, to_year = 2025) {
+    return req<{ success: boolean; total_fetched: number; total_new: number; total_skipped: number; from_year: number; to_year: number }>(
+      `/api/tax-defense/sync-gdt-purchases?from_year=${from_year}&to_year=${to_year}`,
+      { method: "POST" }
     );
   },
   async nasSyncAll() {
@@ -2571,6 +2922,66 @@ export const api = {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }),
     });
   },
+  async customsCheckTasks() {
+    return req<CustomsCheckTask[]>("/api/inv/customs-drive/check-tasks");
+  },
+  async customsCheckCreateTask(body: {
+    so_to_khai: string;
+    ma_doanh_nghiep?: string;
+    so_cmt?: string;
+    folder_name?: string;
+    phan_luong?: string;
+    interval_minutes?: number;
+    telegram_notify?: boolean;
+    notify_mode?: "always" | "on_change";
+  }) {
+    return req<CustomsCheckTask>("/api/inv/customs-drive/check-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async customsCheckAutoSeed() {
+    return req<CustomsCheckTask[]>("/api/inv/customs-drive/check-tasks/auto-seed", {
+      method: "POST",
+    });
+  },
+  async customsCheckRunTask(taskId: number) {
+    return req<{ result: any; task: CustomsCheckTask }>(
+      `/api/inv/customs-drive/check-tasks/${taskId}/run`,
+      { method: "POST" }
+    );
+  },
+  async customsCheckToggleTask(taskId: number) {
+    return req<CustomsCheckTask>(
+      `/api/inv/customs-drive/check-tasks/${taskId}/toggle`,
+      { method: "POST" }
+    );
+  },
+  async customsCheckToggleMode(taskId: number) {
+    return req<CustomsCheckTask>(
+      `/api/inv/customs-drive/check-tasks/${taskId}/toggle-mode`,
+      { method: "POST" }
+    );
+  },
+  async customsCheckDeleteTask(taskId: number) {
+    return req<{ ok: boolean; id: number }>(
+      `/api/inv/customs-drive/check-tasks/${taskId}`,
+      { method: "DELETE" }
+    );
+  },
+  async customsCheckTaskLogs(taskId: number) {
+    return req<CustomsCheckLog[]>(
+      `/api/inv/customs-drive/check-tasks/${taskId}/logs`
+    );
+  },
+  async customsPortalLookup(ref: string, so_cmt?: string) {
+    return req<any>("/api/inv/customs-drive/lookup-customs-portal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ref, so_cmt }),
+    });
+  },
   invCustomsFileUrl(id: number) {
     return `/api/inv/customs/${id}/file`;
   },
@@ -2673,6 +3084,73 @@ export const api = {
     });
   },
   payrollExportUrl(periodId: number) { return `/api/payroll/periods/${periodId}/export`; },
+  trademarks: {
+    list() {
+      return req<IpTrademark[]>("/api/trademarks");
+    },
+    getDetail(id: number) {
+      return req<IpTrademark>(`/api/trademarks/${id}`);
+    },
+    sync(query = "APNA:(INUT)", download_logos = true) {
+      return req<{
+        ok: boolean;
+        synced_count: number;
+        total_in_db: number;
+        message: string;
+        items?: IpTrademark[];
+      }>("/api/trademarks/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, download_logos }),
+      });
+    },
+    lookupOnline(query: string) {
+      return req<{
+        ok: boolean;
+        query: string;
+        total: number;
+        items: TrademarkLookupResult[];
+      }>("/api/trademarks/lookup-online", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+    },
+    getLogoUrl(id: number) {
+      return `/api/trademarks/${id}/logo`;
+    },
+  },
+  trademarksList() {
+    return req<IpTrademark[]>("/api/trademarks");
+  },
+  trademarkDetail(id: number) {
+    return req<IpTrademark>(`/api/trademarks/${id}`);
+  },
+  trademarksSync(query = "APNA:(INUT)", download_logos = true) {
+    return req<{
+      ok: boolean;
+      synced_count: number;
+      total_in_db: number;
+      message: string;
+      items?: IpTrademark[];
+    }>("/api/trademarks/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, download_logos }),
+    });
+  },
+  trademarksLookupOnline(query: string) {
+    return req<{
+      ok: boolean;
+      query: string;
+      total: number;
+      items: TrademarkLookupResult[];
+    }>("/api/trademarks/lookup-online", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+  },
 };
 
 // --- Kieu du lieu ton kho ---
@@ -3660,6 +4138,33 @@ export async function quickPrintSpxOrder(payload: {
   return res.json();
 }
 
+export async function printCustomShippingLabel(payload: {
+  code: string;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
+  item_desc?: string;
+  note?: string;
+  sender_name?: string;
+  sender_phone?: string;
+  sender_address?: string;
+  printer_name?: string;
+  host?: string;
+  print_remote?: boolean;
+}): Promise<{ success: boolean; message: string; code: string; tracking_no: string; label_doc_id: string; is_printed: boolean }> {
+  const res = await fetch("/api/spx/custom-label/print", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi in tem giao hàng" }));
+    throw new Error(err.detail || "Không thể in tem giao hàng");
+  }
+  return res.json();
+}
+
 export async function syncSpxOrders(payload: {
   raw_text?: string;
   from_date?: string;
@@ -3794,4 +4299,39 @@ export async function printSpxOrderRemote(
     throw new Error(err.detail || "Không thể gửi lệnh in tới máy in");
   }
   return res.json();
+}
+
+export interface CustomsCheckTask {
+  id: number;
+  so_to_khai: string;
+  ma_doanh_nghiep: string;
+  so_cmt: string;
+  folder_name: string;
+  phan_luong: string;
+  interval_minutes: number;
+  status: "active" | "completed" | "paused";
+  last_checked_at: string;
+  next_check_at: string;
+  last_status_text: string;
+  last_officer: string;
+  last_error: string;
+  ngay_thong_quan: string;
+  ngay_qua_kvgs: string;
+  completed_at: string;
+  telegram_notify: boolean;
+  notify_mode: "always" | "on_change";
+  created_at: string;
+}
+
+export interface CustomsCheckLog {
+  id: number;
+  task_id: number;
+  checked_at: string;
+  trang_thai_xu_ly: string;
+  cong_chuc_kiem_tra: string;
+  ngay_thong_quan: string;
+  thue_da_nop: number;
+  is_completed: boolean;
+  telegram_sent: boolean;
+  message: string;
 }

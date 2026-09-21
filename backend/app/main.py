@@ -154,6 +154,8 @@ from .facebook_api import router as facebook_router  # noqa: E402
 from .spx_api import router as spx_router  # noqa: E402
 from .bidding_api import router as bidding_router  # noqa: E402
 from .standards_api import resume_tqc_import_jobs, router as standards_router  # noqa: E402
+from .tax_defense_api import router as tax_defense_router  # noqa: E402
+from .trademark_api import router as trademark_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -164,6 +166,8 @@ app.include_router(facebook_router)
 app.include_router(spx_router)
 app.include_router(bidding_router)
 app.include_router(standards_router)
+app.include_router(tax_defense_router)
+app.include_router(trademark_router)
 
 
 
@@ -180,7 +184,13 @@ async def security_middleware(request: Request, call_next):
             settings = get_settings()
             parsed = urlsplit(settings.public_base_url)
             public_origin = f"{parsed.scheme}://{parsed.netloc}"
-            allowed = {public_origin, "http://localhost:5173", "http://127.0.0.1:5173"}
+            allowed = {
+                public_origin,
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:2032",
+                "http://127.0.0.1:2032",
+            }
             if origin not in allowed:
                 return JSONResponse({"detail": "Nguon yeu cau khong hop le"}, status_code=403)
     response = await call_next(request)
@@ -261,6 +271,9 @@ def _startup():
         _cleanup_public_training_data(db, settings)
         _cleanup_facebook_messages(db, settings)
         telegram.start_poller(settings)
+        from . import customs_check_runner
+        customs_check_runner.auto_seed_tasks_from_decls(db)
+        customs_check_runner.start_customs_check_worker(settings)
     finally:
         gen.close()
     resume_tqc_import_jobs()
@@ -863,9 +876,12 @@ def login_by_link(
         db, account.username, account.role,
         request.client.host if request.client else "", "login_link",
     )
-    # Customers with Training access should land on the question desk directly;
-    # document-only accounts keep the existing portal landing page.
-    landing = "/training" if account.role == "admin" or account.training_access else "/ho-so-cua-toi"
+    # Cho phép chuyển hướng tùy chọn (VD: /giai-trinh-thue)
+    target = request.query_params.get("next") or request.query_params.get("redirect")
+    if target and target.startswith("/") and not target.startswith("//"):
+        landing = target
+    else:
+        landing = "/training" if account.role == "admin" or account.training_access else "/ho-so-cua-toi"
     resp = RedirectResponse(url=landing, status_code=302)
     resp.set_cookie(
         COOKIE_NAME, jwt_token, httponly=True, samesite="lax",
@@ -3842,6 +3858,15 @@ if (_FRONTEND_DIST / "index.html").exists():
     def spa_fallback(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+        # Phuc vu truc tiep file text ho so LinkedIn tu ~/ksp-pdfsign
+        if full_path in ("ksp-likeedin.txt", "ksp-likeedin", "ksp-linkedin.txt", "ksp-linkedin"):
+            txt_path = REPO_ROOT / "ksp-likeedin.txt"
+            if txt_path.exists():
+                return FileResponse(
+                    txt_path,
+                    media_type="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+                )
         # Phuc vu cac file tinh o goc (favicon...) neu co
         if full_path in _ROOT_FILES:
             p = _FRONTEND_DIST / full_path

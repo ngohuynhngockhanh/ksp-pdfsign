@@ -17,6 +17,8 @@ import calendar
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import uuid
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -24,15 +26,36 @@ BASE = "https://hoadondientu.gdt.gov.vn/api"
 _TIMEOUT = 30.0
 _LOCAL_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Origin": "https://hoadondientu.gdt.gov.vn",
+    "Referer": "https://hoadondientu.gdt.gov.vn/",
+    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "Action": "",
+    "End-Point": "/",
+}
 
-def _client() -> httpx.Client:
-    # Cong dung TLS hop le nhung mot so moi truong thieu CA -> verify=False (chi doc
-    # du lieu cua chinh minh). Header User-Agent giong trinh duyet cho chac.
+
+def _client(session_cookies: dict | None = None) -> httpx.Client:
+    headers = dict(_BROWSER_HEADERS)
+    headers["request-id"] = str(uuid.uuid4())
     return httpx.Client(
-        timeout=_TIMEOUT, verify=False,
-        headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+        timeout=_TIMEOUT,
+        verify=False,
+        headers=headers,
+        cookies=session_cookies,
+        follow_redirects=True,
     )
-
 
 class TaxError(RuntimeError):
     pass
@@ -55,6 +78,11 @@ def _invoice_date(value: object) -> str:
 def get_captcha() -> dict:
     """Lay 1 captcha moi -> {key, svg}. FE hien svg cho user go."""
     with _client() as c:
+        try:
+            c.get("https://hoadondientu.gdt.gov.vn/")
+        except Exception:
+            pass
+        c.headers["request-id"] = str(uuid.uuid4())
         r = c.get(f"{BASE}/captcha")
     if r.status_code != 200:
         raise TaxError(f"Không lấy được captcha ({r.status_code})")
@@ -65,6 +93,11 @@ def get_captcha() -> dict:
 def authenticate(mst: str, password: str, ckey: str, cvalue: str) -> str:
     """Dang nhap -> tra JWT token. Loi captcha/sai mat khau -> TaxError."""
     with _client() as c:
+        try:
+            c.get("https://hoadondientu.gdt.gov.vn/")
+        except Exception:
+            pass
+        c.headers["request-id"] = str(uuid.uuid4())
         r = c.post(
             f"{BASE}/security-taxpayer/authenticate",
             json={"ckey": ckey, "cvalue": cvalue, "username": mst, "password": password},
@@ -80,8 +113,6 @@ def authenticate(mst: str, password: str, ckey: str, cvalue: str) -> str:
     except Exception:  # noqa: BLE001
         msg = r.text[:120]
     raise TaxError(msg or f"Đăng nhập thất bại ({r.status_code})")
-
-
 def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -> list[dict]:
     """Query 1 endpoint theo khoang [tu, den] (ISO yyyy-mm-dd).
 
@@ -92,12 +123,12 @@ def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -
     import time as _t
     from datetime import date, timedelta
 
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
     d0 = date(int(tu[:4]), int(tu[5:7]), int(tu[8:10]))
     d1 = date(int(den[:4]), int(den[5:7]), int(den[8:10]))
     seen: set = set()
     out: list[dict] = []
     with _client() as c:
+        c.headers["Authorization"] = f"Bearer {token}"
         cur = d0
         while cur <= d1:
             hi = min(cur + timedelta(days=chunk_days - 1), d1)
@@ -111,7 +142,8 @@ def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -
                 r = None
                 for _try in range(5):  # retry moi request
                     try:
-                        r = c.get(url, params=params, headers=headers)
+                        c.headers["request-id"] = str(uuid.uuid4())
+                        r = c.get(url, params=params)
                         break
                     except Exception:  # noqa: BLE001
                         _t.sleep(2)
@@ -143,23 +175,21 @@ def check_token(token: str) -> bool:
     """Token con hieu luc? Query 1 dong thu; 200 -> con, khac -> het han/sai."""
     if not token:
         return False
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
     try:
         with _client() as c:
+            c.headers["Authorization"] = f"Bearer {token}"
+            c.headers["request-id"] = str(uuid.uuid4())
             r = c.get(
                 f"{BASE}/query/invoices/purchase",
                 params={"sort": "tdlap:desc", "size": "1",
                         "search": "tdlap=ge=01/01/2026T00:00:00;tdlap=le=31/01/2026T23:59:59"},
-                headers=headers,
             )
         return r.status_code == 200
     except Exception:  # noqa: BLE001
         return False
 
-
 def invoice_detail(token: str, h: dict) -> dict | None:
     """Lay chi tiet 1 HD (co dong hang hdhhdvu). Thu ca endpoint co ma va khong ma."""
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
     qp = {
         "nbmst": h.get("nbmst"), "khhdon": h.get("khhdon"),
         "khmshdon": h.get("khmshdon"), "shdon": h.get("shdon"), "tdlap": h.get("tdlap"),
@@ -167,10 +197,12 @@ def invoice_detail(token: str, h: dict) -> dict | None:
     import time as _t
 
     with _client() as c:
+        c.headers["Authorization"] = f"Bearer {token}"
         for path in ("/query/invoices/detail", "/sco-query/invoices/detail"):
             for _ in range(5):  # cong cham -> retry 5 lan
                 try:
-                    r = c.get(f"{BASE}{path}", params=qp, headers=headers)
+                    c.headers["request-id"] = str(uuid.uuid4())
+                    r = c.get(f"{BASE}{path}", params=qp)
                 except Exception:  # noqa: BLE001
                     _t.sleep(2)
                     continue
@@ -192,16 +224,17 @@ def download_invoice_xml(token: str, h: dict) -> bytes | None:
 
     import time as _t
 
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0"}
     qp = {
         "nbmst": h.get("nbmst"), "khhdon": h.get("khhdon"),
         "khmshdon": h.get("khmshdon"), "shdon": h.get("shdon"), "tdlap": h.get("tdlap"),
     }
     with _client() as c:
+        c.headers["Authorization"] = f"Bearer {token}"
         for path in ("/sco-query/invoices/export-xml", "/query/invoices/export-xml"):
             for _ in range(5):  # cong cham -> retry
                 try:
-                    r = c.get(f"{BASE}{path}", params=qp, headers=headers)
+                    c.headers["request-id"] = str(uuid.uuid4())
+                    r = c.get(f"{BASE}{path}", params=qp)
                 except Exception:  # noqa: BLE001
                     _t.sleep(2)
                     continue

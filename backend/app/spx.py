@@ -692,6 +692,32 @@ def cancel_spx_order(db: Session, tracking_no: str) -> SpxShipment:
     return shipment
 
 
+def _get_spx_proxies() -> list[str]:
+    """Lấy danh sách proxy từ 9router để dự phòng khi IP nhà mạng bị SPX bóp băng thông/chặn."""
+    db_path = "/home/ksp/.9router/db/data.sqlite"
+    if not os.path.exists(db_path):
+        return []
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path, timeout=3)
+        c = conn.cursor()
+        c.execute("SELECT data FROM proxyPools WHERE isActive = 1 AND testStatus = 'active'")
+        rows = c.fetchall()
+        conn.close()
+        proxies = []
+        for r in rows:
+            try:
+                d = json.loads(r[0])
+                p_url = d.get("proxyUrl")
+                if p_url:
+                    proxies.append(p_url)
+            except Exception:
+                pass
+        return proxies
+    except Exception:
+        return []
+
+
 def fetch_spx_order_online(db: Session, code: str) -> dict[str, Any] | None:
     """Tự động tra cứu trực tuyến thông tin đơn hàng từ cổng SPX qua mã vận đơn (SPXVN...) hoặc mã đơn (VN...)."""
     clean_code = code.strip().upper()
@@ -717,17 +743,27 @@ def fetch_spx_order_online(db: Session, code: str) -> dict[str, Any] | None:
 
     try:
         import httpx
-        with httpx.Client(timeout=15.0, cookies=cookie_dict, headers=headers) as client:
-            if clean_code.startswith("SPXVN"):
-                url = f"https://spx.vn/shipment/order/logistic/order/get_order_info?spx_tn={clean_code}"
-            else:
-                url = f"https://spx.vn/shipment/order/logistic/order/get_order_info?order_sn={clean_code}"
+        clients_to_try = [httpx.Client(timeout=8.0, cookies=cookie_dict, headers=headers)]
+        proxies = _get_spx_proxies()
+        for p in proxies[:3]:
+            clients_to_try.append(httpx.Client(timeout=12.0, proxy=p, cookies=cookie_dict, headers=headers))
 
-            res = client.get(url)
-            if res.status_code == 200:
-                data = res.json()
-                if data.get("retcode") == 0 and "data" in data:
-                    return data["data"]
+        for client in clients_to_try:
+            try:
+                if clean_code.startswith("SPXVN"):
+                    url = f"https://spx.vn/shipment/order/logistic/order/get_order_info?spx_tn={clean_code}"
+                else:
+                    url = f"https://spx.vn/shipment/order/logistic/order/get_order_info?order_sn={clean_code}"
+
+                res = client.get(url)
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("retcode") == 0 and "data" in data:
+                        return data["data"]
+            except Exception:
+                continue
+            finally:
+                client.close()
     except Exception as e:
         logger.warning("Lỗi tra cứu thông tin SPX online cho %s: %s", clean_code, e)
     return None
@@ -808,40 +844,53 @@ def get_spx_order_label(db: Session, tracking_no: str) -> bytes:
                 "Referer": "https://spx.vn/spx-admin/order/trackings",
                 "Origin": "https://spx.vn",
             }
-            with httpx.Client(timeout=15.0, cookies=cookie_dict, headers=headers) as client:
-                url = f"https://spx.vn/shipment/order/logistic/label/batch_get_shipping_label?order_sn_list={order_sn}"
-                res = client.get(url)
-                if res.status_code == 200 and res.content.startswith(b"%PDF"):
-                    pdf_bytes = res.content
-                    try:
-                        import io
-                        from pypdf import PdfReader, PdfWriter, PageObject, Transformation
-                        reader = PdfReader(io.BytesIO(pdf_bytes))
-                        orig_page = reader.pages[0]
-                        w = float(orig_page.mediabox.width)
-                        h = float(orig_page.mediabox.height)
+            clients_to_try = [httpx.Client(timeout=8.0, cookies=cookie_dict, headers=headers)]
+            proxies = _get_spx_proxies()
+            for p in proxies[:3]:
+                clients_to_try.append(httpx.Client(timeout=15.0, proxy=p, cookies=cookie_dict, headers=headers))
 
-                        # Tạo trang mới đúng kích thước gốc nhưng co nội dung về tỉ lệ vàng 65% căn lệch phải
-                        blank_page = PageObject.create_blank_page(width=w, height=h)
-                        scale = 0.65  # Tỉ lệ vàng 65% chuẩn cho máy in nhiệt TP732H
-                        tx = (w - w * scale) - 2.0  # Căn lệch phải (Align Right)
-                        ty = (h - h * scale) / 2.0
-                        transform = Transformation().scale(scale, scale).translate(tx, ty)
-                        blank_page.merge_transformed_page(orig_page, transform)
+            url = f"https://spx.vn/shipment/order/logistic/label/batch_get_shipping_label?order_sn_list={order_sn}"
+            pdf_bytes = None
+            for client in clients_to_try:
+                try:
+                    res = client.get(url)
+                    if res.status_code == 200 and res.content.startswith(b"%PDF"):
+                        pdf_bytes = res.content
+                        break
+                except Exception:
+                    continue
+                finally:
+                    client.close()
 
-                        writer = PdfWriter()
-                        writer.add_page(blank_page)
-                        scaled_buf = io.BytesIO()
-                        writer.write(scaled_buf)
-                        pdf_bytes = scaled_buf.getvalue()
-                    except Exception as err:
-                        logger.warning("Không thể scale nội dung PDF SPX: %s", err)
+            if pdf_bytes:
+                try:
+                    import io
+                    from pypdf import PdfReader, PdfWriter, PageObject, Transformation
+                    reader = PdfReader(io.BytesIO(pdf_bytes))
+                    orig_page = reader.pages[0]
+                    w = float(orig_page.mediabox.width)
+                    h = float(orig_page.mediabox.height)
 
-                    doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
-                    shipment.label_doc_id = doc_id
-                    db.commit()
-                    return pdf_bytes
+                    # Tạo trang mới đúng kích thước gốc nhưng co nội dung về tỉ lệ vàng 65% căn lệch phải
+                    blank_page = PageObject.create_blank_page(width=w, height=h)
+                    scale = 0.65  # Tỉ lệ vàng 65% chuẩn cho máy in nhiệt TP732H
+                    tx = (w - w * scale) - 2.0  # Căn lệch phải (Align Right)
+                    ty = (h - h * scale) / 2.0
+                    transform = Transformation().scale(scale, scale).translate(tx, ty)
+                    blank_page.merge_transformed_page(orig_page, transform)
 
+                    writer = PdfWriter()
+                    writer.add_page(blank_page)
+                    scaled_buf = io.BytesIO()
+                    writer.write(scaled_buf)
+                    pdf_bytes = scaled_buf.getvalue()
+                except Exception as err:
+                    logger.warning("Không thể scale nội dung PDF SPX: %s", err)
+
+                doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+                shipment.label_doc_id = doc_id
+                db.commit()
+                return pdf_bytes
         except Exception as e:
             logger.warning("Lỗi tải PDF từ SPX live: %s", e)
 
@@ -966,5 +1015,138 @@ def print_spx_order_remote(
         "file_path": f"C:\\ksp\\{win_file_name}",
     }
 
+
+
+def print_custom_shipping_label(
+    db: Session,
+    code: str,
+    recipient_name: str,
+    recipient_phone: str,
+    recipient_address: str,
+    item_desc: str = "",
+    note: str = "Cho xem hàng, không cho thử",
+    sender_name: str = "",
+    sender_phone: str = "",
+    sender_address: str = "",
+    printer_name: str = "TP732H",
+    host: str = "192.168.1.10",
+    print_remote: bool = True,
+) -> dict[str, Any]:
+    """Tạo và in tem giao hàng tự do (không phụ thuộc SPX) sang máy in nhiệt TP732H."""
+    import subprocess
+    from .spx_label import generate_custom_shipping_label_100x50
+
+    creds = get_spx_raw_credentials(db)
+    s_name = sender_name.strip() if sender_name else (creds.get("spx_sender_name") or DEFAULT_SENDER["spx_sender_name"])
+    s_phone = sender_phone.strip() if sender_phone else (creds.get("spx_sender_phone") or DEFAULT_SENDER["spx_sender_phone"])
+    s_addr = sender_address.strip() if sender_address else (creds.get("spx_sender_address") or DEFAULT_SENDER["spx_sender_address"])
+
+    # 1. Sinh file PDF tem nhãn 100x50mm đã co tỉ lệ vàng 65% căn lệch phải
+    pdf_bytes = generate_custom_shipping_label_100x50(
+        code=code,
+        recipient_name=recipient_name,
+        recipient_phone=recipient_phone,
+        recipient_address=recipient_address,
+        item_desc=item_desc if item_desc else code,
+        note=note,
+        sender_name=s_name,
+        sender_phone=s_phone,
+        sender_address=s_addr,
+        apply_golden_ratio=True,
+    )
+
+    doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+    clean_code = re.sub(r"[^A-Za-z0-9_-]", "_", code.strip())
+    tracking_no = f"CUSTOM_{clean_code}" if not code.startswith("SPXVN") else code
+
+    # Lưu hoặc cập nhật SpxShipment để truy vết
+    shipment = db.scalar(select(SpxShipment).where(SpxShipment.tracking_no == tracking_no))
+    if not shipment:
+        shipment = SpxShipment(
+            tracking_no=tracking_no,
+            order_code=code,
+            recipient_name=recipient_name,
+            recipient_phone=recipient_phone,
+            recipient_address=recipient_address,
+            province="Tây Ninh",
+            district="",
+            ward="",
+            cod_amount=0.0,
+            weight_gram=500,
+            item_description=item_desc if item_desc else code,
+            note=note,
+            payer="sender",
+            status="ready_to_ship",
+            shipping_fee=0.0,
+            label_doc_id=doc_id,
+            sender_name=s_name,
+            sender_phone=s_phone,
+            sender_address=s_addr,
+            is_printed=False,
+            printed_at=None,
+        )
+        db.add(shipment)
+    else:
+        shipment.label_doc_id = doc_id
+        shipment.recipient_name = recipient_name
+        shipment.recipient_phone = recipient_phone
+        shipment.recipient_address = recipient_address
+        shipment.item_description = item_desc if item_desc else code
+        shipment.note = note
+
+    db.commit()
+    db.refresh(shipment)
+
+    # 2. Gửi lệnh in nếu có yêu cầu remote
+    print_res = {}
+    if print_remote:
+        resolved_host = resolve_windows_host(host)
+        pdf_path = storage.path_for(doc_id)
+        win_file_name = f"label_{tracking_no}.pdf"
+        scp_cmd = [
+            "scp",
+            "-i", "/home/ksp/.ssh/id_ed25519",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            str(pdf_path),
+            f"Administrator@{resolved_host}:C:/ksp/{win_file_name}",
+        ]
+        scp_proc = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=10)
+        if scp_proc.returncode != 0:
+            raise RuntimeError(f"Lỗi chuyển file nhãn sang máy {resolved_host}: {scp_proc.stderr}")
+
+        foxit_cmd = f'"C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe" /t "C:\\ksp\\{win_file_name}" "{printer_name}"'
+        ssh_print_cmd = [
+            "ssh", "-n",
+            "-i", "/home/ksp/.ssh/id_ed25519",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"Administrator@{resolved_host}",
+            foxit_cmd,
+        ]
+        print_proc = subprocess.run(ssh_print_cmd, capture_output=True, text=True, timeout=15)
+        if print_proc.returncode != 0:
+            raise RuntimeError(f"Lỗi thực thi lệnh in Foxit trên Windows: {print_proc.stderr}")
+
+        shipment.is_printed = True
+        shipment.printed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(shipment)
+        print_res = {
+            "success": True,
+            "message": f"Đã gửi lệnh in tem ({code}) thành công tới máy in '{printer_name}' tại {resolved_host}!",
+            "file_path": f"C:\\ksp\\{win_file_name}",
+        }
+
+    return {
+        "success": True,
+        "code": code,
+        "tracking_no": shipment.tracking_no,
+        "label_doc_id": doc_id,
+        "is_printed": shipment.is_printed,
+        "printed_at": shipment.printed_at.isoformat() if shipment.printed_at else None,
+        "message": print_res.get("message") or f"Đã tạo tem nhãn cho {code} thành công!",
+        "print_remote_success": print_res.get("success", False),
+    }
 
 

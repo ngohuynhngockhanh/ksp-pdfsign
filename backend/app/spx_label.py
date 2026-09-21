@@ -10,6 +10,7 @@ from reportlab.graphics.barcode import code128
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import qrcode
+from pypdf import PdfReader, PdfWriter, PageObject, Transformation
 
 
 # Đăng ký font tiếng Việt Unicode
@@ -249,3 +250,134 @@ def _wrap_text(text: str, max_chars: int = 45) -> list[str]:
     if current:
         lines.append(" ".join(current))
     return lines
+
+
+def generate_custom_shipping_label_100x50(
+    code: str,
+    recipient_name: str,
+    recipient_phone: str,
+    recipient_address: str,
+    item_desc: str = "",
+    note: str = "Cho xem hàng, không cho thử",
+    sender_name: str = "INUT TECHNOLOGY",
+    sender_phone: str = "0345 296 757",
+    sender_address: str = "161 Trường Chinh, P. Tuy Hòa, Đắk Lắk",
+    apply_golden_ratio: bool = True,
+) -> bytes:
+    """Tạo tem giao hàng 100mm x 50mm in nhiệt cho đơn hàng ngoài sàn / chành xe / tự giao."""
+    w = 100 * mm
+    h = 50 * mm
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(w, h))
+
+    # Viền ngoài
+    m = 1.5 * mm
+    c.setLineWidth(0.8)
+    c.rect(m, m, w - 2 * m, h - 2 * m)
+
+    # 1. HEADER (43.5mm -> 50mm)
+    y_h = h - 6.5 * mm
+    c.setFillColor(colors.black)
+    c.roundRect(m + 1.2 * mm, y_h + 1.0 * mm, 28 * mm, 4.2 * mm, 1 * mm, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont(FONT_BOLD, 7.5)
+    c.drawCentredString(m + 15.2 * mm, y_h + 2.0 * mm, "INUT DELIVERY")
+
+    c.setFillColor(colors.black)
+    c.setFont(FONT_BOLD, 8.5)
+    c.drawRightString(w - m - 2 * mm, y_h + 2.0 * mm, "PHIẾU GIAO HÀNG")
+    c.line(m, y_h, w - m, y_h)
+
+    # 2. BARCODE & MÃ ĐƠN (34.5mm -> 43.5mm)
+    clean_code = code.replace(" ", "").upper()
+    try:
+        bc = code128.Code128(clean_code, barHeight=6 * mm, barWidth=0.65, humanReadable=False)
+        bc_x = m + 2 * mm
+        bc_y = y_h - 7 * mm
+        bc.drawOn(c, bc_x, bc_y)
+    except Exception:
+        pass
+
+    c.setFont(FONT_BOLD, 8.5)
+    c.drawString(m + 47 * mm, y_h - 3.8 * mm, f"Mã: {code}")
+    c.setFont(FONT_REGULAR, 6.5)
+    item_str = item_desc if item_desc else code
+    c.drawString(m + 47 * mm, y_h - 6.8 * mm, f"Nội dung: {item_str[:22]}")
+
+    y_mid = y_h - 9.0 * mm
+    c.setLineWidth(0.6)
+    c.line(m, y_mid, w - m, y_mid)
+
+    # 3. TỪ (FROM) (27mm -> 34.5mm)
+    y_from = y_mid - 3.2 * mm
+    c.setFont(FONT_BOLD, 6.5)
+    c.drawString(m + 1.5 * mm, y_from, "Từ / From:")
+    c.setFont(FONT_BOLD, 7.0)
+    c.drawString(m + 16 * mm, y_from, sender_name)
+    c.setFont(FONT_REGULAR, 6.5)
+    c.drawString(m + 55 * mm, y_from, f"ĐT: {sender_phone}")
+    c.drawString(m + 16 * mm, y_from - 3.0 * mm, sender_address[:50])
+
+    y_sep = y_from - 4.5 * mm
+    c.setLineWidth(0.5)
+    c.line(m, y_sep, w - m, y_sep)
+
+    # 4. ĐẾN (TO) (9mm -> 26.5mm) - NỔI BẬT NHẤT
+    y_to = y_sep - 4.2 * mm
+    c.setFont(FONT_BOLD, 8.5)
+    c.drawString(m + 1.5 * mm, y_to, "Đến / To:")
+    c.setFont(FONT_BOLD, 10.5)
+    c.drawString(m + 18 * mm, y_to, recipient_name.upper())
+
+    y_phone = y_to - 4.5 * mm
+    c.setFont(FONT_BOLD, 11)
+    c.drawString(m + 1.5 * mm, y_phone, f"SĐT: {recipient_phone}")
+
+    addr_lines = _wrap_text(recipient_address, max_chars=48)
+    y_addr = y_phone - 4.0 * mm
+    c.setFont(FONT_BOLD, 8.0)
+    if addr_lines:
+        c.drawString(m + 1.5 * mm, y_addr, f"Đ/c: {addr_lines[0]}")
+        if len(addr_lines) > 1:
+            c.drawString(m + 8.5 * mm, y_addr - 3.2 * mm, addr_lines[1])
+    else:
+        c.drawString(m + 1.5 * mm, y_addr, f"Đ/c: {recipient_address}")
+
+    y_bot = 8.5 * mm
+    c.setLineWidth(0.6)
+    c.line(m, y_bot, w - m, y_bot)
+
+    # 5. GHI CHÚ & FOOTER (1.5mm -> 8.5mm)
+    c.setFont(FONT_BOLD, 6.5)
+    c.drawString(m + 1.5 * mm, 5.2 * mm, f"Ghi chú: {note[:48]}")
+
+    c.setFont(FONT_REGULAR, 5.5)
+    c.drawString(m + 1.5 * mm, 2.5 * mm, "Chữ ký người nhận: .................................................")
+    now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    c.drawRightString(w - m - 2 * mm, 2.5 * mm, f"Ngày in: {now_str}")
+
+    c.showPage()
+    c.save()
+    raw_pdf = buf.getvalue()
+
+    if not apply_golden_ratio:
+        return raw_pdf
+
+    # Áp dụng tỉ lệ vàng 65% căn lệch phải chuẩn máy in TP732H
+    reader = PdfReader(io.BytesIO(raw_pdf))
+    orig_page = reader.pages[0]
+    pw = float(orig_page.mediabox.width)
+    ph = float(orig_page.mediabox.height)
+
+    blank_page = PageObject.create_blank_page(width=pw, height=ph)
+    scale = 0.65
+    tx = (pw - pw * scale) - 2.0
+    ty = (ph - ph * scale) / 2.0
+    transform = Transformation().scale(scale, scale).translate(tx, ty)
+    blank_page.merge_transformed_page(orig_page, transform)
+
+    writer = PdfWriter()
+    writer.add_page(blank_page)
+    scaled_buf = io.BytesIO()
+    writer.write(scaled_buf)
+    return scaled_buf.getvalue()

@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { CustomsDriveDossiers } from "../components/CustomsDriveDossiers";
+import { CustomsCheckManager } from "../components/CustomsCheckManager";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -327,6 +328,7 @@ export function CustomsDecl() {
 
   return (
     <div className="docs-page">
+      <CustomsCheckManager />
       <CustomsDriveDossiers />
       <div className="docs-toolbar">
         <h3>

@@ -4,9 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -1127,6 +1130,56 @@ class InvCustomsEcusExport(Base):
     customs: Mapped["InvCustomsDecl"] = relationship()
 
 
+class InvCustomsCheckTask(Base):
+    """Task tự động định kỳ kiểm tra trạng thái tờ khai luồng vàng/đỏ từ Cổng Hải quan."""
+
+    __tablename__ = "inv_customs_check_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    so_to_khai: Mapped[str] = mapped_column(String(20), index=True)
+    ma_doanh_nghiep: Mapped[str] = mapped_column(String(20), default="4401053694")
+    so_cmt: Mapped[str] = mapped_column(String(20), default="054096010424")
+    folder_name: Mapped[str] = mapped_column(String(255), default="")
+    phan_luong: Mapped[str] = mapped_column(String(50), default="")
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active, completed, paused
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_status_text: Mapped[str] = mapped_column(String(100), default="")  # Đang xử lý, Hoàn thành xử lý...
+    last_officer: Mapped[str] = mapped_column(String(100), default="")
+    last_error: Mapped[str] = mapped_column(String(500), default="")
+    ngay_thong_quan: Mapped[str] = mapped_column(String(50), default="")
+    ngay_qua_kvgs: Mapped[str] = mapped_column(String(50), default="")
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_result_json: Mapped[str] = mapped_column(Text, default="")
+    telegram_notify: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_mode: Mapped[str] = mapped_column(String(20), default="always")  # always | on_change
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    logs: Mapped[list["InvCustomsCheckLog"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan", order_by="desc(InvCustomsCheckLog.id)"
+    )
+
+
+class InvCustomsCheckLog(Base):
+    """Lịch sử từng lần tự động tra cứu tờ khai hải quan."""
+
+    __tablename__ = "inv_customs_check_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("inv_customs_check_tasks.id"), index=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    trang_thai_xu_ly: Mapped[str] = mapped_column(String(100), default="")
+    cong_chuc_kiem_tra: Mapped[str] = mapped_column(String(100), default="")
+    ngay_thong_quan: Mapped[str] = mapped_column(String(50), default="")
+    thue_da_nop: Mapped[float] = mapped_column(Float, default=0.0)
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    message: Mapped[str] = mapped_column(Text, default="")
+
+    task: Mapped["InvCustomsCheckTask"] = relationship(back_populates="logs")
+
+
 class TaxReviewUpload(Base):
     """File BCT (to khai GTGT) ke toan up len -> he thong cham loi + xem online.
 
@@ -1340,6 +1393,34 @@ class BiddingAlertLog(Base):
     alerted_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class IpTrademark(Base):
+    """Nhan hieu / Van bang so huu tri tue (Cuc SHTT / WIPO Publish)."""
+
+    __tablename__ = "ip_trademarks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    application_id: Mapped[str] = mapped_column(String(50), default="", index=True)
+    registration_number: Mapped[str] = mapped_column(String(50), default="", index=True)
+    mark_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    owner_name: Mapped[str] = mapped_column(String(500), default="")
+    owner_address: Mapped[str] = mapped_column(String(500), default="")
+    filing_date: Mapped[str] = mapped_column(String(20), default="")
+    publication_date: Mapped[str] = mapped_column(String(20), default="")
+    grant_date: Mapped[str] = mapped_column(String(20), default="")
+    expiry_date: Mapped[str] = mapped_column(String(20), default="")
+    nice_classes: Mapped[str] = mapped_column(String(100), default="")
+    goods_services: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(50), default="", index=True)
+    colors: Mapped[str] = mapped_column(String(255), default="")
+    mark_type: Mapped[str] = mapped_column(String(50), default="")
+    remote_logo_url: Mapped[str] = mapped_column(String(1000), default="")
+    logo_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    logo_suffix: Mapped[str] = mapped_column(String(10), default=".jpg")
+    renewal_window_start: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
 _engine = None
 _SessionLocal = None
 
@@ -1365,6 +1446,7 @@ def init_db() -> None:
     _seed_customs_drive_sources()
     _seed_pymid_catalog()
 
+    _seed_ip_trademarks()
 
 def _seed_warehouses() -> None:
     """Tao 3 kho mac dinh neu chua co."""
@@ -1405,6 +1487,13 @@ def _seed_standards_benchmarks() -> None:
     with _SessionLocal() as db:
         seed_benchmark_certificates(db)
 
+
+def _seed_ip_trademarks() -> None:
+    """Khoi tao du lieu mac dinh 5 don nhan hieu INUT neu chua co."""
+    from .trademark import seed_inut_trademarks
+
+    with _SessionLocal() as db:
+        seed_inut_trademarks(db)
 
 def _migrate_add_columns() -> None:
     """Them cot moi vao bang da ton tai (SQLite create_all khong tu ALTER)."""
@@ -1579,6 +1668,29 @@ def _migrate_add_columns() -> None:
             "sender_address": "VARCHAR(500) DEFAULT ''",
             "is_printed": "BOOLEAN DEFAULT 0",
             "printed_at": "DATETIME",
+        },
+        "ip_trademarks": {
+            "application_number": "VARCHAR(50) DEFAULT ''",
+            "application_id": "VARCHAR(50) DEFAULT ''",
+            "registration_number": "VARCHAR(50) DEFAULT ''",
+            "mark_name": "VARCHAR(255) DEFAULT ''",
+            "owner_name": "VARCHAR(500) DEFAULT ''",
+            "owner_address": "VARCHAR(500) DEFAULT ''",
+            "filing_date": "VARCHAR(20) DEFAULT ''",
+            "publication_date": "VARCHAR(20) DEFAULT ''",
+            "grant_date": "VARCHAR(20) DEFAULT ''",
+            "expiry_date": "VARCHAR(20) DEFAULT ''",
+            "nice_classes": "VARCHAR(100) DEFAULT ''",
+            "goods_services": "TEXT DEFAULT ''",
+            "status": "VARCHAR(50) DEFAULT ''",
+            "colors": "VARCHAR(255) DEFAULT ''",
+            "mark_type": "VARCHAR(50) DEFAULT ''",
+            "remote_logo_url": "VARCHAR(1000) DEFAULT ''",
+            "logo_doc_id": "VARCHAR(64) DEFAULT ''",
+            "logo_suffix": "VARCHAR(10) DEFAULT '.jpg'",
+            "renewal_window_start": "VARCHAR(20) DEFAULT ''",
+            "created_at": "DATETIME",
+            "updated_at": "DATETIME",
         },
     }
     with _engine.begin() as conn:

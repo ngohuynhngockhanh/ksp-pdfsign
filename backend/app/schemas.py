@@ -1150,6 +1150,21 @@ class SpxBatchPrintIn(BaseModel):
 
 
 
+class CustomLabelPrintIn(BaseModel):
+    code: str
+    recipient_name: str
+    recipient_phone: str
+    recipient_address: str
+    item_desc: str = ""
+    note: str = "Cho xem hàng, không cho thử"
+    sender_name: str = ""
+    sender_phone: str = ""
+    sender_address: str = ""
+    printer_name: str = "TP732H"
+    host: str = "192.168.1.10"
+    print_remote: bool = True
+
+
 # --- Dau Thau / Mua Sam Cong (Bidding Procurement & Hunting) ---
 
 class TenderItemOut(BaseModel):

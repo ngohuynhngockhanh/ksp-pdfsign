@@ -5,15 +5,16 @@ và Đối Soát Chuyên Ngành Theo Mã HS Code cho KSP iNut.
 from __future__ import annotations
 
 from collections import OrderedDict
+from datetime import datetime, timezone
 import io
 import json
+import logging
+from pathlib import Path
 import re
 import threading
 import time
-import zipfile
-from datetime import datetime, timezone
 from typing import Any
-
+import zipfile
 import weasyprint
 
 
@@ -772,12 +773,41 @@ class HsCodeConformityService:
 
     @classmethod
     def lookup_hs_code(cls, hs_code: str) -> dict[str, Any] | None:
-        """Tra cuu chi tiet thu tuc kiem tra chuyen nganh theo ma HS Code."""
+        """Tra cuu chi tiet thu tuc kiem tra chuyen nganh theo ma HS Code, tich hop Thong tu 36/2026/TT-BKHCN."""
         clean_hs = re.sub(r"[^0-9]", "", hs_code.strip())
+        mapping_match = None
         for mapping in cls.HS_CODE_MAPPINGS:
             m_clean = re.sub(r"[^0-9]", "", mapping["hs_code"])
             if clean_hs.startswith(m_clean) or m_clean.startswith(clean_hs):
-                return mapping
+                mapping_match = dict(mapping)
+                break
+
+        # Tra cuu phan loai rui ro theo Thong tu 36/2026/TT-BKHCN
+        risk_info = BkhcnRiskClassificationService.classify(hs_code)
+
+        if mapping_match:
+            mapping_match["risk_classification"] = risk_info
+            if risk_info.get("status") in ("matched_exact", "matched_prefix") and risk_info.get("matched_item"):
+                top = risk_info["matched_item"]
+                if top.get("qcvn") and top["qcvn"] not in mapping_match.get("applicable_standards", []):
+                    mapping_match["applicable_standards"].append(top["qcvn"])
+            return mapping_match
+
+        # Neu khong co mapping thu cong, tao tu dong tu Thong tu 36/2026/TT-BKHCN
+        if risk_info.get("status") in ("matched_exact", "matched_prefix") and risk_info.get("matched_item"):
+            item = risk_info["matched_item"]
+            applicable = [item["qcvn"]] if item.get("qcvn") else []
+            return {
+                "hs_code": hs_code,
+                "hs_description": item.get("product_name") or item.get("description") or f"Sản phẩm nhóm {hs_code}",
+                "applicable_standards": applicable,
+                "customs_inspection_agency": "Bộ Khoa học và Công nghệ (hoặc cơ quan chuyên môn theo phân quyền)",
+                "inspection_type": f"Kiểm tra chất lượng nhà nước theo Thông tư 36/2026/TT-BKHCN ({risk_info['risk_label']})",
+                "required_procedure": item.get("management_requirement") or ("Chứng nhận hợp quy bắt buộc (PT5/PT7) + Đăng ký KTCL" if item.get("annex") == 1 else "Công bố hợp quy"),
+                "customs_notes": "Áp dụng Danh mục sản phẩm rủi ro cao/trung bình Thông tư 36/2026/TT-BKHCN.",
+                "exemption_cases": "Hàng phi mậu dịch mẫu thử nghiệm không thương mại hoặc thuộc đối tượng miễn trừ theo quy định pháp luật.",
+                "risk_classification": risk_info,
+            }
 
         # Neu khong co mapping chinh xac nhung co HS 4-6 so, tao tra cuu suy luan
         if len(clean_hs) >= 4:
@@ -792,6 +822,7 @@ class HsCodeConformityService:
                     "required_procedure": "Chứng nhận Hợp quy (CNHQ) + Công bố Hợp quy (CBHQ) dấu CR",
                     "customs_notes": "Cần đăng ký kiểm tra chất lượng tại Cổng thông tin một cửa quốc gia (NSW).",
                     "exemption_cases": "Hàng tạm nhập tái xuất.",
+                    "risk_classification": risk_info,
                 }
             elif prefix4 == "9026" or prefix4 == "9028":
                 return {
@@ -803,9 +834,151 @@ class HsCodeConformityService:
                     "required_procedure": "Phê duyệt mẫu + Kiểm định ban đầu",
                     "customs_notes": "Kiểm tra tính hợp lệ của giấy chứng nhận kiểm định xuất xưởng.",
                     "exemption_cases": "Hàng triển lãm hội chợ.",
+                    "risk_classification": risk_info,
                 }
 
-        return None
+        return {
+            "hs_code": hs_code,
+            "hs_description": f"Hàng hóa mã số HS {hs_code}",
+            "applicable_standards": [],
+            "customs_inspection_agency": "Cơ quan Hải quan tiếp nhận tờ khai",
+            "inspection_type": "Thông quan thông thường",
+            "required_procedure": "Hồ sơ hải quan thông thường (Tờ khai, Invoice, Packing List, C/O)",
+            "customs_notes": "Không thuộc Danh mục rủi ro cao hoặc trung bình của Bộ KH&CN (Thông tư 36/2026/TT-BKHCN).",
+            "exemption_cases": "Áp dụng quy định xuất nhập khẩu thông thường.",
+            "risk_classification": risk_info,
+        }
+
+
+class BkhcnRiskClassificationService:
+    """Tra cuu Danh muc san pham, hang hoa co muc do rui ro trung binh, rui ro cao theo Thong tu 36/2026/TT-BKHCN."""
+
+    _CATALOG_CACHE: list[dict[str, Any]] | None = None
+
+    @classmethod
+    def get_catalog(cls) -> list[dict[str, Any]]:
+        if cls._CATALOG_CACHE is None:
+            catalog_file = Path(__file__).resolve().parent / "assets" / "bkhcn_risk_catalog.json"
+            if catalog_file.exists():
+                try:
+                    cls._CATALOG_CACHE = json.loads(catalog_file.read_text(encoding="utf-8"))
+                except Exception as e:
+                    logger.error("Loi doc bkhcn_risk_catalog.json: %s", e)
+                    cls._CATALOG_CACHE = []
+            else:
+                cls._CATALOG_CACHE = []
+        return cls._CATALOG_CACHE
+
+    @classmethod
+    def get_statistics(cls) -> dict[str, Any]:
+        catalog = cls.get_catalog()
+        high_risk = [i for i in catalog if i.get("annex") == 1]
+        medium_risk = [i for i in catalog if i.get("annex") == 2]
+        unique_hs = set(h for i in catalog for h in i.get("hs_codes", []))
+        groups = sorted(list(set(i.get("group") for i in catalog if i.get("group"))))
+
+        return {
+            "total_items": len(catalog),
+            "high_risk_count": len(high_risk),
+            "medium_risk_count": len(medium_risk),
+            "unique_hs_count": len(unique_hs),
+            "groups_count": len(groups),
+            "groups": groups,
+            "legal_basis": {
+                "circular_no": "Thông tư số 36/2026/TT-BKHCN",
+                "issued_by": "Bộ Khoa học và Công nghệ",
+                "title": "Danh mục sản phẩm, hàng hóa có mức độ rủi ro trung bình, mức độ rủi ro cao thuộc trách nhiệm quản lý của Bộ Khoa học và Công nghệ",
+                "under_laws": [
+                    "Luật Chất lượng sản phẩm, hàng hóa số 05/2007/QH12 (sửa đổi bổ sung bởi Luật số 78/2025/QH15)",
+                    "Luật Tiêu chuẩn và quy chuẩn kỹ thuật số 68/2006/QH11 (sửa đổi bổ sung bởi Luật số 70/2025/QH15)",
+                    "Nghị định số 37/2026/NĐ-CP ngày 23/01/2026 của Chính phủ",
+                    "Nghị định số 22/2026/NĐ-CP ngày 16/01/2026 của Chính phủ",
+                ],
+                "annex_i": "Danh mục sản phẩm, hàng hóa có mức độ rủi ro CAO (bắt buộc kiểm tra nhà nước KTCL khi nhập khẩu, chứng nhận hợp quy PT5 hoặc PT7 bởi tổ chức chỉ định)",
+                "annex_ii": "Danh mục sản phẩm, hàng hóa có mức độ rủi ro TRUNG BÌNH (công bố hợp quy dựa trên tự đánh giá hoặc chứng nhận, kiểm tra hậu kiểm)",
+            },
+        }
+
+    @classmethod
+    def classify(cls, hs_code: str = "", query: str = "") -> dict[str, Any]:
+        catalog = cls.get_catalog()
+        clean_hs = re.sub(r"[^0-9]", "", hs_code.strip())
+        norm_q = query.strip().lower()
+
+        exact_matches = []
+        prefix_matches = []
+        text_matches = []
+
+        for item in catalog:
+            item_hs_cleans = [re.sub(r"[^0-9]", "", h) for h in item.get("hs_codes", [])]
+
+            if clean_hs and clean_hs in item_hs_cleans:
+                exact_matches.append(item)
+                continue
+
+            if clean_hs and len(clean_hs) >= 4:
+                if any(h.startswith(clean_hs[:4]) or clean_hs.startswith(h[:4]) for h in item_hs_cleans if len(h) >= 4):
+                    prefix_matches.append(item)
+                    continue
+
+            if norm_q:
+                full_text = f"{item.get('product_name', '')} {item.get('description', '')} {item.get('group', '')} {item.get('qcvn', '')}".lower()
+                if norm_q in full_text:
+                    text_matches.append(item)
+
+        if exact_matches:
+            top = exact_matches[0]
+            return {
+                "status": "matched_exact",
+                "risk_level": top["risk_level"],
+                "risk_label": top["risk_label"],
+                "annex": top["annex"],
+                "matched_item": top,
+                "all_matches": exact_matches,
+                "guidance": (
+                    "Hàng hóa thuộc Danh mục RỦI RO CAO (Phụ lục I Thông tư 36/2026/TT-BKHCN). "
+                    "Bắt buộc đăng ký Kiểm tra nhà nước về chất lượng (KTCL) trước khi mở tờ khai hải quan. "
+                    "Yêu cầu Giấy chứng nhận hợp quy của tổ chức được chỉ định (Phương thức 5 hoặc Phương thức 7)."
+                    if top["annex"] == 1 else
+                    "Hàng hóa thuộc Danh mục RỦI RO TRUNG BÌNH (Phụ lục II Thông tư 36/2026/TT-BKHCN). "
+                    "Công bố hợp quy dựa trên kết quả tự đánh giá hoặc chứng nhận của tổ chức được công nhận/chỉ định; kiểm tra chất lượng theo cơ chế hậu kiểm."
+                ),
+            }
+        elif prefix_matches:
+            top = prefix_matches[0]
+            return {
+                "status": "matched_prefix",
+                "risk_level": top["risk_level"],
+                "risk_label": top["risk_label"],
+                "annex": top["annex"],
+                "matched_item": top,
+                "all_matches": prefix_matches[:5],
+                "guidance": f"Mã HS Code {hs_code} cùng phân nhóm với mặt hàng thuộc {top['risk_label']}. Cần kiểm tra kỹ mô tả hàng hóa thực tế để xác định chính xác nghĩa vụ KTCL.",
+            }
+        elif text_matches:
+            top = text_matches[0]
+            return {
+                "status": "matched_text",
+                "risk_level": top["risk_level"],
+                "risk_label": top["risk_label"],
+                "annex": top["annex"],
+                "matched_item": top,
+                "all_matches": text_matches[:5],
+                "guidance": f"Từ khóa khớp với mặt hàng thuộc {top['risk_label']} (Nhóm: {top.get('group')}).",
+            }
+        else:
+            return {
+                "status": "low_risk",
+                "risk_level": "THAP",
+                "risk_label": "Mức độ rủi ro THẤP (Ngoài danh mục Phụ lục I & II)",
+                "annex": 0,
+                "matched_item": None,
+                "all_matches": [],
+                "guidance": (
+                    "Sản phẩm không thuộc Danh mục rủi ro cao hoặc trung bình của Bộ KH&CN (Thông tư 36/2026/TT-BKHCN). "
+                    "Được thông quan và lưu thông bình thường theo quy chuẩn tự công bố hoặc tiêu chuẩn cơ sở (TCCS) mà không phải làm thủ tục đăng ký kiểm tra chất lượng (KTCL) nhà nước trước khi thông quan (trừ trường hợp thuộc quản lý của Bộ chuyên ngành khác)."
+                ),
+            }
 
 
 # ─── 🏛️ TESTING LABS & CERTIFICATION BODIES REGISTRY ──────────────────────────

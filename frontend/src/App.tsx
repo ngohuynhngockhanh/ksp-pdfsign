@@ -31,6 +31,8 @@ import { Telegram } from "./pages/Telegram";
 import { ShippingSPX } from "./pages/ShippingSPX";
 import { BiddingProcurement } from "./pages/BiddingProcurement";
 import { StandardsConformity } from "./pages/StandardsConformity";
+import { TaxDefense } from "./pages/TaxDefense";
+import { Trademarks } from "./pages/Trademarks";
 
 
 type Tab =
@@ -49,6 +51,7 @@ type Tab =
   | "hoadonnhap"
   | "thuesync"
   | "thuebct"
+  | "taxdefense"
   | "documents"
   | "customers"
   | "nas"
@@ -63,7 +66,8 @@ type Tab =
   | "pymidcoop"
   | "shippingspx"
   | "bidding"
-  | "standards";
+  | "standards"
+  | "trademarks";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -81,6 +85,7 @@ const ROUTES: Record<Tab, string> = {
   hoadonnhap: "/tao-hoa-don-nhap",
   thuesync: "/dong-bo-thue",
   thuebct: "/review-to-khai",
+  taxdefense: "/giai-trinh-thue",
   documents: "/ho-so",
   customers: "/khach-hang",
   nas: "/nas",
@@ -96,6 +101,7 @@ const ROUTES: Record<Tab, string> = {
   shippingspx: "/shipping-spx",
   bidding: "/bidding",
   standards: "/standards",
+  trademarks: "/trademarks",
 };
 
 const PATH_TO_TAB: Record<string, Tab> = {
@@ -106,14 +112,19 @@ const PATH_TO_TAB: Record<string, Tab> = {
   "/dau-thau": "bidding",
   "/shipping-spx": "shippingspx",
   "/spx": "shippingspx",
+  "/giai-trinh-thue": "taxdefense",
+  "/trademarks": "trademarks",
+  "/nhan-hieu": "trademarks",
 };
 
 function resolveTab(pathname: string): Tab | null {
+  if (pathname.startsWith("/trademarks") || pathname.startsWith("/nhan-hieu")) return "trademarks";
   if (pathname.startsWith("/standards") || pathname.startsWith("/hop-chuan-hop-quy") || pathname.startsWith("/qcvn")) return "standards";
   if (pathname.startsWith("/bidding") || pathname.startsWith("/dau-thau")) return "bidding";
   if (pathname.startsWith("/shipping-spx") || pathname.startsWith("/spx")) return "shippingspx";
   if (pathname.startsWith("/training")) return "training";
   if (pathname.startsWith("/pymid-coop")) return "pymidcoop";
+  if (pathname.startsWith("/giai-trinh-thue")) return "taxdefense";
   return PATH_TO_TAB[pathname] || null;
 }
 
@@ -210,7 +221,7 @@ export function App() {
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training", "messenger", "telegram",
-              "pymidcoop", "shippingspx", "bidding", "standards",
+              "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks",
             ] as Tab[])
           : isPymidStaff
             ? (["pymidcoop"] as Tab[])
@@ -227,7 +238,9 @@ export function App() {
             ? "home"
             : isPymidStaff ? "pymidcoop" : "mine";
 
-        const isSubpathHandled = window.location.pathname.startsWith("/bidding") ||
+        const isSubpathHandled = window.location.pathname.startsWith("/trademarks") ||
+          window.location.pathname.startsWith("/nhan-hieu") ||
+          window.location.pathname.startsWith("/bidding") ||
           window.location.pathname.startsWith("/dau-thau") ||
           window.location.pathname.startsWith("/shipping-spx") ||
           window.location.pathname.startsWith("/standards");
@@ -286,6 +299,7 @@ export function App() {
       [
         ["thuesync", "Đồng bộ thuế", "↻"],
         ["thuebct", "Review tờ khai", "▤"],
+        ["taxdefense", "Giải trình thuế (2022-2025)", "⚖️"],
         ["nhaphang", "Hóa đơn mua", "↓"],
         ["banra", "Hóa đơn bán", "↑"],
         ["hoadonnhap", "Tạo HĐ nháp", "+"],
@@ -305,7 +319,9 @@ export function App() {
       "Hồ sơ",
       [
         ["sign", "Ký số", "✎"], ["bbbg", "Tạo BBBG", "▣"],
-        ["quote", "Báo giá", "₫"], ["contract", "Soạn hợp đồng", "§"], ["documents", "Kho hồ sơ", "▱"],
+        ["quote", "Báo giá", "₫"], ["contract", "Soạn hợp đồng", "§"],
+        ["trademarks", "Nhãn hiệu (Sở hữu trí tuệ)", "®️"],
+        ["documents", "Kho hồ sơ", "▱"],
         ["verify", "Kiểm tra chữ ký", "⌕"],
       ],
     ],
@@ -436,10 +452,12 @@ export function App() {
         {tab === "shippingspx" && isAdmin && <ShippingSPX />}
         {tab === "bidding" && isAdmin && <BiddingProcurement />}
         {tab === "standards" && isAdmin && <StandardsConformity />}
+        {tab === "trademarks" && isAdmin && <Trademarks />}
         {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
 
         {tab === "thuesync" && isAdmin && <TaxSync />}
         {tab === "thuebct" && isAdmin && <TaxReview />}
+        {tab === "taxdefense" && isAdmin && <TaxDefense />}
         {tab === "documents" && isAdmin && (
           <Documents
             onVerify={goVerify}

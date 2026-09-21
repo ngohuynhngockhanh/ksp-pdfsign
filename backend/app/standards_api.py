@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 import threading
 from typing import Any
 from pydantic import BaseModel, Field
@@ -578,6 +579,87 @@ def list_testing_labs(
 ) -> list[dict[str, Any]]:
     """Lay danh ba cac phong thu nghiem va to chuc chung nhan chi dinh."""
     return standards.TestingLabRegistryService.list_all()
+
+@router.get("/risk-classification/statistics")
+def get_risk_classification_statistics(
+    user: CurrentUser = Depends(require_user),
+) -> dict[str, Any]:
+    """Thống kê danh mục phân loại rủi ro theo Thông tư số 36/2026/TT-BKHCN."""
+    return standards.BkhcnRiskClassificationService.get_statistics()
+
+
+@router.get("/risk-classification/classify")
+def classify_product_risk(
+    hs_code: str = Query("", description="Mã HS Code"),
+    q: str = Query("", description="Tên mặt hàng hoặc từ khóa"),
+    user: CurrentUser = Depends(require_user),
+) -> dict[str, Any]:
+    """Phân loại mức độ rủi ro (CAO / TRUNG BÌNH / THẤP) theo Thông tư số 36/2026/TT-BKHCN."""
+    return standards.BkhcnRiskClassificationService.classify(hs_code=hs_code, query=q)
+
+
+@router.get("/risk-classification/catalog")
+def get_risk_classification_catalog(
+    risk_level: str = Query("", description="Lọc: CAO hoặc TRUNG_BINH"),
+    group: str = Query("", description="Lọc theo nhóm sản phẩm"),
+    q: str = Query("", description="Từ khóa tìm kiếm"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=300),
+    user: CurrentUser = Depends(require_user),
+) -> dict[str, Any]:
+    """Lấy danh mục sản phẩm có mức độ rủi ro trung bình, rủi ro cao theo Thông tư 36/2026/TT-BKHCN."""
+    items = standards.BkhcnRiskClassificationService.get_catalog()
+    filtered = items
+
+    if risk_level.strip():
+        r_norm = risk_level.strip().upper()
+        filtered = [i for i in filtered if i.get("risk_level") == r_norm or (r_norm == "CAO" and i.get("annex") == 1) or (r_norm in ("TRUNG_BINH", "TRUNGBINH") and i.get("annex") == 2)]
+
+    if group.strip():
+        g_norm = group.strip().lower()
+        filtered = [i for i in filtered if g_norm in (i.get("group") or "").lower()]
+
+    if q.strip():
+        q_norm = q.strip().lower()
+        filtered = [
+            i for i in filtered
+            if q_norm in (i.get("product_name") or "").lower()
+            or q_norm in (i.get("description") or "").lower()
+            or q_norm in (i.get("qcvn") or "").lower()
+            or any(q_norm in h.lower() for h in i.get("hs_codes", []))
+        ]
+
+    total = len(filtered)
+    start_idx = (page - 1) * limit
+    paged_items = filtered[start_idx : start_idx + limit]
+    total_pages = max(1, (total + limit - 1) // limit)
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+        "items": paged_items,
+    }
+
+
+@router.get("/risk-classification/pdf")
+def download_risk_circular_pdf(
+    user: CurrentUser = Depends(require_user),
+):
+    """Tải toàn văn Thông tư số 36/2026/TT-BKHCN (bản ký số chính thức của Bộ KH&CN)."""
+    from fastapi.responses import FileResponse
+    pdf_path = Path(__file__).resolve().parent / "assets" / "36-bkhcn.signed.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tệp văn bản Thông tư 36/2026/TT-BKHCN trên máy chủ",
+        )
+    return FileResponse(
+        path=str(pdf_path),
+        media_type="application/pdf",
+        filename="36-bkhcn.signed.pdf",
+    )
 
 
 @router.get("/{code:path}/pdf")

@@ -272,3 +272,36 @@ def test_spx_sync_and_quick_print_api(auth_client):
     assert r.status_code == 200
     assert r.json()["is_printed"] is False
 
+
+def test_custom_shipping_label(auth_client):
+    """Test generating and printing custom delivery labels (non-SPX)."""
+    gen = db.get_session()
+    s = next(gen)
+
+    res = spx.print_custom_shipping_label(
+        db=s,
+        code="THI 058 601 1011",
+        recipient_name="Thiết bị điện Cao Thắng",
+        recipient_phone="0902644315",
+        recipient_address="48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh",
+        item_desc="THI 058 601 1011",
+        print_remote=False,
+    )
+    assert res["success"] is True
+    assert res["code"] == "THI 058 601 1011"
+    assert res["label_doc_id"] != ""
+
+    # Test API endpoint
+    r = auth_client.post("/api/spx/custom-label/print", json={
+        "code": "TEST-CUSTOM-001",
+        "recipient_name": "Nguyen Van B",
+        "recipient_phone": "0987654321",
+        "recipient_address": "123 Le Loi, Da Nang",
+        "print_remote": False,
+    })
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+    assert r.json()["code"] == "TEST-CUSTOM-001"
+
+    gen.close()
+

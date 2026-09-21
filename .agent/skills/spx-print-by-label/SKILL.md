@@ -56,3 +56,30 @@ for db in get_session():
 - `POST /api/spx/quick-print`: Nhan `tracking_no` (hoac `order_code`), tu tra cuu, scale ti le vang va in ngay sang TP732H.
 - `GET /api/spx/orders/{tracking_no}/label`: Tai file PDF tem nhan da bien doi ti le vang.
 - `POST /api/spx/orders/{tracking_no}/print-remote`: Gui lenh in remote sang may in Windows.
+
+### In Tem Giao Hang Tu Do / Ngoai San (Custom Shipping Label)
+Dung cho don hang giao ngoai san, chanh xe, gui buu dien khong co ma SPX.
+- **REST API**: `POST /api/spx/custom-label/print`
+  ```json
+  {
+    "code": "THI 058 601 1011",
+    "recipient_name": "Thiết bị điện Cao Thắng",
+    "recipient_phone": "0902644315",
+    "recipient_address": "48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh",
+    "item_desc": "THI 058 601 1011",
+    "note": "Cho xem hàng, không cho thử",
+    "printer_name": "TP732H",
+    "host": "192.168.1.10",
+    "print_remote": true
+  }
+  ```
+- **CLI Script**:
+  ```bash
+  ./scripts/print_custom_label.py \
+    --code "THI 058 601 1011" \
+    --recipient "Thiết bị điện Cao Thắng" \
+    --phone "0902644315" \
+    --address "48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh" \
+    --item "THI 058 601 1011" \
+    --note "Cho xem hàng, không cho thử"
+  ```

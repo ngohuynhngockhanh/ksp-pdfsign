@@ -1,0 +1,168 @@
+/* =========================================================================
+   HUONG DAN SU DUNG:
+   1. Nhan Ctrl+A roi Ctrl+C de copy TOAN BO trang nay.
+   2. Mo tab LinkedIn -> Nhan F12 -> Chon tab Console.
+   3. Nhan Ctrl+V roi Enter -> Bang cong cu KSP Fill se hien ngay goc tren phai!
+   ========================================================================= */
+
+(()=>{const d={"h":"CEO & Solution Director at iNut JSC (inut.vn) | Founder Arduino.vn | IoT & Systems Architect | Hardware Supply Chain & Direct Importer of Record","a":"I am the CEO & Solution Director at iNut JSC (inut.vn), Founder of Arduino.vn, and an IoT & Systems Architect with over 12 years of hands-on experience driving technology ventures from prototype to nationwide industrial deployment.\\n\\nMy career sits at the rare convergence of Executive Leadership, Deep Systems Architecture, and Global Hardware Supply Chain Operations:\\n\\n🔹 Executive & Community Leadership:\\n• CEO at iNut JSC (inut.vn): Spearheading industrial IoT solutions, edge gateways, renewable energy telemetry platforms, and mission-critical hardware deployments across Vietnam.\\n• Founder of Arduino.vn (2014 - Present): Built and scaled Vietnam's largest Maker & Embedded Engineering community, empowering tens of thousands of young engineers, developers, and tech enthusiasts.\\n\\n🔹 Hardware Supply Chain, Sourcing & Manufacturing:\\n• Direct Importer of Record: Hands-on expertise in direct legal import documentation, customs clearance compliance, HS code classification, and specialized inspections for electronic components, semiconductors, and industrial hardware into Vietnam.\\n• Global Sourcing & BOM Management: Established international component procurement networks, lifecycle obsolescence handling, cost engineering, and alternative component matching.\\n• Production & Assembly: End-to-end oversight of PCB fabrication, SMT assembly, testing jigs, QA/QC, and field deployment.\\n\\n🔹 Deep Systems & IoT Architecture:\\n• Industrial Protocols & Gateways: Modbus RTU/TCP, OPC UA, MQTT, NATS, IEC 60870-5-104, solar power monitoring (Solis, VNPT NMS integration).\\n• Embedded & Edge Computing: ARM/SoC (Rockchip RK35xx), ESP32, STM32, Embedded Linux (Armbian), RTOS, Firmware architecture, and smart device peripherals (CCCD smartcard readers, V4L2 camera automation).\\n• Distributed Backend: High-concurrency services in Go (Golang), Node.js, C/C++, microservices, real-time telemetry streaming, and automated OTA update engines.\\n\\nOpen to strategic partnerships, executive roles, high-impact IoT solutions, and technology advisory.\\n\\n📩 Connect: khanhnhn@inut.vn | inut.vn | Arduino.vn","ei":"Leading technology strategy, hardware production, and industrial IoT architecture at iNut JSC (inut.vn):\\n\\n• Architected and deployed large-scale Industrial IoT Telemetry Gateways: Developed 100% Go-based edge monitoring systems for solar power infrastructure (Solis inverters), integrating real-time telemetry streaming into the national VNPT NMS telecommunications management network.\\n• Engineered Industrial Middleware & Dataloggers: Built high-reliability edge supervisors, OPC UA servers, and dataloggers supporting Modbus, MQTT, and cryptographic licensing engines (Ed25519) with automated OTA update delivery.\\n• Directed Public Service Hardware Solutions: Led the engineering and deployment of public kiosk systems featuring smart card chip readers (CCCD), custom Linux board daemons, and ultra-low latency camera capture subsystems.\\n• Managed Legal Import & Hardware Supply Chain: Acted directly as the legal Importer of Record for core electronic components, controller modules, and industrial devices, ensuring full customs compliance and supply continuity.\\n\\nTechnologies: Industrial IoT, Go (Golang), Embedded Linux, OPC UA, Modbus, MQTT, Hardware Manufacturing, Customs Clearance, Supply Chain.","ea":"• Founded and continuously scaled Arduino.vn since 2014 into Vietnam's premier Maker, Embedded Systems, and IoT community, fostering thousands of technology projects and engineering talents.\\n• Architected, developed, and maintained community core platforms, technical documentation libraries, and open-source hardware/software repositories.\\n• Established an international component sourcing and dev-board procurement pipeline for the community, handling official import dossiers, customs declarations, and specialized inspections.\\n• Organized hands-on technical workshops, maker bootcamps, and educational initiatives bridging university engineering students with practical industry requirements.\\n\\nSkills: Community Leadership, Hardware Prototyping, Embedded Systems, Component Sourcing, Electronics Procurement."};const tr=(el,v)=>{const p=(el.tagName==='TEXTAREA'?window.HTMLTextAreaElement:window.HTMLInputElement).prototype;const desc=Object.getOwnPropertyDescriptor(p,'value');if(desc&&desc.set){desc.set.call(el,v);}else{el.value=v;}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));};const old=document.getElementById('ksp-panel');if(old){old.remove();}const b=document.createElement('div');b.id='ksp-panel';b.style='position:fixed;top:70px;right:20px;z-index:999999;background:#0f172a;color:#fff;padding:12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:sans-serif;font-size:12px;display:flex;flex-direction:column;gap:6px;width:250px;border:1px solid #38bdf8;';b.innerHTML='<div style="font-weight:bold;color:#38bdf8;font-size:13px;display:flex;justify-content:space-between;align-items:center;"><span>🚀 KSP LinkedIn Fill</span><span id="ksp-x" style="cursor:pointer;color:#ef4444;font-weight:bold;padding:2px 6px;">✕</span></div><button id="k-hl" style="padding:6px;background:#0284c7;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">1. Điền Headline (khi mở modal)</button><button id="k-ab" style="padding:6px;background:#0284c7;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">2. Điền About (khi mở modal)</button><button id="k-in" style="padding:6px;background:#334155;color:#fff;border:none;border-radius:4px;cursor:pointer;">3. Copy Mô Tả iNut JSC</button><button id="k-ar" style="padding:6px;background:#334155;color:#fff;border:none;border-radius:4px;cursor:pointer;">4. Copy Mô Tả Arduino.vn</button>';document.body.appendChild(b);document.getElementById('ksp-x').onclick=()=>{b.remove();};document.getElementById('k-hl').onclick=()=>{const i=document.querySelector('input[name="headline"], textarea[name="headline"], textarea[id*="headline"], input[id*="headline"]');if(i){tr(i,d.h);alert('Đã điền Headline!');}else{navigator.clipboard.writeText(d.h);alert('ĐÃ COPY HEADLINE VÀO CLIPBOARD! Chỉ cần Ctrl+V.');}};document.getElementById('k-ab').onclick=()=>{const t=document.querySelector('div[role="dialog"] textarea, textarea[name="summary"], textarea[id*="summary"]');if(t){tr(t,d.a);alert('Đã điền About!');}else{navigator.clipboard.writeText(d.a);alert('ĐÃ COPY ABOUT VÀO CLIPBOARD! Chỉ cần Ctrl+V.');}};document.getElementById('k-in').onclick=()=>{navigator.clipboard.writeText(d.ei);alert('Đã copy mô tả iNut JSC! Bấm Ctrl+V vào ô Description.');};document.getElementById('k-ar').onclick=()=>{navigator.clipboard.writeText(d.ea);alert('Đã copy mô tả Arduino.vn! Bấm Ctrl+V vào ô Description.');};})();
+
+/* =========================================================================
+   NOI DUNG THAM KHAO CHI TIET (NEU MUON DOC HOAC COPY THU CONG):
+=========================================================================
+================================================================================
+                    HO SO LINKEDIN - NGO HUYNH NGOC KHANH
+                    CEO iNut JSC | Founder Arduino.vn
+================================================================================
+
+--------------------------------------------------------------------------------
+1. HEADLINE (Tieu de duoi anh dai dien)
+--------------------------------------------------------------------------------
+CEO & Solution Director at iNut JSC (inut.vn) | Founder Arduino.vn | IoT & Systems Architect | Hardware Supply Chain & Direct Importer of Record
+
+
+--------------------------------------------------------------------------------
+2. CUSTOM URL (Doi duong link profile)
+--------------------------------------------------------------------------------
+ngokhanh-ksp
+(Link hoan chinh: https://www.linkedin.com/in/ngokhanh-ksp)
+
+
+--------------------------------------------------------------------------------
+3. ABOUT (Phan gioi thieu ban than)
+--------------------------------------------------------------------------------
+I am the CEO & Solution Director at iNut JSC (inut.vn), Founder of Arduino.vn, and an IoT & Systems Architect with over 12 years of hands-on experience driving technology ventures from prototype to nationwide industrial deployment.
+
+My career sits at the rare convergence of Executive Leadership, Deep Systems Architecture, and Global Hardware Supply Chain Operations:
+
+🔹 Executive & Community Leadership:
+• CEO at iNut JSC (inut.vn): Spearheading industrial IoT solutions, edge gateways, renewable energy telemetry platforms, and mission-critical hardware deployments across Vietnam.
+• Founder of Arduino.vn (2014 - Present): Built and scaled Vietnam's largest Maker & Embedded Engineering community, empowering tens of thousands of young engineers, developers, and tech enthusiasts.
+
+🔹 Hardware Supply Chain, Sourcing & Manufacturing:
+• Direct Importer of Record: Hands-on expertise in direct legal import documentation, customs clearance compliance, HS code classification, and specialized inspections for electronic components, semiconductors, and industrial hardware into Vietnam.
+• Global Sourcing & BOM Management: Established international component procurement networks, lifecycle obsolescence handling, cost engineering, and alternative component matching.
+• Production & Assembly: End-to-end oversight of PCB fabrication, SMT assembly, testing jigs, QA/QC, and field deployment.
+
+🔹 Deep Systems & IoT Architecture:
+• Industrial Protocols & Gateways: Modbus RTU/TCP, OPC UA, MQTT, NATS, IEC 60870-5-104, solar power monitoring (Solis, VNPT NMS integration).
+• Embedded & Edge Computing: ARM/SoC (Rockchip RK35xx), ESP32, STM32, Embedded Linux (Armbian), RTOS, Firmware architecture, and smart device peripherals (CCCD smartcard readers, V4L2 camera automation).
+• Distributed Backend: High-concurrency services in Go (Golang), Node.js, C/C++, microservices, real-time telemetry streaming, and automated OTA update engines.
+
+Open to strategic partnerships, executive roles, high-impact IoT solutions, and technology advisory.
+
+📩 Connect: khanhnhn@inut.vn | inut.vn | Arduino.vn
+
+
+--------------------------------------------------------------------------------
+4. EXPERIENCE 1: iNut JSC (Them moi Experience)
+--------------------------------------------------------------------------------
+* Title: Chief Executive Officer & Solution Director
+* Employment type: Full-time
+* Company name: Công ty Cổ phần Đầu tư và Phát triển Công nghệ iNut (hoặc iNut JSC)
+* Location: Ho Chi Minh City, Vietnam
+* Start date: Jan 2018 - Present
+* Description:
+Leading technology strategy, hardware production, and industrial IoT architecture at iNut JSC (inut.vn):
+
+• Architected and deployed large-scale Industrial IoT Telemetry Gateways: Developed 100% Go-based edge monitoring systems for solar power infrastructure (Solis inverters), integrating real-time telemetry streaming into the national VNPT NMS telecommunications management network.
+• Engineered Industrial Middleware & Dataloggers: Built high-reliability edge supervisors, OPC UA servers, and dataloggers supporting Modbus, MQTT, and cryptographic licensing engines (Ed25519) with automated OTA update delivery.
+• Directed Public Service Hardware Solutions: Led the engineering and deployment of public kiosk systems featuring smart card chip readers (CCCD), custom Linux board daemons, and ultra-low latency camera capture subsystems.
+• Managed Legal Import & Hardware Supply Chain: Acted directly as the legal Importer of Record for core electronic components, controller modules, and industrial devices, ensuring full customs compliance and supply continuity.
+
+Technologies: Industrial IoT, Go (Golang), Embedded Linux, OPC UA, Modbus, MQTT, Hardware Manufacturing, Customs Clearance, Supply Chain.
+
+
+--------------------------------------------------------------------------------
+5. EXPERIENCE 2: Arduino.vn (Sua lai Experience cu)
+--------------------------------------------------------------------------------
+* Title: Founder & Technical Community Lead
+* Company name: Arduino.vn
+* Start date: Apr 2014 - Present
+* Description:
+• Founded and continuously scaled Arduino.vn since 2014 into Vietnam's premier Maker, Embedded Systems, and IoT community, fostering thousands of technology projects and engineering talents.
+• Architected, developed, and maintained community core platforms, technical documentation libraries, and open-source hardware/software repositories.
+• Established an international component sourcing and dev-board procurement pipeline for the community, handling official import dossiers, customs declarations, and specialized inspections.
+• Organized hands-on technical workshops, maker bootcamps, and educational initiatives bridging university engineering students with practical industry requirements.
+
+Skills: Community Leadership, Hardware Prototyping, Embedded Systems, Component Sourcing, Electronics Procurement.
+
+
+--------------------------------------------------------------------------------
+6. PROJECTS (Them vao muc Projects)
+--------------------------------------------------------------------------------
+[Du an 1]
+* Name: iNut Industrial Solar Telemetry Gateway & VNPT NMS Integration
+* Associated with: iNut JSC
+* Description:
+Engineered an industrial-grade solar telemetry and monitoring gateway running on Rockchip RK3528 ARM Linux hardware.
+• Developed a lightweight, high-performance Go daemon interfacing with Solis inverters via Modbus RTU/TCP.
+• Integrated dual-time drift correction and real-time streaming directly into VNPT NMS over secure NATS WebSocket and MQTT protocols.
+• Designed automated regression test suites and adversarial simulation pipelines to ensure zero data loss and 99.99% field uptime.
+
+[Du an 2]
+* Name: iNut OPC Server, Datalogger & Edge Licensing Architecture
+* Associated with: iNut JSC
+* Description:
+Designed and deployed industrial automation middleware bridging OT equipment with IT cloud services.
+• Implemented multi-protocol polling across OPC UA, Modbus, and IEC standards with containerized supervision and storage persistence.
+• Engineered cryptographic licensing validation using Ed25519 signatures and automated secure OTA firmware/software pipelines.
+
+[Du an 3]
+* Name: Global Electronics Component Sourcing & Direct Customs Import Dossiers
+* Associated with: iNut JSC
+* Description:
+Directly executed end-to-end international procurement and official import operations for specialized semiconductors, electronic components, and industrial IoT hardware into Vietnam. Handled complete customs declarations, HS code classifications, and import compliance documentation as the Importer of Record.
+
+
+--------------------------------------------------------------------------------
+7. TOP 10 SKILLS (Them vao muc Skills)
+--------------------------------------------------------------------------------
+1. Internet of Things (IoT)
+2. System Architecture
+3. Supply Chain Management
+4. Electronics Manufacturing
+5. Customs Regulations
+6. Embedded Linux
+7. Go (Programming Language)
+8. Industrial Automation
+9. OPC UA
+10. Executive Leadership
+
+
+--------------------------------------------------------------------------------
+8. EDUCATION
+--------------------------------------------------------------------------------
+* School: Ho Chi Minh University of Science
+* Degree: Bachelor's degree
+* Field of study: Information Technology (2014 - 2018)
+* Description:
+Graduated with a strong foundation in Computer Science, Operating Systems, Systems Architecture, and Network Programming. Actively initiated and led maker/robotics research groups during university years.
+
+========================================================================= 
+--------------------------------------------------------------------------------
+9. BAI VIET LINKEDIN (BAI DANG THAM KHAO / SAN SANG POST)
+--------------------------------------------------------------------------------
+12 năm làm IoT — từ ngày sáng lập Arduino.vn cho đến khi vận hành các hệ thống IoT Gateway công nghiệp tại iNut JSC (inut.vn), bài học lớn nhất tôi rút ra gói gọn trong một câu:
+
+"Trong phòng lab, phần cứng là bạn. Nhưng ngoài thực địa, môi trường luôn tìm cách giết chết thiết bị của bạn 24/7."
+
+Ba nguyên tắc cốt tử khi làm IoT chuẩn công nghiệp:
+
+1. Đừng mang tư duy Cloud xuống Phần cứng
+Ghi đĩa liên tục mỗi giây sẽ tự tay "bóp chết" chu kỳ P/E của chip nhớ flash sau vài tháng. Hệ thống bền bỉ phải xử lý hàng nghìn điểm đo trên RAM buffer và gom cụm flush thông minh.
+
+2. Mạng chập chờn là "tính năng", không phải sự cố
+Mất sóng 4G, router đổi IP, trôi đồng hồ RTC là chuyện cơm bữa ngoài trạm. Gateway chuẩn phải có hàng đợi offline tự phục hồi và cơ chế chống nghẽn khi internet kết nối lại.
+
+3. Sức mạnh của năng lực Full-lifecycle
+Làm IoT thực chiến không chỉ là viết firmware hay backend Go. Nó đòi hỏi sự am hiểu từ thiết kế mạch, chuỗi cung ứng linh kiện, kiểm tra chuyên ngành hải quan cho đến khi lắp đặt thực địa.
+
+Đỉnh cao của kiến trúc IoT không phải là khoe công nghệ thời thượng. Đỉnh cao là thiết bị chạy bền bỉ 5–10 năm ngoài nắng gió mà không cần ai phải trèo lên rút nguồn cắm lại.
+
+Anh em trong ngành IoT và nhúng có đồng quan điểm này không? Cùng trao đổi nhé! 👇
+
+#IoT #IndustrialIoT #EmbeddedSystems #SystemArchitecture #Golang #iNutTechnology #ArduinoVN
+
+=========================================================================
+*/

@@ -20,8 +20,16 @@ from sqlalchemy.orm import Session
 from . import audit, classify, customs_drive, inv_import, storage
 from .auth import CurrentUser, require_admin
 from .config import get_settings
-from .db import (InvCustomsDecl, InvCustomsDriveDocument, InvCustomsDriveFolder,
-                 InvCustomsDriveSource, JobRun, get_session)
+from .db import (
+    InvCustomsCheckLog,
+    InvCustomsCheckTask,
+    InvCustomsDecl,
+    InvCustomsDriveDocument,
+    InvCustomsDriveFolder,
+    InvCustomsDriveSource,
+    JobRun,
+    get_session,
+)
 
 router = APIRouter(prefix="/api/inv/customs-drive", tags=["customs-drive"])
 
@@ -42,6 +50,60 @@ class DocumentKindIn(BaseModel):
         "product_photo", "other",
     ]
 
+
+
+class CheckTaskCreateIn(BaseModel):
+    so_to_khai: str = Field(min_length=11, max_length=20)
+    ma_doanh_nghiep: str | None = None
+    so_cmt: str | None = None
+    folder_name: str | None = None
+    phan_luong: str | None = None
+    interval_minutes: int = 60
+    telegram_notify: bool = True
+    notify_mode: str = "always"
+
+def _task_out(task: InvCustomsCheckTask) -> dict:
+    return {
+        "id": task.id,
+        "so_to_khai": task.so_to_khai,
+        "ma_doanh_nghiep": task.ma_doanh_nghiep,
+        "so_cmt": task.so_cmt,
+        "folder_name": task.folder_name,
+        "phan_luong": task.phan_luong,
+        "interval_minutes": task.interval_minutes,
+        "status": task.status,
+        "last_checked_at": task.last_checked_at.isoformat() if task.last_checked_at else "",
+        "next_check_at": task.next_check_at.isoformat() if task.next_check_at else "",
+        "last_status_text": task.last_status_text,
+        "last_officer": task.last_officer,
+        "last_error": task.last_error,
+        "ngay_thong_quan": task.ngay_thong_quan,
+        "ngay_qua_kvgs": task.ngay_qua_kvgs,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else "",
+        "telegram_notify": task.telegram_notify,
+        "notify_mode": getattr(task, "notify_mode", "always") or "always",
+        "created_at": task.created_at.isoformat() if task.created_at else "",
+    }
+
+
+def _log_out(log: InvCustomsCheckLog) -> dict:
+    return {
+        "id": log.id,
+        "task_id": log.task_id,
+        "checked_at": log.checked_at.isoformat(),
+        "trang_thai_xu_ly": log.trang_thai_xu_ly,
+        "cong_chuc_kiem_tra": log.cong_chuc_kiem_tra,
+        "ngay_thong_quan": log.ngay_thong_quan,
+        "thue_da_nop": log.thue_da_nop,
+        "is_completed": log.is_completed,
+        "telegram_sent": log.telegram_sent,
+        "message": log.message,
+    }
+
+class CustomsLookupIn(BaseModel):
+    ref: str = Field(description="Số tờ khai 12 chữ số, ID tờ khai hoặc tên bộ hồ sơ")
+    ma_doanh_nghiep: str | None = None
+    so_cmt: str | None = None
 
 def _loads(value: str, default):
     try:
@@ -490,3 +552,258 @@ def fetch_folder_barcode(folder_id: int,
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+
+
+@router.post("/lookup-customs-portal")
+def lookup_customs_portal_post(
+    payload: CustomsLookupIn,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tra cứu thông tin tờ khai trực tiếp từ Cổng Tổng cục Hải quan (customs.gov.vn)."""
+    try:
+        from . import customs_declaration_lookup
+        result = customs_declaration_lookup.lookup_declaration_by_ref(
+            db=db,
+            ref=payload.ref,
+            so_cmt=payload.so_cmt or customs_declaration_lookup.DEFAULT_SO_CMT,
+        )
+        audit.record(db, user.username, user.role, user.ip, "customs_portal_lookup",
+                     f"ref:{payload.ref}", f"Tra cứu TK: {result.get('so_to_khai')}")
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/declarations/{decl_id}/lookup-customs-portal")
+def lookup_declaration_customs_portal(
+    decl_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tra cứu thông tin tờ khai theo Decl ID từ Cổng Tổng cục Hải quan."""
+    decl = db.get(InvCustomsDecl, decl_id)
+    if not decl:
+        raise HTTPException(404, "Không tìm thấy tờ khai")
+    try:
+        from . import customs_declaration_lookup
+        result = customs_declaration_lookup.lookup_customs_declaration(
+            so_to_khai=decl.so_to_khai,
+            ma_doanh_nghiep=customs_declaration_lookup.DEFAULT_MST,
+            so_cmt=customs_declaration_lookup.DEFAULT_SO_CMT,
+        )
+        result["decl_id"] = decl.id
+        result["doi_tac"] = decl.nguoi_xk or ""
+        audit.record(db, user.username, user.role, user.ip, "customs_portal_lookup",
+                     f"decl:{decl_id}", f"Tra cứu TK: {decl.so_to_khai}")
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/folders/{folder_id}/lookup-customs-portal")
+def lookup_folder_customs_portal(
+    folder_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tra cứu thông tin tờ khai của folder từ Cổng Tổng cục Hải quan."""
+    folder = db.get(InvCustomsDriveFolder, folder_id)
+    if not folder:
+        raise HTTPException(404, "Không tìm thấy folder")
+    if not folder.customs_id:
+        raise HTTPException(400, "Folder chưa được liên kết với tờ khai hải quan nào")
+    decl = db.get(InvCustomsDecl, folder.customs_id)
+    if not decl:
+        raise HTTPException(404, "Không tìm thấy tờ khai liên kết")
+    try:
+        from . import customs_declaration_lookup
+        result = customs_declaration_lookup.lookup_customs_declaration(
+            so_to_khai=decl.so_to_khai,
+            ma_doanh_nghiep=customs_declaration_lookup.DEFAULT_MST,
+            so_cmt=customs_declaration_lookup.DEFAULT_SO_CMT,
+        )
+        result["folder_name"] = folder.name
+        result["folder_id"] = folder.id
+        result["decl_id"] = decl.id
+        result["doi_tac"] = decl.nguoi_xk or ""
+        audit.record(db, user.username, user.role, user.ip, "customs_portal_lookup",
+                     f"folder:{folder_id}", f"Tra cứu TK: {decl.so_to_khai}")
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/check-tasks")
+def list_customs_check_tasks(
+    db: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
+    """Liệt kê các task theo dõi tờ khai hải quan."""
+    tasks = list(db.scalars(select(InvCustomsCheckTask).order_by(InvCustomsCheckTask.id.desc())))
+    return [_task_out(t) for t in tasks]
+
+
+@router.post("/check-tasks")
+def create_customs_check_task(
+    payload: CheckTaskCreateIn,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tạo mới task theo dõi tờ khai hải quan."""
+    from .customs_declaration_lookup import DEFAULT_MST, DEFAULT_SO_CMT
+
+    existing = db.scalar(
+        select(InvCustomsCheckTask).where(
+            InvCustomsCheckTask.so_to_khai == payload.so_to_khai.strip()
+        )
+    )
+    if existing:
+        existing.interval_minutes = payload.interval_minutes
+        existing.status = "active"
+        existing.telegram_notify = payload.telegram_notify
+        if payload.folder_name:
+            existing.folder_name = payload.folder_name
+        if payload.phan_luong:
+            existing.phan_luong = payload.phan_luong
+        if payload.notify_mode:
+            existing.notify_mode = payload.notify_mode
+        db.commit()
+        db.refresh(existing)
+        return _task_out(existing)
+
+    task = InvCustomsCheckTask(
+        so_to_khai=payload.so_to_khai.strip(),
+        ma_doanh_nghiep=payload.ma_doanh_nghiep or DEFAULT_MST,
+        so_cmt=payload.so_cmt or DEFAULT_SO_CMT,
+        folder_name=payload.folder_name or "",
+        phan_luong=payload.phan_luong or "",
+        interval_minutes=payload.interval_minutes,
+        status="active",
+        telegram_notify=payload.telegram_notify,
+        notify_mode=payload.notify_mode or "always",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    audit.record(
+        db, user.username, user.role, user.ip, "customs_check_task_create",
+        f"task:{task.id}", f"Tạo task theo dõi TK: {task.so_to_khai}",
+    )
+    return _task_out(task)
+
+
+@router.post("/check-tasks/auto-seed")
+def auto_seed_customs_check_tasks(
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tự động quét các tờ khai Luồng Vàng / Luồng Đỏ trong hệ thống và thêm vào danh sách theo dõi."""
+    from . import customs_check_runner
+
+    created = customs_check_runner.auto_seed_tasks_from_decls(db)
+    audit.record(
+        db, user.username, user.role, user.ip, "customs_check_task_seed",
+        "auto_seed", f"Đã thêm {len(created)} task luồng vàng/đỏ",
+    )
+    tasks = list(db.scalars(select(InvCustomsCheckTask).order_by(InvCustomsCheckTask.id.desc())))
+    return [_task_out(t) for t in tasks]
+
+
+@router.post("/check-tasks/{task_id}/run")
+def run_customs_check_task(
+    task_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Thực hiện check ngay lập tức cho task và gửi Telegram nếu có cập nhật."""
+    task = db.get(InvCustomsCheckTask, task_id)
+    if not task:
+        raise HTTPException(404, "Không tìm thấy task")
+    from . import customs_check_runner
+
+    settings = get_settings()
+    res = customs_check_runner.run_task_check(db, task, settings, force_telegram=True)
+    audit.record(
+        db, user.username, user.role, user.ip, "customs_check_task_run",
+        f"task:{task_id}", f"Check ngay TK {task.so_to_khai}: {res.get('trang_thai_xu_ly')}",
+    )
+    return {"result": res, "task": _task_out(task)}
+
+
+@router.post("/check-tasks/{task_id}/toggle")
+def toggle_customs_check_task(
+    task_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Chuyển đổi trạng thái task: active <-> paused."""
+    task = db.get(InvCustomsCheckTask, task_id)
+    if not task:
+        raise HTTPException(404, "Không tìm thấy task")
+    if task.status == "active":
+        task.status = "paused"
+    elif task.status in ("paused", "completed"):
+        task.status = "active"
+        task.next_check_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(task)
+    return _task_out(task)
+
+
+@router.post("/check-tasks/{task_id}/toggle-mode")
+def toggle_customs_check_task_mode(
+    task_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Chuyển đổi chế độ bắn Telegram: always (luôn bắn mỗi chu kỳ) <-> on_change (chỉ khi có đổi)."""
+    task = db.get(InvCustomsCheckTask, task_id)
+    if not task:
+        raise HTTPException(404, "Không tìm thấy task")
+    curr = getattr(task, "notify_mode", "always") or "always"
+    task.notify_mode = "on_change" if curr == "always" else "always"
+    db.commit()
+    db.refresh(task)
+    audit.record(
+        db, user.username, user.role, user.ip, "customs_check_task_mode",
+        f"task:{task_id}", f"Đổi chế độ thông báo sang {task.notify_mode}",
+    )
+    return _task_out(task)
+
+
+@router.delete("/check-tasks/{task_id}")
+def delete_customs_check_task(
+    task_id: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Xóa task theo dõi tờ khai."""
+    task = db.get(InvCustomsCheckTask, task_id)
+    if not task:
+        raise HTTPException(404, "Không tìm thấy task")
+    db.delete(task)
+    db.commit()
+    audit.record(
+        db, user.username, user.role, user.ip, "customs_check_task_delete",
+        f"task:{task_id}", f"Xóa task TK: {task.so_to_khai}",
+    )
+    return {"ok": True, "id": task_id}
+
+
+@router.get("/check-tasks/{task_id}/logs")
+def list_customs_check_task_logs(
+    task_id: int,
+    db: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
+    """Xem lịch sử các lần check của task."""
+    logs = list(
+        db.scalars(
+            select(InvCustomsCheckLog)
+            .where(InvCustomsCheckLog.task_id == task_id)
+            .order_by(InvCustomsCheckLog.id.desc())
+            .limit(50)
+        )
+    )
+    return [_log_out(l) for l in logs]

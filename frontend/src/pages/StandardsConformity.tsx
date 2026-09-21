@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { api } from "../api";
+import {
+  BkhcnRiskClassifyResult,
+  BkhcnRiskItem,
+  BkhcnRiskStatistics,
+  api,
+} from "../api";
 import { TqcCertificateLookup } from "../components/TqcCertificateLookup";
 
 interface StandardItem {
@@ -47,6 +52,7 @@ interface HsMapping {
   required_procedure: string;
   customs_notes: string;
   exemption_cases: string;
+  risk_classification?: BkhcnRiskClassifyResult;
 }
 
 interface PlaybookItem {
@@ -110,7 +116,7 @@ interface GameState {
 }
 
 export function StandardsConformity() {
-  const [activeTab, setActiveTab] = useState<"game" | "playbooks" | "emc_guide" | "search" | "hs_lookup" | "cr_generator" | "labs" | "tqc">("game");
+  const [activeTab, setActiveTab] = useState<"game" | "playbooks" | "emc_guide" | "search" | "hs_lookup" | "cr_generator" | "labs" | "tqc" | "risk_classification">("game");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMinistry, setSelectedMinistry] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -157,6 +163,20 @@ export function StandardsConformity() {
   });
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
+  // Risk Classification State (Thông tư 36/2026/TT-BKHCN)
+  const [riskStats, setRiskStats] = useState<BkhcnRiskStatistics | null>(null);
+  const [riskCatalog, setRiskCatalog] = useState<BkhcnRiskItem[]>([]);
+  const [riskCatalogTotal, setRiskCatalogTotal] = useState(0);
+  const [riskCatalogPage, setRiskCatalogPage] = useState(1);
+  const [riskCatalogLimit] = useState(50);
+  const [riskLevelFilter, setRiskLevelFilter] = useState<string>("");
+  const [riskGroupFilter, setRiskGroupFilter] = useState<string>("");
+  const [riskSearchQuery, setRiskSearchQuery] = useState<string>("");
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskClassifyInput, setRiskClassifyInput] = useState("8517.62.59");
+  const [riskClassifyResult, setRiskClassifyResult] = useState<BkhcnRiskClassifyResult | null>(null);
+  const [riskClassifying, setRiskClassifying] = useState(false);
+
   // Toast State
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
@@ -183,6 +203,8 @@ export function StandardsConformity() {
       path = "/standards/testing-labs";
     } else if (tab === "tqc") {
       path = "/standards/tqc";
+    } else if (tab === "risk_classification") {
+      path = "/standards/risk-classification";
     } else {
       path = "/standards/search";
     }
@@ -228,9 +250,14 @@ export function StandardsConformity() {
       setActiveTab("labs");
     } else if (pathname.includes("/tqc")) {
       setActiveTab("tqc");
+    } else if (pathname.includes("/risk") || pathname.includes("/phan-loai-rui-ro")) {
+      setActiveTab("risk_classification");
     } else {
       setActiveTab("game");
     }
+    fetchRiskStats();
+    loadRiskCatalog(1);
+    handleClassifyRisk("8517.62.59");
   }, []);
 
   const fetchStats = async () => {
@@ -238,6 +265,51 @@ export function StandardsConformity() {
       const s = await api.standards.getStatistics();
       setStats(s);
     } catch {}
+  };
+
+  const fetchRiskStats = async () => {
+    try {
+      const s = await api.standards.getRiskStatistics();
+      setRiskStats(s);
+    } catch {}
+  };
+
+  const loadRiskCatalog = async (page = 1, rLevel = riskLevelFilter, grp = riskGroupFilter, q = riskSearchQuery) => {
+    setRiskLoading(true);
+    try {
+      const res = await api.standards.getRiskCatalog({
+        risk_level: rLevel,
+        group: grp,
+        q: q,
+        page,
+        limit: riskCatalogLimit,
+      });
+      setRiskCatalog(res.items);
+      setRiskCatalogTotal(res.total);
+      setRiskCatalogPage(res.page);
+    } catch (e: unknown) {
+      showToast((e as Error).message || "Lỗi tải danh mục rủi ro", "error");
+    } finally {
+      setRiskLoading(false);
+    }
+  };
+
+  const handleClassifyRisk = async (inputVal?: string) => {
+    const val = (inputVal !== undefined ? inputVal : riskClassifyInput).trim();
+    if (!val) return;
+    setRiskClassifying(true);
+    try {
+      const isHs = /^[\d.]+$/.test(val);
+      const res = await api.standards.classifyRisk({
+        hs_code: isHs ? val : undefined,
+        q: !isHs ? val : undefined,
+      });
+      setRiskClassifyResult(res);
+    } catch (e: unknown) {
+      showToast((e as Error).message || "Lỗi phân loại rủi ro", "error");
+    } finally {
+      setRiskClassifying(false);
+    }
   };
 
   const fetchGameState = async () => {
@@ -699,6 +771,28 @@ Thông tin liên hệ của tôi:
         >
           <span>🏛️</span>
           <span>Đầu Mối Zalo & Danh Bạ Lab</span>
+        </button>
+
+        <button
+          onClick={() => { setActiveTab("risk_classification"); syncUrl("risk_classification"); }}
+          style={{
+            padding: "12px 18px",
+            border: "none",
+            borderRadius: "12px 12px 0 0",
+            fontSize: "14px",
+            fontWeight: activeTab === "risk_classification" ? 800 : 600,
+            background: activeTab === "risk_classification" ? "#fff" : "transparent",
+            color: activeTab === "risk_classification" ? "#b91c1c" : "#64748b",
+            boxShadow: activeTab === "risk_classification" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "7px",
+          }}
+        >
+          <span>⚖️</span>
+          <span>Phân Loại Rủi Ro (TT 36/2026)</span>
+          <span style={{ fontSize: "10px", fontWeight: 800, background: "#fee2e2", color: "#991b1b", padding: "2px 6px", borderRadius: "999px" }}>MỚI</span>
         </button>
       </div>
 
@@ -1675,6 +1769,42 @@ Thông tin liên hệ của tôi:
                 </div>
               </div>
 
+              {/* TT 36/2026/TT-BKHCN Risk Classification Badge */}
+              {hsResult.risk_classification && (
+                <div
+                  style={{
+                    background: hsResult.risk_classification.annex === 1 ? "#fef2f2" : hsResult.risk_classification.annex === 2 ? "#fffbeb" : "#f0fdf4",
+                    border: `1px solid ${hsResult.risk_classification.annex === 1 ? "#fecaca" : hsResult.risk_classification.annex === 2 ? "#fde68a" : "#bbf7d0"}`,
+                    padding: "14px 18px",
+                    borderRadius: "12px",
+                    marginBottom: "16px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: hsResult.risk_classification.annex === 1 ? "#991b1b" : hsResult.risk_classification.annex === 2 ? "#92400e" : "#166534" }}>
+                      ⚖️ Phân loại rủi ro (Thông tư 36/2026/TT-BKHCN):
+                    </div>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: hsResult.risk_classification.annex === 1 ? "#b91c1c" : hsResult.risk_classification.annex === 2 ? "#b45309" : "#15803d", marginTop: "2px" }}>
+                      {hsResult.risk_classification.risk_label}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+                      {hsResult.risk_classification.guidance}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setActiveTab("risk_classification"); syncUrl("risk_classification"); }}
+                    style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Xem Danh Mục Rủi Ro ↗
+                  </button>
+                </div>
+              )}
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "14px", marginBottom: "16px" }}>
                 <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
                   <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Loại hình kiểm tra:</div>
@@ -1711,6 +1841,377 @@ Thông tin liên hệ của tôi:
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* TAB: ⚖️ PHÂN LOẠI RỦI RO (THÔNG TƯ 36/2026/TT-BKHCN)                       */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "risk_classification" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* Hero Banner with Official Circular Download */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              borderRadius: "20px",
+              padding: "28px 32px",
+              color: "#fff",
+              position: "relative",
+              overflow: "hidden",
+              border: "1px solid #334155",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+              <div style={{ maxWidth: "780px" }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.4)", padding: "4px 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 800, color: "#fca5a5", marginBottom: "12px" }}>
+                  <span>⚖️ VĂN BẢN QUY PHẠM PHÁP LUẬT MỚI 2026</span>
+                  <span>•</span>
+                  <span>BỘ KHOA HỌC VÀ CÔNG NGHỆ</span>
+                </div>
+                <h1 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: "0 0 10px", lineHeight: 1.4, color: "#fff" }}>
+                  Danh Mục Phân Loại Sản Phẩm, Hàng Hóa Mức Độ Rủi Ro Trung Bình & Cao (Thông tư số 36/2026/TT-BKHCN)
+                </h1>
+                <p style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
+                  Căn cứ Luật Chất lượng sản phẩm, hàng hóa (sửa đổi bởi Luật số 78/2025/QH15) và Nghị định 37/2026/NĐ-CP của Chính phủ. 
+                  Phân định rõ thẩm quyền kiểm tra nhà nước (KTCL), phương thức chứng nhận hợp quy (PT5 / PT7), và điều kiện giải phóng hàng thông quan tại cửa khẩu.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <a
+                  href="/api/standards/risk-classification/pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                    color: "#fff",
+                    textDecoration: "none",
+                    padding: "12px 20px",
+                    borderRadius: "12px",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    boxShadow: "0 4px 14px rgba(2,132,199,0.35)",
+                    border: "none",
+                  }}
+                >
+                  <span>📄</span>
+                  <span>Tải Bản Ký Số PDF (5.7 MB)</span>
+                </a>
+                <span style={{ fontSize: "11px", color: "#64748b", textAlign: "center" }}>
+                  Chữ ký số cơ quan: Bộ KH&CN
+                </span>
+              </div>
+            </div>
+
+            {/* KPI Stat Cards */}
+            {riskStats && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: "14px",
+                  marginTop: "24px",
+                  paddingTop: "20px",
+                  borderTop: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
+                <div style={{ background: "rgba(255,255,255,0.06)", padding: "14px 16px", borderRadius: "12px" }}>
+                  <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Tổng Mặt Hàng Quản Lý</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#38bdf8", marginTop: "4px" }}>{riskStats.total_items}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Theo TT 36/2026/TT-BKHCN</div>
+                </div>
+
+                <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", padding: "14px 16px", borderRadius: "12px" }}>
+                  <div style={{ fontSize: "11px", color: "#fca5a5", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro CAO (Phụ Lục I)</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#ef4444", marginTop: "4px" }}>{riskStats.high_risk_count}</div>
+                  <div style={{ fontSize: "11px", color: "#f87171", marginTop: "2px" }}>KTCL trước thông quan (PT5/PT7)</div>
+                </div>
+
+                <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", padding: "14px 16px", borderRadius: "12px" }}>
+                  <div style={{ fontSize: "11px", color: "#fde68a", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro TRUNG BÌNH (Phụ Lục II)</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#f59e0b", marginTop: "4px" }}>{riskStats.medium_risk_count}</div>
+                  <div style={{ fontSize: "11px", color: "#fbbf24", marginTop: "2px" }}>Công bố hợp quy / Hậu kiểm</div>
+                </div>
+
+                <div style={{ background: "rgba(255,255,255,0.06)", padding: "14px 16px", borderRadius: "12px" }}>
+                  <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Mã HS Code Đối Soát</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#10b981", marginTop: "4px" }}>{riskStats.unique_hs_count}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>{riskStats.groups_count} nhóm ngành kinh tế</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Interactive Fast Classifier Card */}
+          <div style={{ background: "#fff", padding: "24px", borderRadius: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "18px", color: "#0f172a", margin: "0 0 6px" }}>
+              🔍 Tra Cứu Nhanh Cấp Độ Rủi Ro Theo Mã HS Hoặc Tên Hàng
+            </h2>
+            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px" }}>
+              Nhập mã HS Code (vd: 8517.62.59, 8526.10.10, 8504.40.90, 8471.41.90, 2710.12.21, 6506.10.10) hoặc từ khóa thiết bị để hệ thống bóc tách chính xác nghĩa vụ KTCL.
+            </p>
+
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "14px" }}>
+              <input
+                type="text"
+                placeholder="Nhập mã HS Code hoặc từ khóa (vd: 8517.62.59, Gateway, Radar, Mũ bảo hiểm, Đồ chơi)..."
+                value={riskClassifyInput}
+                onChange={(e) => setRiskClassifyInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleClassifyRisk(); }}
+                style={{ flex: "1 1 300px", padding: "12px 16px", borderRadius: "12px", border: "1px solid #cbd5e1", fontSize: "14px", fontFamily: "var(--font-mono)" }}
+              />
+              <button
+                onClick={() => handleClassifyRisk()}
+                disabled={riskClassifying}
+                style={{ padding: "12px 24px", borderRadius: "12px", border: "none", background: "#0f766e", color: "#fff", fontWeight: 800, fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+              >
+                {riskClassifying ? "Đang Phân Loại..." : "Phân Loại Ngay"}
+              </button>
+            </div>
+
+            {/* Quick Chips */}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
+              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Ví dụ mẫu:</span>
+              {[
+                { code: "8517.62.59", label: "8517.62.59 (IoT Gateway 4G)" },
+                { code: "8471.41.90", label: "8471.41.90 (Màn hình máy tính A11)" },
+                { code: "8504.40.90", label: "8504.40.90 (Nguồn Adapter)" },
+                { code: "6506.10.10", label: "6506.10.10 (Mũ bảo hiểm)" },
+                { code: "9503.00.10", label: "9503.00.10 (Đồ chơi trẻ em)" },
+                { code: "2710.12.21", label: "2710.12.21 (Xăng không chì)" },
+                { code: "9026.10.90", label: "9026.10.90 (Cảm biến radar)" },
+              ].map((chip) => (
+                <button
+                  key={chip.code}
+                  onClick={() => { setRiskClassifyInput(chip.code); handleClassifyRisk(chip.code); }}
+                  style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: "12px", cursor: "pointer", fontFamily: "var(--font-mono)" }}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Classification Result Box */}
+            {riskClassifyResult && (
+              <div
+                style={{
+                  background: riskClassifyResult.annex === 1 ? "#fef2f2" : riskClassifyResult.annex === 2 ? "#fffbeb" : "#f0fdf4",
+                  border: `1.5px solid ${riskClassifyResult.annex === 1 ? "#f87171" : riskClassifyResult.annex === 2 ? "#f59e0b" : "#4ade80"}`,
+                  borderRadius: "16px",
+                  padding: "20px 24px",
+                  boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 900,
+                        padding: "4px 10px",
+                        borderRadius: "6px",
+                        background: riskClassifyResult.annex === 1 ? "#dc2626" : riskClassifyResult.annex === 2 ? "#d97706" : "#16a34a",
+                        color: "#fff",
+                      }}
+                    >
+                      {riskClassifyResult.risk_label}
+                    </span>
+                    <h3 style={{ margin: "10px 0 4px", fontSize: "18px", color: "#0f172a" }}>
+                      {riskClassifyResult.matched_item ? riskClassifyResult.matched_item.product_name : `Hàng hóa mã ${riskClassifyInput}`}
+                    </h3>
+                    {riskClassifyResult.matched_item?.group && (
+                      <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>
+                        Thuộc nhóm: {riskClassifyResult.matched_item.group}
+                      </div>
+                    )}
+                  </div>
+
+                  {riskClassifyResult.matched_item?.qcvn && (
+                    <div style={{ background: "#fff", padding: "8px 14px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "12px", color: "#0f766e" }}>
+                      <strong>Quy chuẩn tương ứng:</strong> {riskClassifyResult.matched_item.qcvn}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(0,0,0,0.06)", fontSize: "13px", lineHeight: 1.6, color: "#334155", marginBottom: "12px" }}>
+                  <strong>⚖️ Hướng dẫn quản lý & Hải quan:</strong> {riskClassifyResult.guidance}
+                </div>
+
+                {riskClassifyResult.matched_item?.management_requirement && (
+                  <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5 }}>
+                    <strong>Biện pháp cụ thể:</strong> {riskClassifyResult.matched_item.management_requirement}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Full Catalog Table Card */}
+          <div style={{ background: "#fff", padding: "24px", borderRadius: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px", marginBottom: "18px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0f172a", fontFamily: "Georgia, serif" }}>
+                  Bảng Danh Mục Chi Tiết 275 Mặt Hàng Quản Lý Rủi Ro
+                </h3>
+                <span style={{ fontSize: "12px", color: "#64748b" }}>
+                  Hiển thị {riskCatalog.length} / {riskCatalogTotal} mục tìm thấy
+                </span>
+              </div>
+
+              {/* Filter Pills */}
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {[
+                  { key: "", label: "Tất cả" },
+                  { key: "CAO", label: "Rủi ro CAO (Phụ lục I)" },
+                  { key: "TRUNG_BINH", label: "Rủi ro TRUNG BÌNH (Phụ lục II)" },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => {
+                      setRiskLevelFilter(f.key);
+                      loadRiskCatalog(1, f.key, riskGroupFilter, riskSearchQuery);
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      border: "none",
+                      background: riskLevelFilter === f.key ? (f.key === "CAO" ? "#dc2626" : f.key === "TRUNG_BINH" ? "#d97706" : "#0f766e") : "#f1f5f9",
+                      color: riskLevelFilter === f.key ? "#fff" : "#475569",
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px" }}>
+              <input
+                type="text"
+                placeholder="Lọc theo tên hàng, mã HS, QCVN, mô tả..."
+                value={riskSearchQuery}
+                onChange={(e) => {
+                  setRiskSearchQuery(e.target.value);
+                  loadRiskCatalog(1, riskLevelFilter, riskGroupFilter, e.target.value);
+                }}
+                style={{ flex: "1 1 250px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+              />
+
+              {riskStats?.groups && (
+                <select
+                  value={riskGroupFilter}
+                  onChange={(e) => {
+                    setRiskGroupFilter(e.target.value);
+                    loadRiskCatalog(1, riskLevelFilter, e.target.value, riskSearchQuery);
+                  }}
+                  style={{ maxWidth: "260px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                >
+                  <option value="">-- Tất cả nhóm ngành ({riskStats.groups.length}) --</option>
+                  {riskStats.groups.map((g) => (
+                    <option key={g} value={g}>{g.slice(0, 45)}...</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Table */}
+            {riskLoading ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>Đang tải danh mục phân loại rủi ro...</div>
+            ) : riskCatalog.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>Không tìm thấy mặt hàng nào phù hợp với bộ lọc.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                      <th style={{ padding: "10px", width: "50px" }}>STT</th>
+                      <th style={{ padding: "10px", width: "110px" }}>Cấp Độ Rủi Ro</th>
+                      <th style={{ padding: "10px", width: "110px" }}>Mã HS Code</th>
+                      <th style={{ padding: "10px", minWidth: "220px" }}>Tên Sản Phẩm / Hàng Hóa</th>
+                      <th style={{ padding: "10px", minWidth: "160px" }}>Quy Chuẩn (QCVN)</th>
+                      <th style={{ padding: "10px", minWidth: "220px" }}>Yêu Cầu Quản Lý / KTCL</th>
+                      <th style={{ padding: "10px", width: "60px", textAlign: "center" }}>Trang</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {riskCatalog.map((item) => (
+                      <tr key={item.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "10px", color: "#64748b", fontFamily: "var(--font-mono)" }}>{item.stt}</td>
+                        <td style={{ padding: "10px" }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              background: item.annex === 1 ? "#fee2e2" : "#fef3c7",
+                              color: item.annex === 1 ? "#991b1b" : "#92400e",
+                            }}
+                          >
+                            {item.annex === 1 ? "Phụ lục I (CAO)" : "Phụ lục II (TB)"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#0f766e" }}>
+                          {item.hs_codes && item.hs_codes.length > 0 ? item.hs_codes.join(", ") : (item.hs_raw || "—")}
+                        </td>
+                        <td style={{ padding: "10px" }}>
+                          <strong style={{ color: "#0f172a" }}>{item.product_name}</strong>
+                          {item.description && item.description !== item.product_name && (
+                            <div style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
+                              {item.description.slice(0, 120)}...
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px", color: "#0369a1", fontWeight: 700 }}>
+                          {item.qcvn || "—"}
+                        </td>
+                        <td style={{ padding: "10px", color: "#334155", fontSize: "11px", lineHeight: 1.4 }}>
+                          {item.management_requirement ? item.management_requirement.slice(0, 160) + "..." : "—"}
+                        </td>
+                        <td style={{ padding: "10px", textAlign: "center", color: "#94a3b8" }}>
+                          p.{item.page}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {riskCatalogTotal > riskCatalogLimit && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #f1f5f9" }}>
+                <span style={{ fontSize: "12px", color: "#64748b" }}>
+                  Trang {riskCatalogPage} / {Math.ceil(riskCatalogTotal / riskCatalogLimit)}
+                </span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button
+                    disabled={riskCatalogPage <= 1}
+                    onClick={() => loadRiskCatalog(riskCatalogPage - 1)}
+                    style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", cursor: riskCatalogPage <= 1 ? "not-allowed" : "pointer" }}
+                  >
+                    ← Trang Trước
+                  </button>
+                  <button
+                    disabled={riskCatalogPage >= Math.ceil(riskCatalogTotal / riskCatalogLimit)}
+                    onClick={() => loadRiskCatalog(riskCatalogPage + 1)}
+                    style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", cursor: riskCatalogPage >= Math.ceil(riskCatalogTotal / riskCatalogLimit) ? "not-allowed" : "pointer" }}
+                  >
+                    Trang Sau →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

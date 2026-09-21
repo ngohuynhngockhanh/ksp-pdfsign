@@ -511,8 +511,8 @@ def post_purchase(db: Session, inv: InvPurchase) -> None:
                     f"{inv.so_hd} — coi chừng ghi sổ trùng"
                 )
 
-    if inv.loai == "dich_vu":
-        # Hoa don dich vu/chi phi: chi luu vet + doi chieu bang ke, khong tao move
+    if inv.source in ("gdt_portal", "excel_bk") or inv.loai == "dich_vu":
+        # Hóa đơn đối soát thuế / chi phí dịch vụ: TUYỆT ĐỐI KHÔNG TẠO MOVE KHO, KHÔNG ẢNH HƯỞNG TỒN KHO
         inv.status = "posted"
         inv.posted_at = _utcnow()
         db.commit()

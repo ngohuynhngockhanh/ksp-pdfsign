@@ -28,7 +28,7 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
   }
   useEffect(() => { load(); }, []);
 
-  const actionable = useMemo(() => data?.document_queue.slice(0, 12) ?? [], [data]);
+  const actionable = useMemo(() => data?.document_queue?.slice(0, 12) ?? [], [data]);
   async function runSync() {
     setBusy("sync");
     try { await api.runTaxSyncJob(); await load(); } catch (e) { setErr((e as Error).message); }

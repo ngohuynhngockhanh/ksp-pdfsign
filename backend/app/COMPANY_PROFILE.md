@@ -28,6 +28,7 @@
 
 ## 👤 3. ĐẠI DIỆN PHÁP LUẬT & BAN ĐIỀU HÀNH
 * **Người đại diện theo pháp luật / Giám đốc**: **NGÔ HUỲNH NGỌC KHÁNH**
+* **Số CCCD / CMND người đại diện**: `054096010424` (Hằng số định danh tra cứu thủ tục Hải quan)
 * **Chữ ký số doanh nghiệp**: USB Token WINCA (MST `4401053694`, hiệu lực đến 15/06/2027, PIN mặc định: `12345678`)
 
 ---
