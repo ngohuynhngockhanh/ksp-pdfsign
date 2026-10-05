@@ -18,7 +18,11 @@ _WINDOW = 35  # so dong quet sau moi marker de tim nhan (label) - chiu xe dich
 
 
 def _s(v) -> str:
-    return str(v).strip() if v is not None else ""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
 
 
 def _norm_dvt(v: str) -> str:

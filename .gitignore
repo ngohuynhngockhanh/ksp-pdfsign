@@ -38,6 +38,7 @@ backend/data/
 data/
 *.log
 
+qrcode_614_4.166*
 # OS / editor
 .DS_Store
 .idea/

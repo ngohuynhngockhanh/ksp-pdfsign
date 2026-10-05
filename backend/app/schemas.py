@@ -685,6 +685,10 @@ class IhoadonDraftDeliveryIn(IhoadonDraftIn):
     share_days: int = Field(default=7, ge=1, le=30)
 
 
+
+class IhoadonSendEmailIn(BaseModel):
+    emails: str
+
 class SuggestInvoiceLinesIn(BaseModel):
     mo_ta: str = ""  # mo ta noi dung can ban
     context: str = ""  # huong dan them cho AI

@@ -27,7 +27,7 @@ def classify_customs_document(filename: str, text: str) -> str:
     content = re.sub(r"[^a-z0-9]+", " ", normalize_name(text)).strip()
     combined = f"{name} {content}"
     suffix = Path(filename).suffix.lower()
-    if suffix in (".xlsx", ".xls") and any(token in name for token in ("tokhai", "to khai", "vnaccs", "tkn")):
+    if suffix in (".xlsx", ".xls") and (any(token in name for token in ("tokhai", "to khai", "vnaccs", "tkn")) or re.search(r"(^|\s)tk($|\s|\d)", name) or any(token in combined for token in ("to khai", "vnaccs", "hang hoa nhap khau"))):
         return "customs_declaration"
     if any(token in combined for token in ("arrival notice", "notice of arrival", "arrival notification", "thong bao hang den")) or re.search(r"(^|\s)an($|\s)", name):
         return "arrival_notice"

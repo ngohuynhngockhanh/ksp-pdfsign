@@ -182,8 +182,10 @@ def fetch_customs_barcode_pdf(
     size: A4 portrait;
     margin: 12mm 15mm 12mm 15mm;
 }}
+body, table, th, td, div, span, p, label, .TextMediumBold, .TextLargeBold, .GridView {{
+    font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif', serif;
+}}
 body {{
-    font-family: 'DejaVu Sans', 'Times New Roman', serif;
     font-size: 13px;
     color: #000;
     background: #fff;

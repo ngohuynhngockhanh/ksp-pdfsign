@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { 
+    size: A4; 
+    margin: 15mm 18mm 18mm 18mm; 
+    @bottom-center { 
+      content: "Trang " counter(page) "/" counter(pages); 
+      font-size: 10px; 
+      font-style: italic; 
+    } 
+  }
+  * { box-sizing: border-box; }
+  body { 
+    font-family: "DejaVu Serif", "Times New Roman", serif; 
+    font-size: 12px; 
+    line-height: 1.45; 
+    color: #111; 
+  }
+  .header { display: flex; justify-content: space-between; text-align: center; margin-bottom: 5px; }
+  .header .left { width: 52%; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+  .header .right { width: 46%; }
+  .header .right .country { font-weight: bold; text-transform: uppercase; font-size: 12px; }
+  .header .right .motto { font-weight: bold; font-size: 12px; }
+  .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
+  .soline { margin-top: 2px; font-size: 11px; font-weight: normal; }
+  
+  h1 { text-align: center; font-size: 16px; margin: 12px 0 2px; text-transform: uppercase; }
+  .number { text-align: center; font-size: 12px; font-style: italic; margin-bottom: 8px; }
+  .basis { text-align: justify; margin-bottom: 8px; font-style: italic; font-size: 11.5px; }
+  
+  .party-title { font-weight: bold; text-transform: uppercase; font-size: 12px; margin-top: 6px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
+  .party-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+  .party-table td { padding: 1.5px 3px; vertical-align: top; }
+  .party-table .key { width: 22%; font-weight: bold; }
+  .party-table .sep { width: 2%; text-align: center; }
+  
+  .article-title { font-weight: bold; text-transform: uppercase; margin-top: 9px; margin-bottom: 3px; font-size: 12px; color: #174b72; }
+  p { margin: 3px 0; text-align: justify; }
+  
+  table.data-table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  table.data-table th, table.data-table td { border: 1px solid #333; padding: 4.5px 6px; font-size: 11px; }
+  table.data-table th { background-color: #f1f6f9; text-align: center; font-weight: bold; }
+  table.data-table td.c { text-align: center; }
+  table.data-table td.r { text-align: right; }
+  
+  .tax-notice { background: #fdf8e8; border-left: 3px solid #d97706; padding: 6px 10px; margin: 6px 0; font-size: 11.5px; }
+  .bank-box { background: #f8fafc; border-left: 3px solid #174b72; padding: 6px 10px; margin: 6px 0; font-size: 11.5px; }
+  
+  .signs { display: flex; justify-content: space-between; text-align: center; margin-top: 15px; page-break-inside: avoid; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; font-size: 12.5px; }
+  .signs .hint { font-style: italic; font-size: 11px; margin-top: 1px; }
+  .signs .space { height: 85px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .signature-img { max-height: 75px; max-width: 180px; object-fit: contain; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="left">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN<br>CÔNG NGHỆ INUT<div class="soline">Số: {{ contract_code }}</div></div>
+    <div class="right">
+      <div class="country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="motto"><u>Độc lập – Tự do – Hạnh phúc</u></div>
+      <div style="font-style: italic; font-size: 11px; margin-top: 4px;">{{ location_short or "Đắk Lắk" }}, ngày {{ contract_date_display }}</div>
+    </div>
+  </div>
+
+  <h1>HỢP ĐỒNG GIAO KHOÁN CÔNG VIỆC</h1>
+  <div class="number">(V/v: {{ title }})</div>
+
+  <div class="basis">
+    - Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;<br>
+    - Căn cứ Luật Thuế thu nhập cá nhân và Nghị định số 253/2026/NĐ-CP ngày 30/06/2026 của Chính phủ;<br>
+    - Căn cứ Luật Bảo hiểm xã hội số 41/2024/QH15 và Bộ luật Lao động số 45/2019/QH14;<br>
+    - Căn cứ nhu cầu thực hiện công việc và sự tự nguyện thỏa thuận của hai Bên.
+  </div>
+  <p>Hôm nay, ngày {{ contract_date_display }}, chúng tôi gồm các Bên dưới đây:</p>
+
+  <div class="party-title">BÊN GIAO KHOÁN (BÊN A): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <table class="party-table">
+    <tr><td class="key">Địa chỉ trụ sở</td><td class="sep">:</td><td>161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam</td></tr>
+    <tr><td class="key">Mã số thuế</td><td class="sep">:</td><td>4401053694</td></tr>
+    <tr><td class="key">Đại diện pháp luật</td><td class="sep">:</td><td>Ông <b>NGÔ HUỲNH NGỌC KHÁNH</b> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Giám đốc</td></tr>
+    <tr><td class="key">Điện thoại / Hotline</td><td class="sep">:</td><td>0972 768 491 &nbsp;&nbsp;|&nbsp;&nbsp; Email: hotro@inut.vn &nbsp;&nbsp;|&nbsp;&nbsp; Website: inut.vn</td></tr>
+    <tr><td class="key">Tài khoản thanh toán</td><td class="sep">:</td><td><b>79713</b> tại Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)</td></tr>
+  </table>
+
+  <div class="party-title">BÊN NHẬN KHOÁN (BÊN B): ÔNG/BÀ {{ worker_name|upper }}</div>
+  <table class="party-table">
+    <tr><td class="key">Họ và tên</td><td class="sep">:</td><td><b>{{ worker_name }}</b></td></tr>
+    <tr><td class="key">Số CCCD / Định danh</td><td class="sep">:</td><td>{{ worker_id_card }} {% if worker_id_card_date %} &nbsp;(Ngày cấp: {{ worker_id_card_date }}{% if worker_id_card_place %} tại {{ worker_id_card_place }}{% endif %}){% endif %}</td></tr>
+    {% if worker_tax_code %}<tr><td class="key">Mã số thuế cá nhân</td><td class="sep">:</td><td>{{ worker_tax_code }}</td></tr>{% endif %}
+    <tr><td class="key">Địa chỉ thường trú</td><td class="sep">:</td><td>{{ worker_address }}</td></tr>
+    <tr><td class="key">Số điện thoại liên hệ</td><td class="sep">:</td><td>{{ worker_phone }}</td></tr>
+    <tr><td class="key">Tài khoản ngân hàng</td><td class="sep">:</td><td><b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b> (Chính chủ: {{ worker_name }})</td></tr>
+  </table>
+
+  <p>Hai Bên cùng bàn bạc và thống nhất ký kết Hợp đồng giao khoán công việc với các điều khoản cụ thể sau:</p>
+
+  <div class="article-title">ĐIỀU 1. NỘI DUNG VÀ KHỐI LƯỢNG CÔNG VIỆC GIAO KHOÁN</div>
+  <p>1.1. Bên A giao khoán trọn gói cho Bên B thực hiện công việc thuộc công trình/dự án sau:</p>
+  <p>- <b>Tên công trình/hạng mục:</b> {{ project_name }}</p>
+  <p>- <b>Địa điểm thực hiện:</b> {{ location }}</p>
+  <p>1.2. Chi tiết các hạng mục và khối lượng công việc giao khoán:</p>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:6%">STT</th>
+        <th>Nội dung công việc giao khoán</th>
+        <th style="width:10%">ĐVT</th>
+        <th style="width:10%">Khối lượng</th>
+        <th style="width:18%">Đơn giá (VNĐ)</th>
+        <th style="width:20%">Thành tiền (VNĐ)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong }}</td>
+        <td class="r">{{ "{:,.0f}".format(it.don_gia) }}</td>
+        <td class="r">{{ "{:,.0f}".format(it.thanh_tien) }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="5" style="text-align:center; font-weight:bold;">TỔNG GIÁ TRỊ THÙ LAO KHOÁN (GROSS)</td>
+        <td class="r" style="font-weight:bold;">{{ "{:,.0f}".format(total_amount) }} VNĐ</td>
+      </tr>
+      {% if tax_amount > 0 %}
+      <tr>
+        <td colspan="5" style="text-align:right; font-style:italic;">Khấu trừ 10% thuế TNCN (Theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP):</td>
+        <td class="r" style="color:#b91c1c;">- {{ "{:,.0f}".format(tax_amount) }} VNĐ</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="text-align:center; font-weight:bold; color:#15803d;">SỐ TIỀN THỰC NHẬN CHUYỂN KHOẢN (NET)</td>
+        <td class="r" style="font-weight:bold; color:#15803d;">{{ "{:,.0f}".format(net_amount) }} VNĐ</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <p><i>(Bằng chữ: {{ total_amount_in_word }}).</i></p>
+
+  {% if tax_amount == 0 %}
+  <div class="tax-notice">
+    <b>Chính sách thuế TNCN:</b> Giá trị khoán chi trả dưới 5.000.000 VNĐ/lần thuộc đối tượng được miễn khấu trừ 10% thuế TNCN tại nguồn theo đúng quy định tại <b>Khoản 2 Điều 50 Nghị định số 253/2026/NĐ-CP</b>. Bên B nhận trọn vẹn 100% thù lao chuyển khoản.
+  </div>
+  {% else %}
+  <div class="tax-notice">
+    <b>Chính sách thuế TNCN:</b> Do mức chi trả từ 5.000.000 VNĐ trở lên, Bên A thực hiện khấu trừ 10% thuế TNCN ({% raw %}{{ "{:,.0f}".format(tax_amount) }}{% endraw %} VNĐ) để kê khai nộp vào Ngân sách Nhà nước theo Nghị định 253/2026/NĐ-CP. Bên A sẽ cung cấp Chứng từ khấu trừ thuế TNCN điện tử khi Bên B yêu cầu.
+  </div>
+  {% endif %}
+
+  <div class="article-title">ĐIỀU 2. PHƯƠNG THỨC NGHIỆM THU VÀ THANH TOÁN</div>
+  <p>2.1. <b>Nghiệm thu:</b> Sau khi Bên B hoàn thành toàn bộ khối lượng công việc, hai Bên tiến hành nghiệm thu thực tế tại hiện trường. Hồ sơ nghiệm thu gồm: Biên bản nghiệm thu khối lượng hoàn thành, hình ảnh chụp thực tế thiết bị/công trình và Bảng thanh toán tiền thuê ngoài (Mẫu 07-TT).</p>
+  <p>2.2. <b>Thanh toán:</b> Khi có Biên bản nghiệm thu khối lượng hoàn thành đạt yêu cầu, Bên A thực hiện thanh toán tiền thù lao cho Bên B bằng hình thức chuyển khoản ngân hàng không dùng tiền mặt trong vòng 30 (ba mươi) ngày kể từ ngày ký Biên bản nghiệm thu hợp đồng khoán.</p>
+  <div class="bank-box">
+    Thông tin tài khoản thụ hưởng của Bên B:<br>
+    - Chủ tài khoản: <b>{{ worker_name|upper }}</b><br>
+    - Số tài khoản: <b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b>
+  </div>
+
+  <div class="article-title">ĐIỀU 3. CAM KẾT KHÔNG PHÁT SINH QUAN HỆ LAO ĐỘNG</div>
+  <p>3.1. Hai Bên khẳng định quan hệ hợp tác theo Hợp đồng này là <b>quan hệ giao khoán công việc theo sản phẩm/kết quả đầu ra thuần túy dân sự</b>, không cấu thành Hợp đồng lao động theo Bộ luật Lao động 2019 và không thuộc diện tham gia Bảo hiểm xã hội bắt buộc theo Luật BHXH 2024.</p>
+  <p>3.2. Bên B hoàn toàn tự chủ về nhân lực, phương tiện, biện pháp thi công và thời gian thực hiện; không chịu sự quản lý giờ giấc hành chính, không chấm công, không xếp loại nhân viên và không hưởng các chế độ tiền lương/phụ cấp nội bộ của Bên A.</p>
+  <p>3.3. Bên B tự chịu trách nhiệm về an toàn lao động trong suốt quá trình thi công tại hiện trường.</p>
+
+  <div class="article-title">ĐIỀU 4. ĐIỀU KHOẢN CHUNG</div>
+  <p>4.1. Hợp đồng có hiệu lực kể từ ngày ký và tự động thanh lý khi Bên B hoàn thành công việc được nghiệm thu và Bên A hoàn tất nghĩa vụ thanh toán.</p>
+  <p>4.2. Hợp đồng này được lập thành văn bản điện tử có giá trị pháp lý tương đương bản giấy theo Luật Giao dịch điện tử. Chữ ký số của Bên A và chữ ký điện tử trực tuyến của Bên B trên hệ thống KSP có giá trị chứng cứ đầy đủ trước pháp luật.</p>
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN A (GIAO KHOÁN)</div>
+      <div class="hint">(Ký số, đóng dấu)</div>
+      <div class="space">
+        {% if is_signed_by_inut %}
+        <div class="digital-stamp" style="border: 2px solid #16a34a; background: #f0fdf4; border-radius: 8px; padding: 8px 10px; color: #166534; font-size: 10px; line-height: 1.45; text-align: left; margin: 4px auto; max-width: 250px; box-shadow: 0 1px 4px rgba(22,163,74,0.12);">
+          <div style="font-weight: bold; font-size: 11px; color: #15803d; border-bottom: 1px dashed #86efac; padding-bottom: 3px; margin-bottom: 4px;">
+            ✓ KÝ SỐ ĐIỆN TỬ BỞI:<br>
+            <span style="font-size: 10.5px;">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</span>
+          </div>
+          <div><b>Mã số thuế:</b> 4401053694</div>
+          <div><b>Đơn vị cấp CA:</b> {{ inut_ca_issuer or 'WINCA / WINGROUP CA' }}</div>
+          <div><b>Ngày cấp:</b> {{ inut_cert_valid_from or '15/06/2024' }} (Hạn: {{ inut_cert_valid_to or '15/06/2027' }})</div>
+          <div><b>Ngày ký:</b> <span style="font-weight: bold; color: #0284c7;">{{ inut_signed_date_display }}</span></div>
+          <div><b>Số sê-ri:</b> <span style="font-family: monospace; font-size: 9px;">{{ inut_cert_serial or '540116541CB8AAF5' }}</span></div>
+          <div style="font-size: 8.5px; color: #15803d; margin-top: 3px; border-top: 1px solid #dcfce7; padding-top: 2px;">
+            ✓ Chữ ký số PAdES hợp lệ, toàn vẹn theo Luật GDĐT & Cơ quan Thuế
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <div><b>Ông NGÔ HUỲNH NGỌC KHÁNH</b><br>Giám đốc</div>
+    </div>
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN B (NHẬN KHOÁN)</div>
+      <div class="hint">(Ký điện tử online)</div>
+      <div class="space">
+        {% if worker_signature_data %}
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin: 4px 0;">
+          <img class="signature-img" src="{{ worker_signature_data }}" alt="Chữ ký thợ" style="max-height: 65px; max-width: 140px;">
+          {% if worker_face_photo_data %}
+          <img src="{{ worker_face_photo_data }}" alt="Ảnh eKYC" style="width: 44px; height: 56px; object-fit: cover; border-radius: 4px; border: 1.5px solid #0284c7;" title="Ảnh chụp chân dung lúc ký">
+          {% endif %}
+        </div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Thời gian: {{ worker_signed_date_display }}</div>
+        {% elif is_signed_by_worker %}
+        <div style="border: 1px dashed #0284c7; color: #0284c7; padding: 4px 10px; border-radius: 4px; font-weight: bold; background: #f0f9ff; font-size: 11px;">
+          ✓ ĐÃ KÝ ONLINE QUA PORTAL<br>
+          <span style="font-size: 9px; color: #0369a1;">Thời gian: {{ worker_signed_date_display }}</span>
+        </div>
+        <div style="color: #94a3b8; font-style: italic; font-size: 11px; padding-top: 30px;">
+          (Chưa ký online)
+        </div>
+        {% endif %}
+      </div>
+      <div><b>{{ worker_name }}</b></div>
+    </div>
+  </div>
+</body>
+</html>

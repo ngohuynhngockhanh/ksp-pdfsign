@@ -227,6 +227,16 @@ def _notify_telegram_summary(
             "✨ Hệ thống kế toán & kho đã được cập nhật đồng bộ.",
         ]
 
+    # Kiểm tra cảnh báo biểu phí kế toán (còn <= 5 hóa đơn trước khi nhảy mốc)
+    try:
+        from . import accounting_tier
+        tier_status = accounting_tier.evaluate_accounting_fee_status(db)
+        if tier_status.get("thresholds", {}).get("is_alarm"):
+            lines.append("")
+            lines.append(tier_status["alarm_message"])
+    except Exception as exc:
+        logger.warning(f"Lỗi kiểm tra cảnh báo biểu phí kế toán: {exc}")
+
     msg = "\n".join(lines)
     client = TelegramClient(settings)
     try:

@@ -162,3 +162,21 @@ npx playwright test e2e/verify-persistent.spec.ts
 ```bash
 ./scripts/discover_windows_host.py --force --update-env
 ```
+
+---
+
+## 📜 9. QUY TẮC NGHIỆP VỤ HÓA ĐƠN BÁN RA, BIÊN BẢN BÀN GIAO & HỢP ĐỒNG GIAO KHOÁN
+
+### 9.1. Quy tắc ký số Biên bản bàn giao (BBBG) đi kèm Hóa đơn bán ra
+* **Nguyên tắc đồng bộ thời gian**: Khi ký số BBBG đi kèm hóa đơn bán ra, ngày trên BBBG và mốc thời gian ký số mật mã nhúng trong file PDF (`/M`) **bắt buộc phải lùi về cùng ngày với hóa đơn bán ra**.
+* **Khoảng cách thời gian ký**: Thời điểm ký số BBBG được đặt ngẫu nhiên sau thời điểm ký số hóa đơn điện tử từ **46 đến 54 phút** (mô phỏng logic thực tế: xuất hóa đơn xong $\rightarrow$ in ấn/chuẩn bị thiết bị $\rightarrow$ bàn giao nghiệm thu).
+* **Kỹ thuật thực hiện**: Không cần đổi giờ hệ thống Windows; sử dụng cơ chế truyền `system_time = bbbg_dt` vào `PdfSigningSession` của PyHanko khi gửi lệnh ký sang USB Token WINCA (192.168.1.10). File PDF sau khi ký đạt chuẩn `Intact: True`, `Valid: True`, mở trên Foxit Reader hay Adobe Acrobat đều báo **Signature is VALID**.
+
+### 9.2. Quy tắc thời điểm lập Hợp đồng giao khoán công việc (Piecework Contract)
+* **Nguyên tắc trước ngày hóa đơn**: Ngày ký Hợp đồng giao khoán nhân công/thi công/gia công **phải đi trước ngày xuất hóa đơn bán ra từ 15 đến 30 ngày**.
+* **Logic kiểm toán thuế**: Doanh nghiệp phải giao kết hợp đồng giao khoán trước $\rightarrow$ Thợ thực hiện công việc tại công trình $\rightarrow$ Hoàn thành và lập Biên bản nghiệm thu đạt yêu cầu $\rightarrow$ Lúc đó doanh nghiệp mới đủ điều kiện xuất hóa đơn GTGT bán ra cho khách hàng. Không được để ngày HĐ khoán sau ngày hóa đơn bán ra.
+
+### 9.3. Điều khoản thanh toán Hợp đồng khoán sau nghiệm thu
+* **Điều khoản bắt buộc**: Trong điều khoản thanh toán (Điều 2) của mọi Hợp đồng giao khoán, bắt buộc phải có câu:
+  > *"Khi có Biên bản nghiệm thu khối lượng hoàn thành đạt yêu cầu, Bên A (INUT) thực hiện thanh toán tiền thù lao cho Bên B bằng hình thức chuyển khoản ngân hàng không dùng tiền mặt trong vòng 30 (ba mươi) ngày kể từ ngày ký Biên bản nghiệm thu hợp đồng khoán."*
+* **Ý nghĩa thuế & ngân hàng**: Hợp thức hóa thời hạn thanh toán trả chậm cho thợ/CTV, bảo vệ 100% chi phí được trừ khi tính thuế TNDN (NĐ 320/2025/NĐ-CP) và tuân thủ quy định thanh toán không dùng tiền mặt từ 5 triệu đồng trở lên (NĐ 181/2025/NĐ-CP & NĐ 253/2026/NĐ-CP).

@@ -76,8 +76,9 @@ export function PurchaseImport({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [hidePre2026, setHidePre2026] = useState(true);
   const [emailSyncOpen, setEmailSyncOpen] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [viewPdfMode, setViewPdfMode] = useState<boolean>(true);
   const autoHdRef = useRef(false);
-
   const pre2026Count = list.filter((p) => (p.ngay || "") < "2026-01-01").length;
   const from2026Count = list.filter((p) => (p.ngay || "") >= "2026-01-01").length;
   const activeList = hidePre2026 ? list.filter((p) => (p.ngay || "") >= "2026-01-01") : list;
@@ -263,11 +264,30 @@ export function PurchaseImport({
 
   async function open(id: number) {
     try {
-      setCur(await api.invPurchase(id));
+      const p = await api.invPurchase(id);
+      setCur(p);
       setItemQuery(null);
       setParam("hd", String(id));
+      setViewPdfMode(Boolean(p.doc_url));
     } catch (e) {
       setErr((e as Error).message);
+    }
+  }
+
+  async function onAttachPdf(id: number, file: File) {
+    setAttachBusy(true);
+    setErr("");
+    try {
+      await api.attachPurchasePdf(id, file);
+      const updated = await api.invPurchase(id);
+      setCur(updated);
+      setViewPdfMode(true);
+      setUploadMsg([`✅ Đã nạp bổ sung file PDF thành công cho hóa đơn #${id}!`]);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAttachBusy(false);
     }
   }
   function closeCur() {
@@ -654,7 +674,30 @@ export function PurchaseImport({
                   </td>
                   <td className="muted">#{p.id}</td>
                   <td className="nowrap">{p.ngay || <span className="chip red sm">thiếu ngày</span>}</td>
-                  <td>{p.so_hd}</td>
+                  <td>
+                    <strong>{p.so_hd}</strong>
+                    {p.doc_url ? (
+                      <span className="chip green sm" style={{ marginLeft: 6 }} title="Đã có file PDF/gốc">📎 PDF</span>
+                    ) : (
+                      <label
+                        className="chip amber sm"
+                        style={{ marginLeft: 6, cursor: "pointer" }}
+                        title="Bấm để nộp bù file PDF cho hóa đơn này"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ＋ Bù PDF
+                        <input
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          hidden
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) onAttachPdf(p.id, f);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </td>
                   <td>
                     {p.ten_ban}
                     {p.loai === "dich_vu" && <span className="chip indigo sm"> 🧾 Dịch vụ</span>}
@@ -715,6 +758,33 @@ export function PurchaseImport({
                   📄 File gốc
                 </a>
               )}
+              <label
+                className="btn-sm"
+                style={{
+                  marginLeft: 8,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  backgroundColor: cur.doc_url ? "#f1f5f9" : "#eff6ff",
+                  borderColor: cur.doc_url ? "#cbd5e1" : "#3b82f6",
+                  color: cur.doc_url ? "#334155" : "#1d4ed8",
+                  fontWeight: 600,
+                }}
+                title="Tải file PDF gốc bù vào hóa đơn này"
+              >
+                📎 {attachBusy ? "Đang lưu…" : (cur.doc_url ? "Úp bù / Thay PDF" : "Úp bù PDF gốc")}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  hidden
+                  disabled={attachBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onAttachPdf(cur.id, f);
+                  }}
+                />
+              </label>
             </h3>
             {cur.status === "posted" && (
               <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -996,31 +1066,75 @@ export function PurchaseImport({
 
               </div>
               <div className="review-file">
-                {cur.source === "tax_gdt" ? (
-                  <>
-                    <div className="tb-group" style={{ marginBottom: 6 }}>
-                      <a
-                        className="btn-sm ghost"
-                        href={`/api/inv/purchase/${cur.id}/html`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        🔍 Mở HTML
-                      </a>
-                      <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noreferrer">
-                        ⬇️ Tải PDF (để share)
-                      </a>
-                    </div>
-                    <iframe src={`/api/inv/purchase/${cur.id}/html`} title="Bản thể hiện hóa đơn (cổng thuế)" />
-                  </>
+                <div className="tb-group" style={{ marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {cur.source === "tax_gdt" && (
+                    <button
+                      type="button"
+                      className={`btn-sm ${!viewPdfMode ? "primary" : "ghost"}`}
+                      onClick={() => setViewPdfMode(false)}
+                    >
+                      🔍 Xem HTML
+                    </button>
+                  )}
+                  {cur.doc_url && (
+                    <button
+                      type="button"
+                      className={`btn-sm ${viewPdfMode ? "primary" : "ghost"}`}
+                      onClick={() => setViewPdfMode(true)}
+                    >
+                      📄 Xem PDF gốc
+                    </button>
+                  )}
+                  <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noreferrer">
+                    ⬇️ Tải PDF
+                  </a>
+                  <label
+                    className="btn-sm"
+                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, background: "#f0fdf4", borderColor: "#16a34a", color: "#15803d" }}
+                    title="Nộp tệp PDF gốc cho hóa đơn này"
+                  >
+                    📎 {attachBusy ? "Đang nạp…" : (cur.doc_url ? "Thay PDF khác" : "Úp bù PDF gốc")}
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      hidden
+                      disabled={attachBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onAttachPdf(cur.id, f);
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {viewPdfMode && cur.doc_url ? (
+                  <iframe
+                    src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
+                    title="Hóa đơn gốc (PDF)"
+                  />
+                ) : cur.source === "tax_gdt" ? (
+                  <iframe src={`/api/inv/purchase/${cur.id}/html`} title="Bản thể hiện hóa đơn (cổng thuế)" />
                 ) : cur.doc_url ? (
                   <iframe
                     src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
                     title="Hóa đơn gốc"
                   />
                 ) : (
-                  <div className="no-file">
-                    Hóa đơn nhập tay — không có file gốc để đối chiếu.
+                  <div className="no-file" style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <p style={{ marginBottom: 12 }}>Chưa có file PDF gốc để đối chiếu.</p>
+                    <label className="btn-sm primary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      📎 {attachBusy ? "Đang nạp file…" : "Tải file PDF gốc lên ngay"}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        hidden
+                        disabled={attachBusy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) onAttachPdf(cur.id, f);
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
               </div>

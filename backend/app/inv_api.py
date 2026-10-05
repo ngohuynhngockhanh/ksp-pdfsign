@@ -56,6 +56,7 @@ from .schemas import (
     InvImportUrlIn,
     IhoadonDraftIn,
     IhoadonDraftDeliveryIn,
+    IhoadonSendEmailIn,
     InvIssueIn,
     InvIssueLineOut,
     InvIssueOut,
@@ -1193,10 +1194,13 @@ def purchase_file(
     inv = db.get(InvPurchase, pid)
     if not inv or not inv.doc_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Hóa đơn không có file gốc")
-    data = storage.read_doc(inv.doc_id, suffix=inv.doc_suffix or ".pdf")
-    media = "application/pdf" if (inv.doc_suffix or ".pdf") == ".pdf" else "application/xml"
+    if storage.exists(inv.doc_id, ".pdf"):
+        data = storage.read_doc(inv.doc_id, suffix=".pdf")
+        return Response(content=data, media_type="application/pdf")
+    suffix = inv.doc_suffix or ".xml"
+    data = storage.read_doc(inv.doc_id, suffix=suffix)
+    media = "application/pdf" if suffix == ".pdf" else "application/xml"
     return Response(content=data, media_type=media)
-
 
 @router.get("/purchase/{pid}/html")
 def purchase_html(
@@ -1247,12 +1251,16 @@ async def purchase_attach_pdf(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File bổ sung phải là PDF hợp lệ")
     if inv.doc_id:
         storage.path_for(inv.doc_id, ".pdf").write_bytes(content)
+        inv.doc_suffix = ".pdf"
     else:
         inv.doc_id = storage.save_upload(content, suffix=".pdf")
         inv.doc_suffix = ".pdf"
-        db.commit()
+    inv.nas_path = ""
+    inv.nas_sha256 = ""
+    inv.nas_synced_at = None
+    db.commit()
     _audit(db, user, "inv_purchase_attach_pdf", f"HĐ mua #{pid}", file.filename or "")
-    return {"ok": True, "state": "ready"}
+    return {"ok": True, "state": "ready", "doc_url": f"/api/inv/purchase/{inv.id}/file"}
 
 
 @router.patch("/purchase/{pid}", response_model=InvPurchaseOut)
@@ -2733,6 +2741,39 @@ def ihoadon_delivery_zip(
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="hoa-don-nhap-ihoadon.zip"'},
     )
+
+
+@router.post("/ihoadon/invoices/{invoice_id}/send-email")
+def ihoadon_send_invoice_email(
+    invoice_id: str,
+    body: IhoadonSendEmailIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Gửi email hóa đơn điện tử bán ra tới khách hàng qua iHOADON."""
+    clean_emails = ";".join(e.strip() for e in re.split(r"[,;\s]+", body.emails) if e.strip())
+    if not clean_emails:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email không hợp lệ")
+    try:
+        with _ihoadon_client(settings) as client:
+            res = client.send_invoice_email(invoice_id, clean_emails)
+    except ihoadon.IhoadonError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"iHOADON: {exc}") from exc
+
+    ih_inv = db.scalar(select(IhoadonInvoice).where(
+        (IhoadonInvoice.external_id == invoice_id) | (IhoadonInvoice.id == int(invoice_id) if invoice_id.isdigit() else False)
+    ))
+    if ih_inv:
+        ih_inv.buyer_email = clean_emails
+        if ih_inv.customer_id:
+            cust = db.get(Customer, ih_inv.customer_id)
+            if cust and not cust.email:
+                cust.email = clean_emails.split(";")[0]
+        db.commit()
+
+    _audit(db, user, "ihoadon_send_email", invoice_id, clean_emails)
+    return {"ok": True, "invoice_id": invoice_id, "emails": clean_emails, "message": "Đã gửi email hóa đơn thành công", "result": res}
 
 
 def _stock_items_for_ai(db: Session, ngay: str = "") -> list[dict]:

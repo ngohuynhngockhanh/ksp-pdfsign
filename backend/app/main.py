@@ -156,6 +156,7 @@ from .bidding_api import router as bidding_router  # noqa: E402
 from .standards_api import resume_tqc_import_jobs, router as standards_router  # noqa: E402
 from .tax_defense_api import router as tax_defense_router  # noqa: E402
 from .trademark_api import router as trademark_router  # noqa: E402
+from .piecework_api import router as piecework_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -168,6 +169,7 @@ app.include_router(bidding_router)
 app.include_router(standards_router)
 app.include_router(tax_defense_router)
 app.include_router(trademark_router)
+app.include_router(piecework_router)
 
 
 
@@ -198,9 +200,11 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    is_portal = request.url.path.startswith("/khoan/") or request.url.path.startswith("/s/")
+    script_src = "'self' 'unsafe-inline'" if is_portal else "'self'"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self'; connect-src 'self' http://localhost:5173 ws://localhost:5173; "
+        f"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+        f"script-src {script_src}; connect-src 'self' http://localhost:5173 ws://localhost:5173; "
         "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
     )
     return response

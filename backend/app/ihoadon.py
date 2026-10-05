@@ -213,3 +213,25 @@ class Client:
             "invoice_series": template.get("invoice_series"),
             "web_url": f"{self.base_url}/system/vat-invoice",
         }
+
+    def send_invoice_email(self, invoice_id: str, emails: str | list[str]) -> dict:
+        """Gửi email hóa đơn điện tử cho khách hàng qua iHOADON API.
+
+        emails: chuỗi các email phân cách bởi dấu chấm phẩy (;) hoặc danh sách các email.
+        """
+        if isinstance(emails, (list, set, tuple)):
+            email_str = ";".join(str(e).strip() for e in emails if str(e).strip())
+        else:
+            email_str = str(emails).strip()
+        if not email_str:
+            raise IhoadonError("Chưa cung cấp địa chỉ email người nhận")
+        payload = {
+            "invoices": [
+                {
+                    "id": invoice_id,
+                    "email": email_str,
+                }
+            ]
+        }
+        res = self.post("/invoices-send-mail", payload)
+        return res or {"status": "success", "invoice_id": invoice_id, "emails": email_str}

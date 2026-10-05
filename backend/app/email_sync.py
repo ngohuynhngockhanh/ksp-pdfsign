@@ -284,6 +284,27 @@ def get_access_token_from_refresh(
     return access_token
 
 
+def download_meinvoice_pdf(code: str, timeout: float = 20.0) -> bytes | None:
+    """Tai truc tiep file PDF goc tu MISA meInvoice bang ma tra cuu (sc/Code)."""
+    code = code.strip()
+    if not code:
+        return None
+    url = f"https://www.meinvoice.vn/tra-cuu/DownloadHandler.ashx?Type=pdf&Code={code}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://www.meinvoice.vn/tra-cuu/",
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content = resp.read()
+            if content.startswith(b"%PDF"):
+                return content
+    except Exception:
+        return None
+    return None
+
 def fetch_rest_api_attachments(
     client_id: str,
     client_secret: str,
@@ -360,11 +381,38 @@ def fetch_rest_api_attachments(
                 pass
 
             has_att = msg.get("hasAttachment")
-            if not has_att or str(has_att) in {"0", "false", "False"}:
-                continue
-
             subject = msg.get("subject", "")
+            summary = msg.get("summary", "")
             from_addr = msg.get("fromAddress", "")
+
+            if not has_att or str(has_att) in {"0", "false", "False"}:
+                # Neu email khong co attachment truc tiep, kiem tra link tra cuu online (MISA meInvoice)
+                combined_text = f"{subject} {summary}".lower()
+                if any(k in combined_text for k in ["hóa đơn", "hoá đơn", "invoice", "meinvoice", "misa", "đông kim", "vinh phát", "tra cứu"]):
+                    curl = f"{mail_api_url.rstrip('/')}/api/accounts/{account_id}/folders/{folder_id}/messages/{msg_id}/content"
+                    creq = urllib.request.Request(curl)
+                    creq.add_header("Authorization", f"Zoho-oauthtoken {access_token}")
+                    try:
+                        with urllib.request.urlopen(creq, timeout=timeout) as cresp:
+                            cdata = json.loads(cresp.read().decode("utf-8")).get("data", {})
+                        body_html = cdata.get("content", "")
+                        me_codes = re.findall(r"meinvoice\.vn/tra-cuu/[^\"'\s>]*?[?&](?:sc|Code)=([A-Za-z0-9_]+)", body_html, re.IGNORECASE)
+                        for sc_code in set(me_codes):
+                            pdf_bytes = download_meinvoice_pdf(sc_code, timeout=timeout)
+                            if pdf_bytes:
+                                date_str = ""
+                                if received_ts > 0:
+                                    date_str = datetime.fromtimestamp(received_ts / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                attachments.append({
+                                    "filename": f"meinvoice_{sc_code}.pdf",
+                                    "content": pdf_bytes,
+                                    "subject": subject,
+                                    "from": from_addr,
+                                    "date": date_str,
+                                })
+                    except Exception:
+                        pass
+                continue
 
             # 3. Lay thong tin attachments cua message
             att_info_url = f"{mail_api_url.rstrip('/')}/api/accounts/{account_id}/folders/{folder_id}/messages/{msg_id}/attachmentinfo"

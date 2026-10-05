@@ -21,8 +21,9 @@ Skill này cung cấp khả năng tự động hóa 100% quy trình lấy **Mã 
    - Sử dụng thư viện `ddddocr` với tỷ lệ chính xác >98%.
    - Cơ chế tự động thử lại (Retry loop tối đa 10 lần).
    - Dự phòng: Tự động gửi ảnh Captcha qua Telegram Bot nếu có cấu hình `TELEGRAM_BOT_TOKEN`.
-3. **Kết xuất & Định dạng PDF**:
+3. **Kết xuất & Định dạng PDF (Chuẩn Phông Chữ Times New Roman)**:
    - Trích xuất bảng kết quả và ảnh Barcode 128 base64.
+   - **Quy chuẩn Font chữ**: Bắt buộc thiết lập `font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif', serif;` cho toàn bộ tài liệu (body, table, th, td, labels) theo chuẩn văn bản hành chính và mẫu in mã vạch của Tổng cục Hải quan. Tuyệt đối không để phông mặc định fallback không có chân gây lệch chuẩn, đảm bảo bản in ra sắc nét, trang trọng, đồng nhất 100% với bản in từ máy tính/trình duyệt.
    - Định dạng CSS chuẩn khổ A4 Portrait in sắc nét qua `WeasyPrint`.
    - Lưu vào kho lưu trữ nội bộ `ksp-pdfsign` (`/api/inv/customs-drive/documents/...`).
 4. **Đồng bộ Google Drive**:

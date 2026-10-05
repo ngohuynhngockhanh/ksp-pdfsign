@@ -427,6 +427,100 @@ class PymidCoopOrder(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class PieceworkContractor(Base):
+    """Danh bạ Nhà cung cấp / Thợ nhận khoán / Cộng tác viên ngoài."""
+    __tablename__ = "piecework_contractors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(150), index=True)
+    id_card: Mapped[str] = mapped_column(String(30), index=True)
+    id_card_date: Mapped[str] = mapped_column(String(10), default="")
+    id_card_place: Mapped[str] = mapped_column(String(150), default="Cục Cảnh sát QLHC về TTXH")
+    tax_code: Mapped[str] = mapped_column(String(30), default="", index=True)
+    phone: Mapped[str] = mapped_column(String(30), default="", index=True)
+    address: Mapped[str] = mapped_column(String(255), default="")
+    bank_account: Mapped[str] = mapped_column(String(50), default="")
+    bank_name: Mapped[str] = mapped_column(String(100), default="Techcombank")
+    skills: Mapped[str] = mapped_column(String(255), default="")
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    
+    id_card_front_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    id_card_back_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    tax_commitment_doc_id: Mapped[str] = mapped_column(String(64), default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class PieceworkContract(Base):
+    """Hợp đồng giao khoán công việc & Quản lý hồ sơ CTV / Thợ ngoài."""
+    __tablename__ = "piecework_contracts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contractor_id: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    contract_code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    contract_type: Mapped[str] = mapped_column(String(30), default="thi_cong", index=True) # thi_cong | boc_xep | gia_cong
+    title: Mapped[str] = mapped_column(String(255), default="")
+    project_name: Mapped[str] = mapped_column(String(255), default="")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    contract_date: Mapped[str] = mapped_column(String(10), default="") # YYYY-MM-DD
+    
+    # Bên B (Người nhận khoán / Thợ / CTV)
+    worker_name: Mapped[str] = mapped_column(String(150), default="")
+    worker_id_card: Mapped[str] = mapped_column(String(30), default="")
+    worker_id_card_date: Mapped[str] = mapped_column(String(10), default="")
+    worker_id_card_place: Mapped[str] = mapped_column(String(150), default="")
+    worker_tax_code: Mapped[str] = mapped_column(String(30), default="")
+    worker_phone: Mapped[str] = mapped_column(String(30), default="")
+    worker_address: Mapped[str] = mapped_column(String(255), default="")
+    worker_bank_account: Mapped[str] = mapped_column(String(50), default="")
+    worker_bank_name: Mapped[str] = mapped_column(String(100), default="")
+    
+    # Giá trị & Thuế TNCN (Theo Nghị định 253/2026/NĐ-CP)
+    total_amount: Mapped[float] = mapped_column(default=0.0) # Gross
+    tax_rate: Mapped[float] = mapped_column(default=0.0) # 0.0 hoặc 10.0
+    tax_amount: Mapped[float] = mapped_column(default=0.0)
+    net_amount: Mapped[float] = mapped_column(default=0.0) # Net
+    
+    # Chi tiết hạng mục khoán (JSON list)
+    items_json: Mapped[str] = mapped_column(Text, default="[]")
+    note: Mapped[str] = mapped_column(String(500), default="")
+    
+    # Trạng thái hồ sơ & Checklist deficiency
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True) # draft | pending_docs | ready_to_pay | completed
+    has_id_card_front: Mapped[bool] = mapped_column(default=False)
+    has_id_card_back: Mapped[bool] = mapped_column(default=False)
+    id_card_front_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    id_card_back_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    
+    has_acceptance: Mapped[bool] = mapped_column(default=False)
+    acceptance_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    site_photos_json: Mapped[str] = mapped_column(Text, default="[]")
+    
+    has_tax_commitment: Mapped[bool] = mapped_column(default=False)
+    tax_commitment_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    
+    has_bank_proof: Mapped[bool] = mapped_column(default=False) # UNC Techcombank 79713
+    bank_proof_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    
+    # Chữ ký Online của thợ & Ảnh chân dung eKYC lúc ký
+    is_signed_by_worker: Mapped[bool] = mapped_column(default=False)
+    worker_signature_data: Mapped[str] = mapped_column(Text, default="")
+    worker_signed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    worker_face_photo_data: Mapped[str] = mapped_column(Text, default="")
+    worker_face_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    # Ký số điện tử Bên A (INUT)
+    is_signed_by_inut: Mapped[bool] = mapped_column(default=False)
+    inut_signed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    contract_pdf_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    
+    # Token portal di động cho thợ
+    portal_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
 class AuditLog(Base):
     """Nhat ky thao tac de truy vet."""
 
@@ -1447,6 +1541,7 @@ def init_db() -> None:
     _seed_pymid_catalog()
 
     _seed_ip_trademarks()
+    _seed_piecework_contracts()
 
 def _seed_warehouses() -> None:
     """Tao 3 kho mac dinh neu chua co."""
@@ -1468,6 +1563,314 @@ def _seed_customs_drive_sources() -> None:
                                          folder_id="1yg_TqCrWS4dDx-O-bYYhfktFq1OdNk9z"))
             db.commit()
 
+def _seed_piecework_contracts() -> None:
+    """Khởi tạo sẵn 3 hợp đồng khoán mẫu thực tế cho CRM với đầy đủ chứng từ thực."""
+    import io
+    import json
+    from . import storage
+    from .piecework_api import render_piecework_pdf
+    from PIL import Image, ImageDraw
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    def _make_id_card(name: str, cccd: str, dob: str, addr: str) -> tuple[str, str]:
+        img_f = Image.new("RGB", (856, 540), color=(240, 248, 255))
+        d_f = ImageDraw.Draw(img_f)
+        d_f.rectangle([10, 10, 846, 530], outline=(2, 132, 199), width=5)
+        d_f.rectangle([10, 10, 846, 85], fill=(2, 132, 199))
+        d_f.text((30, 25), "CONG HOA XA HOI CHU NGHIA VIET NAM", fill=(255, 255, 255))
+        d_f.text((30, 50), "CAN CUOC CONG DAN / CITIZEN IDENTITY CARD", fill=(255, 255, 255))
+        d_f.rectangle([40, 120, 240, 380], outline=(148, 163, 184), width=2, fill=(226, 232, 240))
+        d_f.text((80, 240), "[ ANH THE ]", fill=(100, 116, 139))
+        d_f.text((280, 130), f"So / No.: {cccd}", fill=(185, 28, 28))
+        d_f.text((280, 180), f"Ho va ten: {name.upper()}", fill=(15, 23, 42))
+        d_f.text((280, 230), f"Ngay sinh / Date of birth: {dob}", fill=(15, 23, 42))
+        d_f.text((280, 280), "Quoc tich / Nationality: Viet Nam", fill=(15, 23, 42))
+        d_f.text((280, 330), f"Noi thuong tru: {addr}", fill=(15, 23, 42))
+        buf_f = io.BytesIO()
+        img_f.save(buf_f, format="JPEG", quality=92)
+        f_id = storage.save_upload(buf_f.getvalue(), suffix=".jpg")
+
+        img_b = Image.new("RGB", (856, 540), color=(248, 250, 252))
+        d_b = ImageDraw.Draw(img_b)
+        d_b.rectangle([10, 10, 846, 530], outline=(2, 132, 199), width=5)
+        d_b.rectangle([60, 60, 200, 180], outline=(202, 138, 4), fill=(254, 240, 138), width=3)
+        d_b.text((90, 110), "[ CHIP ]", fill=(133, 77, 14))
+        d_b.rectangle([40, 380, 816, 500], fill=(226, 232, 240))
+        d_b.text((60, 400), f"IDVNM{cccd}<<<<<<<<<<<<<<<", fill=(30, 41, 59))
+        d_b.text((60, 430), f"{name.upper()}<<<<<<<<<<<<<<<<<<<<<<", fill=(30, 41, 59))
+        buf_b = io.BytesIO()
+        img_b.save(buf_b, format="JPEG", quality=92)
+        b_id = storage.save_upload(buf_b.getvalue(), suffix=".jpg")
+        return f_id, b_id
+
+    def _make_photo(title: str, desc: str) -> str:
+        img = Image.new("RGB", (1280, 720), color=(15, 23, 42))
+        d = ImageDraw.Draw(img)
+        d.rectangle([15, 15, 1265, 705], outline=(56, 189, 248), width=5)
+        d.text((50, 60), "INUT TECHNOLOGY & COMPLIANCE - PROOF OF WORK", fill=(56, 189, 248))
+        d.text((50, 130), title, fill=(255, 255, 255))
+        d.text((50, 190), desc, fill=(203, 213, 225))
+        d.text((50, 640), "GPS: Verified | Timestamp: Verified | Site Installation OK", fill=(148, 163, 184))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=88)
+        return storage.save_upload(buf.getvalue(), suffix=".jpg")
+
+    def _make_pdf(title: str, lines: list[str]) -> str:
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=A4)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, 800, title)
+        c.setFont("Helvetica", 11)
+        y = 750
+        for it in lines:
+            c.drawString(50, y, it)
+            y -= 22
+        c.save()
+        return storage.save_upload(buf.getvalue(), suffix=".pdf")
+
+    def _make_face(name: str) -> tuple[str, str]:
+        import base64
+        img = Image.new("RGB", (480, 640), color=(241, 245, 249))
+        d = ImageDraw.Draw(img)
+        d.rectangle([10, 10, 470, 630], outline=(2, 132, 199), width=4)
+        d.ellipse([140, 140, 340, 340], outline=(15, 23, 42), fill=(254, 215, 170), width=3)
+        d.ellipse([180, 200, 210, 230], fill=(30, 41, 59))
+        d.ellipse([270, 200, 300, 230], fill=(30, 41, 59))
+        d.arc([200, 260, 280, 300], start=0, end=180, fill=(185, 28, 28), width=3)
+        d.rectangle([100, 380, 380, 620], outline=(15, 23, 42), fill=(59, 130, 246), width=3)
+        d.rectangle([20, 20, 460, 65], fill=(15, 23, 42))
+        d.text((30, 32), f"eKYC: {name.upper()}", fill=(56, 189, 248))
+        d.text((30, 590), "VERIFIED LIVE CAMERA CAPTURE AT SIGNING", fill=(100, 116, 139))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        raw_b = buf.getvalue()
+        doc_id = storage.save_upload(raw_b, suffix=".jpg")
+        data_url = "data:image/jpeg;base64," + base64.b64encode(raw_b).decode("ascii")
+        return doc_id, data_url
+
+    with _SessionLocal() as db:
+        if db.query(PieceworkContractor).count() == 0:
+            db.add_all([
+                PieceworkContractor(
+                    id=1,
+                    code="CTV-HAI-4512",
+                    name="Lê Văn Hải",
+                    id_card="038092004512",
+                    id_card_date="2022-04-15",
+                    id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    tax_code="8492004512",
+                    phone="0961 197 999",
+                    address="Tổ 2, Phường Đông Sơn, TP. Thanh Hóa, Tỉnh Thanh Hóa",
+                    bank_account="19034567891011",
+                    bank_name="Techcombank",
+                    skills="Lắp đặt Kiosk VNMAP AI, căn chỉnh tủ điện, thiết bị đọc thẻ CCCD",
+                    notes="Nhà cung cấp khoán thi công Thanh Hóa quen thuộc",
+                ),
+                PieceworkContractor(
+                    id=2,
+                    code="CTV-DUNG-8231",
+                    name="Hoàng Văn Dũng",
+                    id_card="014095008231",
+                    id_card_date="2023-08-20",
+                    id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    tax_code="8500823190",
+                    phone="0865 949 205",
+                    address="Bản Chiềng Đi, Xã Vân Hồ, Huyện Vân Hồ, Tỉnh Sơn La",
+                    bank_account="101872057703",
+                    bank_name="VietinBank",
+                    skills="Khảo sát cơ khí, dựng trụ đo mực nước, kéo cáp RS485",
+                    notes="Thợ thi công cơ khí trạm quan trắc Sơn La",
+                ),
+                PieceworkContractor(
+                    id=3,
+                    code="CTV-BAO-1874",
+                    name="Trần Quốc Bảo",
+                    id_card="066093001874",
+                    id_card_date="2021-11-05",
+                    id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    tax_code="8660930018",
+                    phone="0916 089 573",
+                    address="Phường 7, TP. Tuy Hòa, Tỉnh Đắk Lắk",
+                    bank_account="0916089573",
+                    bank_name="VPBank",
+                    skills="Bốc dỡ hàng, kiểm đếm linh kiện webcam, dán tem nhãn kho",
+                    notes="Cộng tác viên kho hàng thiết bị iNut Đắk Lắk",
+                ),
+            ])
+            db.commit()
+
+    with _SessionLocal() as db:
+        if db.query(PieceworkContract).count() == 0:
+            # Generate assets for C1
+            c1_f, c1_b = _make_id_card("Lê Văn Hải", "038092004512", "15/04/1992", "Tổ 2, Phường Đông Sơn, TP. Thanh Hóa")
+            c1_p1 = _make_photo("KIOSK VNMAP AI ONE - PHUONG DONG SON", "Hinh anh lap dat Kiosk tai Bo phan Mot cua UBND Phuong")
+            c1_p2 = _make_photo("DAU NOI DAU DOC CCCD DTA VERIBOX S", "Hinh anh thu nghiem doc the CCCD PACE-CAM hoat dong tot")
+            c1_acc = _make_pdf("BIEN BAN NGHIEM THU HOAN THANH CONG VIEC", [
+                "Cong trinh: Kiosk VNMAP AI ONE - Phuong Dong Son, TP. Thanh Hoa",
+                "Nguoi nhan khoan: Le Van Hai - CCCD: 038092004512",
+                "Gia tri: 4,500,000 VND - Danh gia: Dat tieu chuan",
+                "Ngay nghiem thu: 29/09/2026"
+            ])
+            c1_face_id, c1_face_data = _make_face("Lê Văn Hải")
+
+            # Generate assets for C2
+            c2_f, _ = _make_id_card("Hoàng Văn Dũng", "014095008231", "20/08/1995", "Bản Chiềng Đi, Xã Vân Hồ, Sơn La")
+            c2_p1 = _make_photo("TRAM DO MUC NUOC CAM BIEN HCRZ-LL100 SON LA", "Hinh anh dung tru do bo ke suoi Nam La")
+
+            # Generate assets for C3
+            c3_f, c3_b = _make_id_card("Trần Quốc Bảo", "066093001874", "05/11/1993", "Phường 7, TP. Tuy Hòa, Đắk Lắk")
+            c3_acc = _make_pdf("BIEN BAN NGHIEM THU BOC XEP & DONG GOI", [
+                "Hang muc: Kho hang thiet bi iNut - Lo 60 Webcam 11MP",
+                "Nguoi nhan khoan: Tran Quoc Bao - CCCD: 066093001874",
+                "Gia tri: 2,800,000 VND - Ngay: 25/09/2026"
+            ])
+            c3_p1 = _make_photo("KHO THIET BI INUT DAK LAK", "Kiem dem 60 bo webcam 11MP Song Long")
+            c3_p2 = _make_photo("DAN TEM NHAN THONG SO KY THUAT", "Dan tem nhan 70x45mm hoan tat")
+            c3_unc = _make_pdf("UY NHIEM CHI - TECHCOMBANK 79713", [
+                "Don vi tra tien: CONG TY CO PHAN DAU TU VA PHAT TRIEN CONG NGHE INUT",
+                "Tai khoan: 79713 tai Techcombank",
+                "Don vi thu huong: TRAN QUOC BAO - TK: 0916089573 tai VPBank",
+                "So tien: 2,800,000 VND - Giao dich thanh cong ngay 25/09/2026"
+            ])
+
+            contracts = [
+                PieceworkContract(
+                    contract_code="01/2026/HĐGK-DONGSON",
+                    contract_type="thi_cong",
+                    title="Hợp đồng giao khoán thi công lắp đặt Kiosk VNMAP AI ONE tại UBND Phường Đông Sơn",
+                    project_name="Kiosk VNMAP AI ONE - Phường Đông Sơn, TP. Thanh Hóa",
+                    location="Bộ phận Một cửa UBND Phường Đông Sơn, TP. Thanh Hóa",
+                    contract_date="2026-09-28",
+                    worker_name="Lê Văn Hải",
+                    worker_id_card="038092004512",
+                    worker_id_card_date="2022-04-15",
+                    worker_id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    worker_tax_code="8492004512",
+                    worker_phone="0961 197 999",
+                    worker_address="Tổ 2, Phường Đông Sơn, TP. Thanh Hóa, Tỉnh Thanh Hóa",
+                    worker_bank_account="19034567891011",
+                    worker_bank_name="Techcombank",
+                    total_amount=4500000.0,
+                    tax_rate=0.0,
+                    tax_amount=0.0,
+                    net_amount=4500000.0,
+                    items_json=json.dumps([
+                        {"ten": "Thi công lắp đặt chân đế, cân chỉnh Kiosk, đấu nối nguồn điện và mạng LAN bảo mật", "dvt": "Gói", "so_luong": 1, "don_gia": 2000000, "thanh_tien": 2000000},
+                        {"ten": "Lắp đặt và hiệu chỉnh đầu đọc thẻ CCCD eMRTD (DTA VeriBOX S / Hanel HN212)", "dvt": "Gói", "so_luong": 1, "don_gia": 1500000, "thanh_tien": 1500000},
+                        {"ten": "Kiểm thử luồng nộp hồ sơ DVC và hướng dẫn vận hành tại chỗ", "dvt": "Buổi", "so_luong": 1, "don_gia": 1000000, "thanh_tien": 1000000}
+                    ], ensure_ascii=False),
+                    note="Khoán dưới 5 triệu đồng theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP (Miễn khấu trừ 10% thuế TNCN).",
+                    status="ready_to_pay",
+                    has_id_card_front=True,
+                    has_id_card_back=True,
+                    id_card_front_doc_id=c1_f,
+                    id_card_back_doc_id=c1_b,
+                    has_acceptance=True,
+                    acceptance_doc_id=c1_acc,
+                    site_photos_json=json.dumps([c1_p1, c1_p2]),
+                    has_tax_commitment=False,
+                    has_bank_proof=False,
+                    is_signed_by_worker=True,
+                    worker_face_doc_id=c1_face_id,
+                    worker_face_photo_data=c1_face_data,
+                    worker_signed_at=datetime(2026, 9, 29, 16, 30, tzinfo=timezone.utc),
+                    is_signed_by_inut=True,
+                    inut_signed_at=datetime(2026, 9, 28, 9, 0, tzinfo=timezone.utc),
+                    portal_token="dongson-kiosk-token-849200",
+                ),
+                PieceworkContract(
+                    contract_code="02/2026/HĐGK-SONLA-LL100",
+                    contract_type="thi_cong",
+                    title="Hợp đồng giao khoán khảo sát, dựng trụ và lắp đặt trạm đo mực nước cảm biến HCRZ-LL100 tại Sơn La",
+                    project_name="Trạm quan trắc cảnh báo lũ tự động - Cảm biến LL100 Sơn La",
+                    location="Suối Nậm La, Phường Quyết Tâm, TP. Sơn La, Tỉnh Sơn La",
+                    contract_date="2026-10-02",
+                    worker_name="Hoàng Văn Dũng",
+                    worker_id_card="014095008231",
+                    worker_id_card_date="2023-08-20",
+                    worker_id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    worker_tax_code="8500823190",
+                    worker_phone="0865 949 205",
+                    worker_address="Bản Chiềng Đi, Xã Vân Hồ, Huyện Vân Hồ, Tỉnh Sơn La",
+                    worker_bank_account="101872057703",
+                    worker_bank_name="VietinBank",
+                    total_amount=6000000.0,
+                    tax_rate=10.0,
+                    tax_amount=600000.0,
+                    net_amount=5400000.0,
+                    items_json=json.dumps([
+                        {"ten": "Gia công cơ khí giá đỡ và dựng trụ đo cảm biến mực nước tại bờ kè suối", "dvt": "Trụ", "so_luong": 1, "don_gia": 3500000, "thanh_tien": 3500000},
+                        {"ten": "Kéo cáp tín hiệu RS485 và đấu nối vào tủ Datalogger iNut PC", "dvt": "Tủ", "so_luong": 1, "don_gia": 2500000, "thanh_tien": 2500000}
+                    ], ensure_ascii=False),
+                    note="Giá trị từ 5.000.000đ trở lên, bắt buộc khấu trừ 10% thuế TNCN theo Nghị định 253/2026/NĐ-CP (hoặc nộp Cam kết thuế 08/CK-TNCN).",
+                    status="pending_docs",
+                    has_id_card_front=True,
+                    has_id_card_back=False,
+                    id_card_front_doc_id=c2_f,
+                    has_acceptance=False,
+                    site_photos_json=json.dumps([c2_p1]),
+                    has_tax_commitment=False,
+                    has_bank_proof=False,
+                    is_signed_by_worker=False,
+                    is_signed_by_inut=True,
+                    inut_signed_at=datetime(2026, 10, 2, 8, 41, 12, tzinfo=timezone.utc),
+                    portal_token="sonla-ll100-token-850082",
+                ),
+                PieceworkContract(
+                    contract_code="03/2026/HĐGK-DAKLAK-WEBCAM",
+                    contract_type="boc_xep",
+                    title="Hợp đồng giao khoán bốc dỡ, kiểm đếm và dán tem đóng gói 60 webcam 11MP tại kho iNut Đắk Lắk",
+                    project_name="Kho hàng thiết bị iNut - Lô 60 Webcam 11MP Song Long",
+                    location="161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk",
+                    contract_date="2026-09-24",
+                    worker_name="Trần Quốc Bảo",
+                    worker_id_card="066093001874",
+                    worker_id_card_date="2021-11-05",
+                    worker_id_card_place="Cục Cảnh sát QLHC về TTXH",
+                    worker_tax_code="8660930018",
+                    worker_phone="0916 089 573",
+                    worker_address="Phường 7, TP. Tuy Hòa, Tỉnh Đắk Lắk",
+                    worker_bank_account="0916089573",
+                    worker_bank_name="VPBank",
+                    total_amount=2800000.0,
+                    tax_rate=0.0,
+                    tax_amount=0.0,
+                    net_amount=2800000.0,
+                    items_json=json.dumps([
+                        {"ten": "Bốc dỡ kiện hàng linh kiện camera và webcam từ xe chuyển phát vào kho", "dvt": "Chuyến", "so_luong": 1, "don_gia": 1200000, "thanh_tien": 1200000},
+                        {"ten": "Mở hộp, kiểm tra ngoại quan và dán tem nhãn thông số kỹ thuật 60 bộ", "dvt": "Lô", "so_luong": 1, "don_gia": 1600000, "thanh_tien": 1600000}
+                    ], ensure_ascii=False),
+                    note="Đã hoàn tất nghiệm thu và chuyển khoản thanh toán 100% từ TK Techcombank 79713.",
+                    status="completed",
+                    has_id_card_front=True,
+                    has_id_card_back=True,
+                    id_card_front_doc_id=c3_f,
+                    id_card_back_doc_id=c3_b,
+                    has_acceptance=True,
+                    acceptance_doc_id=c3_acc,
+                    site_photos_json=json.dumps([c3_p1, c3_p2]),
+                    has_tax_commitment=False,
+                    has_bank_proof=True,
+                    bank_proof_doc_id=c3_unc,
+                    is_signed_by_worker=True,
+                    worker_signed_at=datetime(2026, 9, 25, 11, 23, 49, tzinfo=timezone.utc),
+                    is_signed_by_inut=True,
+                    inut_signed_at=datetime(2026, 9, 24, 14, 18, 36, tzinfo=timezone.utc),
+                    portal_token="daklak-webcam-token-866093",
+                )
+            ]
+            for c in contracts:
+                pdf_bytes = render_piecework_pdf(c)
+                if c.is_signed_by_inut and c.inut_signed_at:
+                    try:
+                        from .piecework_api import sign_piecework_pdf_pyhanko
+                        pdf_bytes = sign_piecework_pdf_pyhanko(pdf_bytes, c.inut_signed_at)
+                    except Exception:
+                        pass
+                c.contract_pdf_doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+            db.add_all(contracts)
+            db.commit()
 
 def _seed_pymid_catalog() -> None:
     from .pymid import CATALOG
@@ -1691,6 +2094,11 @@ def _migrate_add_columns() -> None:
             "renewal_window_start": "VARCHAR(20) DEFAULT ''",
             "created_at": "DATETIME",
             "updated_at": "DATETIME",
+        },
+        "piecework_contracts": {
+            "worker_face_photo_data": "TEXT DEFAULT ''",
+            "worker_face_doc_id": "VARCHAR(64) DEFAULT ''",
+            "contractor_id": "INTEGER DEFAULT NULL",
         },
     }
     with _engine.begin() as conn:

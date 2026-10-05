@@ -140,3 +140,18 @@ def sync_gdt_purchases(
     except Exception as e:
         logger.exception("Lỗi đồng bộ hóa đơn mua từ Cổng Thuế: %s", e)
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi đồng bộ: {e}")
+
+
+@router.get("/accounting-fee-monitor")
+def get_accounting_fee_monitor(
+    ky: str | None = Query(default=None, description="Mã quý YYYY-Qx, ví dụ 2026-Q3. Mặc định là quý hiện tại."),
+    count_bank: bool = Query(default=False, description="Đếm hóa đơn ngân hàng (mặc định False vì là chi phí tờ khai)"),
+    customs_mode: str = Query(default="each", description="Cách tính tờ khai hải quan (each | one_per_quarter | none)"),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Giám sát biểu phí dịch vụ kế toán và cảnh báo sớm khi còn <= 5 hóa đơn trước khi nhảy mốc."""
+    from . import accounting_tier
+    return accounting_tier.evaluate_accounting_fee_status(
+        db, ky=ky, count_bank=count_bank, customs_mode=customs_mode
+    )

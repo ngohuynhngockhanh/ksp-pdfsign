@@ -33,6 +33,7 @@ import { BiddingProcurement } from "./pages/BiddingProcurement";
 import { StandardsConformity } from "./pages/StandardsConformity";
 import { TaxDefense } from "./pages/TaxDefense";
 import { Trademarks } from "./pages/Trademarks";
+import { PieceworkContracts } from "./pages/PieceworkContracts";
 
 
 type Tab =
@@ -42,6 +43,7 @@ type Tab =
   | "quote"
   | "contract"
   | "tonkho"
+  | "khoan"
   | "nhaphang"
   | "tokhai"
   | "banra"
@@ -75,6 +77,7 @@ const ROUTES: Record<Tab, string> = {
   bbbg: "/tao-bbbg",
   quote: "/bao-gia",
   contract: "/soan-hop-dong",
+  khoan: "/hop-dong-khoan",
   tonkho: "/ton-kho",
   nhaphang: "/nhap-hang",
   tokhai: "/to-khai-nk",
@@ -201,7 +204,7 @@ export function App() {
 
   function goPurchase(purchaseId: number) {
     setOpenPurchaseId(purchaseId);
-    navigate("nhaphang");
+    navigate("nhaphang", false, `?hd=${purchaseId}`);
   }
 
   function goDocuments(docPk: number) {
@@ -220,7 +223,7 @@ export function App() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "payroll", "verify", "training", "messenger", "telegram",
+              "documents", "customers", "nas", "audit", "settings", "payroll", "khoan", "verify", "training", "messenger", "telegram",
               "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks",
             ] as Tab[])
           : isPymidStaff
@@ -251,11 +254,15 @@ export function App() {
           const routeParams = new URLSearchParams(window.location.search);
           const verifyPk = initial === "verify" ? Number(routeParams.get("doc")) : 0;
           if (verifyPk > 0) setVerifyDocPk(verifyPk);
+          const hdPk = initial === "nhaphang" ? Number(routeParams.get("hd")) : 0;
+          if (hdPk > 0) setOpenPurchaseId(hdPk);
           const initialSearch = verifyPk > 0
             ? `?doc=${verifyPk}`
-            : initial === "nas" && routeParams.get("path")
-              ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
-              : "";
+            : initial === "nhaphang" && hdPk > 0
+              ? `?hd=${hdPk}`
+              : initial === "nas" && routeParams.get("path")
+                ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
+                : "";
           navigate(initial, true, initialSearch);
         }
       })
@@ -264,9 +271,13 @@ export function App() {
       const t = resolveTab(window.location.pathname);
       if (t) {
         setTabState(t);
+        const sp = new URLSearchParams(window.location.search);
         if (t === "verify") {
-          const docPk = Number(new URLSearchParams(window.location.search).get("doc"));
+          const docPk = Number(sp.get("doc"));
           setVerifyDocPk(docPk > 0 ? docPk : null);
+        } else if (t === "nhaphang") {
+          const hdPk = Number(sp.get("hd"));
+          if (hdPk > 0) setOpenPurchaseId(hdPk);
         }
       }
     };
@@ -331,6 +342,7 @@ export function App() {
         ["payroll", "Bảng lương", "₫"],
         ["customers", "Khách hàng", "👥"],
         ["nas", "NAS", "💾"],
+        ["khoan", "HĐ Khoán & CTV", "📋"],
         ["audit", "Nhật ký", "📜"],
         ["settings", "Cài đặt", "⚙️"],
       ],
@@ -474,6 +486,7 @@ export function App() {
         {tab === "verify" && (
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
         )}
+        {tab === "khoan" && isAdmin && <PieceworkContracts />}
         </main>
       </div>
 

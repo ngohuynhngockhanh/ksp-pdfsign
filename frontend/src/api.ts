@@ -3151,6 +3151,149 @@ export const api = {
       body: JSON.stringify({ query }),
     });
   },
+  // --- Hợp đồng giao khoán & Hồ sơ CTV thợ ngoài ---
+  listPieceworkContracts(opts: { q?: string; status_f?: string; contract_type?: string } = {}) {
+    const p = new URLSearchParams();
+    if (opts.q) p.set("q", opts.q);
+    if (opts.status_f) p.set("status_f", opts.status_f);
+    if (opts.contract_type) p.set("contract_type", opts.contract_type);
+    return req<{ contracts: PieceworkContractItem[]; total: number }>(`/api/piecework/contracts?${p.toString()}`);
+  },
+  getPieceworkContract(cid: number) {
+    return req<PieceworkContractDetail>(`/api/piecework/contracts/${cid}`);
+  },
+  createPieceworkContract(body: any) {
+    return req<{ ok: boolean; id: number; contract_code: string; portal_token: string }>(
+      "/api/piecework/contracts",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+  },
+  updatePieceworkContract(cid: number, body: any) {
+    return req<{ ok: boolean; id: number; deficiency: PieceworkDeficiency }>(
+      `/api/piecework/contracts/${cid}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+  },
+  signInutPieceworkContract(cid: number, body?: { sign_date?: string; cert_id?: string; pin?: string }) {
+    return req<{ ok: boolean; doc_id: string; signed_at: string }>(
+      `/api/piecework/contracts/${cid}/sign-inut`,
+      {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      }
+    );
+  },
+  listPieceworkCertificates() {
+    return req<{ certificates: PieceworkCertificateInfo[] }>("/api/piecework/certificates");
+  },
+  uploadPieceworkDoc(cid: number, file: File, docKind: string) {
+    const data = new FormData();
+    data.append("file", file);
+    data.append("doc_kind", docKind);
+    return req<{
+      ok: boolean;
+      doc_id: string;
+      doc_kind: string;
+      filename: string;
+      deficiency: PieceworkDeficiency;
+    }>(`/api/piecework/contracts/${cid}/upload-doc`, {
+      method: "POST",
+      body: data,
+    });
+  },
+  deletePieceworkDoc(cid: number, docKind: string, docId?: string) {
+    const p = new URLSearchParams();
+    if (docId) p.set("doc_id", docId);
+    return req<{ ok: boolean; doc_kind: string; deficiency: PieceworkDeficiency }>(
+      `/api/piecework/contracts/${cid}/docs/${docKind}?${p.toString()}`,
+      { method: "DELETE" }
+    );
+  },
+  deletePieceworkContract(cid: number) {
+    return req<{ ok: boolean; contract_code: string }>(
+      `/api/piecework/contracts/${cid}`,
+      { method: "DELETE" }
+    );
+  },
+  validatePieceworkContract(cid: number) {
+    return req<{
+      ok: boolean;
+      contract_code: string;
+      worker_name?: string;
+      deficiency: PieceworkDeficiency;
+      can_pay: boolean;
+      status_code: string;
+      status_label: string;
+      attachments?: PieceworkAttachments;
+      worker_signature_data?: string;
+      worker_face_photo_data?: string;
+    }>(`/api/piecework/contracts/${cid}/validate`, { method: "POST" });
+  },
+  verifyPieceworkSignature(cid: number) {
+    return req<PieceworkSignatureVerifyResult>(`/api/piecework/contracts/${cid}/verify-signature`);
+  },
+  listPieceworkContractors(q?: string) {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    const qs = params.toString();
+    return req<{ contractors: PieceworkContractorItem[]; total: number }>(
+      `/api/piecework/contractors${qs ? `?${qs}` : ""}`
+    );
+  },
+  createPieceworkContractor(body: PieceworkContractorCreatePayload) {
+    return req<{ ok: boolean; id: number; code: string; name: string }>(
+      "/api/piecework/contractors",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+  },
+  getPieceworkContractor(cid: number) {
+    return req<PieceworkContractorDetail>(`/api/piecework/contractors/${cid}`);
+  },
+  updatePieceworkContractor(cid: number, body: Partial<PieceworkContractorCreatePayload>) {
+    return req<{ ok: boolean; id: number; name: string }>(
+      `/api/piecework/contractors/${cid}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    );
+  },
+  deletePieceworkContractor(cid: number) {
+    return req<{ ok: boolean; code: string; name: string }>(
+      `/api/piecework/contractors/${cid}`,
+      { method: "DELETE" }
+    );
+  },
+  parsePieceworkContractorText(text: string) {
+    return req<{
+      ok: boolean;
+      parsed: {
+        name: string;
+        id_card: string;
+        id_card_date: string;
+        id_card_place: string;
+        tax_code: string;
+        phone: string;
+        address: string;
+        bank_account: string;
+        bank_name: string;
+      };
+    }>("/api/piecework/contractors/parse-text", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+  getPieceworkContractorTaxSummary(cid: number, year: number = 2026) {
+    return req<PieceworkContractorTaxSummary>(
+      `/api/piecework/contractors/${cid}/tax-summary?year=${year}`
+    );
+  },
 };
 
 // --- Kieu du lieu ton kho ---
@@ -4334,4 +4477,271 @@ export interface CustomsCheckLog {
   is_completed: boolean;
   telegram_sent: boolean;
   message: string;
+}
+
+export interface PieceworkWorkItem {
+  ten: string;
+  dvt: string;
+  so_luong: number;
+  don_gia: number;
+  thanh_tien: number;
+}
+
+export interface PieceworkCheckItem {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface PieceworkDeficiency {
+  checklist: PieceworkCheckItem[];
+  missing_count: number;
+  missing_keys: string[];
+  can_pay: boolean;
+  status_code: string;
+  status_label: string;
+  status_color: string;
+  is_sub_5m: boolean;
+}
+
+export interface PieceworkContractItem {
+  id: number;
+  contract_code: string;
+  contract_type: string;
+  title: string;
+  project_name: string;
+  location: string;
+  contract_date: string;
+  worker_name: string;
+  worker_id_card: string;
+  worker_id_card_date: string;
+  worker_id_card_place: string;
+  worker_tax_code: string;
+  worker_phone: string;
+  worker_address: string;
+  worker_bank_account: string;
+  worker_bank_name: string;
+  total_amount: number;
+  tax_rate: number;
+  tax_amount: number;
+  net_amount: number;
+  items: PieceworkWorkItem[];
+  note: string;
+  status: string;
+  is_signed_by_worker: boolean;
+  is_signed_by_inut: boolean;
+  portal_token: string;
+  portal_url: string;
+  pdf_doc_id: string;
+  deficiency: PieceworkDeficiency;
+}
+
+export interface PieceworkSignatureVerifyResult {
+  ok: boolean;
+  has_signature: boolean;
+  intact: boolean;
+  valid: boolean;
+  signer_name?: string;
+  signer_tax_code?: string;
+  ca_issuer?: string;
+  cert_serial?: string;
+  valid_from?: string;
+  valid_to?: string;
+  sign_date_m?: string;
+  signing_time?: string;
+  subfilter?: string;
+  digest_algorithm?: string;
+  signature_algorithm?: string;
+  tax_compliance?: {
+    compliant: boolean;
+    signer_mst: string;
+    signer_org: string;
+    ca_issuer: string;
+    cert_serial: string;
+    valid_from: string;
+    valid_to: string;
+    digest_algorithm: string;
+    signature_algorithm: string;
+    subfilter: string;
+    document_integrity: string;
+    legal_bases: string[];
+    foxit_reader_verdict: string;
+    tax_authority_status: string;
+  };
+  message?: string;
+}
+
+export interface PieceworkContractDetail extends PieceworkContractItem {
+  has_id_card_front: boolean;
+  has_id_card_back: boolean;
+  id_card_front_doc_id?: string;
+  id_card_back_doc_id?: string;
+  has_acceptance: boolean;
+  acceptance_doc_id?: string;
+  site_photos: string[];
+  has_tax_commitment: boolean;
+  tax_commitment_doc_id?: string;
+  has_bank_proof: boolean;
+  bank_proof_doc_id?: string;
+  worker_signature_data?: string;
+  worker_face_photo_data?: string;
+  worker_face_doc_id?: string;
+  worker_signed_at?: string;
+  inut_signed_at?: string;
+  attachments?: PieceworkAttachments;
+}
+
+export interface PieceworkAttachmentInfo {
+  doc_id: string;
+  label: string;
+  suffix?: string;
+  is_pdf?: boolean;
+  url: string;
+  download_url: string;
+  validation?: {
+    valid: boolean;
+    kind?: string;
+    format?: string;
+    dimensions?: string;
+    pages?: number;
+    size_kb?: number;
+    note?: string;
+    error?: string;
+  };
+}
+
+export interface PieceworkCertificateInfo {
+  id: string;
+  subject: string;
+  issuer: string;
+  serial: string;
+  valid_from: string;
+  valid_to: string;
+  expired: boolean;
+  is_default: boolean;
+  source: string;
+}
+
+export interface PieceworkAttachments {
+  id_card_front?: PieceworkAttachmentInfo | null;
+  id_card_back?: PieceworkAttachmentInfo | null;
+  acceptance?: PieceworkAttachmentInfo | null;
+  tax_commitment?: PieceworkAttachmentInfo | null;
+  bank_proof?: PieceworkAttachmentInfo | null;
+  worker_face?: PieceworkAttachmentInfo | null;
+  site_photos?: PieceworkAttachmentInfo[];
+}
+
+export interface PieceworkContractorItem {
+  id: number;
+  code: string;
+  name: string;
+  id_card: string;
+  id_card_date: string;
+  id_card_place: string;
+  tax_code: string;
+  phone: string;
+  address: string;
+  bank_account: string;
+  bank_name: string;
+  skills: string;
+  notes: string;
+  id_card_front_doc_id: string;
+  id_card_back_doc_id: string;
+  has_id_card_front: boolean;
+  has_id_card_back: boolean;
+  contracts_count: number;
+  total_gross: number;
+  total_tax: number;
+  total_net: number;
+  last_contract_date: string;
+  created_at?: string;
+}
+
+export interface PieceworkContractorDetail extends PieceworkContractorItem {
+  attachments?: {
+    id_card_front?: PieceworkAttachmentInfo | null;
+    id_card_back?: PieceworkAttachmentInfo | null;
+  };
+  contracts: Array<{
+    id: number;
+    contract_code: string;
+    contract_type: string;
+    title: string;
+    project_name: string;
+    contract_date: string;
+    total_amount: number;
+    tax_amount: number;
+    net_amount: number;
+    status: string;
+    is_signed_by_worker: boolean;
+    is_signed_by_inut: boolean;
+    portal_token: string;
+    deficiency_status: string;
+    can_pay: boolean;
+  }>;
+  total_contracts: number;
+}
+
+export interface PieceworkContractorCreatePayload {
+  code?: string;
+  name: string;
+  id_card: string;
+  id_card_date?: string;
+  id_card_place?: string;
+  tax_code?: string;
+  phone?: string;
+  address?: string;
+  bank_account?: string;
+  bank_name?: string;
+  skills?: string;
+  notes?: string;
+  id_card_front_doc_id?: string;
+  id_card_back_doc_id?: string;
+}
+
+export interface PieceworkContractorTaxSummary {
+  ok: boolean;
+  year: number;
+  contractor: {
+    id: number;
+    code: string;
+    name: string;
+    id_card: string;
+    id_card_date: string;
+    id_card_place: string;
+    tax_code: string;
+    phone: string;
+    address: string;
+    bank_account: string;
+    bank_name: string;
+  };
+  payer: {
+    company_name: string;
+    tax_code: string;
+    address: string;
+  };
+  summary: {
+    total_contracts: number;
+    total_gross_income: number;
+    total_tax_withheld: number;
+    total_net_paid: number;
+  };
+  contracts: Array<{
+    stt: number;
+    contract_code: string;
+    contract_date: string;
+    project_name: string;
+    contract_type_label: string;
+    gross_amount: number;
+    tax_rate: number;
+    tax_withheld: number;
+    net_paid: number;
+    has_unc: boolean;
+    is_signed_by_inut: boolean;
+    pdf_url: string;
+  }>;
+  legal_bases: string[];
+  tax_refund_guidance: string;
 }

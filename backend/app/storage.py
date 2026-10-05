@@ -27,6 +27,27 @@ def path_for(doc_id: str, suffix: str = ".pdf") -> Path:
     return _docs_dir() / f"{doc_id}{suffix}"
 
 
+def find_doc_path(doc_id: str) -> tuple[Path, str] | None:
+    """Tim file trong thu muc docs theo doc_id ma khong can biet truoc phan mo rong."""
+    if not doc_id or not doc_id.isalnum():
+        return None
+    d = _docs_dir()
+    p_pdf = d / f"{doc_id}.pdf"
+    if p_pdf.exists():
+        return p_pdf, ".pdf"
+    matches = list(d.glob(f"{doc_id}.*"))
+    if matches and matches[0].exists():
+        return matches[0], matches[0].suffix.lower()
+    return None
+
+def read_doc_any(doc_id: str) -> tuple[bytes, str]:
+    """Doc noi dung va tra ve (content, suffix)."""
+    res = find_doc_path(doc_id)
+    if not res:
+        raise FileNotFoundError(f"Khong tim thay tai lieu {doc_id}")
+    path, suffix = res
+    return path.read_bytes(), suffix
+
 def read_doc(doc_id: str, suffix: str = ".pdf") -> bytes:
     return path_for(doc_id, suffix).read_bytes()
 
