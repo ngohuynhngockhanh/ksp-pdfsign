@@ -1326,5 +1326,68 @@ class BiddingScanResultOut(BaseModel):
     details: list[dict] = Field(default_factory=list)
 
 
+# --- Dossier Review Schemas (Thẩm Định Hồ Sơ Thầu) ---
+
+class BiddingDossierItemReviewOut(BaseModel):
+    id: int
+    item_no: int
+    system_id: str
+    item_name: str
+    proposed_model: str
+    manufacturer: str
+    origin: str
+    unit: str
+    quantity: float
+    unit_price: float
+    total_price: float
+    compliance_status: str
+    proof_documents: str
+    notes: str
+    inut_role: str
+
+
+class BiddingDossierFileReviewOut(BaseModel):
+    id: int
+    file_code: str
+    file_name: str
+    file_title: str
+    doc_type: str
+    compliance_status: str
+    score: int
+    findings: str
+    critical_risks: str
+    remediation: str
+
+
+class BiddingDossierReviewOut(BaseModel):
+    id: int
+    tbmt_code: str
+    package_name: str
+    procuring_entity: str
+    contractor_name: str
+    contractor_tax_code: str
+    drive_folder_url: str
+    drive_folder_id: str
+    total_bid_price: float
+    estimated_package_price: float
+    discount_amount: float
+    discount_rate_pct: float
+    overall_score: int
+    compliance_status: str
+    executive_summary: str
+    recommendations: list[str] = Field(default_factory=list)
+    created_at: str
+
+
+class BiddingDossierReviewDetailOut(BiddingDossierReviewOut):
+    files: list[BiddingDossierFileReviewOut] = Field(default_factory=list)
+    items: list[BiddingDossierItemReviewOut] = Field(default_factory=list)
+
+
+class BiddingDossierImportDriveRequest(BaseModel):
+    drive_url: str
+    custom_notes: str = ""
+
+
 
 

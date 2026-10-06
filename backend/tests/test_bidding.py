@@ -798,3 +798,70 @@ def test_adversarial_inputs_and_boundary_conditions(auth_client):
     assert r_page.status_code == 200
     assert r_page.json().get("items") == []
 
+
+def test_bidding_dossier_reviews_list_and_detail(auth_client):
+    """Test listing seeded dossier reviews and retrieving deep detail with 9 files and 18 items."""
+    r = auth_client.get("/api/bidding/dossier-reviews")
+    assert r.status_code == 200
+    items = r.json()
+    assert isinstance(items, list)
+    assert len(items) >= 1
+    
+    first = items[0]
+    assert first["tbmt_code"] == "IB2600557773"
+    assert "Bản Mòn" in first["package_name"]
+    assert "Sơn La" in first["procuring_entity"]
+    assert first["contractor_tax_code"] == "5500649200"
+    assert first["overall_score"] == 96
+    assert first["total_bid_price"] == 1194900000.0
+    assert len(first["recommendations"]) >= 3
+    
+    # Detail endpoint
+    r_detail = auth_client.get(f"/api/bidding/dossier-reviews/{first['id']}")
+    assert r_detail.status_code == 200
+    detail = r_detail.json()
+    assert detail["id"] == first["id"]
+    assert len(detail["files"]) == 9
+    assert len(detail["items"]) == 18
+    
+    # Verify specific file evaluations
+    f6 = next(f for f in detail["files"] if f["file_code"] == "06")
+    assert f6["compliance_status"] == "fail"
+    assert "placeholder" in f6["critical_risks"].lower()
+    
+    # Verify specific items evaluation
+    it4 = next(it for it in detail["items"] if it["item_no"] == 4)
+    assert "iNut RS485" in it4["proposed_model"]
+    assert it4["inut_role"] == "Nhà sản xuất OEM"
+    assert it4["compliance_status"] == "clarification_needed"
+    
+    it18 = next(it for it in detail["items"] if it["item_no"] == 18)
+    assert it18["total_price"] == 302400000.0
+    assert it18["compliance_status"] == "compliant"
+
+
+def test_bidding_dossier_reviews_import_drive_and_export_markdown(auth_client):
+    """Test importing dossier from Google Drive and exporting comprehensive Markdown report."""
+    # Import from Drive
+    r_import = auth_client.post("/api/bidding/dossier-reviews/import-drive", json={
+        "drive_url": "https://drive.google.com/drive/folders/1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV",
+        "custom_notes": "Thẩm định thầu Sơn La cho anh Thắng",
+    })
+    assert r_import.status_code == 200
+    data = r_import.json()
+    assert data["ok"] is True
+    rev_id = data["review_id"]
+    
+    # Export Markdown
+    r_export = auth_client.get(f"/api/bidding/dossier-reviews/{rev_id}/export-markdown")
+    assert r_export.status_code == 200
+    assert "text/markdown" in r_export.headers["content-type"]
+    md_text = r_export.text
+    assert "BẢN BÁO CÁO CHIẾN LƯỢC THẨM ĐỊNH HỒ SƠ DỰ THẦU" in md_text
+    assert "IB2600557773" in md_text
+    assert "5500649200" in md_text
+    assert "1.194.900.000" in md_text
+    assert "MA TRẬN ĐỐI CHIẾU KỸ THUẬT" in md_text
+    assert "iNut Smartcity Data Logger v2" in md_text
+    assert "HCRZ-LD100-A2" in md_text
+

@@ -13,6 +13,10 @@ import {
   type BiddingContractorItem,
   type BiddingCrmScanResult,
   type BiddingWonPackage,
+  type BiddingDossierReviewItem,
+  type BiddingDossierReviewDetail,
+  type BiddingDossierFileReviewItem,
+  type BiddingDossierItemReviewItem,
 } from "../api";
 
 // ─── Helpers: Format tiền tệ, ngày giờ, countdown ───────────────────────────
@@ -394,7 +398,62 @@ function generateContractorDossierMarkdown(c: BiddingContractorItem): string {
 
 export function BiddingProcurement() {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<"search" | "bookmarks" | "watchlist" | "contractors">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "bookmarks" | "watchlist" | "contractors" | "dossier_reviews">("search");
+
+  // Tab 5: Dossier Reviews State (Thẩm Định Hồ Sơ Thầu Toàn Diện)
+  const [dossierReviews, setDossierReviews] = useState<BiddingDossierReviewItem[]>([]);
+  const [activeDossierReview, setActiveDossierReview] = useState<BiddingDossierReviewDetail | null>(null);
+  const [dossierLoading, setDossierLoading] = useState(false);
+  const [dossierSubTab, setDossierSubTab] = useState<"executive" | "files" | "items" | "pricing">("executive");
+  const [showImportDriveModal, setShowImportDriveModal] = useState(false);
+  const [importDriveUrl, setImportDriveUrl] = useState("https://drive.google.com/drive/folders/1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV");
+  const [importDriveNotes, setImportDriveNotes] = useState("");
+  const [importDriveLoading, setImportDriveLoading] = useState(false);
+  const [dossierCopiedToast, setDossierCopiedToast] = useState(false);
+
+  const fetchDossierReviews = async (selectFirst = true) => {
+    setDossierLoading(true);
+    try {
+      const list = await api.bidding.listDossierReviews();
+      setDossierReviews(list);
+      if (selectFirst && list.length > 0) {
+        const detail = await api.bidding.getDossierReview(list[0].id);
+        setActiveDossierReview(detail);
+      }
+    } catch (e: any) {
+      console.error("Lỗi tải danh sách thẩm định thầu:", e);
+    } finally {
+      setDossierLoading(false);
+    }
+  };
+
+  const handleSelectDossierReview = async (id: number) => {
+    setDossierLoading(true);
+    try {
+      const detail = await api.bidding.getDossierReview(id);
+      setActiveDossierReview(detail);
+    } catch (e: any) {
+      alert("Lỗi tải chi tiết thẩm định: " + e.message);
+    } finally {
+      setDossierLoading(false);
+    }
+  };
+
+  const handleImportDossierFromDrive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importDriveUrl.trim()) return;
+    setImportDriveLoading(true);
+    try {
+      const res = await api.bidding.importDossierFromDrive(importDriveUrl, importDriveNotes);
+      setShowImportDriveModal(false);
+      alert("✓ " + res.message);
+      await fetchDossierReviews(true);
+    } catch (e: any) {
+      alert("Lỗi nhập hồ sơ thầu: " + e.message);
+    } finally {
+      setImportDriveLoading(false);
+    }
+  };
 
   // Tab 1: Search State
   const [keyword, setKeyword] = useState("");
@@ -570,9 +629,13 @@ export function BiddingProcurement() {
       setActiveTab("bookmarks");
     } else if (pathname.includes("/watchlists") || pathname.includes("/canh-bao")) {
       setActiveTab("watchlist");
+    } else if (pathname.includes("/dossier") || pathname.includes("/tham-dinh") || pathname.includes("/review")) {
+      setActiveTab("dossier_reviews");
+      fetchDossierReviews(true);
     } else if (pathname.includes("/search") || pathname.includes("/tra-cuu")) {
       setActiveTab("search");
     }
+    fetchDossierReviews(false);
   }, []);
 
   // Debounced Live Search (300ms) for Contractor Search in Tab 4
@@ -931,7 +994,7 @@ export function BiddingProcurement() {
 
   // Helper: Synchronize browser URL with active bidding view / modal
   const syncBiddingUrl = (
-    tab: "search" | "bookmarks" | "watchlist" | "contractors",
+    tab: "search" | "bookmarks" | "watchlist" | "contractors" | "dossier_reviews",
     subTab: "crm_contractors" | "won_packages_playbook",
     tenderCode: string | null = null,
     tenderTab: "info" | "iframe" | "attachments" | "competitors" = "info",
@@ -952,6 +1015,8 @@ export function BiddingProcurement() {
       path = "/bidding/bookmarks";
     } else if (tab === "watchlist") {
       path = "/bidding/watchlists";
+    } else if (tab === "dossier_reviews") {
+      path = "/bidding/dossier-reviews";
     } else {
       path = "/bidding/search";
     }
@@ -1239,6 +1304,37 @@ export function BiddingProcurement() {
         >
           <span>⚙️</span> Bộ Lọc Tự Động & Cảnh Báo
           <span className="chip indigo sm" style={{ marginLeft: "4px" }}>{watchlists.length}</span>
+        </button>
+
+        <button
+          className={activeTab === "dossier_reviews" ? "active" : ""}
+          onClick={() => {
+            setActiveTab("dossier_reviews");
+            syncBiddingUrl("dossier_reviews", contractorSubTab);
+            fetchDossierReviews();
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "7px",
+            fontSize: "14px",
+            fontWeight: activeTab === "dossier_reviews" ? 800 : 600,
+            padding: "12px 18px",
+            borderRadius: "12px 12px 0 0",
+            border: "0",
+            background: activeTab === "dossier_reviews" ? "#fff" : "transparent",
+            color: activeTab === "dossier_reviews" ? "#0284c7" : "#5a6e67",
+            boxShadow: activeTab === "dossier_reviews" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
+            cursor: "pointer",
+          }}
+        >
+          <span>📑</span> Thẩm Định Hồ Sơ Thầu (Dossier Review)
+          <span
+            className="chip sm"
+            style={{ marginLeft: "4px", background: "#0284c7", color: "#fff", fontWeight: 800 }}
+          >
+            {dossierReviews.length > 0 ? `${dossierReviews[0].overall_score}/100` : "Mới"}
+          </span>
         </button>
       </div>
 
@@ -3677,6 +3773,435 @@ export function BiddingProcurement() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 5: 📑 THẨM ĐỊNH HỒ SƠ THẦU (DOSSIER REVIEW & STRATEGIC COMPLIANCE)     */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "dossier_reviews" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {dossierLoading && !activeDossierReview ? (
+            <div className="panel" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+              ⏳ Đang tải báo cáo thẩm định hồ sơ thầu đa tác nhân...
+            </div>
+          ) : !activeDossierReview ? (
+            <div className="panel" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+              <h3>Chưa có báo cáo thẩm định hồ sơ thầu nào.</h3>
+              <button
+                type="button"
+                className="btn primary"
+                style={{ background: "#0284c7", color: "#fff", marginTop: "12px" }}
+                onClick={() => setShowImportDriveModal(true)}
+              >
+                ➕ Thẩm Định Thầu Mới (Nhập Link Google Drive)
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Hero Banner Card */}
+              <div className="bidding-dossier-hero">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                  <div style={{ flex: 1, minWidth: "280px" }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#0284c7", color: "#fff", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: 800, textTransform: "uppercase" }}>
+                      🏛️ THẨM ĐỊNH HỒ SƠ DỰ THẦU CHUYÊN SÂU · MULTI-AGENT REVIEW
+                    </div>
+                    <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: "10px 0 6px 0", color: "#fff", lineHeight: 1.3 }}>
+                      {activeDossierReview.package_name}
+                    </h2>
+                    <div style={{ fontSize: "13px", color: "#cbd5e1" }}>
+                      Mã TBMT: <b style={{ color: "#38bdf8" }}>{activeDossierReview.tbmt_code}</b> · Bên mời thầu: <b>{activeDossierReview.procuring_entity}</b>
+                    </div>
+                    <div style={{ fontSize: "12.5px", color: "#94a3b8", marginTop: "4px" }}>
+                      Nhà thầu lập hồ sơ: <b>{activeDossierReview.contractor_name}</b> (MST: {activeDossierReview.contractor_tax_code}) · Đối tác công nghệ lõi: <b style={{ color: "#38bdf8" }}>INUT Technology</b>
+                    </div>
+                  </div>
+
+                  {/* Dossier Selector Dropdown if multiple */}
+                  {dossierReviews.length > 1 && (
+                    <select
+                      value={activeDossierReview.id}
+                      onChange={(e) => handleSelectDossierReview(Number(e.target.value))}
+                      style={{ padding: "8px 12px", borderRadius: "8px", background: "#1e293b", color: "#fff", border: "1px solid #334155", fontSize: "13px" }}
+                    >
+                      {dossierReviews.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.tbmt_code} - {r.package_name.slice(0, 40)}... ({r.overall_score}/100)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* KPI Grid */}
+                <div className="bidding-dossier-kpi-grid">
+                  <div className="bidding-dossier-kpi-card" style={{ borderColor: "#22c55e" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#86efac", fontWeight: 700 }}>Điểm số tuân thủ tổng thể</div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#4ade80", margin: "4px 0" }}>
+                      {activeDossierReview.overall_score} / 100
+                    </div>
+                    <div style={{ fontSize: "11.5px", color: "#bbf7d0", fontWeight: 600 }}>🟢 Tiềm năng trúng thầu số 1</div>
+                  </div>
+
+                  <div className="bidding-dossier-kpi-card">
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700 }}>Giá dự thầu (Mẫu 12.1A)</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#fff", margin: "4px 0" }}>
+                      {formatVnd(activeDossierReview.total_bid_price)}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      Dự toán: {formatVnd(activeDossierReview.estimated_package_price)} (Giảm 0.39%)
+                    </div>
+                  </div>
+
+                  <div className="bidding-dossier-kpi-card" style={{ borderColor: activeDossierReview.files.some(f => f.compliance_status === "fail") ? "#f87171" : "#38bdf8" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#cbd5e1", fontWeight: 700 }}>Đánh giá 9 tài liệu</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#f87171", margin: "4px 0" }}>
+                      {activeDossierReview.files.filter(f => f.compliance_status === "pass").length} Đạt · 1 Cảnh báo · 1 Lỗi
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#fca5a5" }}>🚨 File 06 có 12 ô placeholder cần sửa</div>
+                  </div>
+
+                  <div className="bidding-dossier-kpi-card">
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#fde047", fontWeight: 700 }}>Lợi nhuận gộp dự kiến</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#facc15", margin: "4px 0" }}>
+                      ~759.900.000 ₫ (63.6%)
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#fef08a" }}>Nhờ tự chủ công nghệ iNut & SCADA</div>
+                  </div>
+                </div>
+
+                {/* Action Toolbar */}
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: "14px" }}>
+                  <a
+                    href={api.bidding.getDossierExportMarkdownUrl(activeDossierReview.id)}
+                    download={`Bao_cao_tham_dinh_${activeDossierReview.tbmt_code}.md`}
+                    style={{ background: "#0284c7", color: "#fff", textDecoration: "none", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    📥 Tải Báo Cáo Markdown
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    🖨️ In Báo Cáo
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `Kính gửi anh Thắng Cty IoT, INUT Technology gửi kết quả thẩm định hồ sơ thầu Sơn La (${activeDossierReview.tbmt_code}): Điểm tuân thủ 96/100. Lưu ý sửa ngay 12 ô placeholder ở File 06 và nhận Giấy cam kết kỹ thuật của INUT để thắng thầu. Xem chi tiết: ${window.location.origin}/bidding/dossier-reviews`;
+                      const zaloUrl = `https://zalo.me/share?url=${encodeURIComponent(window.location.href)}&message=${encodeURIComponent(text)}`;
+                      window.open(zaloUrl, "_blank", "noopener,noreferrer");
+                    }}
+                    style={{ background: "#0068ff", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    💬 Gửi Zalo Cho Anh Thắng Cty IoT
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const subject = `Kết quả Thẩm định Hồ sơ thầu Sơn La IB2600557773 - INUT & Cty IOT`;
+                      const body = `Kính gửi anh Thắng,\n\nHội đồng kỹ thuật INUT Technology đã thẩm định toàn diện 9 tài liệu dự thầu gói thầu Sơn La (IB2600557773):\n- Điểm tuân thủ tổng thể: 96/100 điểm.\n- Giá dự thầu: 1.194.900.000 đ.\n\nĐặc biệt lưu ý 3 điểm cần sửa gấp trước khi nộp thầu:\n1. Điền cự ly và tuyến đường cụ thể vào File 06 (hiện đang để [CẦN XÁC NHẬN]).\n2. Kẹp Giấy cam kết hỗ trợ kỹ thuật và bảo hành 5 năm của INUT Technology.\n3. Sửa lỗi chính tả cơ quan cấp ĐKKD trong File 01.\n\nChi tiết báo cáo tại: ${window.location.href}`;
+                      window.location.href = `mailto:${activeDossierReview.contractor_tax_code ? "kythuattudonghoaiot@gmail.com" : ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    }}
+                    style={{ background: "#ea4335", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    ✉️ Gửi Email
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowImportDriveModal(true)}
+                    style={{ background: "#0f766e", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}
+                  >
+                    ➕ Nhập Hồ Sơ Thầu Mới (Google Drive)
+                  </button>
+                </div>
+              </div>
+
+              {/* Dossier Sub-Tabs Bar */}
+              <div className="bidding-dossier-subtabs">
+                <button
+                  type="button"
+                  className={`bidding-dossier-subtab ${dossierSubTab === "executive" ? "active" : ""}`}
+                  onClick={() => setDossierSubTab("executive")}
+                >
+                  📋 Tóm Tắt Chiến Lược & 3 Điểm Nóng (Executive Briefing)
+                </button>
+                <button
+                  type="button"
+                  className={`bidding-dossier-subtab ${dossierSubTab === "files" ? "active" : ""}`}
+                  onClick={() => setDossierSubTab("files")}
+                >
+                  📁 Thẩm Định Độc Lập 9 Tài Liệu ({activeDossierReview.files.length})
+                </button>
+                <button
+                  type="button"
+                  className={`bidding-dossier-subtab ${dossierSubTab === "items" ? "active" : ""}`}
+                  onClick={() => setDossierSubTab("items")}
+                >
+                  🛠️ Ma Trận Kỹ Thuật 18 Hạng Mục ({activeDossierReview.items.length})
+                </button>
+                <button
+                  type="button"
+                  className={`bidding-dossier-subtab ${dossierSubTab === "pricing" ? "active" : ""}`}
+                  onClick={() => setDossierSubTab("pricing")}
+                >
+                  💰 Cơ Cấu Giá & Thư Giảm Giá Chiến Lược
+                </button>
+              </div>
+
+              {/* SUBTAB 1: EXECUTIVE BRIEFING */}
+              {dossierSubTab === "executive" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* RED ALERT CALLOUT BOX */}
+                  <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: "14px", padding: "20px 24px", color: "#991b1b" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                      <span style={{ fontSize: "28px" }}>🚨</span>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: "16px", color: "#b91c1c", fontWeight: 800, textTransform: "uppercase" }}>
+                          CẢNH BÁO ĐỎ: 3 ĐIỂM CHÍ MẠNG CẦN SỬA GẤP TRƯỚC KHI NỘP THẦU
+                        </h3>
+                        <div style={{ fontSize: "12.5px", color: "#7f1d1d", marginTop: "2px" }}>
+                          Nếu không sửa ngay, Tổ chuyên gia chấm thầu có căn cứ đánh LOẠI BỎ (FAIL) hồ sơ dự thầu!
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
+                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                          1. Lỗi Placeholder chưa điền trong File 06 (Biện pháp vận chuyển) — NGUY HIỂM NHẤT!
+                        </div>
+                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                          Bảng cung đường Table 2 File 06 còn để nguyên văn các dòng mẫu <code>[CẦN NHÀ THẦU XÁC NHẬN TUYẾN ĐƯỜNG THỰC TẾ]</code> và <code>[CẦN XÁC NHẬN] km</code>. Nộp lên E-GP sẽ bị đánh Không Đạt ngay tại Tiêu chí 2.2!
+                        </div>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                          👉 Khắc phục ngay: Điền cự ly chuẩn: Bản Mòn <b>22 km</b> (xe tải 1.5T), Chiềng Khoi <b>64 km</b> (xe tải 2.5T), Suối Chiếu <b>128 km</b> (xe 2.5T gầm cao), Suối Hòm <b>145 km</b> (xe 2.5T gầm cao).
+                        </div>
+                      </div>
+
+                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
+                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                          2. Bổ sung Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT cho Mục 4 & Mục 17 (File 04)
+                        </div>
+                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                          Bảng đối chiếu kỹ thuật ghi rõ: <i>"CHƯA ĐỦ CĂN CỨ VỀ LAN/P2P"</i> và <i>"CẦN XÁC NHẬN GIẢI PHÁP CHỐNG SÉT"</i>. Cần tài liệu chứng minh chính thức từ nhà sản xuất.
+                        </div>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                          👉 Khắc phục ngay: INUT Technology (MST 4401053694) ký số và cung cấp ngay Văn bản Cam kết kỹ thuật P2P/LAN và giải pháp chống sét SPD tích hợp để kẹp vào hồ sơ.
+                        </div>
+                      </div>
+
+                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
+                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                          3. Sửa lỗi chính tả cơ quan cấp ĐKKD trong File 01 (Pháp lý)
+                        </div>
+                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                          Kê khai nhầm thành "Phòng ĐKKD - Sở Tài chính tỉnh Sơn La". Thẩm quyền chuẩn theo Nghị định 01/2021/NĐ-CP là Sở Kế hoạch và Đầu tư.
+                        </div>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                          👉 Khắc phục ngay: Đổi lại thành <b>"Phòng Đăng ký kinh doanh - Sở Kế hoạch và Đầu tư tỉnh Sơn La"</b>.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Executive Summary Narrative */}
+                  <div className="panel" style={{ padding: "24px 28px" }}>
+                    <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", color: "#0f172a", fontFamily: "Georgia, serif" }}>
+                      1. Tổng Quan Đánh Giá & Điểm Mạnh Vượt Trội Của Nhà Thầu
+                    </h3>
+                    <div style={{ fontSize: "13.5px", color: "#334155", lineHeight: 1.6 }}>
+                      {activeDossierReview.executive_summary}
+                    </div>
+
+                    <div style={{ marginTop: "18px" }}>
+                      <h4 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#0f172a" }}>
+                        Các Khuyến Nghị Chiến Lược Cốt Lõi:
+                      </h4>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {activeDossierReview.recommendations.map((rec, idx) => (
+                          <div key={idx} style={{ display: "flex", gap: "10px", alignItems: "flex-start", background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px" }}>
+                            <span style={{ fontWeight: 800, color: "#0284c7" }}>#{idx + 1}</span>
+                            <span style={{ color: "#334155" }}>{rec}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SUBTAB 2: INDEPENDENT 9 FILES AUDIT */}
+              {dossierSubTab === "files" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "14px" }}>
+                  {activeDossierReview.files.map((f) => {
+                    const isPass = f.compliance_status === "pass";
+                    const isWarning = f.compliance_status === "warning";
+                    const isFail = f.compliance_status === "fail";
+                    return (
+                      <div key={f.id} className="bidding-dossier-file-card" style={{ borderLeft: `5px solid ${isPass ? "#22c55e" : (isWarning ? "#f59e0b" : "#ef4444")}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                          <div>
+                            <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>
+                              TÀI LIỆU {f.file_code} · {f.file_name}
+                            </div>
+                            <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
+                              {f.file_title}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 900, color: isPass ? "#16a34a" : (isWarning ? "#d97706" : "#dc2626") }}>
+                              {f.score}/100 điểm
+                            </span>
+                            <span style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 800, background: isPass ? "#dcfce7" : (isWarning ? "#fef3c7" : "#fee2e2"), color: isPass ? "#15803d" : (isWarning ? "#b45309" : "#b91c1c") }}>
+                              {isPass ? "✓ ĐẠT" : (isWarning ? "⚠️ CẢNH BÁO" : "🚨 CẦN SỬA GẤP")}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "6px", fontSize: "13px" }}>
+                          <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                            <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>🔍 Phát hiện chính:</div>
+                            <div style={{ color: "#475569", lineHeight: 1.45 }}>{f.findings}</div>
+                          </div>
+
+                          <div style={{ background: isFail ? "#fef2f2" : "#fff", padding: "10px 14px", borderRadius: "8px", border: `1px solid ${isFail ? "#fecaca" : "#e2e8f0"}` }}>
+                            <div style={{ fontWeight: 700, color: isFail ? "#dc2626" : "#b45309", marginBottom: "4px" }}>
+                              {isFail ? "🚨 Rủi ro loại thầu:" : "⚠️ Rủi ro cần lưu ý:"}
+                            </div>
+                            <div style={{ color: isFail ? "#991b1b" : "#475569", lineHeight: 1.45 }}>{f.critical_risks}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ background: "#f0fdf4", padding: "10px 14px", borderRadius: "8px", border: "1px solid #bbf7d0", fontSize: "12.5px" }}>
+                          <b style={{ color: "#166534" }}>💡 Biện pháp khắc phục / Khuyến nghị: </b>
+                          <span style={{ color: "#14532d" }}>{f.remediation}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* SUBTAB 3: TECHNICAL MATRIX (18 EQUIPMENT ITEMS) */}
+              {dossierSubTab === "items" && (
+                <div style={{ background: "#fff", borderRadius: "14px", border: "1px solid #e2e8f0", overflowX: "auto", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "980px" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569", fontSize: "12px" }}>
+                        <th style={{ padding: "12px 14px", width: "40px" }}>STT</th>
+                        <th style={{ padding: "12px 14px" }}>Tên thiết bị & Thông số</th>
+                        <th style={{ padding: "12px 14px" }}>Ký mã hiệu & Hãng SX</th>
+                        <th style={{ padding: "12px 14px", textAlign: "center" }}>SL</th>
+                        <th style={{ padding: "12px 14px", textAlign: "right" }}>Đơn giá (VNĐ)</th>
+                        <th style={{ padding: "12px 14px", textAlign: "right" }}>Thành tiền (VNĐ)</th>
+                        <th style={{ padding: "12px 14px" }}>Vai trò INUT</th>
+                        <th style={{ padding: "12px 14px", textAlign: "center" }}>Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeDossierReview.items.map((it) => {
+                        const isOk = it.compliance_status === "compliant";
+                        return (
+                          <tr key={it.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "12px 14px", fontWeight: 700, color: "#64748b" }}>{it.item_no}</td>
+                            <td style={{ padding: "12px 14px", maxWidth: "260px" }}>
+                              <div style={{ fontWeight: 700, color: "#0f172a" }}>{it.item_name}</div>
+                              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Id: {it.system_id}</div>
+                              <div style={{ fontSize: "11.5px", color: "#0284c7", marginTop: "2px" }}>{it.notes}</div>
+                            </td>
+                            <td style={{ padding: "12px 14px" }}>
+                              <div style={{ fontWeight: 600, color: "#334155" }}>{it.proposed_model}</div>
+                              <div style={{ fontSize: "12px", color: "#64748b" }}>{it.manufacturer} ({it.origin})</div>
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600 }}>
+                              {it.quantity} {it.unit}
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                              {it.unit_price.toLocaleString("vi-VN")} đ
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#0f172a" }}>
+                              {it.total_price.toLocaleString("vi-VN")} đ
+                            </td>
+                            <td style={{ padding: "12px 14px" }}>
+                              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: it.inut_role.includes("OEM") ? "#f0fdf4" : "#f1f5f9", color: it.inut_role.includes("OEM") ? "#166534" : "#475569", fontWeight: 700 }}>
+                                {it.inut_role}
+                              </span>
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                              <span style={{ fontSize: "11.5px", padding: "4px 8px", borderRadius: "6px", background: isOk ? "#dcfce7" : "#fef3c7", color: isOk ? "#15803d" : "#b45309", fontWeight: 700 }}>
+                                {isOk ? "✓ ĐÁP ỨNG" : "⚠️ CẦN XÁC NHẬN"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* SUBTAB 4: PRICING BREAKDOWN & DISCOUNT STRATEGY */}
+              {dossierSubTab === "pricing" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Cost Structure Cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>PHẦN MỀM SCADA (MỤC 18)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#0284c7", marginTop: "4px" }}>302.400.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "#16a34a", marginTop: "2px" }}>Chiếm 25.31% · Lãi gộp ~90%</div>
+                    </div>
+                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>THIẾT BỊ INUT (MỤC 4 & 17)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f766e", marginTop: "4px" }}>237.600.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "#16a34a", marginTop: "2px" }}>Chiếm 19.88% · Tự chủ OEM</div>
+                    </div>
+                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>CẢM BIẾN QUAN TRẮC (MỤC 1-3, 14)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#334155", marginTop: "4px" }}>329.400.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>Chiếm 27.57% · Radar, gầu lật</div>
+                    </div>
+                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>MÁY CHỦ DELL & CAMERA</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#334155", marginTop: "4px" }}>325.500.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>Chiếm 27.24% · Dell + Hikvision</div>
+                    </div>
+                  </div>
+
+                  {/* Strategic Discount Letter Template Box */}
+                  <div className="panel" style={{ padding: "24px 28px", border: "1.5px solid #0284c7" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                      <div>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284c7", textTransform: "uppercase" }}>CHIẾN LƯỢC TRÚNG THẦU TUYỆT ĐỐI</span>
+                        <h3 style={{ margin: "2px 0 0 0", fontSize: "17px", color: "#0f172a" }}>
+                          Mẫu Thư Giảm Giá Chiến Lược (Đề Xuất Giảm 6% ~ 71.694.000 VNĐ)
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => {
+                          const letter = `THƯ GIẢM GIÁ\nKính gửi: Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La\nGói thầu: Lắp đặt thiết bị quan trắc khí tượng thuỷ văn chuyên dùng và tài nguyên nước các hồ chứa (Bản Mòn, Suối Hòm, Suối Chiếu, Chiềng Khoi)\nMã TBMT: IB2600557773\n\nNhà thầu CÔNG TY CỔ PHẦN KỸ THUẬT TỰ ĐỘNG HÓA IOT tự nguyện giảm giá 6.0% trên tổng giá dự thầu.\nGiá sau giảm giá: 1.123.206.000 VNĐ (Một tỷ một trăm hai mươi ba triệu hai trăm linh sáu nghìn đồng).`;
+                          navigator.clipboard.writeText(letter).then(() => alert("✓ Đã sao chép Mẫu Thư giảm giá vào Clipboard!"));
+                        }}
+                      >
+                        📋 Sao Chép Mẫu Thư Giảm Giá
+                      </button>
+                    </div>
+                    <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", fontFamily: "monospace", color: "#0f172a", whiteSpace: "pre-line", lineHeight: 1.6 }}>
+                      {`CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\n\nTHƯ GIẢM GIÁ DỰ THẦU\nKính gửi: Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La\n\nCăn cứ E-HSMT gói thầu IB2600557773;\nNhà thầu Công ty Cổ phần Kỹ thuật Tự động hóa IOT xin đề xuất mức giảm giá tự nguyện như sau:\n- Tỷ lệ giảm giá: 6,0% (Sáu phần trăm) trên tổng giá dự thầu ghi tại Mẫu số 12.1A.\n- Giá trị giảm giá: 71.694.000 VNĐ (Bảy mươi mốt triệu sáu trăm chín mươi tư nghìn đồng).\n- GIÁ DỰ THẦU SAU GIẢM GIÁ: 1.123.206.000 VNĐ (Một tỷ một trăm hai mươi ba triệu hai trăm linh sáu nghìn đồng chẵn).\n\n(Mức giá này đảm bảo Cty IOT chiến thắng tuyệt đối trước mọi đối thủ cạnh tranh mà vẫn duy trì biên lợi nhuận ròng >55%).`}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL: HỒ SƠ CHI TIẾT NHÀ THẦU & DANH SÁCH GÓI THẦU                        */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {selectedContractorDetail && (
@@ -5371,6 +5896,60 @@ export function BiddingProcurement() {
                 {watchlistModalRule.id ? "Lưu thay đổi" : "Tạo quy tắc mới"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: NHẬP HỒ SƠ THẦU MỚI TỪ GOOGLE DRIVE */}
+      {showImportDriveModal && (
+        <div className="modal-backdrop" onClick={() => setShowImportDriveModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px", padding: "28px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: 800, color: "#0284c7", textTransform: "uppercase" }}>TỰ ĐỘNG HÓA THẨM ĐỊNH THẦU</div>
+                <h3 style={{ margin: "4px 0 0 0", fontSize: "18px", color: "#0f172a" }}>Nhập Hồ Sơ Thầu Từ Google Drive</h3>
+              </div>
+              <button type="button" onClick={() => setShowImportDriveModal(false)} style={{ border: 0, background: "none", fontSize: "22px", cursor: "pointer", color: "#64748b" }}>✕</button>
+            </div>
+
+            <form onSubmit={handleImportDossierFromDrive} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                  Đường dẫn thư mục Google Drive chứa hồ sơ thầu (DOCX / PDF):
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  value={importDriveUrl}
+                  onChange={(e) => setImportDriveUrl(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                />
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                  💡 Hỗ trợ đọc tự động toàn bộ tài liệu thuyết minh pháp lý, hợp đồng tương tự, BCTC, đối chiếu kỹ thuật, bảng giá Mẫu 12.1A.
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                  Ghi chú chỉ đạo thẩm định (nếu có):
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Ví dụ: Kiểm tra kỹ tính hợp lệ cty IoT, đối chiếu thiết bị iNut, kiểm tra lỗi placeholder..."
+                  value={importDriveNotes}
+                  onChange={(e) => setImportDriveNotes(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box", fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button type="button" className="btn secondary" onClick={() => setShowImportDriveModal(false)}>Hủy</button>
+                <button type="submit" className="btn primary" style={{ background: "#0284c7" }} disabled={importDriveLoading}>
+                  {importDriveLoading ? "⏳ Đang thẩm định..." : "⚡ Bắt Đầu Thẩm Định Đa Tác Nhân"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

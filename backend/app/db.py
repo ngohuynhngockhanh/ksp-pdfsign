@@ -1487,6 +1487,73 @@ class BiddingAlertLog(Base):
     alerted_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+
+class BiddingDossierReview(Base):
+    """Báo cáo Thẩm định Hồ sơ Thầu Toàn Diện & Tình Báo Đấu Thầu (Dossier Review)."""
+
+    __tablename__ = "bidding_dossier_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tbmt_code: Mapped[str] = mapped_column(String(50), default="", index=True)
+    package_name: Mapped[str] = mapped_column(String(500), default="")
+    procuring_entity: Mapped[str] = mapped_column(String(255), default="")
+    contractor_name: Mapped[str] = mapped_column(String(255), default="")
+    contractor_tax_code: Mapped[str] = mapped_column(String(50), default="")
+    drive_folder_url: Mapped[str] = mapped_column(String(1000), default="")
+    drive_folder_id: Mapped[str] = mapped_column(String(100), default="")
+    total_bid_price: Mapped[float] = mapped_column(default=0.0)
+    estimated_package_price: Mapped[float] = mapped_column(default=0.0)
+    discount_amount: Mapped[float] = mapped_column(default=0.0)
+    discount_rate_pct: Mapped[float] = mapped_column(default=0.0)
+    overall_score: Mapped[int] = mapped_column(default=90)
+    compliance_status: Mapped[str] = mapped_column(String(30), default="needs_revision", index=True)  # qualified | needs_revision | high_risk
+    executive_summary: Mapped[str] = mapped_column(Text, default="")
+    recommendations_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class BiddingDossierFileReview(Base):
+    """Thẩm định chi tiết độc lập từng tệp tài liệu trong hồ sơ dự thầu."""
+
+    __tablename__ = "bidding_dossier_file_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("bidding_dossier_reviews.id", ondelete="CASCADE"), index=True)
+    file_code: Mapped[str] = mapped_column(String(20), default="")
+    file_name: Mapped[str] = mapped_column(String(255), default="")
+    file_title: Mapped[str] = mapped_column(String(500), default="")
+    doc_type: Mapped[str] = mapped_column(String(50), default="technical")
+    compliance_status: Mapped[str] = mapped_column(String(30), default="pass")  # pass | warning | fail
+    score: Mapped[int] = mapped_column(default=100)
+    findings: Mapped[str] = mapped_column(Text, default="")
+    critical_risks: Mapped[str] = mapped_column(Text, default="")
+    remediation: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class BiddingDossierItemReview(Base):
+    """Đánh giá chi tiết từng hạng mục thiết bị trong Bảng đối chiếu kỹ thuật & Bảng giá."""
+
+    __tablename__ = "bidding_dossier_item_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("bidding_dossier_reviews.id", ondelete="CASCADE"), index=True)
+    item_no: Mapped[int] = mapped_column(default=1)
+    system_id: Mapped[str] = mapped_column(String(50), default="")
+    item_name: Mapped[str] = mapped_column(String(500), default="")
+    proposed_model: Mapped[str] = mapped_column(String(255), default="")
+    manufacturer: Mapped[str] = mapped_column(String(255), default="")
+    origin: Mapped[str] = mapped_column(String(100), default="")
+    unit: Mapped[str] = mapped_column(String(50), default="bộ")
+    quantity: Mapped[float] = mapped_column(default=1.0)
+    unit_price: Mapped[float] = mapped_column(default=0.0)
+    total_price: Mapped[float] = mapped_column(default=0.0)
+    compliance_status: Mapped[str] = mapped_column(String(30), default="compliant")  # compliant | clarification_needed | non_compliant
+    proof_documents: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    inut_role: Mapped[str] = mapped_column(String(100), default="")
+
 class IpTrademark(Base):
     """Nhan hieu / Van bang so huu tri tue (Cuc SHTT / WIPO Publish)."""
 
@@ -1542,7 +1609,7 @@ def init_db() -> None:
 
     _seed_ip_trademarks()
     _seed_piecework_contracts()
-
+    _seed_bidding_reviews()
 def _seed_warehouses() -> None:
     """Tao 3 kho mac dinh neu chua co."""
     with _SessionLocal() as db:
@@ -1871,6 +1938,321 @@ def _seed_piecework_contracts() -> None:
                 c.contract_pdf_doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
             db.add_all(contracts)
             db.commit()
+
+def _seed_bidding_reviews() -> None:
+    """Khởi tạo sẵn hồ sơ thẩm định thầu dự án Thủy lợi Sơn La IB2600557773."""
+    import json
+    with _SessionLocal() as db:
+        if db.query(BiddingDossierReview).count() == 0:
+            rec_list = [
+                "SỬA GẤP FILE 06: Điền ngay số km và cung đường thực tế vào 12 ô placeholder trước khi nộp lên E-GP (Bản Mòn: 22km; Chiềng Khoi: 64km; Suối Chiếu: 128km; Suối Hòm: 145km).",
+                "LẤY VĂN BẢN HÃNG INUT: Nhận Giấy cam kết hỗ trợ kỹ thuật P2P/LAN và giải pháp chống sét SPD của INUT Technology (MST 4401053694) đính kèm Mục 4 và Mục 17.",
+                "SỬA LỖI CHÍNH TẢ FILE 01: Sửa cơ quan cấp ĐKKD từ 'Sở Tài chính' thành 'Sở Kế hoạch và Đầu tư tỉnh Sơn La'.",
+                "CHIẾN LƯỢC GIÁ THẮNG THẦU: Cân nhắc nộp kèm Thư giảm giá 5% - 7% (giảm 60 - 84 triệu đồng) để nắm chắc phần thắng trước các đối thủ cạnh tranh ngoại tỉnh."
+            ]
+            review = BiddingDossierReview(
+                tbmt_code="IB2600557773",
+                package_name="Lắp đặt thiết bị quan trắc khí tượng thuỷ văn chuyên dùng và tài nguyên nước các hồ chứa (Bản Mòn, Suối Hòm, Suối Chiếu, Chiềng Khoi)",
+                procuring_entity="Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La",
+                contractor_name="CÔNG TY CỔ PHẦN KỸ THUẬT TỰ ĐỘNG HÓA IOT",
+                contractor_tax_code="5500649200",
+                drive_folder_url="https://drive.google.com/drive/folders/1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV",
+                drive_folder_id="1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV",
+                total_bid_price=1194900000.0,
+                estimated_package_price=1199656000.0,
+                discount_amount=4756000.0,
+                discount_rate_pct=0.39,
+                overall_score=96,
+                compliance_status="needs_revision",
+                executive_summary="Hồ sơ thầu đạt 96/100 điểm, có năng lực pháp lý, tài chính và kinh nghiệm vượt trội nhờ đã hoàn thành dự án quan trắc hồ Chiềng Dong cho chính Chủ đầu tư. Có 2 điểm nóng cần khắc phục ngay trước khi nộp thầu: 1) Bảng cung đường vận chuyển ở File 06 còn để placeholder; 2) Cần kẹp Văn bản cam kết kỹ thuật của hãng sản xuất INUT Technology.",
+                recommendations_json=json.dumps(rec_list, ensure_ascii=False),
+            )
+            db.add(review)
+            db.flush()
+
+            # Seed 9 file reviews
+            files = [
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="01",
+                    file_name="01_Thuyet_minh_nang_luc_phap_ly.docx",
+                    file_title="Bản thuyết minh tư cách hợp lệ và năng lực pháp lý nhà thầu",
+                    doc_type="legal",
+                    compliance_status="warning",
+                    score=95,
+                    findings="Tư cách hợp lệ đầy đủ theo Luật Đấu thầu số 22/2023/QH15. Vốn điều lệ 9 tỷ đồng. ĐKKD đủ các mã ngành 2651, 3320, 6290, 6310 phù hợp gói thầu.",
+                    critical_risks="Kê khai nhầm cơ quan cấp ĐKKD là 'Sở Tài chính tỉnh Sơn La'. Cơ quan có thẩm quyền theo Nghị định 01/2021/NĐ-CP là Sở Kế hoạch và Đầu tư.",
+                    remediation="Hiệu chỉnh lại cơ quan cấp thành 'Phòng Đăng ký kinh doanh - Sở Kế hoạch và Đầu tư tỉnh Sơn La'.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="02",
+                    file_name="02_Mau_05A_Hop_dong_tuong_tu.docx",
+                    file_title="Mẫu số 05A. Hợp đồng tương tự do nhà thầu thực hiện",
+                    doc_type="experience",
+                    compliance_status="pass",
+                    score=100,
+                    findings="Hợp đồng hồ Chiềng Dong HD2500183146_2511071031 ngày 10/11/2025 giá trị 973.296.000 VNĐ, hoàn thành 10/12/2025. Cùng Chủ đầu tư Thủy lợi Sơn La.",
+                    critical_risks="Không có rủi ro. Giá trị đạt 162.3% mức tối thiểu yêu cầu (≥ 599.828.000 VNĐ).",
+                    remediation="Đính kèm đầy đủ file PDF hợp nhất Hợp đồng + Biên bản nghiệm thu + Biên bản thanh lý.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="03",
+                    file_name="03_Mau_08_Tinh_hinh_tai_chinh.docx",
+                    file_title="Mẫu số 08. Tình hình tài chính của nhà thầu",
+                    doc_type="finance",
+                    compliance_status="pass",
+                    score=100,
+                    findings="Doanh thu bình quân 3 năm đạt 4.638.982.217 VNĐ (vượt 283.5% yêu cầu ≥ 1.635.895.000 VNĐ). Giá trị tài sản ròng 2025 dương (15.359.501.900 VNĐ). Lợi nhuận sau thuế dương cả 3 năm.",
+                    critical_risks="Không có rủi ro. Có xác nhận không nợ thuế đến 30/09/2026.",
+                    remediation="Kiểm tra đối chiếu số liệu khớp từng dòng với Báo cáo tài chính nộp Tổng cục Thuế.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="04",
+                    file_name="04_Bang_doi_chieu_ky_thuat_18_hang_muc.docx",
+                    file_title="Bảng đối chiếu đáp ứng kỹ thuật 18 hạng mục (Mẫu 10B)",
+                    doc_type="technical",
+                    compliance_status="warning",
+                    score=92,
+                    findings="15/18 hạng mục đáp ứng xuất sắc. Cảm biến radar HCRZ-LD100-A2 dải 70m vượt yêu cầu 20m. Camera Hikvision 4MP vượt yêu cầu 2MP.",
+                    critical_risks="Ghi chú mục 4 ghi 'CHƯA ĐỦ CĂN CỨ VỀ LAN/P2P' và mục 17 ghi 'CẦN XÁC NHẬN GIẢI PHÁP CHỐNG SÉT'. Có nguy cơ bị yêu cầu làm rõ.",
+                    remediation="Lấy Giấy cam kết hỗ trợ kỹ thuật và bảo hành của Hãng sản xuất INUT Technology đính kèm hồ sơ.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="05",
+                    file_name="05_Thuyet_minh_giai_phap_ky_thuat.docx",
+                    file_title="Thuyết minh giải pháp kỹ thuật lắp đặt thiết bị quan trắc",
+                    doc_type="technical",
+                    compliance_status="pass",
+                    score=96,
+                    findings="Kiến trúc SCADA/IoT đồng bộ 4 trạm hồ chứa (Bản Mòn, Suối Hòm, Suối Chiếu, Chiềng Khoi). Giao thức MQTT/Modbus chuẩn công nghiệp, lưu trữ lịch sử > 10 năm.",
+                    critical_risks="Không có rủi ro nghiêm trọng.",
+                    remediation="Chuẩn bị sẵn tài liệu thuyết minh kiến trúc mở để bảo vệ trong giai đoạn thương thảo.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="06",
+                    file_name="06_Bien_phap_to_chuc_cung_cap_lap_dat.docx",
+                    file_title="Biện pháp tổ chức cung cấp, lắp đặt hàng hóa và cung đường vận chuyển",
+                    doc_type="installation",
+                    compliance_status="fail",
+                    score=70,
+                    findings="Biện pháp an toàn thi công mép nước (áo phao 100%, dây bảo hiểm neo cố định) và PCCC rất tốt.",
+                    critical_risks="RỦI RO CHÍ MẠNG: Bảng cung đường Table 2 còn để 12 ô placeholder [CẦN NHÀ THẦU XÁC NHẬN...]. Nộp lên E-GP sẽ bị đánh FAIL Tiêu chí 2.2!",
+                    remediation="Điền ngay bảng cự ly chuẩn: Bản Mòn 22km; Chiềng Khoi 64km; Suối Chiếu 128km; Suối Hòm 145km.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="07",
+                    file_name="07_Cam_ket_bao_hanh_bao_tri_48h.docx",
+                    file_title="Bản cam kết bảo hành, bảo trì và dịch vụ sau bán hàng",
+                    doc_type="warranty",
+                    compliance_status="pass",
+                    score=100,
+                    findings="Bảo hành 12 tháng, bảo trì 6 tháng/lần, xử lý sự cố có mặt trong 48 giờ. Bàn giao 100% mã nguồn phần mềm và tài khoản Admin.",
+                    critical_risks="Không có rủi ro. Cam kết bàn giao mã nguồn là điểm cộng vượt trội.",
+                    remediation="Giữ nguyên cam kết, đây là thế mạnh cạnh tranh lớn.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="08",
+                    file_name="08_Mau_10A_Tien_do_cung_cap.docx",
+                    file_title="Mẫu số 10A. Bảng tiến độ cung cấp hàng hóa và lắp đặt thiết bị",
+                    doc_type="schedule",
+                    compliance_status="pass",
+                    score=98,
+                    findings="Tiến độ 60 ngày trọn gói kể từ ngày hợp đồng có hiệu lực. Phân kỳ hợp lý theo 4 giai đoạn cuốn chiếu 2 mũi thi công.",
+                    critical_risks="Cần lưu ý thời tiết mưa lũ sạt lở đèo Chẹn sang Phù Yên.",
+                    remediation="Chủ động tập kết vật tư cơ khí và tủ điện sớm trong 15 ngày đầu.",
+                ),
+                BiddingDossierFileReview(
+                    review_id=review.id,
+                    file_code="09",
+                    file_name="09_Mau_12_1A_Bang_gia_du_thau.docx",
+                    file_title="Mẫu số 12.1A. Bảng giá dự thầu của hàng hóa (Hợp đồng trọn gói)",
+                    doc_type="pricing",
+                    compliance_status="pass",
+                    score=95,
+                    findings="Tổng giá dự thầu 1.194.900.000 VNĐ. Biên lợi nhuận gộp ước tính đạt ~63.6% (lãi ~760 triệu đồng) do tự chủ thiết bị INUT và phần mềm.",
+                    critical_risks="Mức giảm giá hiện tại chỉ 0.39% (4.756.000 đ). Nếu đối thủ giảm 3-5% sẽ bị mất điểm giá.",
+                    remediation="Cân nhắc nộp Thư giảm giá chiến lược 5% - 7% để thắng thầu áp đảo.",
+                ),
+            ]
+            db.add_all(files)
+
+            # Seed 18 equipment items
+            items = [
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=1, system_id="9712321004573360",
+                    item_name="Cảm biến đo mực nước hồ dải đo 0-20m",
+                    proposed_model="HCRZ-LD100-A2", manufacturer="Xiamen Haichuan Runze IoT", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=27000000.0, total_price=108000000.0,
+                    compliance_status="compliant",
+                    proof_documents="Catalog chính hãng: radar 0.3-70m, sai số ±3mm, RS485, IP67",
+                    notes="Đáp ứng vượt yêu cầu kỹ thuật", inut_role="Đối tác nhập khẩu",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=2, system_id="10372511277793344",
+                    item_name="Cảm biến đo mưa kiểu gầu lật",
+                    proposed_model="RD-RG-S", manufacturer="HONDE TECHNOLOGY", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=27000000.0, total_price=108000000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet độ phân giải 0.1mm, sai số ≤ ±2%, xung/RS485",
+                    notes="Giấy kiểm định đo lường bàn giao trước vận hành", inut_role="Đối tác nhập khẩu",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=3, system_id="9690885214865814",
+                    item_name="Cảm biến đo độ mở cống xả môi trường 0-3m",
+                    proposed_model="MPS-M-3000MM-A2", manufacturer="Miran Technology", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=21600000.0, total_price=86400000.0,
+                    compliance_status="compliant",
+                    proof_documents="Catalogue kéo dây 3000mm, 4-20mA/RS485, IP65 kèm hộp bảo vệ",
+                    notes="Đáp ứng kèm hộp bảo vệ kỹ thuật ngoài trời", inut_role="Đối tác nhập khẩu",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=4, system_id="7311694621595033",
+                    item_name="Bộ truyền nhận dữ liệu hỗ trợ Modbus RS485 qua Wifi/LAN/Internet, Web/App",
+                    proposed_model="iNut RS485 Wi-Fi", manufacturer="iNut", origin="Việt Nam",
+                    unit="bộ", quantity=4.0, unit_price=27000000.0, total_price=108000000.0,
+                    compliance_status="clarification_needed",
+                    proof_documents="Catalog iNut RS485: Modbus RTU, Wi-Fi, MQTT, Web/App, 10-30VDC",
+                    notes="Cần Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT về tính năng LAN/P2P", inut_role="Nhà sản xuất OEM",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=5, system_id="11229152944446910",
+                    item_name="Bộ chuyển đổi tín hiệu Analog sang RS485",
+                    proposed_model="Z-4AI", manufacturer="Seneca", origin="Italy",
+                    unit="bộ", quantity=4.0, unit_price=4860000.0, total_price=19440000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet 4 kênh Analog 16-bit, RS485 Modbus RTU, CE",
+                    notes="Đáp ứng xuất sắc tiêu chuẩn Châu Âu", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=6, system_id="9953576538745532",
+                    item_name="Bộ chuyển đổi nguồn 220VAC/24VDC 2.5A",
+                    proposed_model="MDR-60-24", manufacturer="Meanwell", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=2700000.0, total_price=10800000.0,
+                    compliance_status="compliant",
+                    proof_documents="Catalogue vào 85-264VAC, ra 24VDC 2.5A (60W), bảo vệ quá tải",
+                    notes="Đáp ứng", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=7, system_id="10093415080698814",
+                    item_name="Aptomat 2 pha hoặc tương đương",
+                    proposed_model="HDB3WN2C6", manufacturer="Himel", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=135000.0, total_price=540000.0,
+                    compliance_status="compliant",
+                    proof_documents="MCB 2P 6A cắt 6kA phù hợp IEC 60898-1",
+                    notes="Đáp ứng", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=8, system_id="8302281187678332",
+                    item_name="Hệ thống camera IP ngoài trời gồm đầu ghi và 03 camera chọn bộ",
+                    proposed_model="Trọn bộ HIKVISION", manufacturer="HIKVISION", origin="Trung Quốc",
+                    unit="bộ", quantity=4.0, unit_price=6480000.0, total_price=25920000.0,
+                    compliance_status="compliant",
+                    proof_documents="Đồng bộ thương hiệu Hikvision gồm NVR + PTZ + Bullet + Switch PoE",
+                    notes="Đáp ứng theo hệ thống trọn gói", inut_role="Đại lý Hikvision",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=9, system_id="10585993153809508",
+                    item_name="Đầu ghi camera: 4 kênh IP AcuSense",
+                    proposed_model="DS-7604NXI-K1", manufacturer="HIKVISION", origin="Trung Quốc",
+                    unit="Cái", quantity=4.0, unit_price=3780000.0, total_price=15120000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet 4 kênh IP, 12MP, H.265+, 4K HDMI, AI AcuSense",
+                    notes="Đáp ứng", inut_role="Đại lý Hikvision",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=10, system_id="11720770932610216",
+                    item_name="Camera soi mực nước hồ và toàn cảnh hồ giám sát an ninh",
+                    proposed_model="DS-2DE4425IWG1-EHUN (VIE LH)", manufacturer="HIKVISION", origin="Trung Quốc",
+                    unit="Cái", quantity=4.0, unit_price=18360000.0, total_price=73440000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet 4MP, zoom quang 25x, IR 100m, quay 360°, IP67, mic/loa",
+                    notes="Đáp ứng vượt trội yêu cầu E-HSMT", inut_role="Đại lý Hikvision",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=11, system_id="7187374061207317",
+                    item_name="Camera giám sát tràn tự do và hạ lưu xả tràn",
+                    proposed_model="DS-2CD1T43G2-LIUF/SL", manufacturer="HIKVISION", origin="Trung Quốc",
+                    unit="Cái", quantity=8.0, unit_price=2700000.0, total_price=21600000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet 4MP (cao hơn 2MP tham khảo), IR 50m, IP67",
+                    notes="Đáp ứng", inut_role="Đại lý Hikvision",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=12, system_id="11091121408153376",
+                    item_name="Switch mạng 4 cổng PoE",
+                    proposed_model="DS-3E1106P-EI/M", manufacturer="HIKVISION", origin="Trung Quốc",
+                    unit="Cái", quantity=4.0, unit_price=1620000.0, total_price=6480000.0,
+                    compliance_status="compliant",
+                    proof_documents="Datasheet 4 PoE + 2 uplink, 45W, chống sét 6kV",
+                    notes="Đáp ứng", inut_role="Đại lý Hikvision",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=13, system_id="12646120897964258",
+                    item_name="Vỏ tủ điện 350x400x180",
+                    proposed_model="BC-AGQ-405020 (400x500x200mm)", manufacturer="BOXCO", origin="Hàn Quốc",
+                    unit="Tủ", quantity=4.0, unit_price=2700000.0, total_price=10800000.0,
+                    compliance_status="compliant",
+                    proof_documents="Catalog BOXCO nhựa ABS, IP66/IP67, IK08, kích thước lớn hơn tối thiểu",
+                    notes="Đáp ứng vượt yêu cầu kích thước và cấp bảo vệ", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=14, system_id="10488624643833576",
+                    item_name="Cảm biến đo mực nước hạ lưu dải đo 0-20m",
+                    proposed_model="HCRZ-LD100-A2", manufacturer="Xiamen Haichuan Runze IoT", origin="Trung Quốc",
+                    unit="Bộ", quantity=1.0, unit_price=27000000.0, total_price=27000000.0,
+                    compliance_status="compliant",
+                    proof_documents="Đồng bộ với mục 1, radar 0.3-70m, ±3mm, RS485, IP67",
+                    notes="Lắp đặt tại hồ Suối Hòm", inut_role="Đối tác nhập khẩu",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=15, system_id="10703955077008738",
+                    item_name="Bộ PC máy chủ và màn hình 24 inh",
+                    proposed_model="Dell ECT1250 Core i5-14400 / Dell E2425HM", manufacturer="DELL", origin="Trung Quốc",
+                    unit="Bộ", quantity=3.0, unit_price=42120000.0, total_price=126360000.0,
+                    compliance_status="compliant",
+                    proof_documents="Tài liệu Dell: Core i5-14400, RAM DDR5, SSD NVMe, IPS FHD 24 inch",
+                    notes="Đáp ứng khớp 100% cấu hình", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=16, system_id="11086600573521676",
+                    item_name="Hệ điều hành",
+                    proposed_model="Windows 11 Pro bản quyền", manufacturer="Microsoft", origin="Mỹ",
+                    unit="Bộ", quantity=3.0, unit_price=5000000.0, total_price=15000000.0,
+                    compliance_status="compliant",
+                    proof_documents="Bản quyền chính hãng, tương đương/cao hơn Windows 10",
+                    notes="Bàn giao khóa bản quyền hợp pháp", inut_role="Thương mại",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=17, system_id="10505899694801712",
+                    item_name="Bộ Gateway/Data logger công nghiệp hoặc tương đương",
+                    proposed_model="iNut Smartcity Data Logger v2 64-bit - MASTER", manufacturer="iNut", origin="Việt Nam",
+                    unit="Bộ", quantity=3.0, unit_price=43200000.0, total_price=129600000.0,
+                    compliance_status="clarification_needed",
+                    proof_documents="Catalog iNut: ARM RK3318 64-bit, 4GB RAM, 32GB eMMC, MQTT/P2P",
+                    notes="Cần bổ sung thuyết minh giải pháp chống sét lan truyền SPD tích hợp", inut_role="Nhà sản xuất OEM",
+                ),
+                BiddingDossierItemReview(
+                    review_id=review.id, item_no=18, system_id="11395824481237872",
+                    item_name="Chi phí lập trình, cấu hình phần mềm giám sát thời gian thực và kết nối truyền dữ liệu",
+                    proposed_model="Phần mềm IOT SCADA", manufacturer="IOT", origin="Việt Nam",
+                    unit="Bộ", quantity=4.0, unit_price=75600000.0, total_price=302400000.0,
+                    compliance_status="compliant",
+                    proof_documents="Tài liệu mô tả tính năng SCADA, cam kết bàn giao 100% mã nguồn (source code) và quyền Admin",
+                    notes="Lợi thế cạnh tranh đột phá so với phần mềm đóng gói", inut_role="Tự phát triển",
+                ),
+            ]
+            db.add_all(items)
+            db.commit()
+            print("Seeded Son La Bidding Dossier Review IB2600557773 successfully.")
+
+
 
 def _seed_pymid_catalog() -> None:
     from .pymid import CATALOG

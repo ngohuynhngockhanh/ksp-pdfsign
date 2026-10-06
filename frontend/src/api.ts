@@ -822,6 +822,62 @@ export interface BiddingWonPackage {
   status: string;
 }
 
+export interface BiddingDossierItemReviewItem {
+  id: number;
+  item_no: number;
+  system_id: string;
+  item_name: string;
+  proposed_model: string;
+  manufacturer: string;
+  origin: string;
+  unit: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  compliance_status: "compliant" | "clarification_needed" | "non_compliant";
+  proof_documents: string;
+  notes: string;
+  inut_role: string;
+}
+
+export interface BiddingDossierFileReviewItem {
+  id: number;
+  file_code: string;
+  file_name: string;
+  file_title: string;
+  doc_type: string;
+  compliance_status: "pass" | "warning" | "fail";
+  score: number;
+  findings: string;
+  critical_risks: string;
+  remediation: string;
+}
+
+export interface BiddingDossierReviewItem {
+  id: number;
+  tbmt_code: string;
+  package_name: string;
+  procuring_entity: string;
+  contractor_name: string;
+  contractor_tax_code: string;
+  drive_folder_url: string;
+  drive_folder_id: string;
+  total_bid_price: number;
+  estimated_package_price: number;
+  discount_amount: number;
+  discount_rate_pct: number;
+  overall_score: number;
+  compliance_status: "qualified" | "needs_revision" | "high_risk";
+  executive_summary: string;
+  recommendations: string[];
+  created_at: string;
+}
+
+export interface BiddingDossierReviewDetail extends BiddingDossierReviewItem {
+  files: BiddingDossierFileReviewItem[];
+  items: BiddingDossierItemReviewItem[];
+}
+
 export interface BiddingContractorItem {
   customer_id?: number | null;
   tax_code: string;
@@ -1164,6 +1220,26 @@ export const api = {
 
     getAllCompetitorsZipUrl(tbmtCode: string) {
       return `/api/bidding/tenders/${encodeURIComponent(tbmtCode)}/competitors/download-all-zip`;
+    },
+
+    async listDossierReviews() {
+      return req<BiddingDossierReviewItem[]>("/api/bidding/dossier-reviews");
+    },
+
+    async getDossierReview(id: number) {
+      return req<BiddingDossierReviewDetail>(`/api/bidding/dossier-reviews/${id}`);
+    },
+
+    async importDossierFromDrive(driveUrl: string, customNotes = "") {
+      return req<{ ok: boolean; review_id: number; tbmt_code: string; message: string }>("/api/bidding/dossier-reviews/import-drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ drive_url: driveUrl, custom_notes: customNotes }),
+      });
+    },
+
+    getDossierExportMarkdownUrl(id: number) {
+      return `/api/bidding/dossier-reviews/${id}/export-markdown`;
     },
   },
 

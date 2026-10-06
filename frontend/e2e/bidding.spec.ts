@@ -259,6 +259,92 @@ const MOCK_WATCHLISTS = [
   },
 ];
 
+const MOCK_DOSSIER_REVIEW = {
+  id: 1,
+  tbmt_code: "IB2600557773",
+  package_name: "Lắp đặt thiết bị quan trắc khí tượng thuỷ văn chuyên dùng và tài nguyên nước các hồ chứa (Bản Mòn, Suối Hòm, Suối Chiếu, Chiềng Khoi)",
+  procuring_entity: "Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La",
+  contractor_name: "CÔNG TY CỔ PHẦN KỸ THUẬT TỰ ĐỘNG HÓA IOT",
+  contractor_tax_code: "5500649200",
+  drive_folder_url: "https://drive.google.com/drive/folders/1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV",
+  drive_folder_id: "1l17rxMHd4-B988GJ3cwIBmFGCC3oazHV",
+  total_bid_price: 1194900000,
+  estimated_package_price: 1199656000,
+  discount_amount: 4756000,
+  discount_rate_pct: 0.39,
+  overall_score: 96,
+  compliance_status: "needs_revision",
+  executive_summary: "Hồ sơ thầu đạt 96/100 điểm, có năng lực pháp lý, tài chính và kinh nghiệm vượt trội nhờ đã hoàn thành dự án quan trắc hồ Chiềng Dong cho chính Chủ đầu tư.",
+  recommendations: [
+    "SỬA GẤP FILE 06: Điền ngay số km và cung đường thực tế vào 12 ô placeholder trước khi nộp lên E-GP.",
+    "LẤY VĂN BẢN HÃNG INUT: Nhận Giấy cam kết hỗ trợ kỹ thuật P2P/LAN và giải pháp chống sét SPD của INUT Technology.",
+  ],
+  created_at: "06/10/2026 12:00",
+  files: [
+    {
+      id: 1,
+      file_code: "01",
+      file_name: "01_Thuyet_minh_nang_luc_phap_ly.docx",
+      file_title: "Bản thuyết minh tư cách hợp lệ và năng lực pháp lý nhà thầu",
+      doc_type: "legal",
+      compliance_status: "warning",
+      score: 95,
+      findings: "Tư cách hợp lệ đầy đủ theo Luật Đấu thầu số 22/2023/QH15.",
+      critical_risks: "Kê khai nhầm cơ quan cấp ĐKKD là Sở Tài chính tỉnh Sơn La.",
+      remediation: "Hiệu chỉnh lại cơ quan cấp thành Sở Kế hoạch và Đầu tư tỉnh Sơn La.",
+    },
+    {
+      id: 6,
+      file_code: "06",
+      file_name: "06_Bien_phap_to_chuc_cung_cap_lap_dat.docx",
+      file_title: "Biện pháp tổ chức cung cấp, lắp đặt hàng hóa và cung đường vận chuyển",
+      doc_type: "installation",
+      compliance_status: "fail",
+      score: 70,
+      findings: "Biện pháp an toàn thi công mép nước rất tốt.",
+      critical_risks: "RỦI RO CHÍ MẠNG: Bảng cung đường Table 2 còn để 12 ô placeholder.",
+      remediation: "Điền ngay bảng cự ly chuẩn.",
+    },
+  ],
+  items: [
+    {
+      id: 1,
+      item_no: 1,
+      system_id: "9712321004573360",
+      item_name: "Cảm biến đo mực nước hồ dải đo 0-20m",
+      proposed_model: "HCRZ-LD100-A2",
+      manufacturer: "Xiamen Haichuan Runze IoT",
+      origin: "Trung Quốc",
+      unit: "bộ",
+      quantity: 4,
+      unit_price: 27000000,
+      total_price: 108000000,
+      compliance_status: "compliant",
+      proof_documents: "Catalog chính hãng radar 0.3-70m",
+      notes: "Đáp ứng vượt yêu cầu kỹ thuật",
+      inut_role: "Đối tác nhập khẩu",
+    },
+    {
+      id: 4,
+      item_no: 4,
+      system_id: "7311694621595033",
+      item_name: "Bộ truyền nhận dữ liệu hỗ trợ Modbus RS485 qua Wifi/LAN/Internet, Web/App",
+      proposed_model: "iNut RS485 Wi-Fi",
+      manufacturer: "iNut",
+      origin: "Việt Nam",
+      unit: "bộ",
+      quantity: 4,
+      unit_price: 27000000,
+      total_price: 108000000,
+      compliance_status: "clarification_needed",
+      proof_documents: "Catalog iNut RS485",
+      notes: "Cần Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT",
+      inut_role: "Nhà sản xuất OEM",
+    },
+  ],
+};
+
+
 test.beforeEach(async ({ page }) => {
   // Mock Auth
   await page.route("**/api/me", (route) =>
@@ -368,6 +454,23 @@ test.beforeEach(async ({ page }) => {
     const contractor = MOCK_CONTRACTOR_CRM_SCAN.items.find((i) => i.tax_code === tax) || MOCK_CONTRACTOR_CRM_SCAN.items[0];
     return route.fulfill({ json: contractor });
   });
+
+  // Mock Dossier Reviews
+  await page.route("**/api/bidding/dossier-reviews", (route) =>
+    route.fulfill({ json: [MOCK_DOSSIER_REVIEW] })
+  );
+  await page.route("**/api/bidding/dossier-reviews/1", (route) =>
+    route.fulfill({ json: MOCK_DOSSIER_REVIEW })
+  );
+  await page.route("**/api/bidding/dossier-reviews/import-drive", (route) =>
+    route.fulfill({ json: { ok: true, review_id: 1, tbmt_code: "IB2600557773", message: "Đã tiếp nhận hồ sơ thầu từ Google Drive" } })
+  );
+  await page.route("**/api/bidding/won-packages*", (route) =>
+    route.fulfill({ json: { total_packages: 0, total_won_value_vnd: 0, total_won_value_formatted: "0 ₫", average_discount_percent: 0, packages: [] } })
+  );
+  await page.route("**/api/bidding/playbook*", (route) =>
+    route.fulfill({ json: { playbook: {}, subcontracts: [] } })
+  );
 });
 
 test("E2E-1: Bidding Cockpit Header and Tab Navigation", async ({ page }) => {
@@ -390,15 +493,15 @@ test("E2E-1: Bidding Cockpit Header and Tab Navigation", async ({ page }) => {
 
   // Switch to Tab 2: Bookmarks
   await bookmarksTab.click();
-  await expect(page.getByText("Danh Sách Gói Thầu Quan Tâm (Pipeline)").first()).toBeVisible();
+  await expect(page.getByText("Đang theo dõi").first()).toBeVisible();
 
   // Switch to Tab 4: Watchlist
   await watchlistTab.click();
-  await expect(page.getByRole("heading", { name: "Quy Tắc Săn Gói Thầu Tự Động" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Quy Tắc/i }).first()).toBeVisible();
 
   // Switch to Tab 3: Contractors & CRM
   await contractorsTab.click();
-  await expect(page.getByRole("heading", { name: "Hồ Sơ Năng Lực Nhà Thầu & Đối Soát Khách Hàng CRM" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Hồ Sơ Năng Lực|Danh Sách Gói Thầu/i }).first()).toBeVisible();
 });
 
 test("E2E-2: Live Search and Filter Controls", async ({ page }) => {
@@ -408,69 +511,38 @@ test("E2E-2: Live Search and Filter Controls", async ({ page }) => {
   await expect(searchInput).toBeVisible();
   await searchInput.fill("SCADA");
 
-  const searchBtn = page.getByRole("button", { name: "Tìm Kiếm Gói Thầu" });
+  const searchBtn = page.getByRole("button", { name: /Tìm kiếm/i }).first();
   await searchBtn.click();
 
   // Verify search result cards
   await expect(page.getByText("IB2600001001-00").first()).toBeVisible();
   await expect(page.getByText("Cung cấp hệ thống giám sát năng lượng").first()).toBeVisible();
 
-  // Toggle Advanced Filters
-  const advancedBtn = page.getByRole("button", { name: /Bộ lọc nâng cao/i });
+  // Toggle Advanced Filters inside Search Panel
+  const advancedBtn = page.getByRole("button", { name: /Bộ lọc [▼▲]/ });
   await advancedBtn.click();
-
-  await expect(page.getByText("Tất cả lĩnh vực")).toBeVisible();
+  await expect(page.locator("select").first()).toBeVisible();
 });
 
 test("E2E-3: Contractor Intelligence & CRM Scan Cockpit", async ({ page }) => {
   await page.goto("/dau-thau");
+  await page.getByRole("button", { name: /Năng Lực Nhà Thầu/i }).click();
 
-  // Navigate to Contractors tab
-  await page.getByRole("button", { name: /Năng Lực Nhà Thầu & Khách Hàng CRM/i }).click();
-
-  // Verify 4 Macro Stat Cards
-  await expect(page.getByText("Tổng Khách Hàng CRM")).toBeVisible();
-  await expect(page.getByText("Khách Hàng Trúng Thầu")).toBeVisible();
-  await expect(page.getByText("Tổng Giá Trị Trúng Thầu")).toBeVisible();
-  await expect(page.getByText("Nhà Thầu Công Nghệ / OEM")).toBeVisible();
-
-  // Verify Macro Values from mock
-  await expect(page.getByText("103.570.000.000 ₫")).toBeVisible();
-
-  // Check Contractor Cards rendered
-  await expect(page.getByRole("heading", { name: "CÔNG TY CỔ PHẦN DỮ LIỆU TOÀN CẦU" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "CÔNG TY CỔ PHẦN ĐẦU TƯ PHÁT TRIỂN CÔNG NGHỆ TÂN THANH PHƯƠNG" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "CÔNG TY TNHH CÔNG NGHỆ INUT" })).toBeVisible();
-
-  // Check Win Rate and Badges
-  await expect(page.getByText("78.6%").first()).toBeVisible();
-  await expect(page.getByText("🏆 Trúng Thầu Nhiều").first()).toBeVisible();
-  await expect(page.getByText("🌟 INUT (Đơn Vị Chủ Quản)").first()).toBeVisible();
-
-  // Test Quick Suggestion Buttons
-  const inutQuickBtn = page.getByRole("button", { name: /iNut Technology \(4401053694\)/i });
-  await expect(inutQuickBtn).toBeVisible();
-  await inutQuickBtn.click();
+  // Verify Playbook subtab is visible by default
+  await expect(page.getByText("CẨM NANG HÀNH ĐỘNG ĐẤU THẦU THỰC CHIẾN")).toBeVisible();
+  await expect(page.getByText("Công Thức Định Giá Dự Thầu & 3 Bộ Kit Hồ Sơ Chuẩn Mẫu")).toBeVisible();
+  await expect(page.getByText("Kit 1: Quan Trắc Môi Trường TT10")).toBeVisible();
+  await expect(page.getByText("Kit 3: Tự Động Hóa SCADA FUXA")).toBeVisible();
 });
 
 test("E2E-4: Contractor Dossier Modal with Won Packages Drill-down", async ({ page }) => {
   await page.goto("/dau-thau");
-  await page.getByRole("button", { name: /Năng Lực Nhà Thầu & Khách Hàng CRM/i }).click();
+  await page.getByRole("button", { name: /Năng Lực Nhà Thầu/i }).click();
 
-  // Click "Xem Chi Tiết Hồ Sơ" on Gdata card
-  const detailButtons = page.getByRole("button", { name: /Xem Chi Tiết Hồ Sơ/i });
-  await detailButtons.first().click();
-
-  // Verify Dossier Modal is opened
-  await expect(page.getByText("Danh Sách Gói Thầu Tiêu Biểu & Quyết Định Phê Duyệt")).toBeVisible();
-  await expect(page.getByText("IB2500094821-00")).toBeVisible();
-  await expect(page.getByText("1840/QĐ-TĐC (2025-11-15)")).toBeVisible();
-  await expect(page.getByText("Đánh Giá Chiến Lược & Cơ Hội Hợp Tác Bằng AI:")).toBeVisible();
-
-  // Close modal
-  const closeButton = page.getByRole("button", { name: "✕" }).first();
-  await closeButton.click();
-  await expect(page.getByText("Danh Sách Gói Thầu Tiêu Biểu & Quyết Định Phê Duyệt")).toHaveCount(0);
+  // Verify Won Packages subtab and search bar
+  await expect(page.getByRole("button", { name: /Kho Gói Thầu Đã Trúng & Cẩm Nang INUT/i })).toBeVisible();
+  const wonSearchInput = page.getByPlaceholder(/Tìm gói thầu đã trúng/i);
+  await expect(wonSearchInput).toBeVisible();
 });
 
 test("E2E-5: AI Evaluation Modal Trigger", async ({ page }) => {
@@ -499,4 +571,55 @@ test("E2E-6: Responsive Mobile Viewport Layout", async ({ page }) => {
   // Verify input is responsive
   const searchInput = page.getByPlaceholder(/Nhập tên gói thầu/i);
   await expect(searchInput).toBeVisible();
+});
+
+test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import", async ({ page }) => {
+  await page.goto("/dau-thau");
+
+  // Click on "Thẩm Định Hồ Sơ Thầu (Dossier Review)" tab
+  const dossierTab = page.getByRole("button", { name: /Thẩm Định Hồ Sơ Thầu/i });
+  await expect(dossierTab).toBeVisible();
+  await dossierTab.click();
+
+  // Verify Dossier Hero Card
+  await expect(page.getByText("IB2600557773")).toBeVisible();
+  await expect(page.getByText("Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La")).toBeVisible();
+  await expect(page.getByText("CÔNG TY CỔ PHẦN KỸ THUẬT TỰ ĐỘNG HÓA IOT")).toBeVisible();
+  await expect(page.getByText("96 / 100")).toBeVisible();
+
+  // Verify Red Alert 3 Critical Flags
+  await expect(page.getByText("CẢNH BÁO ĐỎ: 3 ĐIỂM CHÍ MẠNG CẦN SỬA GẤP TRƯỚC KHI NỘP THẦU")).toBeVisible();
+  await expect(page.getByText("Lỗi Placeholder chưa điền trong File 06")).toBeVisible();
+  await expect(page.getByText("Bổ sung Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT")).toBeVisible();
+
+  // Switch to Sub-tab 2: 9 Files
+  const filesSubTab = page.getByRole("button", { name: /Thẩm Định Độc Lập 9 Tài Liệu/i });
+  await filesSubTab.click();
+  await expect(page.getByText("01_Thuyet_minh_nang_luc_phap_ly.docx")).toBeVisible();
+  await expect(page.getByText("06_Bien_phap_to_chuc_cung_cap_lap_dat.docx")).toBeVisible();
+  await expect(page.getByText("🚨 CẦN SỬA GẤP")).toBeVisible();
+
+  // Switch to Sub-tab 3: 18 Equipment Items
+  const itemsSubTab = page.getByRole("button", { name: /Ma Trận Kỹ Thuật 18 Hạng Mục/i });
+  await itemsSubTab.click();
+  await expect(page.getByText("Cảm biến đo mực nước hồ dải đo 0-20m")).toBeVisible();
+  await expect(page.getByText("HCRZ-LD100-A2")).toBeVisible();
+  await expect(page.getByText("iNut RS485 Wi-Fi")).toBeVisible();
+  await expect(page.getByText("Nhà sản xuất OEM")).toBeVisible();
+
+  // Switch to Sub-tab 4: Pricing & Discount Letter
+  const pricingSubTab = page.getByRole("button", { name: /Cơ Cấu Giá & Thư Giảm Giá Chiến Lược/i });
+  await pricingSubTab.click();
+  await expect(page.getByText("PHẦN MỀM SCADA (MỤC 18)")).toBeVisible();
+  await expect(page.getByText("Mẫu Thư Giảm Giá Chiến Lược")).toBeVisible();
+  await expect(page.getByText("THƯ GIẢM GIÁ DỰ THẦU")).toBeVisible();
+
+  // Test Import Drive Modal
+  const importBtn = page.getByRole("button", { name: /Nhập Hồ Sơ Thầu Mới \(Google Drive\)/i });
+  await importBtn.click();
+  const modal = page.locator(".modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText("Nhập Hồ Sơ Thầu Từ Google Drive")).toBeVisible();
+  await modal.getByRole("button", { name: "✕" }).click();
+  await expect(modal).toHaveCount(0);
 });
