@@ -221,6 +221,8 @@ def render_bbbg(settings: Settings, data: dict) -> bytes:
         "ben_b": data.get("ben_b") or {},
         "items": data.get("items") or [],
         "logo_data_uri": _logo_data_uri(settings),
+        "is_signed_by_inut": bool(data.get("is_signed_by_inut")),
+        "inut_signed_at": data.get("inut_signed_at") or "",
     }
     html = _env.get_template(TEMPLATES[key]["file"]).render(**ctx)
     return HTML(string=html).write_pdf()
@@ -375,6 +377,14 @@ def render_quote(settings: Settings, data: dict) -> tuple[bytes, dict]:
         },
         "logo_data_uri": _logo_data_uri(settings),
         "qr_data_uri": data.get("qr_data_uri") or "",
+        "tieu_de": (data.get("tieu_de") or "").strip(),
+        "sub_title": (data.get("sub_title") or "").strip(),
+        "cancu_text": (data.get("cancu_text") or "").strip(),
+        "timeline": data.get("timeline"),
+        "payment_intro": (data.get("payment_intro") or "").strip(),
+        "payment_cards": data.get("payment_cards"),
+        "cu_phap_ck": (data.get("cu_phap_ck") or "").strip(),
+        "chinh_sach": data.get("chinh_sach"),
     }
     html = _env.get_template(QUOTE_TEMPLATES[key]["file"]).render(**ctx)
     totals["con_lai"] = con_lai

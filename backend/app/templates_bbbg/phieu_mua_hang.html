@@ -264,9 +264,9 @@
 
   <!-- TITLE -->
   <div class="title-block">
-    <h1>PHIẾU XÁC NHẬN MUA HÀNG & TIẾN ĐỘ THANH TOÁN</h1>
-    <div class="sub-title">PURCHASE ORDER & PAYMENT SCHEDULE CONFIRMATION</div>
-    <div class="cancu-line">Căn cứ Hợp đồng kinh tế số <b>{{ can_cu }}</b> ngày 29/08/2026 ký giữa hai Bên</div>
+    <h1>{{ tieu_de if tieu_de else 'PHIẾU XÁC NHẬN MUA HÀNG & TIẾN ĐỘ THANH TOÁN' }}</h1>
+    <div class="sub-title">{{ sub_title if sub_title else 'PURCHASE ORDER & PAYMENT SCHEDULE CONFIRMATION' }}</div>
+    <div class="cancu-line">{% if cancu_text %}{{ cancu_text }}{% else %}Căn cứ Hợp đồng kinh tế số <b>{{ can_cu }}</b> ngày 29/08/2026 ký giữa hai Bên{% endif %}</div>
   </div>
 
   <!-- PARTIES -->
@@ -335,66 +335,82 @@
   <!-- SECTION 1: TIMELINE MILESTONES -->
   <div class="section-title">1. MỤC THỜI GIAN & TIẾN ĐỘ THỰC HIỆN DỰ ÁN (TIMELINE)</div>
   <div class="timeline-container">
-    <div class="timeline-step completed">
-      <div class="step-time">Mốc 1: 29/08/2026<br><span style="font-size:8.5px; font-weight:normal; color:#059669;">[ĐÃ KÍCH HOẠT]</span></div>
-      <div class="step-content">
-        <div class="step-title">Ký kết hợp đồng & Xác nhận Phiếu mua hàng</div>
-        <div class="step-desc">Ký Hợp đồng kinh tế số {{ can_cu }}; chốt thông tin cấu hình và giải pháp kỹ thuật iNut Smartcity. Bên Mua thực hiện thanh toán Đợt 1 (tháng góp đầu tiên).</div>
+    {% if timeline %}
+      {% for step in timeline %}
+      <div class="timeline-step {% if step.completed %}completed{% endif %}">
+        <div class="step-time">{{ step.time|safe }}</div>
+        <div class="step-content">
+          <div class="step-title">{{ step.title }}</div>
+          <div class="step-desc">{{ step.desc|safe }}</div>
+        </div>
       </div>
-    </div>
-
-    <div class="timeline-step">
-      <div class="step-time">Mốc 2: 03 - 05 ngày<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ Đợt 1)</span></div>
-      <div class="step-content">
-        <div class="step-title">Bàn giao thiết bị phần cứng & Mã QR nhận diện</div>
-        <div class="step-desc">Xuất kho và bàn giao 01 bộ thiết bị iNut10C Full HD 1080p, phụ kiện nguồn, dây kết nối; bàn giao 10 bộ mã QR thiết kế chuẩn nhận diện cho Bên Mua.</div>
+      {% endfor %}
+    {% else %}
+      <div class="timeline-step completed">
+        <div class="step-time">Mốc 1: 29/08/2026<br><span style="font-size:8.5px; font-weight:normal; color:#059669;">[ĐÃ KÍCH HOẠT]</span></div>
+        <div class="step-content">
+          <div class="step-title">Ký kết hợp đồng & Xác nhận Phiếu mua hàng</div>
+          <div class="step-desc">Ký Hợp đồng kinh tế số {{ can_cu }}; chốt thông tin cấu hình và giải pháp kỹ thuật iNut Smartcity. Bên Mua thực hiện thanh toán Đợt 1 (tháng góp đầu tiên).</div>
+        </div>
       </div>
-    </div>
-
-    <div class="timeline-step">
-      <div class="step-time">Mốc 3: 02 ngày làm việc<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kế tiếp)</span></div>
-      <div class="step-content">
-        <div class="step-title">Cấu hình giao diện, nhận diện thương hiệu & Tích hợp Camera</div>
-        <div class="step-desc">Cấu hình màu sắc giao diện phần mềm, Hotline, thông tin Fanpage; kết nối luồng Camera tại quán, tích hợp OBS và kiểm thử tính năng Livestream / CheckVar.</div>
+      <div class="timeline-step">
+        <div class="step-time">Mốc 2: 03 - 05 ngày<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ Đợt 1)</span></div>
+        <div class="step-content">
+          <div class="step-title">Bàn giao thiết bị phần cứng & Mã QR nhận diện</div>
+          <div class="step-desc">Xuất kho và bàn giao 01 bộ thiết bị iNut10C Full HD 1080p, phụ kiện nguồn, dây kết nối; bàn giao 10 bộ mã QR thiết kế chuẩn nhận diện cho Bên Mua.</div>
+        </div>
       </div>
-    </div>
-
-    <div class="timeline-step">
-      <div class="step-time">Mốc 4: Hoàn thành & Bàn giao<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(Đưa vào sử dụng)</span></div>
-      <div class="step-content">
-        <div class="step-title">Đào tạo vận hành & Ký Biên bản bàn giao nghiệm thu</div>
-        <div class="step-desc">Hướng dẫn chi tiết nhân sự/kỹ thuật viên Bên Mua sử dụng hệ thống xem và tải clip không cần cài App (hỗ trợ cả Android, iOS); kích hoạt vận hành chính thức.</div>
+      <div class="timeline-step">
+        <div class="step-time">Mốc 3: 02 ngày làm việc<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kế tiếp)</span></div>
+        <div class="step-content">
+          <div class="step-title">Cấu hình giao diện, nhận diện thương hiệu & Tích hợp Camera</div>
+          <div class="step-desc">Cấu hình màu sắc giao diện phần mềm, Hotline, thông tin Fanpage; kết nối luồng Camera tại quán, tích hợp OBS và kiểm thử tính năng Livestream / CheckVar.</div>
+        </div>
       </div>
-    </div>
-
-    <div class="timeline-step">
-      <div class="step-time">Mốc 5: 12 tháng<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ ngày bàn giao)</span></div>
-      <div class="step-content">
-        <div class="step-title">Chính sách bảo hành & Hỗ trợ kỹ thuật 24/7</div>
-        <div class="step-desc">Bảo hành 1 đổi 1 trong vòng 1 năm đối với lỗi kỹ thuật phần cứng. Miễn phí 100% phí duy trì phần mềm hàng tháng trong suốt vòng đời sử dụng.</div>
+      <div class="timeline-step">
+        <div class="step-time">Mốc 4: Hoàn thành & Bàn giao<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(Đưa vào sử dụng)</span></div>
+        <div class="step-content">
+          <div class="step-title">Đào tạo vận hành & Ký Biên bản bàn giao nghiệm thu</div>
+          <div class="step-desc">Hướng dẫn chi tiết nhân sự/kỹ thuật viên Bên Mua sử dụng hệ thống xem và tải clip không cần cài App (hỗ trợ cả Android, iOS); kích hoạt vận hành chính thức.</div>
+        </div>
       </div>
-    </div>
+      <div class="timeline-step">
+        <div class="step-time">Mốc 5: 12 tháng<br><span style="font-size:8.5px; font-weight:normal; color:#64748b;">(kể từ ngày bàn giao)</span></div>
+        <div class="step-content">
+          <div class="step-title">Chính sách bảo hành & Hỗ trợ kỹ thuật 24/7</div>
+          <div class="step-desc">Bảo hành 1 đổi 1 trong vòng 1 năm đối với lỗi kỹ thuật phần cứng. Miễn phí 100% phí duy trì phần mềm hàng tháng trong suốt vòng đời sử dụng.</div>
+        </div>
+      </div>
+    {% endif %}
   </div>
-
   <!-- SECTION 2: PAYMENT PROCESS -->
-  <div class="section-title">2. QUY TRÌNH & TIẾN ĐỘ THANH TOÁN (PAYMENT SCHEDULE)</div>
+  <div class="section-title" style="page-break-before: always;">2. QUY TRÌNH & TIẾN ĐỘ THANH TOÁN (PAYMENT SCHEDULE)</div>
   <div class="payment-box">
     <div style="font-size: 10px; color: #334155; margin-bottom: 6px;">
-      Hai Bên thống nhất quy trình thanh toán theo hình thức trả góp linh hoạt 02 đợt cụ thể như sau:
+      {{ payment_intro if payment_intro else 'Hai Bên thống nhất quy trình thanh toán theo hình thức trả góp linh hoạt 02 đợt cụ thể như sau:' }}
     </div>
 
     <div class="payment-grid">
-      <div class="payment-card">
-        <div class="p-title">ĐỢT 1: THÁNG GÓP ĐẦU TIÊN (50%)</div>
-        <div class="p-amount">9.606.600 VNĐ</div>
-        <div class="p-desc">Thanh toán ngay sau khi xác nhận đơn hàng / ký kết HĐ (Ngày 29/08/2026).</div>
-      </div>
-
-      <div class="payment-card">
-        <div class="p-title">ĐỢT 2: THÁNG GÓP THỨ HAI (50%)</div>
-        <div class="p-amount">9.606.600 VNĐ</div>
-        <div class="p-desc">Thanh toán vào tháng góp thứ hai (trong vòng 30 ngày sau đợt 1 / nghiệm thu).</div>
-      </div>
+      {% if payment_cards %}
+        {% for card in payment_cards %}
+        <div class="payment-card">
+          <div class="p-title">{{ card.title }}</div>
+          <div class="p-amount">{{ card.amount }}</div>
+          <div class="p-desc">{{ card.desc }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="payment-card">
+          <div class="p-title">ĐỢT 1: THÁNG GÓP ĐẦU TIÊN (50%)</div>
+          <div class="p-amount">9.606.600 VNĐ</div>
+          <div class="p-desc">Thanh toán ngay sau khi xác nhận đơn hàng / ký kết HĐ (Ngày 29/08/2026).</div>
+        </div>
+        <div class="payment-card">
+          <div class="p-title">ĐỢT 2: THÁNG GÓP THỨ HAI (50%)</div>
+          <div class="p-amount">9.606.600 VNĐ</div>
+          <div class="p-desc">Thanh toán vào tháng góp thứ hai (trong vòng 30 ngày sau đợt 1 / nghiệm thu).</div>
+        </div>
+      {% endif %}
     </div>
 
     <div class="bank-details">
@@ -403,7 +419,7 @@
         <div>• Ngân hàng: <b>{{ bank.bank_name }}</b></div>
         <div>• Số tài khoản: <b style="font-size: 12px; color: #d9381e;">{{ bank.account_number }}</b></div>
         <div>• Tên thụ hưởng: <b>{{ bank.account_name }}</b></div>
-        <div>• Cú pháp chuyển khoản: <b>Khang Linh ELV thanh toan dot 1 HD 29082026</b></div>
+        <div>• Cú pháp chuyển khoản: <b>{{ cu_phap_ck if cu_phap_ck else 'Khang Linh ELV thanh toan dot 1 HD 29082026' }}</b></div>
       </div>
     </div>
   </div>
@@ -412,10 +428,16 @@
   <div class="section-title">3. CHÍNH SÁCH BẢO HÀNH & QUYỀN LỢI CỦA KHÁCH HÀNG</div>
   <div class="policy-box">
     <ul>
-      <li><b>Cam kết chất lượng:</b> Thiết bị mới 100%, bảo hành chính hãng <b>1 năm (1 đổi 1)</b> đối với toàn bộ lỗi kỹ thuật do nhà sản xuất.</li>
-      <li><b>Quyền lợi khách hàng:</b> Bên Mua được sử dụng trọn vẹn toàn bộ tiện ích, tính năng cắt cam, livestream, checkvar mà <b>không phải trả bất kỳ chi phí duy trì hoặc thuê bao hàng tháng nào</b> sau khi mua.</li>
-      <li><b>Hỗ trợ sau bảo hành:</b> Sau 1 năm, phí dịch vụ bảo hành/bảo trì tận nơi là 300.000 VNĐ/lần (chưa bao gồm VAT). Hỗ trợ kỹ thuật từ xa qua hotline/Zalo được phục vụ miễn phí.</li>
-      <li>Phiếu này được lập thành 02 bản có giá trị pháp lý tương đương và đi kèm Hợp đồng kinh tế số {{ can_cu }}.</li>
+      {% if chinh_sach %}
+        {% for cs in chinh_sach %}
+          <li>{{ cs|safe }}</li>
+        {% endfor %}
+      {% else %}
+        <li><b>Cam kết chất lượng:</b> Thiết bị mới 100%, bảo hành chính hãng <b>1 năm (1 đổi 1)</b> đối với toàn bộ lỗi kỹ thuật do nhà sản xuất.</li>
+        <li><b>Quyền lợi khách hàng:</b> Bên Mua được sử dụng trọn vẹn toàn bộ tiện ích, tính năng cắt cam, livestream, checkvar mà <b>không phải trả bất kỳ chi phí duy trì hoặc thuê bao hàng tháng nào</b> sau khi mua.</li>
+        <li><b>Hỗ trợ sau bảo hành:</b> Sau 1 năm, phí dịch vụ bảo hành/bảo trì tận nơi là 300.000 VNĐ/lần (chưa bao gồm VAT). Hỗ trợ kỹ thuật từ xa qua hotline/Zalo được phục vụ miễn phí.</li>
+        <li>Phiếu này được lập thành 02 bản có giá trị pháp lý tương đương và đi kèm Hợp đồng kinh tế số {{ can_cu }}.</li>
+      {% endif %}
     </ul>
   </div>
 

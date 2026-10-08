@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b; margin: 0; padding: 15px; }
+  .header { border-bottom: 2px solid #0052cc; padding-bottom: 12px; margin-bottom: 16px; }
+  .company-title { font-size: 16px; font-weight: bold; color: #0052cc; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-info { font-size: 12px; color: #64748b; margin-top: 3px; }
+  .salutation { margin: 16px 0 12px; }
+  .dossier-list { margin: 10px 0 16px; padding-left: 20px; }
+  .dossier-list li { margin-bottom: 6px; }
+  table.info-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  table.info-table th, table.info-table td { border: 1px solid #cbd5e1; padding: 9px 12px; text-align: left; vertical-align: top; }
+  table.info-table th { background-color: #f1f5f9; color: #334155; width: 32%; font-weight: 600; }
+  .highlight-total { color: #dc2626; font-weight: bold; font-size: 14px; }
+  .bank-box { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #0052cc; padding: 14px 16px; margin: 18px 0; border-radius: 4px; }
+  .bank-title { font-weight: bold; color: #1e40af; margin-bottom: 6px; font-size: 13.5px; text-transform: uppercase; }
+  .bank-acc { color: #dc2626; font-size: 16px; font-weight: bold; }
+  .attachments-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 4px; margin: 16px 0; }
+  .attachments-box ul { margin: 6px 0 0; padding-left: 20px; }
+  .attachments-box li { margin-bottom: 4px; font-size: 13px; }
+  .share-link-box { font-size: 13px; color: #475569; margin: 12px 0; font-style: italic; }
+  .share-link-box a { color: #0052cc; text-decoration: underline; font-style: normal; font-weight: 600; }
+  .contact-box { margin: 16px 0; font-size: 13px; }
+  .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 12px; color: #64748b; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="company-title">{{ ben_a.company or 'CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT' }}</div>
+  <div class="company-info">Trụ sở: {{ ben_a.address or '161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk' }} · MST: {{ ben_a.mst or '4401053694' }} · Hotline: {{ ben_a.phone or '0972.768.491' }}</div>
+</div>
+
+<div class="salutation">
+  <b>Kính gửi:</b><br>
+  - <b>{{ buyer_salutation or ('Anh ' ~ ben_b.dai_dien) }}</b> – {{ ben_b.chuc_vu or 'Giám đốc' }} {{ ben_b.name }},<br>
+  - <b>Bộ phận Kế toán</b> – {{ ben_b.name }}.
+</div>
+
+<p>Lời đầu tiên, Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT xin gửi lời chào trân trọng và lời chúc sức khỏe, phát triển đến Quý Công ty.</p>
+
+<p>INUT Technology xin trân trọng gửi tới Quý Công ty trọn bộ hồ sơ pháp lý, kinh tế và kế toán thuế chính thức cho đơn hàng / dự án:</p>
+
+<ol class="dossier-list">
+  {% if order_doc_name %}
+  <li><b>{{ order_doc_name }}</b> (Có giá trị pháp lý thay thế Hợp đồng kinh tế giữa hai Bên), đã ghi nhận khoản đặt cọc và ký số điện tử chính thức bằng USB Token WIN-CA của INUT Technology.</li>
+  {% endif %}
+  <li><b>Hóa đơn điện tử số {{ inv_number }} (Ký hiệu <code>{{ inv_series }}</code>)</b> phát hành ngày {{ inv_date }} (kèm tệp XML gốc có chữ ký số điện tử Bên bán và Mã cấp hợp lệ của Cơ quan Thuế).</li>
+  <li><b>Biên bản bàn giao thiết bị số <code>{{ bbbg_number }}</code></b> lập ngày {{ bbbg_date }}, đã hoàn tất ký số điện tử WIN-CA cùng ngày.</li>
+</ol>
+
+<table class="info-table">
+  <tr><th>Khách hàng (Bên Mua)</th><td><b>{{ ben_b.name }}</b></td></tr>
+  <tr><th>Mã số thuế</th><td><code>{{ ben_b.mst }}</code></td></tr>
+  <tr><th>Địa chỉ</th><td>{{ ben_b.address }}</td></tr>
+  <tr><th>Nội dung hàng hóa</th><td><b>{{ product_summary }}</b></td></tr>
+  <tr><th>Tiền hàng chưa thuế</th><td>{{ tong_truoc_thue|vnd }} VNĐ</td></tr>
+  <tr><th>Thuế GTGT (VAT {{ vat_rate }}%)</th><td>{{ tong_thue|vnd }} VNĐ</td></tr>
+  <tr><th>TỔNG GIÁ TRỊ THANH TOÁN</th><td><span class="highlight-total">{{ tong_thanh_toan|vnd }} VNĐ</span> (<i>{{ bang_chu }}</i>)</td></tr>
+  {% if tien_coc %}
+  <tr><th>Đợt 1 (Đặt cọc)</th><td><b>{{ tien_coc|vnd }} VNĐ</b> – <i>{{ coc_note or 'Đã thanh toán khi xác nhận đơn hàng' }}</i></td></tr>
+  {% endif %}
+  {% if con_lai %}
+  <tr><th>Đợt 2 (Phần còn lại)</th><td><b>{{ con_lai|vnd }} VNĐ</b> – <i>{{ con_lai_note or 'Áp dụng chính sách trả chậm linh hoạt lên đến 90 ngày' }}</i></td></tr>
+  {% endif %}
+  <tr><th>Hóa đơn điện tử</th><td>Số <b>{{ inv_number }}</b> / Ký hiệu <b>{{ inv_series }}</b> ngày {{ inv_date }}<br>• Mã CQT: <code>{{ tax_authority_code }}</code><br>• Mã tra cứu: <b>{{ verify_code }}</b> (tra cứu tại <a href="https://ihoadon.vn" target="_blank">https://ihoadon.vn</a>)</td></tr>
+  <tr><th>Biên bản bàn giao</th><td>Số <b>{{ bbbg_number }}</b> ngày {{ bbbg_date }} (Ký số WIN-CA lúc {{ bbbg_sign_time }})</td></tr>
+  <tr><th>Chính sách bảo hành</th><td><b>{{ warranty_terms or '24 tháng chính hãng theo tiêu chuẩn của nhà sản xuất' }}</b></td></tr>
+</table>
+
+{% if con_lai and con_lai > 0 %}
+<div class="bank-box">
+  <div class="bank-title">THÔNG TIN TÀI KHOẢN THANH TOÁN PHẦN CÒN LẠI (ĐỢT 2: {{ con_lai|vnd }} VNĐ):</div>
+  <div>• Ngân hàng: <b>{{ bank.bank_name or 'Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)' }}</b></div>
+  <div>• Số tài khoản: <span class="bank-acc">{{ bank.account_number or '79713' }}</span></div>
+  <div>• Tên thụ hưởng: <b>{{ bank.account_name or 'CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT' }}</b></div>
+  <div>• Nội dung chuyển khoản: <b>{{ transfer_memo }}</b></div>
+</div>
+{% endif %}
+
+<div class="attachments-box">
+  <b>DANH SÁCH 04 TỆP ĐÍNH KÈM TRONG THƯ:</b>
+  <ul>
+    {% for att in attachments_list %}
+    <li><code>{{ att.filename }}</code>: {{ att.desc }}</li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% if share_url %}
+<div class="share-link-box">
+  Quý Công ty có thể mở xem trực tiếp tài liệu đã ký số qua đường link bảo mật: <a href="{{ share_url }}" target="_blank">{{ share_url }}</a>
+</div>
+{% endif %}
+
+<p>Kính đề nghị Quý Công ty lưu trữ bộ hồ sơ để phục vụ quyết toán thuế và đối soát thanh toán theo quy định.</p>
+
+<div class="contact-box">
+  Mọi yêu cầu hỗ trợ kỹ thuật hoặc bảo hành, xin vui lòng liên hệ:<br>
+  • <b>Đại diện INUT Technology:</b> Ông Ngô Huỳnh Ngọc Khánh – Giám đốc<br>
+  • <b>Hotline / Zalo kỹ thuật:</b> 0972.768.491 | <b>Email:</b> khanhnhn@inut.vn | <b>Website:</b> <a href="https://inut.vn" target="_blank">https://inut.vn</a>
+</div>
+
+<p>Trân trọng cảm ơn sự tin tưởng và hợp tác của Quý Công ty!</p>
+
+<div class="footer">
+  <b>CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</b><br>
+  Trụ sở: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk · MST: 4401053694 · Hotline: 0972.768.491
+</div>
+
+</body>
+</html>

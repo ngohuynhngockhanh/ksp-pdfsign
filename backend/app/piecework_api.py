@@ -697,6 +697,24 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
     inut_signed_display = c.inut_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.inut_signed_at else date_display
     worker_signed_display = c.worker_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.worker_signed_at else ""
     
+    id_card_front_data_uri = ""
+    if c.id_card_front_doc_id:
+        try:
+            raw_bytes, suffix = storage.read_doc_any(c.id_card_front_doc_id)
+            mime = "image/png" if suffix.lower() == ".png" else "image/jpeg"
+            id_card_front_data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}"
+        except Exception as e:
+            logger.warning("Could not read front id card for PDF: %s", e)
+
+    id_card_back_data_uri = ""
+    if c.id_card_back_doc_id:
+        try:
+            raw_bytes, suffix = storage.read_doc_any(c.id_card_back_doc_id)
+            mime = "image/png" if suffix.lower() == ".png" else "image/jpeg"
+            id_card_back_data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}"
+        except Exception as e:
+            logger.warning("Could not read back id card for PDF: %s", e)
+
     ctx = {
         "contract_code": c.contract_code,
         "title": c.title or "Thi công lắp đặt thiết bị",
@@ -728,6 +746,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "inut_cert_valid_to": "15/06/2027",
         "inut_cert_serial": "540116541CB8AAF5",
         "worker_face_photo_data": c.worker_face_photo_data,
+        "id_card_front_data_uri": id_card_front_data_uri,
+        "id_card_back_data_uri": id_card_back_data_uri,
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
@@ -1050,6 +1070,34 @@ def update_piecework_contract(
         pass
         
     return {"ok": True, "id": c.id, "deficiency": deficiency}
+
+@router.post("/api/piecework/contracts/{cid}/unlock")
+def unlock_piecework_contract(
+    cid: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Mở khóa hợp đồng đã ký để người nhận khoán điền lại / ký lại."""
+    c = db.get(PieceworkContract, cid)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng khoán")
+    c.is_signed_by_worker = False
+    c.worker_signed_at = None
+    c.worker_signature_data = ""
+    c.worker_face_photo_data = ""
+    c.is_signed_by_inut = False
+    c.inut_signed_at = None
+    c.status = "pending_docs"
+    c.updated_at = datetime.now(timezone.utc)
+    
+    try:
+        pdf_bytes = render_piecework_pdf(c)
+        c.contract_pdf_doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+    except Exception as e:
+        logger.warning("Error re-rendering draft PDF on unlock: %s", e)
+        
+    db.commit()
+    return {"ok": True, "message": "Đã mở khóa hợp đồng thành công để người nhận khoán điền lại"}
 
 
 @router.post("/api/piecework/contracts/{cid}/upload-doc")
@@ -1906,7 +1954,128 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             </div>
         </div>
     """ for item in deficiency["checklist"])
-    
+    front_thumb = ""
+    if c.id_card_front_doc_id:
+        try:
+            raw_b, suf = storage.read_doc_any(c.id_card_front_doc_id)
+            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            front_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
+        except Exception:
+            pass
+
+    back_thumb = ""
+    if c.id_card_back_doc_id:
+        try:
+            raw_b, suf = storage.read_doc_any(c.id_card_back_doc_id)
+            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            back_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
+        except Exception:
+            pass
+
+    worker_info_html = ""
+    if c.is_signed_by_worker:
+        cccd_preview_signed = ""
+        if front_thumb or back_thumb:
+            cccd_preview_signed = f"""
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                <div style="font-size:12px; font-weight:600; color:#334155; margin-bottom:6px;">Ảnh CCCD 2 mặt đính kèm:</div>
+                <div style="display:flex; gap:10px;">
+                    {f'<img src="{front_thumb}" style="width:48%; height:90px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Mặt trước">' if front_thumb else ''}
+                    {f'<img src="{back_thumb}" style="width:48%; height:90px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Mặt sau">' if back_thumb else ''}
+                </div>
+            </div>
+            """
+        worker_info_html = f"""
+        <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{c.worker_name or 'Chưa có'}</span></div>
+        <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{c.worker_id_card or 'Chưa có'}</span></div>
+        <div class="field-row"><span class="field-label">Số điện thoại:</span><span class="field-val">{c.worker_phone or 'Chưa có'}</span></div>
+        <div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account or 'Chưa có'} ({c.worker_bank_name or ''})</span></div>
+        <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{c.worker_address or 'Chưa có'}</span></div>
+        {cccd_preview_signed}
+        """
+    else:
+        worker_info_html = f"""
+        <p style="font-size:12px; color:#64748b; margin:0 0 12px 0;">Vui lòng điền / kiểm tra chính xác thông tin cá nhân và tài khoản ngân hàng nhận thù lao của bạn trước khi ký:</p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Họ và tên người nhận khoán (*):</label>
+            <input type="text" id="inputWorkerName" value="{c.worker_name or ''}" placeholder="Ví dụ: Nguyễn Văn A" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+          </div>
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số CCCD / CMND (*):</label>
+              <input type="text" id="inputWorkerIdCard" value="{c.worker_id_card or ''}" placeholder="12 số CCCD" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số điện thoại (*):</label>
+              <input type="text" id="inputWorkerPhone" value="{c.worker_phone or ''}" placeholder="Số điện thoại" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Ngày cấp:</label>
+              <input type="text" id="inputWorkerIdDate" value="{c.worker_id_card_date or ''}" placeholder="dd/mm/yyyy" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Nơi cấp:</label>
+              <input type="text" id="inputWorkerIdPlace" value="{c.worker_id_card_place or 'Cục Cảnh sát QLHC về TTXH'}" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Địa chỉ thường trú / Nơi ở (*):</label>
+            <input type="text" id="inputWorkerAddress" value="{c.worker_address or ''}" placeholder="Địa chỉ theo CCCD hoặc nơi cư trú" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+          </div>
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số tài khoản ngân hàng (*):</label>
+              <input type="text" id="inputWorkerBankAcc" value="{c.worker_bank_account or ''}" placeholder="STK nhận thù lao" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Tên ngân hàng (*):</label>
+            <input type="text" id="inputWorkerBankName" value="{c.worker_bank_name or ''}" placeholder="Vietcombank, MB, Techcombank, ACB, VPBank..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+          </div>
+          <!-- Chụp / Tải 2 mặt CCCD -->
+          <div style="margin-top:6px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
+            <div style="font-size:12.5px; font-weight:700; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              <span>🪪</span> Tải / Chụp ảnh Căn cước công dân 2 mặt:
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <!-- Mặt trước -->
+              <div style="flex:1; min-width:130px; text-align:center;">
+                <div style="font-size:11.5px; font-weight:600; color:#475569; margin-bottom:4px;">1. Mặt trước CCCD:</div>
+                <div id="frontPreviewBox" style="position:relative; width:100%; height:110px; border:2px dashed #94a3b8; border-radius:8px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden;">
+                  {f'<img src="{front_thumb}" style="width:100%; height:100%; object-fit:contain;">' if front_thumb else '<span style="font-size:24px; color:#94a3b8;">📷</span><span style="font-size:10.5px; color:#64748b; margin-top:2px;">Chưa có ảnh</span>'}
+                </div>
+                <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
+                  Chụp / Tải mặt trước
+                  <input type="file" id="inputCccdFront" accept="image/*" capture="environment" style="display:none;" onchange="handleCccdFile(event, 'front')">
+                </label>
+              </div>
+
+              <!-- Mặt sau -->
+              <div style="flex:1; min-width:130px; text-align:center;">
+                <div style="font-size:11.5px; font-weight:600; color:#475569; margin-bottom:4px;">2. Mặt sau CCCD:</div>
+                <div id="backPreviewBox" style="position:relative; width:100%; height:110px; border:2px dashed #94a3b8; border-radius:8px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden;">
+                  {f'<img src="{back_thumb}" style="width:100%; height:100%; object-fit:contain;">' if back_thumb else '<span style="font-size:24px; color:#94a3b8;">📷</span><span style="font-size:10.5px; color:#64748b; margin-top:2px;">Chưa có ảnh</span>'}
+                </div>
+                <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
+                  Chụp / Tải mặt sau
+                  <input type="file" id="inputCccdBack" accept="image/*" capture="environment" style="display:none;" onchange="handleCccdFile(event, 'back')">
+                </label>
+              </div>
+            </div>
+            <div style="font-size:11px; color:#64748b; margin-top:8px;">
+              💡 Ảnh 2 mặt CCCD sẽ được tự động chèn trực tiếp vào Phụ lục Hợp đồng PDF để đảm bảo tính pháp lý quyết toán thuế.
+            </div>
+          </div>
+          <div style="margin-top:6px;">
+            <button type="button" id="btnSaveDraftManual" onclick="manualSaveDraft()" style="width:100%; padding:11px 16px; background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+              <span>💾</span> LƯU THÔNG TIN NHÁP
+            </button>
+          </div>
+        </div>
+        """
     worker_signed_view = ""
     if c.is_signed_by_worker and c.worker_signature_data:
         face_img_html = ""
@@ -1928,6 +2097,10 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                     {face_img_html}
                 </div>
                 <div style="font-size:11.5px; color:#64748b; margin-top:6px;">Ký lúc: {c.worker_signed_at.strftime('%d/%m/%Y %H:%M') if c.worker_signed_at else ''}</div>
+                <div style="margin-top:14px; padding:12px 14px; background:#fff; border-radius:10px; border:1px solid #bbf7d0; font-size:12.5px; color:#15803d; text-align:center; line-height:1.55;">
+                    🔒 <b>HỢP ĐỒNG ĐÃ ĐƯỢC KÝ TÊN VÀ KHÓA BẢO MẬT.</b><br>
+                    <span style="color:#475569; font-size:12px;">Thông tin trên hợp đồng đã được khóa chính thức và không thể tự ý sửa đổi. Nếu có sai sót hoặc cần đính chính, vui lòng liên hệ <b>Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT</b> qua Hotline <b>0972.768.491</b> (Zalo) để được hỗ trợ mở khóa.</span>
+                </div>
             </div>
         """
     else:
@@ -1939,20 +2112,43 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                         <div style="font-size:13px; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:6px;">
                             <span>📷</span> Chụp ảnh khuôn mặt người ký (eKYC)
                         </div>
-                        <span id="camStatusBadge" style="font-size:11px; padding:3px 8px; border-radius:10px; background:#fef3c7; color:#b45309; font-weight:600;">
-                            ⏳ Đang kết nối camera...
-                        </span>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                          <span id="camStatusBadge" style="font-size:11px; padding:3px 8px; border-radius:10px; background:#fef3c7; color:#b45309; font-weight:600;">
+                              ⏳ Đang kết nối camera...
+                          </span>
+                          <button type="button" onclick="initCamera()" style="font-size:11px; padding:3px 8px; background:#0284c7; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                              Mở lại
+                          </button>
+                        </div>
                     </div>
                     <div style="position:relative; width:100%; max-width:240px; margin:0 auto; aspect-ratio:4/3; background:#0f172a; border-radius:10px; overflow:hidden; border:2px solid #0284c7; display:flex; align-items:center; justify-content:center;">
-                        <video id="camVideo" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+                        <video id="camVideo" autoplay playsinline webkit-playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
                         <canvas id="faceCanvas" width="480" height="360" style="display:none;"></canvas>
-                        <div id="camFallback" style="display:none; position:absolute; inset:0; background:#0f172a; color:#fff; padding:10px; text-align:center; font-size:11.5px; flex-direction:column; justify-content:center; align-items:center;">
+                        <div id="camOverlayPrompt" style="position:absolute; inset:0; background:rgba(15,23,42,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px; text-align:center; z-index:2;">
+                            <span style="font-size:26px;">📷</span>
+                            <span style="font-size:12px; color:#fff; font-weight:600;">Chụp ảnh khuôn mặt eKYC</span>
+                            <div style="display:flex; gap:8px;">
+                              <button type="button" onclick="initCamera()" style="padding:6px 12px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+                                  Bật Camera
+                              </button>
+                              <label style="padding:6px 12px; background:#475569; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+                                  Chụp Selfie
+                                  <input type="file" id="faceFileInput" accept="image/*" capture="user" style="display:none;" onchange="handleFaceFile(event)">
+                              </label>
+                            </div>
+                        </div>
+                        <div id="camFallback" style="display:none; position:absolute; inset:0; background:#0f172a; color:#fff; padding:10px; text-align:center; font-size:11.5px; flex-direction:column; justify-content:center; align-items:center; z-index:3;">
                             <div style="font-size:22px; margin-bottom:4px;">📷</div>
-                            <div>Trình duyệt chưa cho phép mở camera. Vui lòng bấm bên dưới để chụp selfie:</div>
-                            <label style="margin-top:8px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
-                                Chụp / Chọn ảnh chân dung
-                                <input type="file" id="faceFileInput" accept="image/*" capture="user" style="display:none;" onchange="handleFaceFile(event)">
-                            </label>
+                            <div>Trình duyệt chưa cho phép mở camera tự động:</div>
+                            <div style="display:flex; gap:8px; margin-top:8px;">
+                                <button type="button" onclick="initCamera()" style="padding:6px 10px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
+                                    Thử lại Camera
+                                </button>
+                                <label style="padding:6px 10px; background:#0284c7; color:#fff; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
+                                    Chụp Selfie
+                                    <input type="file" accept="image/*" capture="user" style="display:none;" onchange="handleFaceFile(event)">
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div style="font-size:11px; color:#64748b; text-align:center; margin-top:6px;">
@@ -1961,11 +2157,15 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
 
                 <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:6px;">Vẽ chữ ký của bạn vào khung bên dưới:</div>
-                <div style="border:2px dashed #94a3b8; border-radius:12px; background:#fff; position:relative; touch-action:none;">
-                    <canvas id="sigCanvas" width="450" height="160" style="width:100%; height:160px; display:block; cursor:crosshair;"></canvas>
+                <div style="border:2px dashed #94a3b8; border-radius:12px; background:#fff; position:relative; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;">
+                    <canvas id="sigCanvas" width="450" height="160" style="width:100%; height:160px; display:block; cursor:crosshair; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;"></canvas>
                     <button type="button" onclick="clearCanvas()" style="position:absolute; right:10px; top:10px; padding:4px 10px; font-size:12px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;">Xóa ký lại</button>
                 </div>
-                <button type="button" id="btnSubmitSign" onclick="submitSignature()" style="width:100%; margin-top:14px; padding:14px; background:#0284c7; color:#fff; font-size:15px; font-weight:700; border:none; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(2,132,199,0.3);">
+                <div style="margin: 14px 0 12px; padding: 12px 14px; background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 12px; color: #92400e; line-height: 1.55;">
+                    ⚠️ <b>LƯU Ý QUAN TRỌNG TRƯỚC KHI KÝ:</b><br>
+                    Bằng việc bấm xác nhận ký tên, bạn xác nhận toàn bộ thông tin cá nhân và tài khoản ngân hàng trên là chính xác. <b>Sau khi ký thành công, thông tin hợp đồng sẽ được KHÓA CHÍNH THỨC và bạn KHÔNG THỂ TỰ Ý CHỈNH SỬA.</b> Muốn chỉnh sửa sau đó, bạn phải liên hệ <b>Công ty INUT (Hotline: 0972.768.491)</b> để được hỗ trợ mở khóa.
+                </div>
+                <button type="button" id="btnSubmitSign" onclick="submitSignature()" style="width:100%; margin-top:6px; padding:14px; background:#0284c7; color:#fff; font-size:15px; font-weight:700; border:none; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(2,132,199,0.3);">
                     ✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC
                 </button>
             </div>
@@ -1993,6 +2193,25 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 <body>
 <div class="container">
 
+  <!-- Top Bar Actions (Sticky on Mobile) -->
+  <div style="position:sticky; top:8px; z-index:100; margin-bottom:12px;">
+    <div style="background:rgba(255,255,255,0.94); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,0.08); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+        <span id="saveDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; flex-shrink:0;"></span>
+        <span id="saveStatusText" style="font-size:12px; color:#475569; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          ✓ Tự động lưu nháp
+        </span>
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <button type="button" onclick="manualSaveDraft()" style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;">
+          <span>💾</span> Lưu nháp
+        </button>
+        <button type="button" id="btnViewRealtimePdf" onclick="viewRealtimePdf()" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(2,132,199,0.3);">
+          <span>📄</span> Xem PDF
+        </button>
+      </div>
+    </div>
+  </div>
   <!-- Header -->
   <div class="card" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border:none;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -2009,11 +2228,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     <h3 style="font-size:15px; margin:0 0 10px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
       <span>👤</span> Thông tin Thợ / Người nhận khoán
     </h3>
-    <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{c.worker_name}</span></div>
-    <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{c.worker_id_card or 'Chưa có'}</span></div>
-    <div class="field-row"><span class="field-label">Số điện thoại:</span><span class="field-val">{c.worker_phone or 'Chưa có'}</span></div>
-    <div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account} ({c.worker_bank_name})</span></div>
-    <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{c.worker_address}</span></div>
+    {worker_info_html}
   </div>
 
   <!-- Work Items & Amounts -->
@@ -2083,15 +2298,22 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
     function getPos(e) {{
       const rect = canvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      let clientX = e.clientX;
+      let clientY = e.clientY;
+      if (e.touches && e.touches.length > 0) {{
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      }} else if (e.changedTouches && e.changedTouches.length > 0) {{
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+      }}
       return {{
         x: (clientX - rect.left) * (canvas.width / rect.width),
         y: (clientY - rect.top) * (canvas.height / rect.height)
       }};
     }}
 
-    function start(e) {{
+    function startDraw(e) {{
       isDrawing = true;
       hasSigned = true;
       const pos = getPos(e);
@@ -2100,7 +2322,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       if (e.cancelable) e.preventDefault();
     }}
 
-    function move(e) {{
+    function moveDraw(e) {{
       if (!isDrawing) return;
       const pos = getPos(e);
       ctx.lineTo(pos.x, pos.y);
@@ -2108,19 +2330,36 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       if (e.cancelable) e.preventDefault();
     }}
 
-    function stop() {{
-      isDrawing = false;
+    function stopDraw(e) {{
+      if (isDrawing) {{
+        isDrawing = false;
+      }}
     }}
 
-    canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", stop);
+    // Pointer events (Smooth & reliable on modern iOS Safari, Android, Stylus & Mouse)
+    if (window.PointerEvent) {{
+      canvas.addEventListener("pointerdown", function(e) {{
+        try {{ canvas.setPointerCapture(e.pointerId); }} catch(err) {{}}
+        startDraw(e);
+      }});
+      canvas.addEventListener("pointermove", moveDraw);
+      canvas.addEventListener("pointerup", function(e) {{
+        stopDraw(e);
+        try {{ canvas.releasePointerCapture(e.pointerId); }} catch(err) {{}}
+      }});
+      canvas.addEventListener("pointercancel", stopDraw);
+    }} else {{
+      canvas.addEventListener("mousedown", startDraw);
+      canvas.addEventListener("mousemove", moveDraw);
+      window.addEventListener("mouseup", stopDraw);
+    }}
 
-    canvas.addEventListener("touchstart", start, {{ passive: false }});
-    canvas.addEventListener("touchmove", move, {{ passive: false }});
-    window.addEventListener("touchend", stop);
+    // Always bind touch events with passive: false for iOS Safari
+    canvas.addEventListener("touchstart", startDraw, {{ passive: false }});
+    canvas.addEventListener("touchmove", moveDraw, {{ passive: false }});
+    window.addEventListener("touchend", stopDraw, {{ passive: false }});
+    window.addEventListener("touchcancel", stopDraw, {{ passive: false }});
   }}
-
   function clearCanvas() {{
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -2142,7 +2381,9 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         audio: false
       }});
       video.srcObject = camStream;
-      video.play();
+      try {{ await video.play(); }} catch (pe) {{ console.warn("video.play():", pe); }}
+      const overlay = document.getElementById("camOverlayPrompt");
+      if (overlay) overlay.style.display = "none";
       if (badge) {{
         badge.innerText = "✓ Camera sẵn sàng";
         badge.style.background = "#dcfce7";
@@ -2176,6 +2417,8 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       const video = document.getElementById("camVideo");
       if (video) video.style.display = "none";
       const fallback = document.getElementById("camFallback");
+      const overlay = document.getElementById("camOverlayPrompt");
+      if (overlay) overlay.style.display = "none";
       if (fallback) {{
         fallback.style.display = "flex";
         fallback.innerHTML = '<div style="font-size:12px; color:#86efac; font-weight:700;">✓ Đã tải ảnh khuôn mặt</div>';
@@ -2206,6 +2449,205 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
   // Initialize camera as soon as possible
   setTimeout(initCamera, 300);
+  const portalToken = "{c.portal_token}";
+  const STORAGE_KEY = "inut_khoan_draft_" + portalToken;
+
+  let cccdFrontData = null;
+  let cccdBackData = null;
+
+  function handleCccdFile(event, side) {{
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {{
+      const img = new Image();
+      img.onload = function() {{
+        const maxW = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {{
+          h = Math.round(h * (maxW / w));
+          w = maxW;
+        }}
+        const cvs = document.createElement("canvas");
+        cvs.width = w;
+        cvs.height = h;
+        const ctx = cvs.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressedData = cvs.toDataURL("image/jpeg", 0.82);
+
+        if (side === "front") {{
+          cccdFrontData = compressedData;
+          const box = document.getElementById("frontPreviewBox");
+          if (box) box.innerHTML = '<img src="' + compressedData + '" style="width:100%; height:100%; object-fit:contain;">';
+          try {{ localStorage.setItem(STORAGE_KEY + "_front", compressedData); }} catch (err) {{}}
+        }} else {{
+          cccdBackData = compressedData;
+          const box = document.getElementById("backPreviewBox");
+          if (box) box.innerHTML = '<img src="' + compressedData + '" style="width:100%; height:100%; object-fit:contain;">';
+          try {{ localStorage.setItem(STORAGE_KEY + "_back", compressedData); }} catch (err) {{}}
+        }}
+        handleInputAutoSave();
+      }};
+      img.src = e.target.result;
+    }};
+    reader.readAsDataURL(file);
+  }}
+
+  function getFormData() {{
+    return {{
+      worker_name: document.getElementById("inputWorkerName")?.value || "",
+      worker_id_card: document.getElementById("inputWorkerIdCard")?.value || "",
+      worker_phone: document.getElementById("inputWorkerPhone")?.value || "",
+      worker_id_card_date: document.getElementById("inputWorkerIdDate")?.value || "",
+      worker_id_card_place: document.getElementById("inputWorkerIdPlace")?.value || "",
+      worker_address: document.getElementById("inputWorkerAddress")?.value || "",
+      worker_bank_account: document.getElementById("inputWorkerBankAcc")?.value || "",
+      worker_bank_name: document.getElementById("inputWorkerBankName")?.value || "",
+      id_card_front_data: cccdFrontData || null,
+      id_card_back_data: cccdBackData || null
+    }};
+  }}
+
+  // Restore draft from localStorage on load
+  try {{
+    const rawSaved = localStorage.getItem(STORAGE_KEY);
+    if (rawSaved) {{
+      const saved = JSON.parse(rawSaved);
+      const fields = [
+        ["inputWorkerName", "worker_name"],
+        ["inputWorkerIdCard", "worker_id_card"],
+        ["inputWorkerPhone", "worker_phone"],
+        ["inputWorkerIdDate", "worker_id_card_date"],
+        ["inputWorkerIdPlace", "worker_id_card_place"],
+        ["inputWorkerAddress", "worker_address"],
+        ["inputWorkerBankAcc", "worker_bank_account"],
+        ["inputWorkerBankName", "worker_bank_name"]
+      ];
+      fields.forEach(([id, key]) => {{
+        const el = document.getElementById(id);
+        if (el && !el.value && saved[key]) {{
+          el.value = saved[key];
+        }}
+      }});
+      const st = document.getElementById("saveStatusText");
+      if (st) st.innerText = "✓ Đã khôi phục bản nháp";
+    }}
+  }} catch (e) {{
+    console.warn("Could not restore localStorage draft:", e);
+    try {{
+      const savedFront = localStorage.getItem(STORAGE_KEY + "_front");
+      if (savedFront) {{
+        cccdFrontData = savedFront;
+        const box = document.getElementById("frontPreviewBox");
+        if (box && !box.querySelector("img")) {{
+          box.innerHTML = '<img src="' + savedFront + '" style="width:100%; height:100%; object-fit:contain;">';
+        }}
+      }}
+      const savedBack = localStorage.getItem(STORAGE_KEY + "_back");
+      if (savedBack) {{
+        cccdBackData = savedBack;
+        const box = document.getElementById("backPreviewBox");
+        if (box && !box.querySelector("img")) {{
+          box.innerHTML = '<img src="' + savedBack + '" style="width:100%; height:100%; object-fit:contain;">';
+        }}
+      }}
+    }} catch (err) {{}}
+
+  }}
+
+  let serverSaveTimeout = null;
+  function handleInputAutoSave() {{
+    const draft = getFormData();
+    try {{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      const st = document.getElementById("saveStatusText");
+      const dot = document.getElementById("saveDot");
+      if (st) st.innerText = "✓ Đã lưu nháp tự động";
+      if (dot) dot.style.background = "#10b981";
+    }} catch (e) {{
+      console.warn("localStorage save failed:", e);
+    }}
+
+    // Debounce save to server (800ms)
+    clearTimeout(serverSaveTimeout);
+    serverSaveTimeout = setTimeout(async () => {{
+      try {{
+        await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify(draft)
+        }});
+      }} catch (e) {{
+        console.warn("Background draft sync failed:", e);
+      }}
+    }}, 800);
+  }}
+
+  ["inputWorkerName", "inputWorkerIdCard", "inputWorkerPhone", "inputWorkerIdDate", "inputWorkerIdPlace", "inputWorkerAddress", "inputWorkerBankAcc", "inputWorkerBankName"].forEach(id => {{
+    const el = document.getElementById(id);
+    if (el) {{
+      el.addEventListener("input", handleInputAutoSave);
+      el.addEventListener("change", handleInputAutoSave);
+    }}
+  }});
+
+  async function manualSaveDraft() {{
+    const draft = getFormData();
+    try {{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+    }} catch (e) {{
+      console.warn("localStorage save error:", e);
+    }}
+
+    const st = document.getElementById("saveStatusText");
+    const dot = document.getElementById("saveDot");
+    if (st) st.innerText = "⏳ Đang lưu nháp...";
+    if (dot) dot.style.background = "#f59e0b";
+
+    try {{
+      const res = await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify(draft)
+      }});
+      const data = await res.json();
+      if (data.ok) {{
+        if (st) st.innerText = "✓ Đã lưu nháp thành công!";
+        if (dot) dot.style.background = "#10b981";
+        alert("✓ Đã lưu thông tin nháp thành công lên hệ thống! Bạn có thể xem hợp đồng hoặc tải lại trang bất cứ lúc nào.");
+      }}
+    }} catch (err) {{
+      if (st) st.innerText = "✓ Đã lưu nháp máy bạn";
+      if (dot) dot.style.background = "#10b981";
+      alert("✓ Đã lưu nháp an toàn vào bộ nhớ điện thoại của bạn!");
+    }}
+  }}
+
+  async function viewRealtimePdf() {{
+    const btn = document.getElementById("btnViewRealtimePdf");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {{
+      btn.disabled = true;
+      btn.innerHTML = "<span>⏳</span> Đang đồng bộ...";
+    }}
+    const draft = getFormData();
+    try {{
+      await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify(draft)
+      }});
+    }} catch (e) {{
+      console.warn("Sync draft error:", e);
+    }}
+    if (btn) {{
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }}
+    window.open("/api/public/khoan/" + portalToken + "/pdf?t=" + Date.now(), "_blank");
+  }}
+
 
   async function submitSignature() {{
     if (!hasSigned) {{
@@ -2220,14 +2662,64 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     btn.disabled = true;
     btn.innerText = "⏳ Đang ghi nhận chữ ký & chụp ảnh...";
 
+    const nameEl = document.getElementById("inputWorkerName");
+    const idCardEl = document.getElementById("inputWorkerIdCard");
+    const phoneEl = document.getElementById("inputWorkerPhone");
+    const idDateEl = document.getElementById("inputWorkerIdDate");
+    const idPlaceEl = document.getElementById("inputWorkerIdPlace");
+    const addrEl = document.getElementById("inputWorkerAddress");
+    const bankAccEl = document.getElementById("inputWorkerBankAcc");
+    const bankNameEl = document.getElementById("inputWorkerBankName");
+
+    if (nameEl && !nameEl.value.trim()) {{
+      alert("Vui lòng điền Họ và tên của bạn trước khi ký!");
+      nameEl.focus();
+      btn.disabled = false;
+      btn.innerText = "✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC";
+      return;
+    }}
+    if (idCardEl && !idCardEl.value.trim()) {{
+      alert("Vui lòng điền Số CCCD của bạn trước khi ký!");
+      idCardEl.focus();
+      btn.disabled = false;
+      btn.innerText = "✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC";
+      return;
+    }}
+    const confirmMsg = [
+      "⚠️ XÁC NHẬN KÝ HỢP ĐỒNG:",
+      "",
+      "Bằng việc ký tên, bạn xác nhận toàn bộ thông tin cá nhân và tài khoản ngân hàng là hoàn toàn chính xác.",
+      "",
+      "LƯU Ý QUAN TRỌNG: Sau khi ký thành công, hợp đồng sẽ được KHÓA CHÍNH THỨC và bạn KHÔNG THỂ TỰ Ý CHỈNH SỬA. Nếu có thông tin cần thay đổi sau khi ký, bạn phải liên hệ Công ty INUT (Hotline: 0972.768.491) để được mở khóa.",
+      "",
+      "Bạn có chắc chắn muốn xác nhận ký hợp đồng ngay bây giờ không?"
+    ].join("\\n");
+    const confirmSign = confirm(confirmMsg);
+    if (!confirmSign) {{
+      btn.disabled = false;
+      btn.innerText = "✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC";
+      return;
+    }}
+
+
     const dataUrl = canvas.toDataURL("image/png");
     try {{
-      const res = await fetch("/api/public/khoan/{c.portal_token}/submit-signature", {{
+      const res = await fetch("/api/public/khoan/" + portalToken + "/submit-signature", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
         body: JSON.stringify({{
           signature_data: dataUrl,
-          face_photo_data: finalFace
+          face_photo_data: finalFace,
+          worker_name: nameEl ? nameEl.value.trim() : null,
+          worker_id_card: idCardEl ? idCardEl.value.trim() : null,
+          worker_id_card_date: idDateEl ? idDateEl.value.trim() : null,
+          worker_id_card_place: idPlaceEl ? idPlaceEl.value.trim() : null,
+          worker_phone: phoneEl ? phoneEl.value.trim() : null,
+          worker_address: addrEl ? addrEl.value.trim() : null,
+          worker_bank_account: bankAccEl ? bankAccEl.value.trim() : null,
+          worker_bank_name: bankNameEl ? bankNameEl.value.trim() : null,
+          id_card_front_data: cccdFrontData || null,
+          id_card_back_data: cccdBackData || null
         }})
       }});
       const data = await res.json();
@@ -2252,9 +2744,108 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     return HTMLResponse(html)
 
 
+def _save_cccd_images_from_payload(c: PieceworkContract, front_data: str | None, back_data: str | None, db: Session) -> bool:
+    changed = False
+    if front_data and front_data.startswith("data:image/"):
+        try:
+            import base64
+            _, enc = front_data.split(",", 1)
+            raw = base64.b64decode(enc)
+            doc_id = storage.save_upload(raw, suffix=".jpg")
+            c.id_card_front_doc_id = doc_id
+            c.has_id_card_front = True
+            changed = True
+            if c.contractor_id:
+                contractor = db.get(PieceworkContractor, c.contractor_id)
+                if contractor:
+                    contractor.id_card_front_doc_id = doc_id
+        except Exception as e:
+            logger.warning("Error saving front CCCD: %s", e)
+    if back_data and back_data.startswith("data:image/"):
+        try:
+            import base64
+            _, enc = back_data.split(",", 1)
+            raw = base64.b64decode(enc)
+            doc_id = storage.save_upload(raw, suffix=".jpg")
+            c.id_card_back_doc_id = doc_id
+            c.has_id_card_back = True
+            changed = True
+            if c.contractor_id:
+                contractor = db.get(PieceworkContractor, c.contractor_id)
+                if contractor:
+                    contractor.id_card_back_doc_id = doc_id
+        except Exception as e:
+            logger.warning("Error saving back CCCD: %s", e)
+    return changed
+
+
 class SignaturePayload(BaseModel):
     signature_data: str
     face_photo_data: str | None = None
+    worker_name: str | None = None
+    worker_id_card: str | None = None
+    worker_id_card_date: str | None = None
+    worker_id_card_place: str | None = None
+    worker_tax_code: str | None = None
+    worker_phone: str | None = None
+    worker_address: str | None = None
+    worker_bank_account: str | None = None
+    worker_bank_name: str | None = None
+    id_card_front_data: str | None = None
+    id_card_back_data: str | None = None
+
+
+class WorkerDraftPayload(BaseModel):
+    worker_name: str | None = None
+    worker_id_card: str | None = None
+    worker_id_card_date: str | None = None
+    worker_id_card_place: str | None = None
+    worker_tax_code: str | None = None
+    worker_phone: str | None = None
+    worker_address: str | None = None
+    worker_bank_account: str | None = None
+    worker_bank_name: str | None = None
+    id_card_front_data: str | None = None
+    id_card_back_data: str | None = None
+
+@router.post("/api/public/khoan/{token}/save-draft")
+def public_save_draft(
+    token: str,
+    payload: WorkerDraftPayload,
+    db: Session = Depends(get_session),
+):
+    c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+    if payload.worker_name is not None:
+        c.worker_name = payload.worker_name.strip()
+    if payload.worker_id_card is not None:
+        c.worker_id_card = payload.worker_id_card.strip()
+    if payload.worker_id_card_date is not None:
+        c.worker_id_card_date = payload.worker_id_card_date.strip()
+    if payload.worker_id_card_place is not None:
+        c.worker_id_card_place = payload.worker_id_card_place.strip()
+    if payload.worker_tax_code is not None:
+        c.worker_tax_code = payload.worker_tax_code.strip()
+    if payload.worker_phone is not None:
+        c.worker_phone = payload.worker_phone.strip()
+    if payload.worker_address is not None:
+        c.worker_address = payload.worker_address.strip()
+    if payload.worker_bank_account is not None:
+        c.worker_bank_account = payload.worker_bank_account.strip()
+    if payload.worker_bank_name is not None:
+        c.worker_bank_name = payload.worker_bank_name.strip()
+    _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
+    
+    c.updated_at = datetime.now(timezone.utc)
+    try:
+        pdf_bytes = render_piecework_pdf(c)
+        doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+        c.contract_pdf_doc_id = doc_id
+    except Exception as e:
+        logger.warning("Could not pre-render draft PDF: %s", e)
+    db.commit()
+    return {"ok": True, "saved_at": datetime.now(timezone.utc).isoformat()}
 
 
 @router.post("/api/public/khoan/{token}/submit-signature")
@@ -2275,6 +2866,54 @@ def public_submit_signature(
     c.worker_signature_data = sig
     c.is_signed_by_worker = True
     c.worker_signed_at = datetime.now(timezone.utc)
+    if payload.worker_name:
+        c.worker_name = payload.worker_name.strip()
+    if payload.worker_id_card:
+        c.worker_id_card = payload.worker_id_card.strip()
+    if payload.worker_id_card_date:
+        c.worker_id_card_date = payload.worker_id_card_date.strip()
+    if payload.worker_id_card_place:
+        c.worker_id_card_place = payload.worker_id_card_place.strip()
+    if payload.worker_tax_code:
+        c.worker_tax_code = payload.worker_tax_code.strip()
+    if payload.worker_phone:
+        c.worker_phone = payload.worker_phone.strip()
+    if payload.worker_address:
+        c.worker_address = payload.worker_address.strip()
+    if payload.worker_bank_account:
+        c.worker_bank_account = payload.worker_bank_account.strip()
+    if payload.worker_bank_name:
+        c.worker_bank_name = payload.worker_bank_name.strip()
+    _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
+
+    # Update or link contractor profile if exists
+    if c.worker_name and c.worker_id_card:
+        contractor = db.scalar(select(PieceworkContractor).where(PieceworkContractor.id_card == c.worker_id_card))
+        if not contractor:
+            clean_code = f"CTV-AUTO-{c.worker_id_card[-4:]}"
+            contractor = PieceworkContractor(
+                code=clean_code,
+                name=c.worker_name,
+                id_card=c.worker_id_card,
+                id_card_date=c.worker_id_card_date or "",
+                id_card_place=c.worker_id_card_place or "Cục Cảnh sát QLHC về TTXH",
+                tax_code=c.worker_tax_code or "",
+                phone=c.worker_phone or "",
+                address=c.worker_address or "",
+                bank_account=c.worker_bank_account or "",
+                bank_name=c.worker_bank_name or "Techcombank",
+                skills=c.project_name or "Thi công giao khoán",
+            )
+            db.add(contractor)
+            db.flush()
+            c.contractor_id = contractor.id
+        else:
+            c.contractor_id = contractor.id
+            contractor.name = c.worker_name
+            if c.worker_phone: contractor.phone = c.worker_phone
+            if c.worker_address: contractor.address = c.worker_address
+            if c.worker_bank_account: contractor.bank_account = c.worker_bank_account
+            if c.worker_bank_name: contractor.bank_name = c.worker_bank_name
     if payload.face_photo_data:
         face_str = (payload.face_photo_data or "").strip()
         if face_str.startswith("data:image/"):
@@ -2288,10 +2927,7 @@ def public_submit_signature(
             except Exception as e:
                 logger.warning("Could not save face photo: %s", e)
     
-    # Auto-stamp Bên A (iNut) if not already stamped
-    if not c.is_signed_by_inut:
-        c.is_signed_by_inut = True
-        c.inut_signed_at = datetime.now(timezone.utc)
+    # Do NOT auto-stamp Bên A (INUT): Bên A only signs after admin explicitly reviews and executes signature.
         
     # Re-evaluate deficiencies
     deficiency = evaluate_deficiencies(c)

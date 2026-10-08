@@ -1,0 +1,56 @@
+Kính gửi:
+- {{ buyer_salutation or ('Anh ' ~ ben_b.dai_dien) }} – {{ ben_b.chuc_vu or 'Giám đốc' }} {{ ben_b.name }},
+- Bộ phận Kế toán – {{ ben_b.name }}.
+
+Lời đầu tiên, Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT xin gửi lời chào trân trọng và lời chúc sức khỏe, phát triển đến Quý Công ty.
+
+INUT Technology xin trân trọng gửi tới Quý Công ty trọn bộ hồ sơ pháp lý, kinh tế và kế toán thuế chính thức cho đơn hàng / dự án:
+{% if order_doc_name %}
+1. {{ order_doc_name }} (Có giá trị pháp lý thay thế Hợp đồng kinh tế giữa hai Bên), đã ghi nhận khoản đặt cọc và ký số điện tử bằng USB Token WIN-CA của INUT Technology.
+{% endif %}
+2. Hóa đơn điện tử số {{ inv_number }} (Ký hiệu {{ inv_series }}) phát hành ngày {{ inv_date }} (kèm file XML gốc có chữ ký số điện tử Bên bán và Mã cấp hợp lệ của Cơ quan Thuế).
+3. Biên bản bàn giao thiết bị số {{ bbbg_number }} lập ngày {{ bbbg_date }}, đã hoàn tất ký số điện tử WIN-CA cùng ngày.
+
+BẢNG TỔNG HỢP HỒ SƠ DỰ ÁN & TIẾN ĐỘ THANH TOÁN:
+- Khách hàng (Bên Mua): {{ ben_b.name }} (MST: {{ ben_b.mst }})
+- Địa chỉ: {{ ben_b.address }}
+- Nội dung hàng hóa: {{ product_summary }}
+- Tiền hàng chưa thuế: {{ tong_truoc_thue|vnd }} VNĐ
+- Thuế GTGT (VAT {{ vat_rate }}%): {{ tong_thue|vnd }} VNĐ
+- TỔNG CỘNG THANH TOÁN: {{ tong_thanh_toan|vnd }} VNĐ ({{ bang_chu }})
+{% if tien_coc %}
+- Đợt 1 (Đặt cọc): {{ tien_coc|vnd }} VNĐ – {{ coc_note or 'Đã thanh toán khi xác nhận đơn hàng' }}
+{% endif %}
+{% if con_lai %}
+- Đợt 2 (Phần còn lại): {{ con_lai|vnd }} VNĐ – {{ con_lai_note or 'Áp dụng chính sách trả chậm linh hoạt lên đến 90 ngày' }}
+{% endif %}
+- Hóa đơn điện tử: Số {{ inv_number }} / Ký hiệu {{ inv_series }} ngày {{ inv_date }} (Mã CQT: {{ tax_authority_code }} | Mã tra cứu: {{ verify_code }} tại https://ihoadon.vn)
+- Biên bản bàn giao: Số {{ bbbg_number }} ngày {{ bbbg_date }} (Ký số WIN-CA lúc {{ bbbg_sign_time }})
+- Bảo hành chính hãng: {{ warranty_terms or '24 tháng chính hãng theo tiêu chuẩn của nhà sản xuất' }}
+
+{% if con_lai and con_lai > 0 %}
+THÔNG TIN TÀI KHOẢN THANH TOÁN PHẦN CÒN LẠI (ĐỢT 2: {{ con_lai|vnd }} VNĐ):
+- Ngân hàng: {{ bank.bank_name or 'Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)' }}
+- Số tài khoản: {{ bank.account_number or '79713' }}
+- Tên thụ hưởng: {{ bank.account_name or 'CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT' }}
+- Nội dung chuyển khoản: {{ transfer_memo }}
+{% endif %}
+
+DANH SÁCH 04 TỆP ĐÍNH KÈM TRONG THƯ:
+{% for att in attachments_list %}
+{{ loop.index }}. {{ att.filename }}: {{ att.desc }}
+{% endfor %}
+
+{% if share_url %}
+Link xem trực tuyến bảo mật: {{ share_url }}
+{% endif %}
+
+Mọi yêu cầu hỗ trợ kỹ thuật hoặc bảo hành, xin vui lòng liên hệ:
+- Đại diện INUT Technology: Ông Ngô Huỳnh Ngọc Khánh – Giám đốc
+- Hotline / Zalo: 0972.768.491 | Email: khanhnhn@inut.vn | Website: https://inut.vn
+
+Trân trọng cảm ơn sự tin tưởng và hợp tác của Quý Công ty!
+
+--------------------------------------------------
+CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT
+Trụ sở: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk · MST: 4401053694 · Hotline: 0972.768.491

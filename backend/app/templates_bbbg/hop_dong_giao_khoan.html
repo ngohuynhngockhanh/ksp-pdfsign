@@ -172,7 +172,7 @@
 
   <div class="article-title">ĐIỀU 4. ĐIỀU KHOẢN CHUNG</div>
   <p>4.1. Hợp đồng có hiệu lực kể từ ngày ký và tự động thanh lý khi Bên B hoàn thành công việc được nghiệm thu và Bên A hoàn tất nghĩa vụ thanh toán.</p>
-  <p>4.2. Hợp đồng này được lập thành văn bản điện tử có giá trị pháp lý tương đương bản giấy theo Luật Giao dịch điện tử. Chữ ký số của Bên A và chữ ký điện tử trực tuyến của Bên B trên hệ thống KSP có giá trị chứng cứ đầy đủ trước pháp luật.</p>
+  <p>4.2. Hợp đồng này được lập thành văn bản điện tử có giá trị pháp lý tương đương bản giấy theo Luật Giao dịch điện tử. Chữ ký số của Bên A và chữ ký điện tử trực tuyến của Bên B trên nền tảng lưu trữ hợp đồng của Bên A có giá trị chứng cứ đầy đủ trước pháp luật.</p>
 
   <div class="signs">
     <div class="col">
@@ -223,5 +223,33 @@
       <div><b>{{ worker_name }}</b></div>
     </div>
   </div>
+
+  {% if id_card_front_data_uri or id_card_back_data_uri %}
+  <div style="page-break-before: always; margin-top: 10px;">
+    <div style="text-align: center; font-weight: bold; font-size: 13.5px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
+      PHỤ LỤC: ẢNH CHỤP CĂN CƯỚC CÔNG DÂN NGƯỜI NHẬN KHOÁN
+    </div>
+    <div style="font-size: 10.5px; font-style: italic; text-align: center; color: #64748b; margin-bottom: 12px;">
+      (Kèm theo Hợp đồng giao khoán số: {{ contract_code }})
+    </div>
+    <div style="display: flex; justify-content: space-around; gap: 16px; align-items: flex-start; margin-top: 14px;">
+      {% if id_card_front_data_uri %}
+      <div style="text-align: center; width: 48%;">
+        <div style="font-size: 11px; font-weight: bold; color: #334155; margin-bottom: 5px;">MẶT TRƯỚC CCCD:</div>
+        <img src="{{ id_card_front_data_uri }}" style="width: 100%; max-height: 220px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Mặt trước CCCD">
+      </div>
+      {% endif %}
+      {% if id_card_back_data_uri %}
+      <div style="text-align: center; width: 48%;">
+        <div style="font-size: 11px; font-weight: bold; color: #334155; margin-bottom: 5px;">MẶT SAU CCCD:</div>
+        <img src="{{ id_card_back_data_uri }}" style="width: 100%; max-height: 220px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Mặt sau CCCD">
+      </div>
+      {% endif %}
+    </div>
+    <div style="margin-top: 20px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10.5px; color: #475569; text-align: justify; line-height: 1.45;">
+      <b>Cam kết của Người nhận khoán:</b> Tôi cam kết 02 ảnh chụp Căn cước công dân trên là bản chụp thật, rõ nét từ giấy tờ tùy thân chính chủ của tôi, không qua chỉnh sửa tẩy xóa, dùng làm căn cứ xác thực danh tính và quyết toán thuế thu nhập cá nhân theo quy định.
+    </div>
+  </div>
+  {% endif %}
 </body>
 </html>

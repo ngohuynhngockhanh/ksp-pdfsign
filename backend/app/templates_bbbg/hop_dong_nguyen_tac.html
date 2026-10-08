@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 17mm 19mm;
+    @bottom-center {
+      content: "Trang " counter(page) "/" counter(pages);
+      font-size: 9px;
+      color: #666;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 12px;
+    line-height: 1.52;
+    color: #111;
+  }
+  .watermark {
+    position: fixed;
+    top: 42%;
+    left: 8%;
+    right: 8%;
+    transform: rotate(-28deg);
+    text-align: center;
+    font-size: 42px;
+    font-weight: bold;
+    color: rgba(170, 0, 0, 0.12);
+    z-index: -1;
+    letter-spacing: 2px;
+  }
+  .brand-watermark {
+    position: fixed;
+    top: 35%;
+    left: 27%;
+    width: 46%;
+    opacity: 0.045;
+    z-index: -2;
+  }
+  .head {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    border-bottom: 2px solid #174b72;
+    padding-bottom: 8px;
+  }
+  .head .partner-logo {
+    margin-left: auto;
+    width: 105px;
+    height: 52px;
+    object-fit: contain;
+  }
+  .head img.main-logo {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+  }
+  .company {
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #174b72;
+    font-size: 12.5px;
+  }
+  .small { font-size: 10px; color: #444; }
+  h1 {
+    text-align: center;
+    font-size: 17.5px;
+    margin: 16px 0 2px;
+    color: #174b72;
+    text-transform: uppercase;
+  }
+  .number {
+    text-align: center;
+    margin-bottom: 8px;
+    font-weight: bold;
+    font-size: 12px;
+  }
+  .revision-label {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #854d0e;
+    background: #fef9c3;
+    border: 1px dashed #facc15;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .revision-wrap { text-align: center; }
+  .basis, .terms {
+    text-align: justify;
+    white-space: pre-line;
+  }
+  .basis { line-height: 1.45; margin-bottom: 6px; }
+  .party {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0;
+  }
+  .party td { vertical-align: top; padding: 2px 3px; font-size: 11.8px; }
+  .party .key { width: 19%; font-weight: bold; color: #174b72; }
+  .party .sep { width: 2%; text-align: center; font-weight: bold; }
+  .terms { margin-top: 10px; }
+  mark.revision {
+    background: #fef08a;
+    color: #000;
+    padding: 1px 3px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+  .bank {
+    margin: 12px 0;
+    padding: 8px 12px;
+    background: #f1f6f9;
+    border-left: 3.5px solid #174b72;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .signs {
+    display: flex;
+    justify-content: space-between;
+    text-align: center;
+    margin-top: 22px;
+    page-break-inside: avoid;
+  }
+  .sign { width: 47%; }
+  .sign b { text-transform: uppercase; }
+  .space { height: 82px; }
+</style>
+</head>
+<body>
+  {% if is_draft %}<div class="watermark">BẢN NHÁP – CHƯA CÓ HIỆU LỰC</div>{% endif %}
+  {% if logo_data_uri %}<img class="brand-watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <div class="head">
+    {% if logo_data_uri %}<img class="main-logo" src="{{ logo_data_uri }}">{% endif %}
+    <div>
+      <div class="company">{{ ben_a.company }}</div>
+      <div class="small">{{ ben_a.address }}</div>
+      <div class="small">MST: {{ ben_a.mst }} · Hotline: {{ ben_a.phone }} · {{ website }} · {{ email }}</div>
+    </div>
+    {% if ben_b_logo_data_uri %}<img class="partner-logo" src="{{ ben_b_logo_data_uri }}">{% endif %}
+  </div>
+
+  <h1>HỢP ĐỒNG NGUYÊN TẮC CUNG CẤP THIẾT BỊ VÀ LINH KIỆN CÔNG NGHIỆP</h1>
+  <div class="number">Số: {{ so or "01/2026/HĐNT-INUT-BAOTOAN" }}</div>
+
+  {% if revision %}
+  <div class="revision-wrap">
+    <div class="revision-label">{{ revision }} · Các điều khoản cốt lõi và nội dung thỏa thuận mới được làm sáng nổi bật</div>
+  </div>
+  {% endif %}
+
+  <div class="basis">Căn cứ Bộ luật Dân sự số 91/2015/QH13, Luật Thương mại số 36/2005/QH11, Luật Giao dịch điện tử số 20/2023/QH15 và các quy định pháp luật Việt Nam có liên quan;
+Căn cứ vào nhu cầu mua sắm thiết bị của Bên B và năng lực sản xuất, cung ứng của Bên A;
+Hôm nay, ngày {{ "%02d"|format(ngay.day) }} tháng {{ "%02d"|format(ngay.month) }} năm {{ ngay.year }}, tại {{ noi_lap or "TP. Hồ Chí Minh" }}, chúng tôi gồm:</div>
+
+  <table class="party">
+    <tr><td class="key">BÊN A (INUT)</td><td class="sep">:</td><td><b>{{ ben_a.company }}</b></td></tr>
+    <tr><td class="key">Địa chỉ</td><td class="sep">:</td><td>{{ ben_a.address }}</td></tr>
+    <tr><td class="key">Mã số thuế</td><td class="sep">:</td><td>{{ ben_a.mst }}</td></tr>
+    <tr><td class="key">Đại diện</td><td class="sep">:</td><td>Ông <b>{{ ben_a.rep }}</b> – {{ ben_a.title }}</td></tr>
+    <tr><td class="key">Điện thoại</td><td class="sep">:</td><td>{{ ben_a.phone }}</td></tr>
+  </table>
+
+  <table class="party">
+    <tr><td class="key">BÊN B (BÊN MUA)</td><td class="sep">:</td><td><b>{{ ben_b.name }}</b></td></tr>
+    <tr><td class="key">Địa chỉ</td><td class="sep">:</td><td>{{ ben_b.address }}</td></tr>
+    <tr><td class="key">Mã số thuế</td><td class="sep">:</td><td>{{ ben_b.mst }}</td></tr>
+    <tr><td class="key">Đại diện</td><td class="sep">:</td><td>Ông <b>{{ ben_b.dai_dien or "[BỔ SUNG TRƯỚC KHI KÝ]" }}</b>{% if ben_b.chuc_vu %} – {{ ben_b.chuc_vu }}{% endif %}</td></tr>
+    <tr><td class="key">Email/Điện thoại</td><td class="sep">:</td><td>{{ ben_b.email }}{% if ben_b.dien_thoai %} · {{ ben_b.dien_thoai }}{% endif %}</td></tr>
+  </table>
+
+  <div style="margin: 6px 0;">Hai Bên thống nhất ký kết Hợp đồng nguyên tắc cung cấp thiết bị và linh kiện công nghiệp với các điều khoản sau:</div>
+
+  <div class="terms">{{ dieu_khoan_html|safe }}</div>
+
+  <div class="bank"><b>Thông tin thanh toán của INUT:</b> Số tài khoản <b>{{ bank.account_number }}</b> · {{ bank.bank_name }} · Chủ tài khoản: <b>{{ bank.account_name }}</b>.</div>
+
+  <div class="signs">
+    <div class="sign">
+      <b>Đại diện Bên A</b><br>
+      <i>(Ký số, ghi rõ họ tên và đóng dấu)</i>
+      <div class="space"></div>
+      <b>{{ ben_a.rep }}</b>
+    </div>
+    <div class="sign">
+      <b>Đại diện Bên B</b><br>
+      <i>(Ký số, ghi rõ họ tên và đóng dấu)</i>
+      <div class="space"></div>
+      <b>{{ ben_b.dai_dien }}</b>
+    </div>
+  </div>
+</body>
+</html>

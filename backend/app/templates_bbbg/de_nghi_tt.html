@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: A4; margin: 16mm 16mm 18mm; }
+  @page { size: A4; margin: 10mm 14mm 10mm; }
   * { box-sizing: border-box; }
   body {
     font-family: "DejaVu Serif", "Times New Roman", serif;
-    font-size: 13px; color: #000; line-height: 1.55;
+    font-size: 11.5px; color: #000; line-height: 1.42;
     position: relative;
   }
   .watermark {
@@ -19,32 +19,31 @@
   .letterhead img.logo { width: 64px; height: 64px; object-fit: contain; }
   .letterhead .info { font-size: 11px; line-height: 1.45; }
   .letterhead .info .name { font-weight: bold; font-size: 12.5px; text-transform: uppercase; color: #1e2a3a; }
-  .place { text-align: right; font-style: italic; margin: 8px 0 4px; }
-  h1 { text-align: center; font-size: 19px; letter-spacing: 1px; margin: 10px 0 2px; }
-  .soline { text-align: center; font-size: 12px; margin-bottom: 4px; }
-  .dot-label { text-align: center; font-weight: bold; margin-bottom: 10px; }
-  .kg { margin: 10px 0 2px; }
+  .place { text-align: right; font-style: italic; margin: 4px 0 2px; font-size: 11px; }
+  h1 { text-align: center; font-size: 17px; letter-spacing: 0.5px; margin: 6px 0 2px; }
+  .soline { text-align: center; font-size: 11px; margin-bottom: 2px; }
+  .dot-label { text-align: center; font-weight: bold; margin-bottom: 6px; font-size: 11.5px; }
+  .kg { margin: 6px 0 2px; }
   .kg b { text-transform: uppercase; }
-  .intro, .thuyet-minh { text-align: justify; margin: 6px 0; }
+  .intro, .thuyet-minh { text-align: justify; margin: 4px 0; }
   .thuyet-minh { white-space: pre-line; }
-  table { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
-  th, td { border: 1px solid #000; padding: 4px 6px; font-size: 12px; }
-  th { text-align: center; font-weight: bold; background: #eef2f7; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 2px; }
+  th, td { border: 1px solid #000; padding: 3px 5px; font-size: 11px; }
   td.c { text-align: center; }
   td.r { text-align: right; }
-  table.tong td { border: none; padding: 2px 6px; font-size: 12.5px; }
+  table.tong td { border: none; padding: 1.5px 5px; font-size: 11.5px; }
   table.tong td.lbl { width: 62%; }
   table.tong td.val { text-align: right; font-weight: bold; }
-  table.tong tr.grand td { font-weight: bold; font-size: 13.5px; border-top: 1px solid #000; padding-top: 5px; }
-  .bang-chu { font-style: italic; margin: 4px 0 10px; }
-  .bank { border: 1px solid #000; padding: 8px 12px; margin: 10px 0; font-size: 12.5px; }
-  .bank .title { font-weight: bold; margin-bottom: 3px; }
-  .signs { display: flex; justify-content: flex-end; margin-top: 20px; text-align: center; }
+  table.tong tr.grand td { font-weight: bold; font-size: 12px; border-top: 1px solid #000; padding-top: 3px; }
+  .bang-chu { font-style: italic; margin: 2px 0 6px; font-size: 11px; }
+  .bank { border: 1px solid #000; padding: 6px 10px; margin: 6px 0; font-size: 11.5px; }
+  .bank .title { font-weight: bold; margin-bottom: 2px; font-size: 11.5px; }
+  .signs { display: flex; justify-content: flex-end; margin-top: 10px; text-align: center; }
   .signs .col { width: 46%; }
-  .signs .role { font-weight: bold; text-transform: uppercase; }
-  .signs .hint { font-style: italic; font-size: 11.5px; }
-  .signs .space { height: 80px; }
-  .signs .name { font-weight: bold; }
+  .signs .role { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .signs .hint { font-style: italic; font-size: 10.5px; }
+  .signs .space { height: 60px; }
+  .signs .name { font-weight: bold; font-size: 11.5px; }
 </style>
 </head>
 <body>
@@ -142,11 +141,20 @@
     kể từ ngày nhận được đề nghị thanh toán này vào tài khoản dưới đây:
   </div>
 
-  <div class="bank">
-    <div class="title">Thông tin tài khoản nhận thanh toán</div>
-    <div>Tên tài khoản: <b>{{ bank.account_name }}</b></div>
-    <div>Số tài khoản: <b>{{ bank.account_number }}</b></div>
-    <div>Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+  <div class="bank" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+    <div style="flex: 1;">
+      <div class="title">Thông tin tài khoản nhận thanh toán</div>
+      <div>Tên tài khoản: <b>{{ bank.account_name }}</b></div>
+      <div>Số tài khoản: <b style="font-size: 13.5px; color: #dc2626;">{{ bank.account_number }}</b></div>
+      <div>Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+      {% if cu_phap_ck %}<div>Nội dung chuyển khoản: <b style="color: #0052cc;">{{ cu_phap_ck }}</b></div>{% endif %}
+    </div>
+    {% if qr_data_uri %}
+    <div style="text-align: center; width: 125px; flex-shrink: 0;">
+      <img src="{{ qr_data_uri }}" style="width: 115px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;" alt="VietQR">
+      <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Quét mã VietQR</div>
+    </div>
+    {% endif %}
   </div>
 
   <div class="intro">Trân trọng cảm ơn sự hợp tác của Quý khách hàng./.</div>

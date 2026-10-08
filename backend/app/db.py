@@ -1768,6 +1768,8 @@ def _seed_piecework_contracts() -> None:
             db.commit()
 
     with _SessionLocal() as db:
+        if db.scalar(select(AppSetting).where(AppSetting.key == "piecework_seed_disabled")):
+            return
         if db.query(PieceworkContract).count() == 0:
             # Generate assets for C1
             c1_f, c1_b = _make_id_card("Lê Văn Hải", "038092004512", "15/04/1992", "Tổ 2, Phường Đông Sơn, TP. Thanh Hóa")
