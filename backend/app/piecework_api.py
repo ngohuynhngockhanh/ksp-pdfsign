@@ -714,6 +714,53 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
             id_card_back_data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}"
         except Exception as e:
             logger.warning("Could not read back id card for PDF: %s", e)
+    vietqr_data_uri = ""
+    transfer_memo = ""
+    if c.worker_bank_account and c.worker_name:
+        from .standards import _strip_accents
+        import httpx
+        clean_name = _strip_accents(c.worker_name).upper().strip()[:46]
+        day_str = f"{date_obj.day:02d}.{date_obj.month:02d}.{date_obj.year}"
+        code_part = c.contract_code.split("/")[0] if "/" in c.contract_code else c.contract_code[:4]
+        transfer_memo = f"INUT tt HDGK {code_part} ky {day_str} {clean_name}"[:50]
+        
+        b_name = (c.worker_bank_name or "").lower()
+        acq_id = "970407"
+        if "vietcombank" in b_name or "vcb" in b_name: acq_id = "970436"
+        elif "vietinbank" in b_name or "ctg" in b_name or "icb" in b_name: acq_id = "970415"
+        elif "bidv" in b_name: acq_id = "970418"
+        elif "mbbank" in b_name or "mb" in b_name: acq_id = "970422"
+        elif "acb" in b_name: acq_id = "970416"
+        elif "vpbank" in b_name or "vpb" in b_name: acq_id = "970432"
+        elif "tpbank" in b_name or "tpb" in b_name: acq_id = "970423"
+        elif "agribank" in b_name or "vba" in b_name: acq_id = "970405"
+        elif "hdbank" in b_name: acq_id = "970437"
+        elif "sacombank" in b_name or "stb" in b_name: acq_id = "970403"
+        elif "vib" in b_name: acq_id = "970441"
+        elif "shb" in b_name: acq_id = "970443"
+        elif "ocb" in b_name: acq_id = "970448"
+        elif "msb" in b_name: acq_id = "970426"
+
+        amount = int(c.net_amount or c.total_amount or 0)
+        payload = {
+            'accountNo': c.worker_bank_account.strip(),
+            'accountName': clean_name,
+            'acqId': acq_id,
+            'amount': amount,
+            'addInfo': transfer_memo,
+            'format': 'text',
+            'template': 'compact2'
+        }
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                r = client.post('https://api.vietqr.io/v2/generate', json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("code") == "00" and data.get("data"):
+                        vietqr_data_uri = data["data"].get("qrDataURL") or ""
+        except Exception as e:
+            logger.warning("VietQR API generate error: %s", e)
+
 
     ctx = {
         "contract_code": c.contract_code,
@@ -748,6 +795,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "worker_face_photo_data": c.worker_face_photo_data,
         "id_card_front_data_uri": id_card_front_data_uri,
         "id_card_back_data_uri": id_card_back_data_uri,
+        "vietqr_data_uri": vietqr_data_uri,
+        "transfer_memo": transfer_memo,
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)

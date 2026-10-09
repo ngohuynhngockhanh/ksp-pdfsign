@@ -159,10 +159,20 @@
   <div class="article-title">ĐIỀU 2. PHƯƠNG THỨC NGHIỆM THU VÀ THANH TOÁN</div>
   <p>2.1. <b>Nghiệm thu:</b> Sau khi Bên B hoàn thành toàn bộ khối lượng công việc, hai Bên tiến hành nghiệm thu thực tế tại hiện trường. Hồ sơ nghiệm thu gồm: Biên bản nghiệm thu khối lượng hoàn thành, hình ảnh chụp thực tế thiết bị/công trình và Bảng thanh toán tiền thuê ngoài (Mẫu 07-TT).</p>
   <p>2.2. <b>Thanh toán:</b> Khi có Biên bản nghiệm thu khối lượng hoàn thành đạt yêu cầu, Bên A thực hiện thanh toán tiền thù lao cho Bên B bằng hình thức chuyển khoản ngân hàng không dùng tiền mặt trong vòng 30 (ba mươi) ngày kể từ ngày ký Biên bản nghiệm thu hợp đồng khoán.</p>
-  <div class="bank-box">
-    Thông tin tài khoản thụ hưởng của Bên B:<br>
-    - Chủ tài khoản: <b>{{ worker_name|upper }}</b><br>
-    - Số tài khoản: <b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b>
+  <div class="bank-box" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; page-break-inside: avoid;">
+    <div style="flex: 1;">
+      <b>Thông tin tài khoản thụ hưởng của Bên B:</b><br>
+      - Chủ tài khoản: <b>{{ worker_name|upper }}</b><br>
+      - Số tài khoản: <b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b><br>
+      - Số tiền thù lao nhận khoán: <b style="color: #b91c1c;">{{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ</b><br>
+      {% if transfer_memo %}- Nội dung chuyển khoản: <b style="color: #0284c7;">{{ transfer_memo }}</b>{% endif %}
+    </div>
+    {% if vietqr_data_uri %}
+    <div style="text-align: center; width: 105px; flex-shrink: 0;">
+      <img src="{{ vietqr_data_uri }}" style="width: 95px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;" alt="VietQR Bên B">
+      <div style="font-size: 8px; color: #64748b; margin-top: 2px;">Quét mã VietQR</div>
+    </div>
+    {% endif %}
   </div>
 
   <div class="article-title">ĐIỀU 3. CAM KẾT KHÔNG PHÁT SINH QUAN HỆ LAO ĐỘNG</div>
