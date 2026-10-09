@@ -81,6 +81,18 @@ export function PieceworkContracts() {
   } | null>(null);
   const [copiedShare, setCopiedShare] = useState(false);
 
+  // Google Drive Sync State
+  const [syncingDriveId, setSyncingDriveId] = useState<number | null>(null);
+  const [syncingQuarterDrive, setSyncingQuarterDrive] = useState(false);
+  const [driveSyncModal, setDriveSyncModal] = useState<{
+    contract_code?: string;
+    quarter: string;
+    remote_dest: string;
+    drive_link: string;
+    files: string[];
+    synced_at?: string;
+  } | null>(null);
+
   // Navigation Tabs: 'contracts' vs 'contractors'
   const [activeMainTab, setActiveMainTab] = useState<"contracts" | "contractors">("contracts");
 
@@ -398,6 +410,60 @@ export function PieceworkContracts() {
     }
   };
 
+  const handleSyncDrive = async (c: PieceworkContractItem | PieceworkContractDetail) => {
+    setSyncingDriveId(c.id);
+    try {
+      const res = await api.syncPieceworkContractToDrive(c.id);
+      if (res.ok) {
+        setMessage({
+          text: `✓ Đã đồng bộ hồ sơ ${c.contract_code} lên Google Drive Kế toán (${res.quarter})!`,
+          type: "success",
+        });
+        setDriveSyncModal({
+          contract_code: c.contract_code,
+          quarter: res.quarter,
+          remote_dest: res.remote_dest,
+          drive_link: res.drive_link,
+          files: res.files,
+          synced_at: res.synced_at,
+        });
+        loadContracts();
+        if (selectedDetail && selectedDetail.id === c.id) {
+          const updated = await api.getPieceworkContract(c.id);
+          setSelectedDetail(updated);
+        }
+      }
+    } catch (err) {
+      setMessage({
+        text: `Lỗi đồng bộ Google Drive: ${(err as Error).message}`,
+        type: "error",
+      });
+    } finally {
+      setSyncingDriveId(null);
+    }
+  };
+
+  const handleSyncQuarterlyDrive = async () => {
+    setSyncingQuarterDrive(true);
+    try {
+      const res = await api.syncQuarterlyPieceworkToDrive();
+      if (res.ok) {
+        setMessage({
+          text: `✓ Đã đồng bộ ${res.synced_count} hợp đồng khoán lên Drive Kế toán!`,
+          type: "success",
+        });
+        loadContracts();
+      }
+    } catch (err) {
+      setMessage({
+        text: `Lỗi đồng bộ Quý lên Google Drive: ${(err as Error).message}`,
+        type: "error",
+      });
+    } finally {
+      setSyncingQuarterDrive(false);
+    }
+  };
+
   const openPreview = (att: PieceworkAttachmentInfo | any, customTitle?: string) => {
     if (!att || !att.url) return;
     const isPdf = Boolean(
@@ -685,6 +751,16 @@ export function PieceworkContracts() {
           >
             ⚡ Smart Paste
           </button>
+          <button
+            type="button"
+            className="piecework-btn-create"
+            style={{ background: "#2563eb", display: "inline-flex", alignItems: "center", gap: 6 }}
+            disabled={syncingQuarterDrive}
+            onClick={handleSyncQuarterlyDrive}
+            title="Đồng bộ toàn bộ HĐ giao khoán đã ký trong quý lên Google Drive Kế toán"
+          >
+            {syncingQuarterDrive ? "⏳ Đang sync Drive..." : "☁️ Sync Drive Quý"}
+          </button>
         </div>
       </div>
 
@@ -953,6 +1029,53 @@ export function PieceworkContracts() {
                               🛡️ Thẩm định Chữ ký số
                             </button>
                           )}
+                          <button
+                            style={{
+                              fontSize: 11.5,
+                              padding: "5px 8px",
+                              borderRadius: 6,
+                              background: c.drive_synced_at ? "#ecfdf5" : "#eff6ff",
+                              color: c.drive_synced_at ? "#047857" : "#1d4ed8",
+                              border: c.drive_synced_at ? "1.5px solid #a7f3d0" : "1.5px solid #bfdbfe",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 5,
+                              fontWeight: 600,
+                            }}
+                            disabled={syncingDriveId === c.id}
+                            onClick={() => handleSyncDrive(c)}
+                            title={
+                              c.drive_synced_at
+                                ? `Đã đồng bộ lên Drive Kế toán (${formatDateTimeWithSeconds(c.drive_synced_at)}). Bấm để sync lại.`
+                                : "Đồng bộ bộ hồ sơ HĐ giao khoán lên Google Drive Kế toán theo quý"
+                            }
+                          >
+                            {syncingDriveId === c.id
+                              ? "⏳ Đang sync Drive..."
+                              : c.drive_synced_at
+                              ? "☁️ ✓ Đã sync Drive"
+                              : "☁️ Sync Drive Kế toán"}
+                          </button>
+                          {c.drive_link && (
+                            <a
+                              href={c.drive_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                fontSize: 11,
+                                color: "#059669",
+                                textAlign: "center",
+                                textDecoration: "underline",
+                                display: "inline-block",
+                                marginTop: -2,
+                              }}
+                              title={c.drive_folder}
+                            >
+                              📁 Mở Drive Quý
+                            </a>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1102,6 +1225,42 @@ export function PieceworkContracts() {
                       >
                         🛡️ Thẩm định Chữ ký số (Chuẩn Foxit / Thuế)
                       </button>
+                    )}
+                    <button
+                      className="piecework-touch-btn"
+                      style={{
+                        gridColumn: "1 / -1",
+                        background: c.drive_synced_at ? "#ecfdf5" : "#eff6ff",
+                        color: c.drive_synced_at ? "#047857" : "#1d4ed8",
+                        border: c.drive_synced_at ? "1.5px solid #a7f3d0" : "1.5px solid #bfdbfe",
+                        fontWeight: 700,
+                      }}
+                      disabled={syncingDriveId === c.id}
+                      onClick={() => handleSyncDrive(c)}
+                    >
+                      {syncingDriveId === c.id
+                        ? "⏳ Đang sync Drive..."
+                        : c.drive_synced_at
+                        ? "☁️ ✓ Đã sync Drive Kế toán"
+                        : "☁️ Đồng bộ lên Drive Kế toán"}
+                    </button>
+                    {c.drive_link && (
+                      <a
+                        href={c.drive_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="piecework-touch-btn"
+                        style={{
+                          gridColumn: "1 / -1",
+                          background: "#2563eb",
+                          color: "#fff",
+                          fontWeight: 700,
+                          textAlign: "center",
+                          textDecoration: "none",
+                        }}
+                      >
+                        📁 Mở Thư Mục Trên Google Drive
+                      </a>
                     )}
                   </div>
                 </div>
@@ -1706,6 +1865,82 @@ export function PieceworkContracts() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Google Drive Accountant Sync Section */}
+              <div style={{ marginTop: 18, padding: 14, background: selectedDetail.drive_synced_at ? "#ecfdf5" : "#f8fafc", borderRadius: 12, border: `1.5px solid ${selectedDetail.drive_synced_at ? "#a7f3d0" : "#cbd5e1"}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>☁️</span>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>
+                        Lưu Trữ Google Drive Kế Toán Theo Quý
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>
+                        Tự động phân loại theo thời điểm ký của HĐ vào thư mục Quý kế toán
+                      </div>
+                    </div>
+                  </div>
+                  {selectedDetail.drive_synced_at ? (
+                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "#dcfce7", color: "#166534", fontWeight: 700 }}>
+                      ✓ Đã đồng bộ: {formatDateTimeWithSeconds(selectedDetail.drive_synced_at)}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "#fef3c7", color: "#92400e", fontWeight: 700 }}>
+                      ⏳ Chưa đồng bộ Drive
+                    </span>
+                  )}
+                </div>
+
+                {selectedDetail.drive_folder && (
+                  <div style={{ fontSize: 12, background: "#fff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontFamily: "monospace", color: "#334155", marginBottom: 10, wordBreak: "break-all" }}>
+                    📁 {selectedDetail.drive_folder}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    style={{
+                      fontSize: 12.5,
+                      padding: "6px 12px",
+                      background: selectedDetail.drive_synced_at ? "#f0fdf4" : "#eff6ff",
+                      color: selectedDetail.drive_synced_at ? "#166534" : "#1d4ed8",
+                      border: selectedDetail.drive_synced_at ? "1px solid #bbf7d0" : "1px solid #bfdbfe",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      minHeight: 36,
+                    }}
+                    disabled={syncingDriveId === selectedDetail.id}
+                    onClick={() => handleSyncDrive(selectedDetail)}
+                  >
+                    {syncingDriveId === selectedDetail.id ? "⏳ Đang sync Drive..." : (selectedDetail.drive_synced_at ? "☁️ Đồng bộ lại lên Drive" : "☁️ Đồng bộ lên Drive Kế toán")}
+                  </button>
+
+                  {selectedDetail.drive_link && (
+                    <a
+                      href={selectedDetail.drive_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 12.5,
+                        padding: "6px 12px",
+                        background: "#2563eb",
+                        color: "#fff",
+                        borderRadius: 6,
+                        textDecoration: "none",
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        minHeight: 36,
+                      }}
+                    >
+                      🚀 Mở Thư Mục Trên Google Drive
+                    </a>
                   )}
                 </div>
               </div>
@@ -2424,6 +2659,90 @@ export function PieceworkContracts() {
               <button className="secondary" onClick={() => setShareModal(null)} style={{ minHeight: 44 }}>
                 Đóng
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drive Sync Result Modal */}
+      {driveSyncModal && (
+        <div className="piecework-modal-backdrop">
+          <div className="piecework-modal-box" style={{ maxWidth: 560 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#047857", color: "#ecfdf5", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                  ☁️ Google Drive Kế Toán
+                </div>
+                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>
+                  Đồng Bộ Thành Công ({driveSyncModal.quarter})
+                </h3>
+                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
+                  Hợp đồng: <b>{driveSyncModal.contract_code}</b>
+                </div>
+              </div>
+              <button
+                style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
+                onClick={() => setDriveSyncModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
+                <div style={{ color: "#64748b", fontSize: 12, marginBottom: 4 }}>Thư mục đích trên Google Drive:</div>
+                <div style={{ fontFamily: "monospace", color: "#0f172a", wordBreak: "break-all", fontWeight: 600 }}>
+                  📁 {driveSyncModal.remote_dest}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 8 }}>
+                  Danh sách tệp hồ sơ đã đồng bộ ({driveSyncModal.files.length} tệp):
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", background: "#f1f5f9", padding: 10, borderRadius: 8 }}>
+                  {driveSyncModal.files.map((fn, idx) => (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#1e293b", background: "#fff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }}>
+                      <span>{fn.endsWith(".pdf") ? "📄" : (fn.endsWith(".docx") ? "📝" : "🖼️")}</span>
+                      <span style={{ fontFamily: "monospace", flex: 1, wordBreak: "break-all" }}>{fn}</span>
+                      <span style={{ color: "#166534", fontWeight: 700, fontSize: 11 }}>✓ Đã tải lên</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{ minHeight: 40, padding: "0 16px" }}
+                  onClick={() => setDriveSyncModal(null)}
+                >
+                  Đóng
+                </button>
+                {driveSyncModal.drive_link && (
+                  <a
+                    href={driveSyncModal.drive_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      background: "#2563eb",
+                      color: "#fff",
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minHeight: 40,
+                    }}
+                  >
+                    🚀 Mở Thư Mục Trên Google Drive
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>

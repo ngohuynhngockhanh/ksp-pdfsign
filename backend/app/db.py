@@ -518,6 +518,10 @@ class PieceworkContract(Base):
     # Token portal di động cho thợ
     portal_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     
+    # Dong bo Google Drive Ke toan theo quy
+    drive_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    drive_folder: Mapped[str] = mapped_column(String(255), default="")
+    drive_link: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -2483,6 +2487,9 @@ def _migrate_add_columns() -> None:
             "worker_face_photo_data": "TEXT DEFAULT ''",
             "worker_face_doc_id": "VARCHAR(64) DEFAULT ''",
             "contractor_id": "INTEGER DEFAULT NULL",
+            "drive_synced_at": "DATETIME DEFAULT NULL",
+            "drive_folder": "VARCHAR(255) DEFAULT ''",
+            "drive_link": "VARCHAR(500) DEFAULT ''",
         },
     }
     with _engine.begin() as conn:

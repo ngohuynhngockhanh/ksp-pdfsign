@@ -255,3 +255,17 @@ parse hóa đơn thật (skip nếu không có `~/ihoadon.vn_...pdf`).
   - Nếu người dùng đặt số hợp đồng tuần tự `01/2026/HĐGK` $\rightarrow$ Cảnh báo rủi ro lộ bí mật quy mô & tự động đổi sang dạng `{ddmmyyyy}-01/HĐGK-...`.
   - Nếu người dùng yêu cầu gửi email ngay mà chưa duyệt $\rightarrow$ Cảnh báo tuân thủ Human-in-the-Loop & trình bản nháp duyệt trước.
   - Nếu văn bản đối ngoại xuất hiện `"trên hệ thống KSP"` $\rightarrow$ Tự động chuẩn hóa thành `"trên nền tảng lưu trữ hợp đồng của Bên A"`.
+
+### 9. Quy chuẩn Con Dấu Đơn Nguồn, Giây Phút Lẻ Tự Nhiên & Đồng Bộ Drive Kế Toán
+* **Nguyên tắc "Đơn nguồn con dấu" (Single Source of Truth for Digital Stamp):**
+  - Khi tài liệu được ký số điện tử PAdES bằng USB Token WINCA / PyHanko, **mã HTML template (`hop_dong_giao_khoan.html`, `phu_luc_2_nghiem_thu.html`, `phu_luc_3_thanh_toan.html`) chỉ để khoảng trống `.space` (`height: 70px - 85px`), tuyệt đối không render con dấu tĩnh viền xanh (`.digital-stamp`) trong HTML**.
+  - Tránh triệt để lỗi in 2 con dấu chồng chéo/lệch nhau của cùng Bên A trên bản in và phần mềm đọc PDF (Foxit Reader / Adobe Acrobat).
+* **Quy chuẩn thời gian ký số giây lẻ & phút lẻ tự nhiên:**
+  - Tuyệt đối không đặt mốc giây tròn `:00` hoặc phút tròn chục nhân tạo.
+  - Hệ thống tự động tạo phút và giây lẻ ngẫu nhiên thực tế (ví dụ: `10:37:43`, `16:37:42`, `09:56:43`), đảm bảo thời gian ký số mật mã PAdES `/M` và thời gian in trên con dấu khớp nhau 100%.
+* **Thuật toán ngắt dòng cân đối (`wrap_balanced`) cho con dấu:**
+  - Tự động cân đối từ ngữ, ưu tiên chọn cỡ chữ phù hợp để tên doanh nghiệp `Ký bởi: CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT` hiển thị trọn vẹn trên 1 dòng, không để rớt chữ đơn lẻ (`INUT`) xuống dòng riêng.
+* **Đồng bộ Google Drive Kế toán tự động theo Quý:**
+  - Xác định Quý kế toán theo mốc thời gian ký (`inut_signed_at` $\rightarrow$ `worker_signed_at` $\rightarrow$ `contract_date`).
+  - Lưu trữ chuẩn tại: `VAT/Hóa đơn iNut {YYYY}:Q{X}/Hop_dong_giao_khoan_Q{X}_{YYYY}/HDGK_{code}_{worker_name}/`
+  - Gói hồ sơ đầy đủ 8 tệp: HĐ chính + PL1 PDF, PL2 Nghiệm thu PDF, PL3 Thanh toán & UNC PDF, file Word DOCX, ảnh CCCD 2 mặt, ảnh chân dung eKYC, và chứng từ chuyển khoản UNC.

@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     customs_drive_remote: str = "vnmap-drive:"
     customs_drive_bind: str = "0.0.0.0"
 
+
+    # Ke toan Google Drive (VAT, Hoa don theo quy, Hop dong giao khoan theo quy)
+    accountant_drive_remote: str = "vnmap-drive:"
+    accountant_drive_root_folder_id: str = "168L8F2mu4RH7CURvCFXc-zRdQu2nYxyM"
+    accountant_drive_bind: str = "0.0.0.0"
     # ECUS attachments: snapshot DB qua SCP, khong mo ECUS hay ky/gui lai VNACCS.
     ecus_drive_sync_enabled: bool = False
     ecus_ssh_host: str = "192.168.1.10"

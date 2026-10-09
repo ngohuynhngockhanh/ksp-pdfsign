@@ -3317,6 +3317,28 @@ export const api = {
   verifyPieceworkSignature(cid: number) {
     return req<PieceworkSignatureVerifyResult>(`/api/piecework/contracts/${cid}/verify-signature`);
   },
+  syncPieceworkContractToDrive(cid: number) {
+    return req<{
+      ok: boolean;
+      message: string;
+      quarter: string;
+      remote_dest: string;
+      drive_link: string;
+      files: string[];
+      synced_at: string;
+    }>(`/api/piecework/contracts/${cid}/sync-drive`, { method: "POST" });
+  },
+  syncQuarterlyPieceworkToDrive(opts: { year?: number; quarter?: number } = {}) {
+    const p = new URLSearchParams();
+    if (opts.year) p.set("year", opts.year.toString());
+    if (opts.quarter) p.set("quarter", opts.quarter.toString());
+    return req<{
+      ok: boolean;
+      synced_count: number;
+      message: string;
+      contracts: any[];
+    }>(`/api/piecework/sync-quarterly-drive?${p.toString()}`, { method: "POST" });
+  },
   listPieceworkContractors(q?: string) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -4611,6 +4633,9 @@ export interface PieceworkContractItem {
   portal_url: string;
   pdf_doc_id: string;
   deficiency: PieceworkDeficiency;
+  drive_synced_at?: string | null;
+  drive_folder?: string;
+  drive_link?: string;
 }
 
 export interface PieceworkSignatureVerifyResult {

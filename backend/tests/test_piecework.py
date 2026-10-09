@@ -414,3 +414,41 @@ def test_piecework_contractor_tax_summary_and_contract_link(client):
     assert "Nghị định số 253/2026/NĐ-CP" in tdata["legal_bases"][0]
     assert "tax_refund_guidance" in tdata
     assert len(tdata["contracts"]) >= 1
+
+
+def test_piecework_sync_drive(client, monkeypatch):
+    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+
+    import subprocess
+    orig_run = subprocess.run
+    def mock_run(cmd, *args, **kwargs):
+        if "copy" in cmd:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+        if "link" in cmd:
+            return subprocess.CompletedProcess(cmd, returncode=0, stdout="https://drive.google.com/open?id=test_mock_id\n", stderr="")
+        return orig_run(cmd, *args, **kwargs)
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    # 1. Sync contract 1
+    res = client.post("/api/piecework/contracts/1/sync-drive")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "2026:Q" in data["quarter"]
+    assert "HDGK_" in data["remote_dest"]
+    assert "test_mock_id" in data["drive_link"]
+    assert len(data["files"]) >= 3
+
+    # Verify detail reflects sync
+    det_res = client.get("/api/piecework/contracts/1")
+    assert det_res.status_code == 200
+    det = det_res.json()
+    assert det["drive_synced_at"] is not None
+    assert "test_mock_id" in det["drive_link"]
+
+    # 2. Sync quarterly
+    q_res = client.post("/api/piecework/sync-quarterly-drive?year=2026&quarter=3")
+    assert q_res.status_code == 200
+    qdata = q_res.json()
+    assert qdata["ok"] is True
+    assert qdata["synced_count"] >= 1

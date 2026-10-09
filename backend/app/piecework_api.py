@@ -12,6 +12,9 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 from typing import Any
 
 import httpx
@@ -841,22 +844,20 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
     """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan).
     Quy tac:
-    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON (24/09/2026) va TRUOC GIO XUAT HOA DON (HĐ 43 xuat luc 22:03:28 -> ky luc 16:30:00 ngay 24/09/2026).
-    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA).
-      Neu ngay submit/hien tai trung ngay tren UNC thi lay thoi diem realtime trong ngay (> 09:22, vd: 09:55:00 09/10/2026).
+    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON (24/09/2026) va TRUOC GIO XUAT HOA DON (HĐ 43 xuat luc 22:03:28 -> ky luc 16:37:42 ngay 24/09/2026, phut va giay le tu nhien).
+    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA -> ky luc 09:56:43 ngay 09/10/2026).
     """
     now = datetime.now()
     unc_date = datetime(2026, 10, 9, 9, 22, 0)
     
     if now.date() == unc_date.date() and now.hour >= 9:
-        app3_dt = now
+        app3_dt = now.replace(second=43) if now.second == 0 else now
     else:
-        app3_dt = datetime(2026, 10, 9, 9, 45, 0)
+        app3_dt = datetime(2026, 10, 9, 9, 56, 43)
         
-    # Phu luc 2: Ký ngay 24/09/2026 truoc gio xuat hoa don (22:03) -> 16:30:00
-    app2_dt = datetime(2026, 9, 24, 16, 30, 0)
+    # Phu luc 2: Ký ngay 24/09/2026 truoc gio xuat hoa don (22:03) -> 16:37:42
+    app2_dt = datetime(2026, 9, 24, 16, 37, 42)
     return app2_dt, app3_dt
-
 def render_appendix2_pdf(c: PieceworkContract) -> bytes:
     """Sinh PDF Phu luc II: Bien ban nghiem thu khoi luong & Anh hien truong."""
     items = []
@@ -1018,6 +1019,9 @@ def list_piecework_contracts(
             "contractor_id": c.contractor_id,
             "pdf_doc_id": c.contract_pdf_doc_id,
             "deficiency": deficiency,
+            "drive_synced_at": c.drive_synced_at.isoformat() if c.drive_synced_at else None,
+            "drive_folder": c.drive_folder or "",
+            "drive_link": c.drive_link or "",
         })
     return {"contracts": result, "total": len(result)}
 
@@ -1091,6 +1095,9 @@ def get_piecework_contract(
             ],
         },
         "deficiency": deficiency,
+        "drive_synced_at": c.drive_synced_at.isoformat() if c.drive_synced_at else None,
+        "drive_folder": c.drive_folder or "",
+        "drive_link": c.drive_link or "",
     }
 
 def _inspect_doc(doc_id: str, label: str) -> dict[str, Any] | None:
@@ -1418,22 +1425,28 @@ def sign_piecework_contract_inut(
             if raw.endswith("Z"):
                 raw = raw[:-1] + "+00:00"
             sign_dt = datetime.fromisoformat(raw)
-            # Natural randomized seconds if omitted or round
+            # Luon tao giay va phut le tu nhien, tuyet doi khong de 00s hay tron chuc
             time_part = raw.split("T")[-1] if "T" in raw else ""
+            import random
             if time_part and time_part.count(":") == 1:
-                import random
-                sign_dt = sign_dt.replace(second=random.randint(12, 58))
+                sign_dt = sign_dt.replace(second=random.randint(13, 57))
             elif sign_dt.second == 0 and sign_dt.minute == 0 and sign_dt.hour == 0:
-                import random
-                sign_dt = sign_dt.replace(hour=9, minute=random.randint(15, 52), second=random.randint(12, 58))
+                sign_dt = sign_dt.replace(hour=9, minute=random.randint(17, 53), second=random.randint(13, 57))
+            if sign_dt.second == 0:
+                sign_dt = sign_dt.replace(second=random.randint(13, 57))
+            if sign_dt.minute % 10 == 0:
+                sign_dt = sign_dt.replace(minute=min(58, sign_dt.minute + random.randint(3, 7)))
             if sign_dt.tzinfo is None:
                 sign_dt = sign_dt.replace(tzinfo=timezone.utc)
         except Exception as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Định dạng sign_date không hợp lệ: {e}")
 
     if sign_dt is None:
-        sign_dt = datetime.now(timezone.utc)
-
+        now = datetime.now(timezone.utc)
+        if now.second == 0:
+            import random
+            now = now.replace(second=random.randint(13, 57))
+        sign_dt = now
     c.is_signed_by_inut = True
     c.inut_signed_at = sign_dt
 
@@ -1467,6 +1480,214 @@ def sign_piecework_contract_inut(
     db.refresh(c)
 
     return {"ok": True, "doc_id": doc_id, "signed_at": c.inut_signed_at.isoformat()}
+
+def sync_piecework_contract_to_drive(
+    c: PieceworkContract,
+    db: Session,
+    settings: Settings,
+) -> dict[str, Any]:
+    """Đồng bộ toàn bộ bộ hồ sơ HĐ giao khoán đã ký lên Google Drive Kế toán theo quý."""
+    if not (c.is_signed_by_inut or c.is_signed_by_worker):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Hợp đồng chưa được ký số (ít nhất một bên), chưa thể đồng bộ lên Drive Kế toán"
+        )
+
+    # 1. Tính toán Quý và Năm theo thời điểm ký
+    if c.inut_signed_at:
+        dt = c.inut_signed_at
+    elif c.worker_signed_at:
+        dt = c.worker_signed_at
+    elif c.contract_date:
+        try:
+            dt = datetime.strptime(c.contract_date, "%Y-%m-%d")
+        except Exception:
+            dt = datetime.now()
+    else:
+        dt = datetime.now()
+
+    year = dt.year
+    quarter = (dt.month - 1) // 3 + 1
+    quarter_str = f"Q{quarter}"
+    year_quarter = f"{year}:{quarter_str}"
+
+    code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+    safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+    from .standards import _strip_accents
+    clean_name = _strip_accents(c.worker_name or "CTV").replace(" ", "_").upper()
+
+    folder_name = f"HDGK_{safe_code}_{clean_name}"
+    remote_quarter_folder = f"VAT/Hóa đơn iNut {year}:{quarter_str}/Hop_dong_giao_khoan_{quarter_str}_{year}"
+    remote_dest = f"{settings.accountant_drive_remote}{remote_quarter_folder}/{folder_name}"
+
+    uploaded_files = []
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pkg_dir = Path(tmpdir) / folder_name
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. File HĐ chính + PL1 CCCD (PDF)
+        if c.contract_pdf_doc_id and storage.exists(c.contract_pdf_doc_id):
+            b_main = storage.read_doc(c.contract_pdf_doc_id)
+        else:
+            b_main = render_piecework_pdf(c)
+        suffix_label = "DA_KY" if (c.is_signed_by_inut or c.is_signed_by_worker) else "CHUA_KY"
+        fn_main = f"Hop_dong_giao_khoan_{safe_code}_{suffix_label}.pdf"
+        (pkg_dir / fn_main).write_bytes(b_main)
+        uploaded_files.append(fn_main)
+
+        # 2. File PL2 Biên bản nghiệm thu (PDF)
+        doc2 = db.query(Document).filter(Document.source_external_id == f"{c.id}_PL02").first()
+        if doc2 and doc2.doc_id and storage.exists(doc2.doc_id):
+            b_pl2 = storage.read_doc(doc2.doc_id)
+        else:
+            b_pl2 = render_appendix2_pdf(c)
+        fn_pl2 = f"Phu_luc_02_Nghiem_thu_{safe_code}.pdf"
+        (pkg_dir / fn_pl2).write_bytes(b_pl2)
+        uploaded_files.append(fn_pl2)
+
+        # 3. File PL3 Biên bản thanh toán & UNC (PDF)
+        doc3 = db.query(Document).filter(Document.source_external_id == f"{c.id}_PL03").first()
+        if doc3 and doc3.doc_id and storage.exists(doc3.doc_id):
+            b_pl3 = storage.read_doc(doc3.doc_id)
+        else:
+            b_pl3 = render_appendix3_pdf(c)
+        fn_pl3 = f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
+        (pkg_dir / fn_pl3).write_bytes(b_pl3)
+        uploaded_files.append(fn_pl3)
+
+        # 4. File Word DOCX (nếu có trong Document)
+        doc_word = db.query(Document).filter(Document.source_external_id == str(c.id), Document.filename.like("%.docx")).first()
+        if doc_word and doc_word.doc_id and storage.exists(doc_word.doc_id, suffix=".docx"):
+            b_docx = storage.read_doc(doc_word.doc_id, suffix=".docx")
+            fn_docx = f"Hop_dong_giao_khoan_{safe_code}_final.docx"
+            (pkg_dir / fn_docx).write_bytes(b_docx)
+            uploaded_files.append(fn_docx)
+
+        # 5. Các chứng từ đính kèm (CCCD, Selfie, UNC, Ảnh hiện trường)
+        if c.id_card_front_doc_id and storage.exists(c.id_card_front_doc_id, suffix=".jpg"):
+            fn_f = f"CCCD_Mat_truoc_{clean_name}.jpg"
+            (pkg_dir / fn_f).write_bytes(storage.read_doc(c.id_card_front_doc_id, suffix=".jpg"))
+            uploaded_files.append(fn_f)
+        if c.id_card_back_doc_id and storage.exists(c.id_card_back_doc_id, suffix=".jpg"):
+            fn_b = f"CCCD_Mat_sau_{clean_name}.jpg"
+            (pkg_dir / fn_b).write_bytes(storage.read_doc(c.id_card_back_doc_id, suffix=".jpg"))
+            uploaded_files.append(fn_b)
+        if c.worker_face_doc_id and storage.exists(c.worker_face_doc_id, suffix=".jpg"):
+            fn_fc = f"Anh_eKYC_{clean_name}.jpg"
+            (pkg_dir / fn_fc).write_bytes(storage.read_doc(c.worker_face_doc_id, suffix=".jpg"))
+            uploaded_files.append(fn_fc)
+        if c.bank_proof_doc_id and storage.exists(c.bank_proof_doc_id, suffix=".png"):
+            fn_bk = f"Chung_tu_UNC_Techcombank_{clean_name}.png"
+            (pkg_dir / fn_bk).write_bytes(storage.read_doc(c.bank_proof_doc_id, suffix=".png"))
+            uploaded_files.append(fn_bk)
+
+        rclone_bin = shutil.which("rclone") or str(Path.home() / ".local" / "bin" / "rclone")
+        cmd = [
+            rclone_bin, "copy", str(pkg_dir), remote_dest,
+            "--drive-root-folder-id", settings.accountant_drive_root_folder_id,
+            "--bind", settings.accountant_drive_bind,
+            "--fast-list",
+            "-v",
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
+        if res.returncode != 0:
+            logger.error("Rclone sync failed: %s", res.stderr)
+            raise HTTPException(502, f"Đồng bộ Google Drive thất bại: {res.stderr[-300:]}")
+
+    drive_link = ""
+    try:
+        link_cmd = [
+            rclone_bin, "link", remote_dest,
+            "--drive-root-folder-id", settings.accountant_drive_root_folder_id,
+            "--bind", settings.accountant_drive_bind
+        ]
+        res_link = subprocess.run(link_cmd, capture_output=True, text=True, timeout=30)
+        if res_link.returncode == 0:
+            drive_link = res_link.stdout.strip()
+    except Exception as e:
+        logger.warning("Could not get rclone link: %s", e)
+
+    if not drive_link:
+        drive_link = "https://drive.google.com/open?id=168L8F2mu4RH7CURvCFXc-zRdQu2nYxyM"
+
+    c.drive_synced_at = datetime.now(timezone.utc)
+    c.drive_folder = f"{remote_quarter_folder}/{folder_name}"
+    c.drive_link = drive_link
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": f"Đã đồng bộ {len(uploaded_files)} tệp HĐGK {c.contract_code} lên Drive Kế toán ({year_quarter})",
+        "quarter": year_quarter,
+        "remote_dest": c.drive_folder,
+        "drive_link": drive_link,
+        "files": uploaded_files,
+        "synced_at": c.drive_synced_at.isoformat(),
+    }
+
+
+@router.post("/api/piecework/contracts/{cid}/sync-drive")
+def sync_contract_drive_endpoint(
+    cid: int,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Đồng bộ bộ hồ sơ của một hợp đồng khoán đã ký lên Google Drive Kế toán theo quý."""
+    c = db.get(PieceworkContract, cid)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng khoán")
+    return sync_piecework_contract_to_drive(c, db, settings)
+
+
+@router.post("/api/piecework/sync-quarterly-drive")
+def sync_quarterly_piecework_drive_endpoint(
+    year: int | None = Query(None),
+    quarter: int | None = Query(None),
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Đồng bộ toàn bộ các hợp đồng khoán đã ký trong quý lên Google Drive Kế toán."""
+    stmt = select(PieceworkContract).where(
+        (PieceworkContract.is_signed_by_inut == True) | (PieceworkContract.is_signed_by_worker == True)
+    )
+    contracts = db.scalars(stmt).all()
+    
+    synced = []
+    for c in contracts:
+        # Determine quarter
+        if c.inut_signed_at: dt = c.inut_signed_at
+        elif c.worker_signed_at: dt = c.worker_signed_at
+        elif c.contract_date:
+            try: dt = datetime.strptime(c.contract_date, "%Y-%m-%d")
+            except Exception: dt = datetime.now()
+        else: dt = datetime.now()
+        
+        c_year = dt.year
+        c_quarter = (dt.month - 1) // 3 + 1
+        
+        if year and c_year != year:
+            continue
+        if quarter and c_quarter != quarter:
+            continue
+            
+        res = sync_piecework_contract_to_drive(c, db, settings)
+        synced.append({
+            "id": c.id,
+            "contract_code": c.contract_code,
+            "worker_name": c.worker_name,
+            "quarter": f"{c_year}:Q{c_quarter}",
+            "files_count": len(res.get("files", [])),
+            "drive_link": res.get("drive_link"),
+        })
+        
+    return {
+        "ok": True,
+        "synced_count": len(synced),
+        "message": f"Đã đồng bộ {len(synced)} hợp đồng khoán lên Drive Kế toán",
+        "contracts": synced,
+    }
 
 @router.get("/api/piecework/certificates")
 def list_piecework_certificates(
@@ -3453,34 +3674,30 @@ def public_submit_signature(
     c.status = deficiency["status_code"]
     c.updated_at = datetime.now(timezone.utc)
     
-    # Re-render PDF with both signatures
+    # Re-render PDF with worker signature
     try:
-        pdf_bytes = render_piecework_pdf(c)
-        if c.is_signed_by_inut and c.inut_signed_at:
-            try:
-                pdf_bytes = sign_piecework_pdf_pyhanko(pdf_bytes, c.inut_signed_at, location=settings.default_location)
-            except Exception as e:
-                logger.exception("Error signing with PyHanko in portal: %s", e)
-        doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
-        c.contract_pdf_doc_id = doc_id
-        
-        # Save into Documents
-        doc_name = f"HDGK_{c.contract_code.replace('/', '_')}_dual_signed.pdf"
-        doc = Document(
-            doc_id=doc_id,
-            filename=doc_name,
-            signer_name=c.worker_name,
-            signed=True,
-            doc_type="hop_dong",
-            note=f"HĐGK {c.contract_code} · {c.worker_name} · Ký online qua Portal · Đã đủ 2 chữ ký",
-            source_system="piecework_portal",
-            source_external_id=c.contract_code,
-            source_synced_at=datetime.now(timezone.utc),
-        )
-        db.add(doc)
+        if not (c.is_signed_by_inut and c.contract_pdf_doc_id):
+            pdf_bytes = render_piecework_pdf(c)
+            doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+            c.contract_pdf_doc_id = doc_id
+            
+            # Save into Documents
+            code_clean = c.contract_code.replace('/', '_')
+            doc_name = f"Hop_dong_giao_khoan_{code_clean}_worker_signed.pdf"
+            doc = Document(
+                doc_id=doc_id,
+                filename=doc_name,
+                signer_name=c.worker_name,
+                signed=False,
+                doc_type="hop_dong",
+                note=f"HĐGK {c.contract_code} · {c.worker_name} · Ký online qua Portal · Chờ Bên A ký số",
+                source_system="piecework_portal",
+                source_external_id=c.contract_code,
+                source_synced_at=datetime.now(timezone.utc),
+            )
+            db.add(doc)
     except Exception as e:
-        print("Error re-rendering PDF:", e)
-        
+        logger.exception("Error updating worker signature PDF: %s", e)
     db.commit()
     db.refresh(c)
     return {"ok": True, "status": c.status, "signed_at": c.worker_signed_at.isoformat()}

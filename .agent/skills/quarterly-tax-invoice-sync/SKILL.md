@@ -23,7 +23,17 @@ Hóa đơn iNut {YYYY}:Q{X}/
 ├── Hoa_don_ban_ra_Thang_08_{YYYY}/         <-- HĐ bán ra Tháng 8 (PDF + XML)
 ├── Hoa_don_mua_vao_Thang_09_{YYYY}/        <-- HĐ mua vào Tháng 9 (PDF + XML)
 ├── Hoa_don_ban_ra_Thang_09_{YYYY}/         <-- HĐ bán ra Tháng 9 (PDF + XML)
-└── To_khai_nhap_khau_Q{X}_{YYYY}/          <-- Tờ khai HQ (Excel ToKhaiHQ7N + Barcode PDF)
+├── To_khai_nhap_khau_Q{X}_{YYYY}/          <-- Tờ khai HQ (Excel ToKhaiHQ7N + Barcode PDF)
+└── Hop_dong_giao_khoan_Q{X}_{YYYY}/        <-- Hồ sơ HĐ giao khoán nhân công/thợ ngoài theo quý
+    └── HDGK_{so_hd}_{ten_tho}/             <-- Gói hồ sơ đầy đủ của từng hợp đồng khoán
+        ├── Hop_dong_giao_khoan_{code}_DA_KY.pdf
+        ├── Phu_luc_02_Nghiem_thu_{code}.pdf
+        ├── Phu_luc_03_Thanh_toan_UNC_{code}.pdf
+        ├── Hop_dong_giao_khoan_{code}_final.docx
+        ├── CCCD_Mat_truoc_{ten}.jpg
+        ├── CCCD_Mat_sau_{ten}.jpg
+        ├── Anh_eKYC_{ten}.jpg
+        └── Chung_tu_UNC_Techcombank_{ten}.png
 ```
 
 ---
@@ -135,3 +145,30 @@ Khi thực hiện đối soát các khoản thanh toán mua hàng hóa/dịch v�
 * **Ngưỡng thuế TNCN & Ngân hàng (NĐ 253/2026/NĐ-CP & NĐ 320/2025/NĐ-CP)**:
   * Dưới 5.000.000 VNĐ/lần: Miễn khấu trừ 10% thuế TNCN tại nguồn (Khoản 2 Điều 50 NĐ 253).
   * Từ 5.000.000 VNĐ/lần trở lên: Bắt buộc chuyển khoản từ TK Techcombank `79713` vào STK chính chủ của thợ (trùng tên CCCD) và khấu trừ 10% thuế TNCN (hoặc có Cam kết 08/CK) để được tính 100% chi phí hợp lý TNDN.
+
+### 4.6. Quy Tắc Đồng Bộ Hợp Đồng Giao Khoán Lên Google Drive Kế Toán Theo Thời Điểm Ký Của Từng Quý
+* **Nguyên tắc phân bổ Quý**: Hợp đồng giao khoán đã ký được tự động phân loại và đồng bộ vào thư mục Quý của Kế toán theo **thời điểm ký số** (`inut_signed_at` -> `worker_signed_at` -> `contract_date`):
+  * Ký tháng 1, 2, 3: Lưu vào `VAT/Hóa đơn iNut {YYYY}:Q1/Hop_dong_giao_khoan_Q1_{YYYY}/`
+  * Ký tháng 4, 5, 6: Lưu vào `VAT/Hóa đơn iNut {YYYY}:Q2/Hop_dong_giao_khoan_Q2_{YYYY}/`
+  * Ký tháng 7, 8, 9: Lưu vào `VAT/Hóa đơn iNut {YYYY}:Q3/Hop_dong_giao_khoan_Q3_{YYYY}/`
+  * Ký tháng 10, 11, 12: Lưu vào `VAT/Hóa đơn iNut {YYYY}:Q4/Hop_dong_giao_khoan_Q4_{YYYY}/`
+* **Thành phần gói hồ sơ đóng gói đầy đủ (Dossier Package)** cho mỗi HĐGK (`HDGK_{so_hd}_{ten_tho}/`):
+  1. **Hợp đồng chính + Phụ lục I** (`Hop_dong_giao_khoan_{code}_DA_KY.pdf`): PDF chứa đầy đủ chữ ký số doanh nghiệp PAdES của iNut và chữ ký tay eKYC của thợ.
+  2. **Phụ lục II Nghiệm thu** (`Phu_luc_02_Nghiem_thu_{code}.pdf`): Biên bản nghiệm thu khối lượng hoàn thành, ký trước thời điểm xuất hóa đơn bán ra.
+  3. **Phụ lục III Thanh toán** (`Phu_luc_03_Thanh_toan_UNC_{code}.pdf`): Biên bản xác nhận thanh toán thù lao đính kèm chứng từ UNC ngân hàng.
+  4. **Bản thảo Word DOCX** (`Hop_dong_giao_khoan_{code}_final.docx`): Văn bản gốc tổng hợp phục vụ kế toán tra cứu và đối chiếu điều khoản.
+  5. **Các chứng từ đính kèm**: Ảnh CCCD 2 mặt (`CCCD_Mat_truoc_{ten}.jpg`, `CCCD_Mat_sau_{ten}.jpg`), ảnh chân dung selfie lúc ký (`Anh_eKYC_{ten}.jpg`), chứng từ chuyển khoản ngân hàng (`Chung_tu_UNC_Techcombank_{ten}.png`), và ảnh hiện trường thi công.
+* **Thao tác trên Giao diện Quản lý KSP**:
+  * Nút **`☁️ Sync Drive Quý`** tại thanh công cụ đầu trang: Tự động gom và đẩy toàn bộ HĐ giao khoán đã ký trong quý lên thư mục Quý tương ứng trên Google Drive kế toán.
+  * Nút **`☁️ Sync Drive Kế toán`** tại từng dòng hợp đồng: Đẩy riêng gói hồ sơ của hợp đồng vừa hoàn thành lên Drive ngay lập tức.
+  * Liên kết **`📁 Mở Drive Quý`** / **`🚀 Mở Thư Mục Trên Google Drive`**: Cho phép kế toán và ban giám đốc bấm mở trực tiếp thư mục lưu trữ trên Google Drive.
+* **Lệnh đồng bộ qua API/CLI**:
+  * API đồng bộ đơn lẻ: `POST /api/piecework/contracts/{id}/sync-drive`
+  * API đồng bộ theo quý: `POST /api/piecework/sync-quarterly-drive?year={YYYY}&quarter={X}`
+  * Lệnh rclone:
+    ```bash
+    rclone copy "/path/to/staged/folder" \
+      "vnmap-drive:VAT/Hóa đơn iNut {YYYY}:Q{X}/Hop_dong_giao_khoan_Q{X}_{YYYY}/HDGK_{code}_{name}" \
+      --drive-root-folder-id "168L8F2mu4RH7CURvCFXc-zRdQu2nYxyM" \
+      --bind 0.0.0.0 -v
+    ```
