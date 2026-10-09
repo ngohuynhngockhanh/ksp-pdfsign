@@ -239,3 +239,19 @@ parse hóa đơn thật (skip nếu không có `~/ihoadon.vn_...pdf`).
   - **Phụ lục II (Nghiệm thu):** Ký vào **ngày xuất hóa đơn điện tử** và **trước thời điểm xuất hóa đơn** (ví dụ HĐ 43 xuất lúc 22:03 ngày 24/09/2026 thì Phụ lục II ký lúc `16:30:00 ngày 24/09/2026`).
   - **Phụ lục III (Thanh toán & UNC):** Ký **sau thời điểm lập Ủy nhiệm chi** trên ứng dụng ngân hàng. Nếu ngày submit trùng ngày trên UNC thì lấy thời điểm realtime trong ngày (sau giờ tạo lệnh UNC, ví dụ: lệnh tạo lúc 09:22 SA thì ký lúc 09:45 SA).
 * **Hiển thị trên Cổng Portal (`/khoan/{token}`):** Hiển thị danh mục 3 khối hồ sơ riêng biệt kèm nút xem trực tiếp từng bản PDF để người nhận khoán và ban giám đốc đối chiếu độc lập.
+
+### 8. Bảng Bất Biến Trình Tự & Cơ Chế Cảnh Báo Vượt Cấp (Anti-Skip Guardrails)
+* **Bất biến trình tự thời gian:**
+  1. $T_{\text{HĐGK}} < T_{\text{Nghiệm thu}}$: Phải có hợp đồng giao khoán trước khi thi công và nghiệm thu.
+  2. $T_{\text{Nghiệm thu}} \le T_{\text{HĐĐT}}$: Biên bản nghiệm thu công việc (Phụ lục II) phải ký **TRƯỚC thời điểm phát hành hóa đơn điện tử** trong cùng ngày (hoặc trước 1-2 ngày).
+  3. $T_{\text{HĐĐT}} < T_{\text{BBBG}}$: Biên bản bàn giao thiết bị phải ký **SAU thời điểm xuất HĐĐT từ 45 đến 55 phút trong cùng ngày**.
+  4. $T_{\text{Lệnh UNC}} \le T_{\text{Thanh lý}}$: Phụ lục III (Thanh lý & Xác nhận thanh toán) chỉ được ký **SAU khi đã có lệnh chuyển khoản thành công** trên ứng dụng ngân hàng.
+  5. $T_{\text{Ký Bên B}} \le T_{\text{Ký Bên A}}$: Người nhận khoán điền CCCD, STK và ký online eKYC trước; Bên A chỉ ký sau khi người dùng duyệt ("Bảo ký mới ký").
+  6. $T_{\text{Hình họa}} \equiv T_{\text{PAdES /M}}$: Thời gian in trên con dấu hình họa và thời gian ký số mã hóa `/M` phải **khớp 100% từng giây**.
+* **Nghĩa vụ cảnh báo của AI Assistant:**
+  - Nếu người dùng yêu cầu ký Bên A trước khi Bên B điền xong $\rightarrow$ Cảnh báo & hướng dẫn gửi link nháp.
+  - Nếu người dùng đặt giờ nghiệm thu sau giờ hóa đơn $\rightarrow$ Cảnh báo rủi ro bóc tách thuế & điều chỉnh trước giờ hóa đơn.
+  - Nếu người dùng ký thanh lý trước khi chuyển tiền $\rightarrow$ Cảnh báo cần có chứng từ lệnh UNC trước.
+  - Nếu người dùng đặt số hợp đồng tuần tự `01/2026/HĐGK` $\rightarrow$ Cảnh báo rủi ro lộ bí mật quy mô & tự động đổi sang dạng `{ddmmyyyy}-01/HĐGK-...`.
+  - Nếu người dùng yêu cầu gửi email ngay mà chưa duyệt $\rightarrow$ Cảnh báo tuân thủ Human-in-the-Loop & trình bản nháp duyệt trước.
+  - Nếu văn bản đối ngoại xuất hiện `"trên hệ thống KSP"` $\rightarrow$ Tự động chuẩn hóa thành `"trên nền tảng lưu trữ hợp đồng của Bên A"`.
