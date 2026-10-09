@@ -2625,6 +2625,10 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 </div>
 
 <script>
+  const portalToken = "{c.portal_token}";
+  const STORAGE_KEY = "inut_khoan_draft_" + portalToken;
+  let cccdFrontData = null;
+  let cccdBackData = null;
   const canvas = document.getElementById("sigCanvas");
   let isDrawing = false;
   let hasSigned = false;
