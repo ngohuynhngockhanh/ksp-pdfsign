@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { 
+    size: A4; 
+    margin: 14mm 16mm 14mm 16mm; 
+    @bottom-center { 
+      content: "Trang " counter(page) "/" counter(pages); 
+      font-size: 10px; 
+      font-style: italic; 
+    } 
+  }
+  * { box-sizing: border-box; }
+  body { 
+    font-family: "DejaVu Serif", "Times New Roman", serif; 
+    font-size: 11.5px; 
+    line-height: 1.45; 
+    color: #111; 
+  }
+  .header { display: flex; justify-content: space-between; text-align: center; margin-bottom: 6px; }
+  .header .left { width: 52%; font-weight: bold; text-transform: uppercase; font-size: 10.5px; }
+  .header .right { width: 46%; }
+  .header .right .country { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .header .right .motto { font-weight: bold; font-size: 11.5px; }
+  .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
+  .soline { margin-top: 2px; font-size: 10.5px; font-weight: normal; }
+  
+  h1 { text-align: center; font-size: 15.5px; margin: 10px 0 2px; text-transform: uppercase; color: #0f172a; }
+  .number { text-align: center; font-size: 11.5px; font-style: italic; margin-bottom: 6px; color: #475569; }
+  .basis { text-align: justify; margin-bottom: 8px; font-style: italic; font-size: 11px; color: #334155; }
+  
+  .party-title { font-weight: bold; text-transform: uppercase; font-size: 11.5px; margin-top: 4px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
+  .party-table { width: 100%; border-collapse: collapse; margin: 3px 0 6px; font-size: 11px; }
+  .party-table td { padding: 1px 3px; vertical-align: top; }
+  .party-table .key { width: 22%; font-weight: bold; }
+  .party-table .sep { width: 2%; text-align: center; }
+  
+  .pay-box { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-size: 11.5px; line-height: 1.5; }
+  
+  .signs { display: flex; justify-content: space-between; text-align: center; margin-top: 14px; page-break-inside: avoid; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .signs .hint { font-style: italic; font-size: 10.5px; margin-top: 1px; }
+  .signs .space { height: 80px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .signature-img { max-height: 65px; max-width: 160px; object-fit: contain; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="left">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN<br>CÔNG NGHỆ INUT<div class="soline">Số: {{ contract_code }}/PL-03</div></div>
+    <div class="right">
+      <div class="country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="motto"><u>Độc lập – Tự do – Hạnh phúc</u></div>
+      <div style="font-style: italic; font-size: 10.5px; margin-top: 4px;">{{ location_short or "Đắk Lắk" }}, ngày {{ ngay_thanh_toan_display }}</div>
+    </div>
+  </div>
+
+  <h1>BIÊN BẢN XÁC NHẬN THANH TOÁN & THANH LÝ HỢP ĐỒNG</h1>
+  <div class="number">(PHỤ LỤC III — Kèm theo Hợp đồng giao khoán số: <b>{{ contract_code }}</b> ký ngày {{ contract_date_display }})</div>
+
+  <div class="basis">
+    - Căn cứ Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b> ngày {{ contract_date_display }} ký giữa hai Bên;<br>
+    - Căn cứ Biên bản nghiệm thu hoàn thành công việc (Phụ lục II);<br>
+    - Căn cứ chứng từ lệnh chuyển khoản thanh toán ngân hàng Techcombank của Bên A.
+  </div>
+
+  <p style="margin: 4px 0;">Hôm nay, ngày {{ ngay_thanh_toan_display }}, hai Bên cùng thống nhất lập Biên bản xác nhận thanh toán và thanh lý hợp đồng với các nội dung sau:</p>
+
+  <div class="party-title">BÊN GIAO KHOÁN (BÊN A): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <table class="party-table">
+    <tr><td class="key">Đại diện</td><td class="sep">:</td><td>Ông <b>NGÔ HUỲNH NGỌC KHÁNH</b> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Giám đốc</td></tr>
+    <tr><td class="key">Tài khoản chi trả</td><td class="sep">:</td><td><b>79713</b> tại Techcombank (MST: 4401053694)</td></tr>
+  </table>
+
+  <div class="party-title">BÊN NHẬN KHOÁN (BÊN B): ÔNG {{ worker_name|upper }}</div>
+  <table class="party-table">
+    <tr><td class="key">Họ và tên</td><td class="sep">:</td><td><b>{{ worker_name }}</b> &nbsp;&nbsp;&nbsp;&nbsp; Số CCCD: <b>{{ worker_id_card }}</b></td></tr>
+    <tr><td class="key">Tài khoản nhận tiền</td><td class="sep">:</td><td><b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b> (Chính chủ: {{ worker_name }})</td></tr>
+  </table>
+
+  <div class="pay-box">
+    <b>NỘI DUNG XÁC NHẬN THANH TOÁN & THANH LÝ:</b><br>
+    1. <b>Số tiền thù lao thanh toán:</b> <span style="font-size: 13.5px; font-weight: bold; color: #15803d;">{{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ</span> (Bằng chữ: <i>{{ total_amount_in_word }}</i>).<br>
+    2. <b>Hình thức thanh toán:</b> Chuyển khoản ngân hàng trực tiếp từ tài khoản Bên A sang tài khoản thụ hưởng chính chủ của Bên B.<br>
+    3. <b>Xác nhận của Bên B:</b> Bên B xác nhận đã nhận đầy đủ 100% thù lao khoán việc, không còn bất kỳ thắc mắc hay khiếu nại tài chính nào đối với Bên A.<br>
+    4. <b>Thanh lý hợp đồng:</b> Hai Bên cùng thống nhất thanh lý Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b>.
+  </div>
+
+  <!-- Ảnh chứng từ UNC đính kèm -->
+  {% if bank_proof_data_uri %}
+  <div style="margin-top: 8px;">
+    <div style="font-weight: bold; font-size: 11.5px; color: #174b72; margin-bottom: 4px;">CHỨNG TỪ THANH TOÁN NGÂN HÀNG (ỦY NHIỆM CHI TECHCOMBANK):</div>
+    <div style="text-align: center;">
+      <img src="{{ bank_proof_data_uri }}" style="max-width: 82%; max-height: 380px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Ủy nhiệm chi">
+      <div style="font-size: 9.5px; color: #475569; margin-top: 3px; font-weight: 600;">Lệnh chuyển khoản thành công Techcombank Business ({{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ)</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN GIAO KHOÁN (BÊN A)</div>
+      <div class="hint">(Ký số, đóng dấu)</div>
+      <div class="space">
+        {% if is_signed_by_inut %}
+        <div class="digital-stamp" style="border: 2px solid #16a34a; background: #f0fdf4; border-radius: 8px; padding: 6px 8px; color: #166534; font-size: 9.5px; line-height: 1.4; text-align: left; margin: 2px auto; max-width: 240px;">
+          <div style="font-weight: bold; font-size: 10.5px; color: #15803d; border-bottom: 1px dashed #86efac; padding-bottom: 2px; margin-bottom: 3px;">
+            ✓ KÝ SỐ ĐIỆN TỬ BỞI:<br>
+            <span style="font-size: 10px;">CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT</span>
+          </div>
+          <div><b>MST:</b> 4401053694</div>
+          <div><b>Ngày ký:</b> {{ inut_signed_date_display }}</div>
+        </div>
+        {% endif %}
+      </div>
+      <div><b>Ông NGÔ HUỲNH NGỌC KHÁNH</b><br>Giám đốc</div>
+    </div>
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN NHẬN KHOÁN (BÊN B)</div>
+      <div class="hint">(Ký điện tử online)</div>
+      <div class="space">
+        {% if worker_signature_data %}
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin: 4px 0;">
+          <img class="signature-img" src="{{ worker_signature_data }}" alt="Chữ ký thợ">
+          {% if worker_face_photo_data %}
+          <img src="{{ worker_face_photo_data }}" alt="Ảnh eKYC" style="width: 44px; height: 56px; object-fit: cover; border-radius: 4px; border: 1.5px solid #0284c7;" title="Ảnh chụp chân dung lúc ký">
+          {% endif %}
+        </div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Thời gian ký: {{ worker_signed_appendix3_display }}</div>
+        {% endif %}
+      </div>
+      <div><b>{{ worker_name }}</b></div>
+    </div>
+  </div>
+</body>
+</html>

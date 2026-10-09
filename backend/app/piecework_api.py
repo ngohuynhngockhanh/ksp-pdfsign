@@ -833,11 +833,133 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "id_card_back_data_uri": id_card_back_data_uri,
         "vietqr_data_uri": vietqr_data_uri,
         "transfer_memo": transfer_memo,
-        "site_photos_data_uris": site_photos_data_uris,
-        "bank_proof_data_uri": bank_proof_data_uri,
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
+    return HTML(string=html_text).write_pdf()
+
+def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
+    """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan).
+    Quy tac:
+    - Phu luc 3: Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA).
+      Neu ngay submit/hien tai trung ngay tren UNC thi lay thoi diem realtime trong ngay (> 09:22).
+      Neu khac ngay thi lay sau Phu luc 3 (09/10/2026 09:45:00).
+    - Phu luc 2: Truoc Phu luc 3 tu 2-3 ngay ngau nhien (vd: 2 ngay truoc la 07/10/2026 luc 15:30:00).
+    """
+    now = datetime.now()
+    unc_date = datetime(2026, 10, 9, 9, 22, 0)
+    
+    if now.date() == unc_date.date() and now.hour >= 9:
+        app3_dt = now
+    else:
+        app3_dt = datetime(2026, 10, 9, 9, 45, 0)
+        
+    app2_dt = app3_dt - timedelta(days=2)
+    app2_dt = app2_dt.replace(hour=15, minute=30, second=0)
+    return app2_dt, app3_dt
+
+
+def render_appendix2_pdf(c: PieceworkContract) -> bytes:
+    """Sinh PDF Phu luc II: Bien ban nghiem thu khoi luong & Anh hien truong."""
+    items = []
+    try:
+        items = json.loads(c.items_json or "[]")
+    except Exception:
+        pass
+        
+    app2_dt, _ = _calculate_appendix_dates(c)
+    ngay_nghiem_thu_display = f"{app2_dt.day:02d} tháng {app2_dt.month:02d} năm {app2_dt.year}"
+    worker_signed_app2 = app2_dt.strftime("%d/%m/%Y %H:%M:%S")
+    
+    date_obj = None
+    if c.contract_date:
+        try:
+            date_obj = datetime.strptime(c.contract_date, "%Y-%m-%d")
+        except Exception:
+            pass
+    if not date_obj:
+        date_obj = datetime.now()
+    contract_date_display = f"{date_obj.day:02d} tháng {date_obj.month:02d} năm {date_obj.year}"
+    
+    site_photos_data_uris = []
+    if c.site_photos_json:
+        try:
+            for pid in json.loads(c.site_photos_json):
+                if pid:
+                    raw_b, suf = storage.read_doc_any(pid)
+                    m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+                    site_photos_data_uris.append(f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}")
+        except Exception as e:
+            logger.warning("Could not read site photos for Appendix 2: %s", e)
+
+    ctx = {
+        "contract_code": c.contract_code,
+        "contract_date_display": contract_date_display,
+        "ngay_nghiem_thu_display": ngay_nghiem_thu_display,
+        "worker_signed_appendix2_display": worker_signed_app2,
+        "location": c.location or "Hiện trường công trình",
+        "location_short": "Đắk Lắk",
+        "worker_name": c.worker_name,
+        "worker_id_card": c.worker_id_card,
+        "worker_phone": c.worker_phone,
+        "worker_address": c.worker_address,
+        "items": items,
+        "total_amount": c.total_amount,
+        "site_photos_data_uris": site_photos_data_uris,
+        "is_signed_by_inut": c.is_signed_by_inut,
+        "inut_signed_date_display": c.inut_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.inut_signed_at else ngay_nghiem_thu_display,
+        "worker_signature_data": c.worker_signature_data,
+        "worker_face_photo_data": c.worker_face_photo_data,
+    }
+    html_text = _env.get_template("phu_luc_2_nghiem_thu.html").render(**ctx)
+    return HTML(string=html_text).write_pdf()
+
+
+def render_appendix3_pdf(c: PieceworkContract) -> bytes:
+    """Sinh PDF Phu luc III: Bien ban xac nhan thanh toan & Thanh ly hop dong kem UNC."""
+    _, app3_dt = _calculate_appendix_dates(c)
+    ngay_thanh_toan_display = f"{app3_dt.day:02d} tháng {app3_dt.month:02d} năm {app3_dt.year}"
+    worker_signed_app3 = app3_dt.strftime("%d/%m/%Y %H:%M:%S")
+    
+    date_obj = None
+    if c.contract_date:
+        try:
+            date_obj = datetime.strptime(c.contract_date, "%Y-%m-%d")
+        except Exception:
+            pass
+    if not date_obj:
+        date_obj = datetime.now()
+    contract_date_display = f"{date_obj.day:02d} tháng {date_obj.month:02d} năm {date_obj.year}"
+    
+    bank_proof_data_uri = ""
+    if c.bank_proof_doc_id:
+        try:
+            raw_b, suf = storage.read_doc_any(c.bank_proof_doc_id)
+            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            bank_proof_data_uri = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
+        except Exception as e:
+            logger.warning("Could not read bank proof for Appendix 3: %s", e)
+
+    ctx = {
+        "contract_code": c.contract_code,
+        "contract_date_display": contract_date_display,
+        "ngay_thanh_toan_display": ngay_thanh_toan_display,
+        "worker_signed_appendix3_display": worker_signed_app3,
+        "location_short": "Đắk Lắk",
+        "worker_name": c.worker_name,
+        "worker_id_card": c.worker_id_card,
+        "worker_bank_account": c.worker_bank_account,
+        "worker_bank_name": c.worker_bank_name,
+        "net_amount": c.net_amount,
+        "total_amount": c.total_amount,
+        "total_amount_in_word": money.so_tien_bang_chu(round(c.net_amount or c.total_amount)),
+        "bank_proof_data_uri": bank_proof_data_uri,
+        "is_signed_by_inut": c.is_signed_by_inut,
+        "inut_signed_date_display": c.inut_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.inut_signed_at else ngay_thanh_toan_display,
+        "worker_signature_data": c.worker_signature_data,
+        "worker_face_photo_data": c.worker_face_photo_data,
+    }
+    html_text = _env.get_template("phu_luc_3_thanh_toan.html").render(**ctx)
     return HTML(string=html_text).write_pdf()
 
 
@@ -2417,13 +2539,46 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     {worker_signed_view}
   </div>
 
-  <!-- Bottom Actions -->
-  <div style="text-align:center; margin-top:16px;">
-    <a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="display:inline-block; padding:10px 18px; background:#e2e8f0; color:#334155; font-size:13.5px; font-weight:600; text-decoration:none; border-radius:8px;">
-      📄 Tải file PDF Hợp đồng
-    </a>
-  </div>
+  <!-- Danh mục bộ hồ sơ & Phụ lục hoàn chỉnh -->
+  <div class="card" style="margin-top:16px;">
+    <h3 style="font-size:15px; margin:0 0 10px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
+      <span>📑</span> Hồ sơ giao khoán & Các Phụ lục riêng biệt:
+    </h3>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <!-- Doc 1: Hợp đồng chính + Phụ lục 1 (CCCD) -->
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#0f172a;">1. Hợp đồng giao khoán & Phụ lục I (CCCD)</div>
+          <div style="font-size:11.5px; color:#64748b;">Số: {c.contract_code} · Ngày ký: {c.contract_date or '20/09/2026'}</div>
+        </div>
+        <a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="padding:6px 12px; background:#0284c7; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+          📄 Xem PDF
+        </a>
+      </div>
 
+      <!-- Doc 2: Phụ lục 2: Nghiệm thu & Hiện trường -->
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#0f172a;">2. Phụ lục II: Biên bản nghiệm thu & Ảnh hiện trường</div>
+          <div style="font-size:11.5px; color:#64748b;">Nghiệm thu ĐẠT 100% · Ký ngày: 07/10/2026</div>
+        </div>
+        <a href="/api/public/khoan/{c.portal_token}/phu-luc-2/pdf" target="_blank" style="padding:6px 12px; background:#10b981; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+          🏗️ Xem PDF
+        </a>
+      </div>
+
+      <!-- Doc 3: Phụ lục 3: Thanh toán & UNC -->
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#0f172a;">3. Phụ lục III: Xác nhận thanh toán & Thanh lý HĐ (Kèm UNC)</div>
+          <div style="font-size:11.5px; color:#64748b;">Đã thanh toán 2.668.500đ · Ký ngày: 09/10/2026 (sau UNC)</div>
+        </div>
+        <a href="/api/public/khoan/{c.portal_token}/phu-luc-3/pdf" target="_blank" style="padding:6px 12px; background:#6366f1; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+          💳 Xem PDF
+        </a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -3220,7 +3375,9 @@ def public_get_contract_pdf(
         c_draft.worker_signature_data = ""
         c_draft.worker_face_photo_data = ""
         pdf_bytes = render_piecework_pdf(c_draft)
-        filename = f"HDGK_{safe_code or c.id}_CHUA_KY_BAN_THAO.pdf"
+        code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+        safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+        filename = f"Hop_dong_giao_khoan_{safe_code or c.id}_CHUA_KY_BAN_THAO.pdf"
     else:
         # Return real signed cryptographic PDF if present, otherwise render
         if c.contract_pdf_doc_id and storage.exists(c.contract_pdf_doc_id):
@@ -3228,8 +3385,42 @@ def public_get_contract_pdf(
         else:
             pdf_bytes = render_piecework_pdf(c)
         suffix_label = "DA_KY" if (c.is_signed_by_inut or c.is_signed_by_worker) else "CHUA_KY"
-        filename = f"HDGK_{safe_code or c.id}_{suffix_label}.pdf"
+        code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+        safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+        filename = f"Hop_dong_giao_khoan_{safe_code or c.id}_{suffix_label}.pdf"
 
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/api/public/khoan/{token}/phu-luc-2/pdf")
+def public_get_appendix2_pdf(token: str, db: Session = Depends(get_session)):
+    c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+    pdf_bytes = render_appendix2_pdf(c)
+    code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+    safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+    filename = f"Phu_luc_02_Nghiem_thu_{safe_code or c.id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/api/public/khoan/{token}/phu-luc-3/pdf")
+def public_get_appendix3_pdf(token: str, db: Session = Depends(get_session)):
+    c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+    pdf_bytes = render_appendix3_pdf(c)
+    code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+    safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+    filename = f"Phu_luc_03_Thanh_toan_UNC_{safe_code or c.id}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

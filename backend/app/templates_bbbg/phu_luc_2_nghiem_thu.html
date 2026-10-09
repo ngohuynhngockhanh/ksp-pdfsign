@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { 
+    size: A4; 
+    margin: 14mm 16mm 14mm 16mm; 
+    @bottom-center { 
+      content: "Trang " counter(page) "/" counter(pages); 
+      font-size: 10px; 
+      font-style: italic; 
+    } 
+  }
+  * { box-sizing: border-box; }
+  body { 
+    font-family: "DejaVu Serif", "Times New Roman", serif; 
+    font-size: 11.5px; 
+    line-height: 1.45; 
+    color: #111; 
+  }
+  .header { display: flex; justify-content: space-between; text-align: center; margin-bottom: 6px; }
+  .header .left { width: 52%; font-weight: bold; text-transform: uppercase; font-size: 10.5px; }
+  .header .right { width: 46%; }
+  .header .right .country { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .header .right .motto { font-weight: bold; font-size: 11.5px; }
+  .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
+  .soline { margin-top: 2px; font-size: 10.5px; font-weight: normal; }
+  
+  h1 { text-align: center; font-size: 15.5px; margin: 10px 0 2px; text-transform: uppercase; color: #0f172a; }
+  .number { text-align: center; font-size: 11.5px; font-style: italic; margin-bottom: 6px; color: #475569; }
+  .basis { text-align: justify; margin-bottom: 8px; font-style: italic; font-size: 11px; color: #334155; }
+  
+  .party-title { font-weight: bold; text-transform: uppercase; font-size: 11.5px; margin-top: 4px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
+  .party-table { width: 100%; border-collapse: collapse; margin: 3px 0 6px; font-size: 11px; }
+  .party-table td { padding: 1px 3px; vertical-align: top; }
+  .party-table .key { width: 22%; font-weight: bold; }
+  .party-table .sep { width: 2%; text-align: center; }
+  
+  table.data-table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  table.data-table th, table.data-table td { border: 1px solid #333; padding: 4px 6px; font-size: 10.5px; }
+  table.data-table th { background-color: #f1f6f9; text-align: center; font-weight: bold; }
+  table.data-table td.c { text-align: center; }
+  table.data-table td.r { text-align: right; }
+  
+  .signs { display: flex; justify-content: space-between; text-align: center; margin-top: 14px; page-break-inside: avoid; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .signs .hint { font-style: italic; font-size: 10.5px; margin-top: 1px; }
+  .signs .space { height: 80px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .signature-img { max-height: 65px; max-width: 160px; object-fit: contain; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="left">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN<br>CÔNG NGHỆ INUT<div class="soline">Số: {{ contract_code }}/PL-02</div></div>
+    <div class="right">
+      <div class="country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="motto"><u>Độc lập – Tự do – Hạnh phúc</u></div>
+      <div style="font-style: italic; font-size: 10.5px; margin-top: 4px;">{{ location_short or "Đắk Lắk" }}, ngày {{ ngay_nghiem_thu_display }}</div>
+    </div>
+  </div>
+
+  <h1>BIÊN BẢN NGHIỆM THU HOÀN THÀNH CÔNG VIỆC</h1>
+  <div class="number">(PHỤ LỤC II — Kèm theo Hợp đồng giao khoán số: <b>{{ contract_code }}</b> ký ngày {{ contract_date_display }})</div>
+
+  <div class="basis">
+    - Căn cứ Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b> ngày {{ contract_date_display }} ký giữa hai Bên;<br>
+    - Căn cứ kết quả khảo sát, thi công lắp đặt và kiểm thử vận hành thực tế tại hiện trường công trình.
+  </div>
+
+  <p style="margin: 4px 0;">Hôm nay, ngày {{ ngay_nghiem_thu_display }}, tại hiện trường công trình, hai Bên tiến hành nghiệm thu công việc với thành phần gồm:</p>
+
+  <div class="party-title">BÊN GIAO KHOÁN (BÊN A): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <table class="party-table">
+    <tr><td class="key">Đại diện</td><td class="sep">:</td><td>Ông <b>NGÔ HUỲNH NGỌC KHÁNH</b> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Giám đốc</td></tr>
+    <tr><td class="key">Địa chỉ</td><td class="sep">:</td><td>161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam (MST: 4401053694)</td></tr>
+  </table>
+
+  <div class="party-title">BÊN NHẬN KHOÁN (BÊN B): ÔNG {{ worker_name|upper }}</div>
+  <table class="party-table">
+    <tr><td class="key">Họ và tên</td><td class="sep">:</td><td><b>{{ worker_name }}</b> &nbsp;&nbsp;&nbsp;&nbsp; Số CCCD: <b>{{ worker_id_card }}</b></td></tr>
+    <tr><td class="key">Địa chỉ thường trú</td><td class="sep">:</td><td>{{ worker_address }} &nbsp;&nbsp;|&nbsp;&nbsp; SĐT: {{ worker_phone }}</td></tr>
+  </table>
+
+  <div style="font-weight: bold; margin-top: 6px; color: #174b72;">I. NỘI DUNG VÀ KHỐI LƯỢNG CÔNG VIỆC NGHIỆM THU:</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:6%">STT</th>
+        <th>Nội dung công việc nghiệm thu</th>
+        <th style="width:10%">ĐVT</th>
+        <th style="width:10%">Khối lượng</th>
+        <th style="width:16%">Thành tiền (VNĐ)</th>
+        <th style="width:14%">Đánh giá</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong }}</td>
+        <td class="r">{{ "{:,.0f}".format(it.thanh_tien) }}</td>
+        <td class="c" style="color: #15803d; font-weight: bold;">✓ ĐẠT YÊU CẦU</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="4" style="text-align:center; font-weight:bold;">TỔNG GIÁ TRỊ CÔNG VIỆC NGHIỆM THU</td>
+        <td class="r" style="font-weight:bold; color: #b91c1c;">{{ "{:,.0f}".format(total_amount) }} VNĐ</td>
+        <td class="c" style="color: #15803d; font-weight: bold;">HOÀN THÀNH 100%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="font-weight: bold; margin-top: 6px; color: #174b72;">II. ĐÁNH GIÁ VÀ KẾT LUẬN NGHIỆM THU:</div>
+  <p style="margin: 2px 0;">1. Toàn bộ thiết bị phần cứng, dây cáp tín hiệu PoE đã được kéo rải và lắp đặt an toàn, đúng tiêu chuẩn kỹ thuật.</p>
+  <p style="margin: 2px 0;">2. Hệ thống truyền luồng hình ảnh camera vận hành ổn định, chất lượng hình ảnh sắc nét, tính năng CheckVar hoạt động chính xác.</p>
+  <p style="margin: 2px 0;">3. Hai Bên thống nhất nghiệm thu đạt yêu cầu 100% và làm căn cứ thanh toán thù lao giao khoán theo thỏa thuận hợp đồng.</p>
+
+  <!-- Hình ảnh hiện trường đính kèm -->
+  {% if site_photos_data_uris %}
+  <div style="margin-top: 8px;">
+    <div style="font-weight: bold; font-size: 11.5px; color: #174b72; margin-bottom: 6px;">III. HÌNH ẢNH NGHIỆM THU THI CÔNG HIỆN TRƯỜNG THỰC TẾ:</div>
+    <div style="display: flex; justify-content: space-around; gap: 12px; align-items: flex-start; flex-wrap: wrap;">
+      {% for photo_uri in site_photos_data_uris %}
+      <div style="text-align: center; width: 48%;">
+        <img src="{{ photo_uri }}" style="width: 100%; max-height: 200px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Ảnh hiện trường">
+        <div style="font-size: 9.5px; color: #475569; margin-top: 3px; font-weight: 600;">Hình ảnh nghiệm thu hiện trường thực tế #{{ loop.index }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN GIAO KHOÁN (BÊN A)</div>
+      <div class="hint">(Ký số, đóng dấu)</div>
+      <div class="space">
+        {% if is_signed_by_inut %}
+        <div class="digital-stamp" style="border: 2px solid #16a34a; background: #f0fdf4; border-radius: 8px; padding: 6px 8px; color: #166534; font-size: 9.5px; line-height: 1.4; text-align: left; margin: 2px auto; max-width: 240px;">
+          <div style="font-weight: bold; font-size: 10.5px; color: #15803d; border-bottom: 1px dashed #86efac; padding-bottom: 2px; margin-bottom: 3px;">
+            ✓ KÝ SỐ ĐIỆN TỬ BỞI:<br>
+            <span style="font-size: 10px;">CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT</span>
+          </div>
+          <div><b>MST:</b> 4401053694</div>
+          <div><b>Ngày ký:</b> {{ inut_signed_date_display }}</div>
+        </div>
+        {% endif %}
+      </div>
+      <div><b>Ông NGÔ HUỲNH NGỌC KHÁNH</b><br>Giám đốc</div>
+    </div>
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN NHẬN KHOÁN (BÊN B)</div>
+      <div class="hint">(Ký điện tử online)</div>
+      <div class="space">
+        {% if worker_signature_data %}
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin: 4px 0;">
+          <img class="signature-img" src="{{ worker_signature_data }}" alt="Chữ ký thợ">
+          {% if worker_face_photo_data %}
+          <img src="{{ worker_face_photo_data }}" alt="Ảnh eKYC" style="width: 44px; height: 56px; object-fit: cover; border-radius: 4px; border: 1.5px solid #0284c7;" title="Ảnh chụp chân dung lúc ký">
+          {% endif %}
+        </div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Thời gian ký: {{ worker_signed_appendix2_display }}</div>
+        {% endif %}
+      </div>
+      <div><b>{{ worker_name }}</b></div>
+    </div>
+  </div>
+</body>
+</html>
