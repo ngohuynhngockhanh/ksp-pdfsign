@@ -841,10 +841,9 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
     """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan).
     Quy tac:
-    - Phu luc 3: Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA).
-      Neu ngay submit/hien tai trung ngay tren UNC thi lay thoi diem realtime trong ngay (> 09:22).
-      Neu khac ngay thi lay sau Phu luc 3 (09/10/2026 09:45:00).
-    - Phu luc 2: Truoc Phu luc 3 tu 2-3 ngay ngau nhien (vd: 2 ngay truoc la 07/10/2026 luc 15:30:00).
+    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON (24/09/2026) va TRUOC GIO XUAT HOA DON (HĐ 43 xuat luc 22:03:28 -> ky luc 16:30:00 ngay 24/09/2026).
+    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA).
+      Neu ngay submit/hien tai trung ngay tren UNC thi lay thoi diem realtime trong ngay (> 09:22, vd: 09:55:00 09/10/2026).
     """
     now = datetime.now()
     unc_date = datetime(2026, 10, 9, 9, 22, 0)
@@ -854,10 +853,9 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
     else:
         app3_dt = datetime(2026, 10, 9, 9, 45, 0)
         
-    app2_dt = app3_dt - timedelta(days=2)
-    app2_dt = app2_dt.replace(hour=15, minute=30, second=0)
+    # Phu luc 2: Ký ngay 24/09/2026 truoc gio xuat hoa don (22:03) -> 16:30:00
+    app2_dt = datetime(2026, 9, 24, 16, 30, 0)
     return app2_dt, app3_dt
-
 
 def render_appendix2_pdf(c: PieceworkContract) -> bytes:
     """Sinh PDF Phu luc II: Bien ban nghiem thu khoi luong & Anh hien truong."""
@@ -2560,7 +2558,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
           <div style="font-weight:700; font-size:13px; color:#0f172a;">2. Phụ lục II: Biên bản nghiệm thu & Ảnh hiện trường</div>
-          <div style="font-size:11.5px; color:#64748b;">Nghiệm thu ĐẠT 100% · Ký ngày: 07/10/2026</div>
+          <div style="font-size:11.5px; color:#64748b;">Nghiệm thu ĐẠT 100% · Ký ngày: 24/09/2026 (trước giờ xuất HĐ)</div>
         </div>
         <a href="/api/public/khoan/{c.portal_token}/phu-luc-2/pdf" target="_blank" style="padding:6px 12px; background:#10b981; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           🏗️ Xem PDF

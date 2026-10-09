@@ -137,3 +137,4 @@
 14. `backend/app/piecework_api.py`: Thêm hộp thoại xác nhận `confirm()`, cảnh báo khóa thông tin trước khi ký, hiển thị thông báo liên hệ INUT sau khi ký và bổ sung endpoint mở khóa `/api/piecework/contracts/{cid}/unlock`.
 15. `backend/app/piecework_api.py` & `backend/app/templates_bbbg/hop_dong_giao_khoan.html`: Tích hợp tính năng tự chụp/tải 2 mặt CCCD trên mobile portal và tự động chèn Phụ lục ảnh CCCD sắc nét vào cuối file PDF hợp đồng.
 16. Cập nhật mã hợp đồng khoán thành `20092026-01/HĐGK-INUT-KHANGLINHELV` ngày 20/09/2026, tự động sinh mã VietQR nhúng Điều 2 với nội dung `INUT tt HDGK 20092026-01 ky 20.09 TRAN QUOC THANG` trên cả PDF và DOCX.
+17. Phân tách riêng biệt Phụ lục II (Nghiệm thu & Hiện trường) ký ngày xuất hóa đơn 24/09/2026 lúc 16:30:00 (trước giờ xuất HĐ 43 lúc 22:03:28) và Phụ lục III (Thanh toán & UNC) ký ngày 09/10/2026 sau giờ tạo lệnh UNC.

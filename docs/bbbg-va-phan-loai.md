@@ -236,6 +236,6 @@ parse hóa đơn thật (skip nếu không có `~/ihoadon.vn_...pdf`).
   - **Phụ lục II (Biên bản nghiệm thu & Ảnh hiện trường):** Tài liệu riêng biệt (có file PDF và chữ ký riêng), phản ánh công việc hoàn thành và nghiệm thu thực tế tại công trình.
   - **Phụ lục III (Xác nhận thanh toán & Thanh lý HĐ kèm UNC):** Tài liệu riêng biệt (có file PDF và chữ ký riêng), phản ánh nghĩa vụ chi trả ngân hàng đã hoàn tất.
 * **Quy tắc thời điểm ký số logic cho các Phụ lục:**
-  - **Phụ lục II (Nghiệm thu):** Ký **trước Phụ lục III từ 2 đến 3 ngày** (ví dụ Phụ lục III là 09/10/2026 thì Phụ lục II ký ngày `07/10/2026`).
+  - **Phụ lục II (Nghiệm thu):** Ký vào **ngày xuất hóa đơn điện tử** và **trước thời điểm xuất hóa đơn** (ví dụ HĐ 43 xuất lúc 22:03 ngày 24/09/2026 thì Phụ lục II ký lúc `16:30:00 ngày 24/09/2026`).
   - **Phụ lục III (Thanh toán & UNC):** Ký **sau thời điểm lập Ủy nhiệm chi** trên ứng dụng ngân hàng. Nếu ngày submit trùng ngày trên UNC thì lấy thời điểm realtime trong ngày (sau giờ tạo lệnh UNC, ví dụ: lệnh tạo lúc 09:22 SA thì ký lúc 09:45 SA).
 * **Hiển thị trên Cổng Portal (`/khoan/{token}`):** Hiển thị danh mục 3 khối hồ sơ riêng biệt kèm nút xem trực tiếp từng bản PDF để người nhận khoán và ban giám đốc đối chiếu độc lập.
