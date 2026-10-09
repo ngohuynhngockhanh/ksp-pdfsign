@@ -2199,16 +2199,12 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <div style="display:flex; align-items:center; gap:6px; min-width:0;">
         <span id="saveDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; flex-shrink:0;"></span>
         <span id="saveStatusText" style="font-size:12px; color:#475569; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-          ✓ Tự động lưu nháp
+          {'✓ Hợp đồng đã ký & khóa' if c.is_signed_by_worker else '✓ Tự động lưu nháp'}
         </span>
       </div>
       <div style="display:flex; gap:6px; flex-shrink:0;">
-        <button type="button" onclick="manualSaveDraft()" style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;">
-          <span>💾</span> Lưu nháp
-        </button>
-        <button type="button" id="btnViewRealtimePdf" onclick="viewRealtimePdf()" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(2,132,199,0.3);">
-          <span>📄</span> Xem PDF
-        </button>
+        {f'<button type="button" onclick="manualSaveDraft()" style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;"><span>💾</span> Lưu nháp</button>' if not c.is_signed_by_worker else ''}
+        {f'<a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; text-decoration:none; border-radius:8px; padding:7px 13px; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</a>' if c.is_signed_by_worker else f'<button type="button" id="btnViewRealtimePdf" onclick="viewRealtimePdf()" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</button>'}
       </div>
     </div>
   </div>
@@ -2624,8 +2620,9 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     const origHtml = btn ? btn.innerHTML : "";
     if (btn) {{
       btn.disabled = true;
-      btn.innerHTML = "<span>⏳</span> Đang đồng bộ...";
+      btn.innerHTML = "<span>⏳</span> Đang mở...";
     }}
+    const pdfUrl = "/api/public/khoan/" + portalToken + "/pdf?t=" + Date.now();
     const draft = getFormData();
     if (draft) {{
       try {{
@@ -2642,7 +2639,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       btn.disabled = false;
       btn.innerHTML = origHtml;
     }}
-    window.open("/api/public/khoan/" + portalToken + "/pdf?t=" + Date.now(), "_blank");
+    window.location.href = pdfUrl;
   }}
 
 
