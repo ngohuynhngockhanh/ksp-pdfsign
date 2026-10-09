@@ -720,8 +720,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         from .standards import _strip_accents
         import httpx
         clean_name = _strip_accents(c.worker_name).upper().strip()[:46]
-        day_str = f"{date_obj.day:02d}.{date_obj.month:02d}.{date_obj.year}"
-        code_part = c.contract_code.split("/")[0] if "/" in c.contract_code else c.contract_code[:4]
+        day_str = f"{date_obj.day:02d}.{date_obj.month:02d}"
+        code_part = c.contract_code.split("/")[0] if "/" in c.contract_code else c.contract_code[:12]
         transfer_memo = f"INUT tt HDGK {code_part} ky {day_str} {clean_name}"[:50]
         
         b_name = (c.worker_bank_name or "").lower()
@@ -970,7 +970,9 @@ def create_piecework_contract(
         tax_amount = round(total * 0.1)
         net_amount = total - tax_amount
         
-    code = body.contract_code.strip() or f"{datetime.now().strftime('%y%m%d%H%M')}/HĐGK"
+    c_date = body.contract_date or datetime.now().strftime("%Y-%m-%d")
+    date_digits = "".join(c_date.split("-")[::-1])
+    code = body.contract_code.strip() or f"{date_digits}-01/HĐGK-INUT"
     token = secrets.token_urlsafe(16)
     
     contractor = None

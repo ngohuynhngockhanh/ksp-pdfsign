@@ -104,6 +104,12 @@
   * *Tự Chụp / Tải CCCD 2 Mặt & Chèn Trực Tiếp Vào Phụ Lục Hợp Đồng PDF:*
     - Trên Cổng Mobile: Cung cấp 2 khung tải/chụp trực tiếp từ camera hoặc thư viện ảnh cho *Ảnh Mặt trước CCCD* và *Ảnh Mặt sau CCCD*. Tự động nén ảnh tối ưu đường truyền và hiển thị thumbnail tức thời.
     - Tự động nhúng vào PDF: Khi có ảnh 2 mặt CCCD, hệ thống tự động sinh thêm trang **"PHỤ LỤC: ẢNH CHỤP CĂN CƯỚC CÔNG DÂN NGƯỜI NHẬN KHOÁN"** ở cuối file PDF Hợp đồng (gồm ảnh chụp sắc nét 2 mặt, khung viền, mã hợp đồng và cam kết xác thực nhân thân chính chủ của người nhận khoán).
+* **Quy Tắc Đặt Số Hiệu Hợp Đồng Bảo Mật (Contract Privacy Numbering):**
+  * Tuyệt đối không đánh số thứ tự đơn thuần (như `01/2026/HĐGK` hay `Số 1`) để tránh lộ số lượng hợp đồng phát sinh trong năm của công ty.
+  * Lấy **ngày hợp đồng (`ddmmyyyy`) ghép trước số thứ tự**: Ví dụ `20092026-01/HĐGK-INUT-KHANGLINHELV`.
+* **Tự Động Nhúng Mã VietQR Kèm Nội Dung Chuyển Khoản Ghi Rõ Ngày Ký:**
+  * Tự động sinh mã VietQR Napas 247 và nhúng thẳng vào Điều 2 của Hợp đồng khi người nhận khoán điền STK & Tên ngân hàng.
+  * Nội dung chuyển khoản chuẩn hóa tiếng Việt không dấu: `INUT tt HDGK {code_part} ky {dd.mm} {HO_TEN_THO}` (ví dụ: `INUT tt HDGK 20092026-01 ky 20.09 TRAN QUOC THANG`).
 * **Chuẩn Hóa Thuật Ngữ Pháp Lý Đối Ngoại (External Legal Platform Wording Rule):**
   * Trong toàn bộ các điều khoản thi hành, cam kết chữ ký điện tử của Hợp đồng giao khoán, Hợp đồng kinh tế gửi khách hàng / cộng tác viên bên ngoài:
   * **TUYỆT ĐỐI KHÔNG DÙNG THUẬT NGỮ TÊN MÃ NỘI BỘ "HỆ THỐNG KSP"**.
@@ -130,3 +136,4 @@
 13. `backend/app/templates_bbbg/hop_dong_giao_khoan.html` & file Word DOCX: Sửa dứt điểm câu chữ Điều 4.2 thành *"trên nền tảng lưu trữ hợp đồng của Bên A"* thay cho *"trên hệ thống KSP"*.
 14. `backend/app/piecework_api.py`: Thêm hộp thoại xác nhận `confirm()`, cảnh báo khóa thông tin trước khi ký, hiển thị thông báo liên hệ INUT sau khi ký và bổ sung endpoint mở khóa `/api/piecework/contracts/{cid}/unlock`.
 15. `backend/app/piecework_api.py` & `backend/app/templates_bbbg/hop_dong_giao_khoan.html`: Tích hợp tính năng tự chụp/tải 2 mặt CCCD trên mobile portal và tự động chèn Phụ lục ảnh CCCD sắc nét vào cuối file PDF hợp đồng.
+16. Cập nhật mã hợp đồng khoán thành `20092026-01/HĐGK-INUT-KHANGLINHELV` ngày 20/09/2026, tự động sinh mã VietQR nhúng Điều 2 với nội dung `INUT tt HDGK 20092026-01 ky 20.09 TRAN QUOC THANG` trên cả PDF và DOCX.

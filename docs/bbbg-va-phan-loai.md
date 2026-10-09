@@ -216,3 +216,16 @@ parse hóa đơn thật (skip nếu không có `~/ihoadon.vn_...pdf`).
 * Trong toàn bộ các điều khoản thi hành và cam kết chữ ký điện tử của Hợp đồng giao khoán, Hợp đồng kinh tế:
 * **TUYỆT ĐỐI KHÔNG DÙNG:** *"trên hệ thống KSP"*.
 * **BẮT BUỘC DÙNG:** *"trên nền tảng lưu trữ hợp đồng của Bên A"*.
+
+### 6. Quy tắc đặt số hiệu Hợp đồng bảo mật & Tự động nhúng VietQR thanh toán
+* **Quy tắc số hiệu bảo mật (Contract Privacy Numbering):**
+  - **Tuyệt đối không đánh số thứ tự đơn thuần (như `01/2026/HĐGK` hay `Số 1`):** Tránh để đối tác hoặc bên ngoài suy đoán được số lượng hợp đồng phát sinh trong năm của công ty.
+  - **Quy tắc chuẩn hóa:** Lấy **ngày hợp đồng (dạng `ddmmyyyy`) ghép nối tiếp trước số thứ tự**:
+    * Ví dụ ngày 20/09/2026: `20092026-01/HĐGK-INUT` hoặc `20092026-01/HĐGK-INUT-KHANGLINHELV`.
+* **Tự động nhúng mã VietQR động trực tiếp vào Điều 2 Hợp đồng:**
+  - Khi người nhận khoán điền STK và tên ngân hàng, hệ thống tự động sinh mã VietQR Napas 247 và nhúng trực tiếp cạnh khung thông tin tài khoản thụ hưởng của Bên B (cả trên bản PDF và file Word DOCX).
+* **Nội dung chuyển khoản chuẩn hóa bắt buộc ghi ngày ký:**
+  - Cú pháp chuẩn tiếng Việt không dấu $\le 50$ ký tự:
+    `INUT tt HDGK {code_part} ky {dd.mm} {HO_TEN_THO}`
+    *(Ví dụ: `INUT tt HDGK 20092026-01 ky 20.09 TRAN QUOC THANG`)*.
+  - Giúp kế toán và cơ quan thuế đối chiếu tức thì ngày ký hợp đồng và người thụ hưởng.
