@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b; margin: 0; padding: 15px; }
+  .header { border-bottom: 2px solid #0052cc; padding-bottom: 12px; margin-bottom: 16px; }
+  .company-title { font-size: 16px; font-weight: bold; color: #0052cc; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-info { font-size: 12px; color: #64748b; margin-top: 3px; }
+  .salutation { margin: 16px 0 12px; font-size: 14.5px; }
+  .doc-list { margin: 10px 0 16px; padding-left: 20px; }
+  .doc-list li { margin-bottom: 6px; }
+  table.info-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  table.info-table th, table.info-table td { border: 1px solid #cbd5e1; padding: 9px 12px; text-align: left; vertical-align: top; }
+  table.info-table th { background-color: #f1f5f9; color: #334155; width: 32%; font-weight: 600; }
+  .highlight-total { color: #15803d; font-weight: bold; font-size: 14.5px; }
+  .paid-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; background: #ecfdf5; color: #065f46; font-weight: bold; font-size: 11.5px; }
+  .bank-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; padding: 14px 16px; margin: 18px 0; border-radius: 4px; }
+  .bank-title { font-weight: bold; color: #166534; margin-bottom: 6px; font-size: 13.5px; text-transform: uppercase; }
+  .attachments-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 4px; margin: 16px 0; }
+  .attachments-box ul { margin: 6px 0 0; padding-left: 20px; }
+  .attachments-box li { margin-bottom: 5px; font-size: 13px; }
+  .legit-box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 16px; border-radius: 6px; margin: 16px 0; font-size: 12.5px; color: #1e3a8a; line-height: 1.55; }
+  .portal-link { display: inline-block; margin-top: 6px; padding: 8px 14px; background: #0284c7; color: #fff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12.5px; }
+  .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 12px; color: #64748b; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="company-title">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <div class="company-info">Trụ sở: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk · MST: 4401053694 · Hotline: 0972.768.491</div>
+</div>
+
+<div class="salutation">
+  <b>Kính gửi:</b> <b>Anh {{ worker_name }}</b> – Cộng tác viên / Kỹ thuật viên nhận khoán.
+</div>
+
+<p>Lời đầu tiên, Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT xin gửi lời chào trân trọng và lời cảm ơn chân thành đến Anh đã đồng hành, hoàn thành xuất sắc công tác khảo sát, lắp đặt thiết bị và hỗ trợ kỹ thuật hiện trường cho dự án.</p>
+
+<p>INUT Technology xin gửi tới Anh trọn bộ chứng từ giao khoán việc, biên bản nghiệm thu và chứng từ xác nhận chi trả thù lao đã hoàn tất đầy đủ chữ ký của hai Bên:</p>
+
+<ol class="doc-list">
+  <li><b>Hợp đồng giao khoán công việc & Phụ lục I (CCCD):</b> Số <code>{{ contract_code }}</code> ký ngày {{ contract_date_display }}, kèm Phụ lục ảnh 2 mặt CCCD của Anh.</li>
+  <li><b>Phụ lục II: Biên bản nghiệm thu hoàn thành công việc & Ảnh hiện trường:</b> Ký ngày {{ ngay_nghiem_thu_display }} (trước thời điểm xuất hóa đơn cho khách hàng), ghi nhận khối lượng lắp đặt hoàn thành 100%.</li>
+  <li><b>Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý hợp đồng (Kèm UNC):</b> Ký ngày {{ ngay_thanh_toan_display }}, xác nhận hoàn thành 100% nghĩa vụ chi trả thù lao và thanh lý hợp đồng.</li>
+</ol>
+
+<table class="info-table">
+  <tr><th>Người nhận khoán (Bên B)</th><td><b>{{ worker_name }}</b></td></tr>
+  <tr><th>Số CCCD / Định danh</th><td><code>{{ worker_id_card }}</code> (Ngày cấp: {{ worker_id_card_date or '06/04/2023' }} tại {{ worker_id_card_place or 'Cục Cảnh sát QLHC về TTXH' }})</td></tr>
+  <tr><th>Số điện thoại / Địa chỉ</th><td>{{ worker_phone }} · {{ worker_address }}</td></tr>
+  <tr><th>Công việc giao khoán</th><td><b>{{ project_title or 'Khảo sát, lắp đặt thiết bị và hỗ trợ vận hành hiện trường' }}</b></td></tr>
+  <tr><th>Số hợp đồng / Ngày lập</th><td><b>{{ contract_code }}</b> · Ngày {{ contract_date_display }}</td></tr>
+  <tr><th>Tổng định mức thù lao khoán</th><td><span class="highlight-total">{{ total_amount|vnd }} VNĐ</span> (<i>{{ total_amount_in_word }}</i>)</td></tr>
+  <tr><th>Chính sách thuế TNCN</th><td><b>0 VNĐ</b> – <i>Miễn khấu trừ 10% tại nguồn theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP (mức chi trả &lt; 5.000.000 VNĐ)</i></td></tr>
+  <tr><th>Thực nhận chuyển khoản</th><td><span class="highlight-total">{{ net_amount|vnd }} VNĐ</span> <span class="paid-badge">✓ ĐÃ CHI TRẢ ĐỦ 100%</span></td></tr>
+  <tr><th>Tài khoản nhận tiền</th><td><b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b> (Chính chủ: {{ worker_name }})</td></tr>
+  <tr><th>Chứng từ ngân hàng (UNC)</th><td>Lệnh chuyển tiền Techcombank Business ngày {{ ngay_thanh_toan_display }}<br>• Nội dung: <b><code>{{ transfer_memo }}</code></b></td></tr>
+  <tr><th>Tình trạng hợp đồng</th><td><b>ĐÃ HOÀN TẤT & THANH LÝ SONG PHƯƠNG</b></td></tr>
+</table>
+
+<div class="bank-box">
+  <div class="bank-title">✓ XÁC NHẬN CHI TRẢ THÙ LAO HOÀN TẤT:</div>
+  <div>Công ty INUT đã thực hiện lệnh chuyển khoản số tiền <b>{{ net_amount|vnd }} VNĐ</b> vào tài khoản <b>{{ worker_bank_account }} ({{ worker_bank_name }})</b> của Anh theo đúng thỏa thuận hợp đồng. Anh vui lòng kiểm tra tài khoản và lưu giữ hồ sơ cá nhân.</div>
+</div>
+
+<div class="attachments-box">
+  <b>DANH SÁCH TỆP ĐÍNH KÈM TRONG THƯ:</b>
+  <ul>
+    <li><code>{{ contract_filename }}</code>: Hợp đồng giao khoán việc + Phụ lục I ảnh CCCD 2 mặt (đã ký số Bên A & Bên B).</li>
+    <li><code>{{ appendix2_filename }}</code>: Phụ lục II Biên bản nghiệm thu công việc & ảnh hiện trường thi công.</li>
+    <li><code>{{ appendix3_filename }}</code>: Phụ lục III Biên bản xác nhận thanh toán & Thanh lý hợp đồng kèm ảnh chụp Ủy nhiệm chi Techcombank.</li>
+    <li><code>{{ word_filename }}</code>: File Word (.docx) bản thảo tổng hợp để Anh lưu trữ.</li>
+  </ul>
+</div>
+
+<div class="legit-box">
+  🛡️ <b>KIỂM TRA CHỮ KÝ SỐ CHÍNH HÃNG (LEGIT CHECK):</b><br>
+  Toàn bộ các văn bản PDF đính kèm đều đã được ký số điện tử pháp nhân Bên A bằng <b>USB Token WIN-CA phần cứng</b> hợp chuẩn quốc gia. Anh có thể:<br>
+  1. Mở Cổng thông tin của Hợp đồng để kiểm tra tính toàn vẹn 1-click qua Cổng Quốc gia NEAC (Bộ TTTT):<br>
+  <a href="{{ portal_url }}" target="_blank" class="portal-link">🌐 Mở Cổng Tra Cứu & Thẩm Định Hợp Đồng</a><br>
+  2. Hoặc tải trực tiếp file PDF lên trang chủ <b>Trung tâm Chứng thực điện tử quốc gia NEAC</b> tại <a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7; font-weight:bold;">https://neac.gov.vn/vi</a> (mục "Kiểm tra văn bản") để thẩm định độc lập.
+</div>
+
+<p>Một lần nữa, Công ty INUT xin trân trọng cảm ơn sự phối hợp nhiệt tình và trách nhiệm của Anh. Chúc Anh luôn dồi dào sức khỏe, thành công và hy vọng sẽ tiếp tục đồng hành cùng Anh trong các dự án tiếp theo!</p>
+
+<p>Mọi thắc mắc cần hỗ trợ, Anh vui lòng liên hệ:<br>
+• <b>Đại diện INUT Technology:</b> Ông Ngô Huỳnh Ngọc Khánh – Giám đốc<br>
+• <b>Hotline / Zalo:</b> 0972.768.491 | <b>Email:</b> khanhnhn@inut.vn | <b>Website:</b> <a href="https://inut.vn" target="_blank">https://inut.vn</a></p>
+
+<div class="footer">
+  <b>CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</b><br>
+  Trụ sở: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk · MST: 4401053694 · Hotline: 0972.768.491
+</div>
+
+</body>
+</html>

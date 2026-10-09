@@ -1,0 +1,46 @@
+Kính gửi: Anh {{ worker_name }} – Cộng tác viên / Kỹ thuật viên nhận khoán.
+
+Lời đầu tiên, Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT xin gửi lời chào trân trọng và lời cảm ơn chân thành đến Anh đã đồng hành, hoàn thành xuất sắc công tác khảo sát, lắp đặt thiết bị và hỗ trợ kỹ thuật hiện trường cho dự án.
+
+INUT Technology xin gửi tới Anh trọn bộ chứng từ giao khoán việc, biên bản nghiệm thu và chứng từ xác nhận chi trả thù lao đã hoàn tất đầy đủ chữ ký của hai Bên:
+1. Hợp đồng giao khoán công việc & Phụ lục I (CCCD): Số {{ contract_code }} ký ngày {{ contract_date_display }}, kèm Phụ lục ảnh 2 mặt CCCD của Anh.
+2. Phụ lục II: Biên bản nghiệm thu hoàn thành công việc & Ảnh hiện trường: Ký ngày {{ ngay_nghiem_thu_display }} (trước thời điểm xuất hóa đơn cho khách hàng), ghi nhận khối lượng lắp đặt hoàn thành 100%.
+3. Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý hợp đồng (Kèm UNC): Ký ngày {{ ngay_thanh_toan_display }}, xác nhận hoàn thành 100% nghĩa vụ chi trả thù lao và thanh lý hợp đồng.
+
+BẢNG TỔNG HỢP HỒ SƠ & THÙ LAO GIAO KHOÁN:
+- Người nhận khoán (Bên B): {{ worker_name }}
+- Số CCCD / Định danh: {{ worker_id_card }} (Ngày cấp: {{ worker_id_card_date or '06/04/2023' }} tại {{ worker_id_card_place or 'Cục Cảnh sát QLHC về TTXH' }})
+- Số điện thoại / Địa chỉ: {{ worker_phone }} · {{ worker_address }}
+- Công việc giao khoán: {{ project_title or 'Khảo sát, lắp đặt thiết bị và hỗ trợ vận hành hiện trường' }}
+- Số hợp đồng / Ngày lập: {{ contract_code }} · Ngày {{ contract_date_display }}
+- Tổng định mức thù lao khoán: {{ total_amount|vnd }} VNĐ ({{ total_amount_in_word }})
+- Thuế TNCN khấu trừ: 0 VNĐ (Miễn khấu trừ 10% tại nguồn theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP)
+- Thực nhận chuyển khoản: {{ net_amount|vnd }} VNĐ [ĐÃ CHI TRẢ ĐỦ 100%]
+- Tài khoản nhận tiền: {{ worker_bank_account }} tại {{ worker_bank_name }} (Chính chủ: {{ worker_name }})
+- Chứng từ ngân hàng: Lệnh chuyển tiền Techcombank Business ngày {{ ngay_thanh_toan_display }}
+- Nội dung chuyển khoản: {{ transfer_memo }}
+- Tình trạng hợp đồng: ĐÃ HOÀN TẤT & THANH LÝ SONG PHƯƠNG
+
+XÁC NHẬN CHI TRẢ THÙ LAO HOÀN TẤT:
+Công ty INUT đã thực hiện lệnh chuyển khoản số tiền {{ net_amount|vnd }} VNĐ vào tài khoản {{ worker_bank_account }} ({{ worker_bank_name }}) của Anh theo đúng thỏa thuận hợp đồng. Anh vui lòng kiểm tra tài khoản và lưu giữ hồ sơ cá nhân.
+
+DANH SÁCH TỆP ĐÍNH KÈM:
+1. {{ contract_filename }}: Hợp đồng giao khoán việc + Phụ lục I ảnh CCCD 2 mặt (đã ký số Bên A & Bên B).
+2. {{ appendix2_filename }}: Phụ lục II Biên bản nghiệm thu công việc & ảnh hiện trường thi công.
+3. {{ appendix3_filename }}: Phụ lục III Biên bản xác nhận thanh toán & Thanh lý hợp đồng kèm ảnh chụp Ủy nhiệm chi Techcombank.
+4. {{ word_filename }}: File Word (.docx) bản thảo tổng hợp để Anh lưu trữ.
+
+KIỂM TRA CHỮ KÝ SỐ CHÍNH HÃNG (LEGIT CHECK):
+Toàn bộ các văn bản PDF đính kèm đều đã được ký số điện tử pháp nhân Bên A bằng USB Token WIN-CA phần cứng hợp chuẩn quốc gia.
+1. Mở Cổng thông tin của Hợp đồng để kiểm tra tính toàn vẹn 1-click qua Cổng Quốc gia NEAC (Bộ TTTT): {{ portal_url }}
+2. Hoặc tải trực tiếp file PDF lên trang chủ Trung tâm Chứng thực điện tử quốc gia NEAC tại https://neac.gov.vn/vi (mục "Kiểm tra văn bản") để thẩm định độc lập.
+
+Mọi thắc mắc cần hỗ trợ, Anh vui lòng liên hệ:
+- Đại diện INUT Technology: Ông Ngô Huỳnh Ngọc Khánh – Giám đốc
+- Hotline / Zalo: 0972.768.491 | Email: khanhnhn@inut.vn | Website: https://inut.vn
+
+Trân trọng cảm ơn sự hợp tác và đồng hành của Anh!
+
+--------------------------------------------------
+CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT
+Trụ sở: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk · MST: 4401053694 · Hotline: 0972.768.491
