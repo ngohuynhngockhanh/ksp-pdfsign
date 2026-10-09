@@ -236,8 +236,8 @@
 
   {% if id_card_front_data_uri or id_card_back_data_uri %}
   <div style="page-break-before: always; margin-top: 10px;">
-    <div style="text-align: center; font-weight: bold; font-size: 13.5px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
-      PHỤ LỤC: ẢNH CHỤP CĂN CƯỚC CÔNG DÂN NGƯỜI NHẬN KHOÁN
+    <div style="text-align: center; font-weight: bold; font-size: 13px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
+      PHỤ LỤC I: ẢNH CHỤP CĂN CƯỚC CÔNG DÂN NGƯỜI NHẬN KHOÁN
     </div>
     <div style="font-size: 10.5px; font-style: italic; text-align: center; color: #64748b; margin-bottom: 12px;">
       (Kèm theo Hợp đồng giao khoán số: {{ contract_code }})
@@ -256,8 +256,48 @@
       </div>
       {% endif %}
     </div>
-    <div style="margin-top: 20px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10.5px; color: #475569; text-align: justify; line-height: 1.45;">
+    <div style="margin-top: 16px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10.5px; color: #475569; text-align: justify; line-height: 1.45;">
       <b>Cam kết của Người nhận khoán:</b> Tôi cam kết 02 ảnh chụp Căn cước công dân trên là bản chụp thật, rõ nét từ giấy tờ tùy thân chính chủ của tôi, không qua chỉnh sửa tẩy xóa, dùng làm căn cứ xác thực danh tính và quyết toán thuế thu nhập cá nhân theo quy định.
+    </div>
+  </div>
+  {% endif %}
+
+  {% if site_photos_data_uris %}
+  <div style="page-break-before: always; margin-top: 10px;">
+    <div style="text-align: center; font-weight: bold; font-size: 13px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
+      PHỤ LỤC II: HÌNH ẢNH KHẢO SÁT, LẮP ĐẶT VÀ NGHIỆM THU HIỆN TRƯỜNG
+    </div>
+    <div style="font-size: 10.5px; font-style: italic; text-align: center; color: #64748b; margin-bottom: 12px;">
+      (Kèm theo Hợp đồng giao khoán số: {{ contract_code }})
+    </div>
+    <div style="display: flex; justify-content: space-around; gap: 16px; align-items: flex-start; margin-top: 14px; flex-wrap: wrap;">
+      {% for photo_uri in site_photos_data_uris %}
+      <div style="text-align: center; width: 48%; margin-bottom: 12px;">
+        <img src="{{ photo_uri }}" style="width: 100%; max-height: 230px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Ảnh hiện trường">
+        <div style="font-size: 10px; color: #475569; margin-top: 4px; font-weight: 600;">Hình ảnh nghiệm thu hiện trường thực tế #{{ loop.index }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top: 14px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10.5px; color: #475569; text-align: justify; line-height: 1.45;">
+      <b>Xác nhận nghiệm thu:</b> Các hình ảnh trên là ảnh chụp thực tế tại điểm thi công, chứng minh thiết bị đã được lắp đặt hoàn thiện, kết nối nguồn và kiểm thử hệ thống truyền hình ảnh thành công, đủ điều kiện thanh quyết toán thù lao giao khoán.
+    </div>
+  </div>
+  {% endif %}
+
+  {% if bank_proof_data_uri %}
+  <div style="page-break-before: always; margin-top: 10px;">
+    <div style="text-align: center; font-weight: bold; font-size: 13px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
+      PHỤ LỤC III: ỦY NHIỆM CHI / CHỨNG TỪ THANH TOÁN THÙ LAO KHOÁN
+    </div>
+    <div style="font-size: 10.5px; font-style: italic; text-align: center; color: #64748b; margin-bottom: 12px;">
+      (Kèm theo Hợp đồng giao khoán số: {{ contract_code }})
+    </div>
+    <div style="text-align: center; margin-top: 14px;">
+      <img src="{{ bank_proof_data_uri }}" style="max-width: 85%; max-height: 480px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Ủy nhiệm chi">
+      <div style="font-size: 10.5px; color: #475569; margin-top: 6px; font-weight: 600;">Chứng từ thanh toán chuyển khoản ngân hàng Techcombank (Số tiền: {{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ)</div>
+    </div>
+    <div style="margin-top: 14px; padding: 8px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 10.5px; color: #166534; text-align: justify; line-height: 1.45;">
+      <b>Xác nhận chi trả:</b> Bên A đã hoàn tất lệnh chuyển khoản thanh toán thù lao giao khoán theo đúng số tiền và tài khoản ngân hàng thụ hưởng của Bên B. Hai Bên xác nhận nghĩa vụ thanh toán đã hoàn thành.
     </div>
   </div>
   {% endif %}

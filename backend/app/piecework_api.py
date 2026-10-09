@@ -714,6 +714,26 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
             id_card_back_data_uri = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}"
         except Exception as e:
             logger.warning("Could not read back id card for PDF: %s", e)
+    site_photos_data_uris = []
+    if c.site_photos_json:
+        try:
+            for pid in json.loads(c.site_photos_json):
+                if pid:
+                    raw_b, suf = storage.read_doc_any(pid)
+                    m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+                    site_photos_data_uris.append(f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}")
+        except Exception as e:
+            logger.warning("Could not read site photos for PDF: %s", e)
+
+    bank_proof_data_uri = ""
+    if c.bank_proof_doc_id:
+        try:
+            raw_b, suf = storage.read_doc_any(c.bank_proof_doc_id)
+            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            bank_proof_data_uri = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
+        except Exception as e:
+            logger.warning("Could not read bank proof for PDF: %s", e)
+
     vietqr_data_uri = ""
     transfer_memo = ""
     if c.worker_bank_account and c.worker_name:
@@ -813,6 +833,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "id_card_back_data_uri": id_card_back_data_uri,
         "vietqr_data_uri": vietqr_data_uri,
         "transfer_memo": transfer_memo,
+        "site_photos_data_uris": site_photos_data_uris,
+        "bank_proof_data_uri": bank_proof_data_uri,
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
@@ -2039,6 +2061,26 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         except Exception:
             pass
 
+    site_photos_thumbs = []
+    if c.site_photos_json:
+        try:
+            for pid in json.loads(c.site_photos_json):
+                if pid:
+                    raw_b, suf = storage.read_doc_any(pid)
+                    m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+                    site_photos_thumbs.append(f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}")
+        except Exception:
+            pass
+
+    bank_proof_thumb = ""
+    if c.bank_proof_doc_id:
+        try:
+            raw_b, suf = storage.read_doc_any(c.bank_proof_doc_id)
+            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            bank_proof_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
+        except Exception:
+            pass
+
     worker_info_html = ""
     if c.is_signed_by_worker:
         cccd_preview_signed = ""
@@ -2052,6 +2094,27 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
             </div>
             """
+        site_photos_preview_signed = ""
+        if site_photos_thumbs:
+            imgs = "".join(f'<img src="{th}" style="width:48%; height:110px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Ảnh hiện trường">' for th in site_photos_thumbs)
+            site_photos_preview_signed = f"""
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                <div style="font-size:12px; font-weight:600; color:#334155; margin-bottom:6px;">Ảnh nghiệm thu hiện trường ({len(site_photos_thumbs)} ảnh):</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    {imgs}
+                </div>
+            </div>
+            """
+        bank_proof_preview_signed = ""
+        if bank_proof_thumb:
+            bank_proof_preview_signed = f"""
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                <div style="font-size:12px; font-weight:600; color:#15803d; margin-bottom:6px;">✓ Chứng từ thanh toán thù lao (Ủy nhiệm chi):</div>
+                <div style="text-align:center;">
+                    <img src="{bank_proof_thumb}" style="max-width:100%; max-height:170px; object-fit:contain; border:1.5px solid #86efac; border-radius:8px; background:#f0fdf4;" alt="Ủy nhiệm chi">
+                </div>
+            </div>
+            """
         worker_info_html = f"""
         <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{c.worker_name or 'Chưa có'}</span></div>
         <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{c.worker_id_card or 'Chưa có'}</span></div>
@@ -2059,6 +2122,8 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         <div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account or 'Chưa có'} ({c.worker_bank_name or ''})</span></div>
         <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{c.worker_address or 'Chưa có'}</span></div>
         {cccd_preview_signed}
+        {site_photos_preview_signed}
+        {bank_proof_preview_signed}
         """
     else:
         worker_info_html = f"""
@@ -2135,6 +2200,20 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             <div style="font-size:11px; color:#64748b; margin-top:8px;">
               💡 Ảnh 2 mặt CCCD sẽ được tự động chèn trực tiếp vào Phụ lục Hợp đồng PDF để đảm bảo tính pháp lý quyết toán thuế.
             </div>
+          </div>
+          <!-- Chụp / Tải ảnh hiện trường thi công -->
+          <div style="margin-top:6px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
+            <div style="font-size:12.5px; font-weight:700; color:#0f172a; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <span>🏗️</span> Chụp / Tải ảnh nghiệm thu hiện trường:
+            </div>
+            <div style="font-size:11px; color:#64748b; margin-bottom:8px;">
+              Chụp ảnh thực tế thiết bị đã lắp đặt, màn hình hoạt động hoặc luồng camera để hoàn thiện nghiệm thu:
+            </div>
+            <div id="sitePhotosBox" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
+            <label style="display:inline-block; padding:7px 14px; background:#0284c7; color:#fff; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer;">
+              📷 Chụp / Thêm ảnh hiện trường
+              <input type="file" id="inputSitePhotos" accept="image/*" multiple capture="environment" style="display:none;" onchange="handleSitePhotoFiles(event)">
+            </label>
           </div>
           <div style="margin-top:6px;">
             <button type="button" id="btnSaveDraftManual" onclick="manualSaveDraft()" style="width:100%; padding:11px 16px; background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
@@ -2564,9 +2643,64 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       worker_bank_account: document.getElementById("inputWorkerBankAcc")?.value.trim() || "",
       worker_bank_name: document.getElementById("inputWorkerBankName")?.value.trim() || "",
       id_card_front_data: cccdFrontData || null,
-      id_card_back_data: cccdBackData || null
+      id_card_back_data: cccdBackData || null,
+      site_photos_data: sitePhotosList || []
     }};
   }}
+
+  let sitePhotosList = {json.dumps(site_photos_thumbs)};
+
+  function handleSitePhotoFiles(event) {{
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach(file => {{
+      const reader = new FileReader();
+      reader.onload = function(e) {{
+        const img = new Image();
+        img.onload = function() {{
+          const maxW = 1200;
+          let w = img.width, h = img.height;
+          if (w > maxW) {{
+            h = Math.round(h * (maxW / w));
+            w = maxW;
+          }}
+          const cvs = document.createElement("canvas");
+          cvs.width = w; cvs.height = h;
+          const ctx = cvs.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          const b64 = cvs.toDataURL("image/jpeg", 0.82);
+          sitePhotosList.push(b64);
+          renderSitePhotosBox();
+          handleInputAutoSave();
+        }};
+        img.src = e.target.result;
+      }};
+      reader.readAsDataURL(file);
+    }});
+  }}
+
+  function renderSitePhotosBox() {{
+    const box = document.getElementById("sitePhotosBox");
+    if (!box) return;
+    if (sitePhotosList.length === 0) {{
+      box.innerHTML = '<span style="font-size:11px; color:#94a3b8; font-style:italic;">Chưa có ảnh hiện trường</span>';
+      return;
+    }}
+    box.innerHTML = sitePhotosList.map((p, idx) => `
+      <div style="position:relative; width:85px; height:85px; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; background:#fff;">
+        <img src="${{p}}" style="width:100%; height:100%; object-fit:cover;">
+        <button type="button" onclick="removeSitePhoto(${{idx}})" style="position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:10px; cursor:pointer; line-height:18px; text-align:center; padding:0;">✕</button>
+      </div>
+    `).join("");
+  }}
+
+  function removeSitePhoto(idx) {{
+    sitePhotosList.splice(idx, 1);
+    renderSitePhotosBox();
+    handleInputAutoSave();
+  }}
+
+  setTimeout(renderSitePhotosBox, 200);
 
   // Restore draft from localStorage on load
   try {{
@@ -2839,6 +2973,35 @@ def _save_cccd_images_from_payload(c: PieceworkContract, front_data: str | None,
             logger.warning("Error saving back CCCD: %s", e)
     return changed
 
+def _save_site_photos_from_payload(c: PieceworkContract, photos_data: list[str] | None, db: Session) -> bool:
+    if not photos_data:
+        return False
+    changed = False
+    photos = []
+    try:
+        photos = json.loads(c.site_photos_json or "[]")
+    except Exception:
+        photos = []
+    for p_str in photos_data:
+        if p_str and p_str.startswith("data:image/"):
+            try:
+                import base64
+                _, enc = p_str.split(",", 1)
+                raw = base64.b64decode(enc)
+                doc_id = storage.save_upload(raw, suffix=".jpg")
+                if doc_id not in photos:
+                    photos.append(doc_id)
+                    changed = True
+            except Exception as e:
+                logger.warning("Error saving site photo: %s", e)
+    if changed:
+        c.site_photos_json = json.dumps(photos)
+        c.has_acceptance = True
+        if not c.acceptance_doc_id and photos:
+            c.acceptance_doc_id = photos[0]
+    return changed
+
+
 
 class SignaturePayload(BaseModel):
     signature_data: str
@@ -2854,6 +3017,7 @@ class SignaturePayload(BaseModel):
     worker_bank_name: str | None = None
     id_card_front_data: str | None = None
     id_card_back_data: str | None = None
+    site_photos_data: list[str] | None = None
 
 
 class WorkerDraftPayload(BaseModel):
@@ -2868,6 +3032,7 @@ class WorkerDraftPayload(BaseModel):
     worker_bank_name: str | None = None
     id_card_front_data: str | None = None
     id_card_back_data: str | None = None
+    site_photos_data: list[str] | None = None
 
 @router.post("/api/public/khoan/{token}/save-draft")
 def public_save_draft(
@@ -2901,6 +3066,7 @@ def public_save_draft(
     if payload.worker_bank_name is not None and payload.worker_bank_name.strip():
         c.worker_bank_name = payload.worker_bank_name.strip()
     _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
+    _save_site_photos_from_payload(c, payload.site_photos_data, db)
     c.updated_at = datetime.now(timezone.utc)
     try:
         pdf_bytes = render_piecework_pdf(c)
@@ -2949,6 +3115,7 @@ def public_submit_signature(
     if payload.worker_bank_name:
         c.worker_bank_name = payload.worker_bank_name.strip()
     _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
+    _save_site_photos_from_payload(c, payload.site_photos_data, db)
 
     # Update or link contractor profile if exists
     if c.worker_name and c.worker_id_card:
