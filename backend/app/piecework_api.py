@@ -2447,14 +2447,6 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     }}
   }}
 
-  // Initialize camera as soon as possible
-  setTimeout(initCamera, 300);
-  const portalToken = "{c.portal_token}";
-  const STORAGE_KEY = "inut_khoan_draft_" + portalToken;
-
-  let cccdFrontData = null;
-  let cccdBackData = null;
-
   function handleCccdFile(event, side) {{
     const file = event.target.files[0];
     if (!file) return;
@@ -2495,15 +2487,19 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   }}
 
   function getFormData() {{
+    const nameEl = document.getElementById("inputWorkerName");
+    if (!nameEl) {{
+      return null;
+    }}
     return {{
-      worker_name: document.getElementById("inputWorkerName")?.value || "",
-      worker_id_card: document.getElementById("inputWorkerIdCard")?.value || "",
-      worker_phone: document.getElementById("inputWorkerPhone")?.value || "",
-      worker_id_card_date: document.getElementById("inputWorkerIdDate")?.value || "",
-      worker_id_card_place: document.getElementById("inputWorkerIdPlace")?.value || "",
-      worker_address: document.getElementById("inputWorkerAddress")?.value || "",
-      worker_bank_account: document.getElementById("inputWorkerBankAcc")?.value || "",
-      worker_bank_name: document.getElementById("inputWorkerBankName")?.value || "",
+      worker_name: nameEl.value.trim(),
+      worker_id_card: document.getElementById("inputWorkerIdCard")?.value.trim() || "",
+      worker_phone: document.getElementById("inputWorkerPhone")?.value.trim() || "",
+      worker_id_card_date: document.getElementById("inputWorkerIdDate")?.value.trim() || "",
+      worker_id_card_place: document.getElementById("inputWorkerIdPlace")?.value.trim() || "",
+      worker_address: document.getElementById("inputWorkerAddress")?.value.trim() || "",
+      worker_bank_account: document.getElementById("inputWorkerBankAcc")?.value.trim() || "",
+      worker_bank_name: document.getElementById("inputWorkerBankName")?.value.trim() || "",
       id_card_front_data: cccdFrontData || null,
       id_card_back_data: cccdBackData || null
     }};
@@ -2559,9 +2555,9 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   let serverSaveTimeout = null;
   function handleInputAutoSave() {{
     const draft = getFormData();
+    if (!draft) return;
     try {{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-      const st = document.getElementById("saveStatusText");
       const dot = document.getElementById("saveDot");
       if (st) st.innerText = "✓ Đã lưu nháp tự động";
       if (dot) dot.style.background = "#10b981";
@@ -2594,11 +2590,10 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
   async function manualSaveDraft() {{
     const draft = getFormData();
+    if (!draft) return;
     try {{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-    }} catch (e) {{
-      console.warn("localStorage save error:", e);
-    }}
+    }} catch (e) {{}}
 
     const st = document.getElementById("saveStatusText");
     const dot = document.getElementById("saveDot");
@@ -2632,14 +2627,16 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       btn.innerHTML = "<span>⏳</span> Đang đồng bộ...";
     }}
     const draft = getFormData();
-    try {{
-      await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
-        method: "POST",
-        headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify(draft)
-      }});
-    }} catch (e) {{
-      console.warn("Sync draft error:", e);
+    if (draft) {{
+      try {{
+        await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify(draft)
+        }});
+      }} catch (e) {{
+        console.warn("Sync draft error:", e);
+      }}
     }}
     if (btn) {{
       btn.disabled = false;
@@ -2817,26 +2814,29 @@ def public_save_draft(
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
-    if payload.worker_name is not None:
+    if c.is_signed_by_worker:
+        # Contract is already signed and locked; do not overwrite with draft
+        return {"ok": False, "message": "Hợp đồng đã được ký tên và khóa, không thể ghi đè bản nháp"}
+
+    if payload.worker_name is not None and payload.worker_name.strip():
         c.worker_name = payload.worker_name.strip()
-    if payload.worker_id_card is not None:
+    if payload.worker_id_card is not None and payload.worker_id_card.strip():
         c.worker_id_card = payload.worker_id_card.strip()
-    if payload.worker_id_card_date is not None:
+    if payload.worker_id_card_date is not None and payload.worker_id_card_date.strip():
         c.worker_id_card_date = payload.worker_id_card_date.strip()
-    if payload.worker_id_card_place is not None:
+    if payload.worker_id_card_place is not None and payload.worker_id_card_place.strip():
         c.worker_id_card_place = payload.worker_id_card_place.strip()
-    if payload.worker_tax_code is not None:
+    if payload.worker_tax_code is not None and payload.worker_tax_code.strip():
         c.worker_tax_code = payload.worker_tax_code.strip()
-    if payload.worker_phone is not None:
+    if payload.worker_phone is not None and payload.worker_phone.strip():
         c.worker_phone = payload.worker_phone.strip()
-    if payload.worker_address is not None:
+    if payload.worker_address is not None and payload.worker_address.strip():
         c.worker_address = payload.worker_address.strip()
-    if payload.worker_bank_account is not None:
+    if payload.worker_bank_account is not None and payload.worker_bank_account.strip():
         c.worker_bank_account = payload.worker_bank_account.strip()
-    if payload.worker_bank_name is not None:
+    if payload.worker_bank_name is not None and payload.worker_bank_name.strip():
         c.worker_bank_name = payload.worker_bank_name.strip()
     _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
-    
     c.updated_at = datetime.now(timezone.utc)
     try:
         pdf_bytes = render_piecework_pdf(c)
