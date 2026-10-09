@@ -725,21 +725,37 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         transfer_memo = f"INUT tt HDGK {code_part} ky {day_str} {clean_name}"[:50]
         
         b_name = (c.worker_bank_name or "").lower()
-        acq_id = "970407"
-        if "vietcombank" in b_name or "vcb" in b_name: acq_id = "970436"
-        elif "vietinbank" in b_name or "ctg" in b_name or "icb" in b_name: acq_id = "970415"
-        elif "bidv" in b_name: acq_id = "970418"
-        elif "mbbank" in b_name or "mb" in b_name: acq_id = "970422"
-        elif "acb" in b_name: acq_id = "970416"
-        elif "vpbank" in b_name or "vpb" in b_name: acq_id = "970432"
-        elif "tpbank" in b_name or "tpb" in b_name: acq_id = "970423"
-        elif "agribank" in b_name or "vba" in b_name: acq_id = "970405"
-        elif "hdbank" in b_name: acq_id = "970437"
-        elif "sacombank" in b_name or "stb" in b_name: acq_id = "970403"
-        elif "vib" in b_name: acq_id = "970441"
-        elif "shb" in b_name: acq_id = "970443"
-        elif "ocb" in b_name: acq_id = "970448"
-        elif "msb" in b_name: acq_id = "970426"
+        acq_id = "970407" # default Techcombank
+        if "techcombank" in b_name or "tcb" in b_name or "ky thuong" in b_name:
+            acq_id = "970407"
+        elif "vietcombank" in b_name or "vcb" in b_name or "ngoai thuong" in b_name:
+            acq_id = "970436"
+        elif "vietinbank" in b_name or "ctg" in b_name or "cong thuong" in b_name:
+            acq_id = "970415"
+        elif "bidv" in b_name or "dau tu va phat trien" in b_name:
+            acq_id = "970418"
+        elif "mbbank" in b_name or "quan doi" in b_name or re.search(r'\bmb\b', b_name):
+            acq_id = "970422"
+        elif "agribank" in b_name or "nong nghiep" in b_name or re.search(r'\bvba\b', b_name):
+            acq_id = "970405"
+        elif "acb" in b_name or "a chau" in b_name:
+            acq_id = "970416"
+        elif "vpbank" in b_name or "vpb" in b_name or "thinh vuong" in b_name:
+            acq_id = "970432"
+        elif "tpbank" in b_name or "tpb" in b_name or "tien phong" in b_name:
+            acq_id = "970423"
+        elif "sacombank" in b_name or "stb" in b_name or "sai gon thuong tin" in b_name:
+            acq_id = "970403"
+        elif "hdbank" in b_name or "phat trien tp" in b_name:
+            acq_id = "970437"
+        elif "vib" in b_name or "quoc te" in b_name:
+            acq_id = "970441"
+        elif "shb" in b_name:
+            acq_id = "970443"
+        elif "ocb" in b_name or "phuong dong" in b_name:
+            acq_id = "970448"
+        elif "msb" in b_name or "hang hai" in b_name:
+            acq_id = "970426"
 
         amount = int(c.net_amount or c.total_amount or 0)
         payload = {
