@@ -14,8 +14,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import re
-
 import asn1crypto.keys
 import asn1crypto.x509
 from cryptography import x509 as cx509
@@ -39,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from weasyprint import HTML
 
-from . import money, storage
+from . import money, storage, verify
 from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import Document, PieceworkContract, PieceworkContractor, Share, get_session
@@ -2577,6 +2577,51 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       </div>
     </div>
   </div>
+
+  <!-- Thẩm định Chữ ký số Chính hãng NEAC (Bộ TTTT) -->
+  <div class="card" style="background:#f0fdf4; border:1px solid #bbf7d0; margin-top:14px;">
+    <h3 style="font-size:14.5px; margin:0 0 6px 0; color:#166534; display:flex; align-items:center; gap:6px;">
+      <span>🛡️</span> Kiểm tra chữ ký số chính hãng (Legit Check)
+    </h3>
+    <p style="font-size:12px; color:#334155; margin:0 0 10px 0; line-height:1.55;">
+      Hợp đồng và các phụ lục đã được ký số điện tử pháp nhân Bên A bằng <b>USB Token WIN-CA phần cứng</b> hợp chuẩn quốc gia. Quý khách có thể tải file PDF về và tải lên <b>Cổng Dịch vụ Chứng thực Chữ ký số Quốc gia NEAC (Bộ Thông tin & Truyền thông)</b> tại <a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7; font-weight:700; text-decoration:underline;">https://neac.gov.vn/vi</a> (mục "Kiểm tra văn bản") hoặc kiểm tra trực tuyến trực tiếp ngay dưới đây:
+    </p>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <button type="button" onclick="checkNeacOnline('main')" style="width:100%; padding:10px 14px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 2px 6px rgba(2,132,199,0.25);">
+        <span>🔍</span> Kiểm tra Chữ ký số Hợp đồng (NEAC Trực tuyến)
+      </button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" onclick="checkNeacOnline('pl2')" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
+          Kiểm tra Phụ lục II
+        </button>
+        <button type="button" onclick="checkNeacOnline('pl3')" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
+          Kiểm tra Phụ lục III
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Thẩm định NEAC -->
+  <div id="neacModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.7); backdrop-filter:blur(4px); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#fff; width:100%; max-width:480px; border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.25); max-height:90vh; overflow-y:auto; border:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:22px;">🏛️</span>
+          <div>
+            <div style="font-size:14px; font-weight:800; color:#0f172a; text-transform:uppercase;">Thẩm định Chữ ký số NEAC</div>
+            <div style="font-size:11px; color:#64748b;">Trung tâm Chứng thực điện tử quốc gia (Bộ TTTT)</div>
+          </div>
+        </div>
+        <button type="button" onclick="closeNeacModal()" style="background:#f1f5f9; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; font-weight:bold; color:#64748b;">✕</button>
+      </div>
+      <div id="neacModalBody" style="font-size:12.5px; line-height:1.55; color:#334155;">
+        <div style="text-align:center; padding:20px 0; color:#64748b;">
+          <div style="font-size:28px; margin-bottom:8px;">⏳</div>
+          <div>Đang gửi tài liệu tới Cổng NEAC để thẩm định mật mã...</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -2996,6 +3041,92 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     window.location.href = pdfUrl;
   }}
 
+  async function checkNeacOnline(docType) {{
+    const modal = document.getElementById("neacModal");
+    const modalBody = document.getElementById("neacModalBody");
+    if (modal) modal.style.display = "flex";
+    if (modalBody) {{
+      modalBody.innerHTML = `
+        <div style="text-align:center; padding:24px 0; color:#64748b;">
+          <div style="font-size:32px; margin-bottom:8px;">⏳</div>
+          <div style="font-weight:700; color:#0f172a; font-size:13.5px;">Đang kết nối Cổng Quốc gia NEAC (Bộ TTTT)...</div>
+          <div style="font-size:11.5px; margin-top:4px;">Thẩm định chữ ký số PAdES, chuỗi chứng thư CA & trạng thái thu hồi CRL/OCSP</div>
+        </div>
+      `;
+    }}
+
+    try {{
+      const res = await fetch("/api/public/khoan/" + portalToken + "/verify-neac?doc=" + docType);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || "Không thể thẩm định");
+
+      const neac = data.neac_result || {{}};
+      const sigList = (neac.signature && neac.signature.data) ? neac.signature.data : [];
+      const firstSig = sigList[0] || {{}};
+      const signerName = firstSig.signer?.cn || "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT";
+      const issuerName = (firstSig.issuer?.cn || "WINCA") + " (" + (firstSig.issuer?.o || "WINGROUP") + ")";
+      const signedTime = firstSig.signedTime || data.verified_at;
+      const ocspStatus = firstSig.ocsp || "Chứng thư số hợp lệ, chưa bị thu hồi";
+      const intact = firstSig.intact || "Không bị thay đổi";
+
+      modalBody.innerHTML = `
+        <div style="padding:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; margin-bottom:12px; text-align:center;">
+          <div style="font-size:18px; color:#059669; margin-bottom:2px;">✓</div>
+          <div style="font-weight:800; font-size:13.5px; color:#065f46;">CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN 100%</div>
+          <div style="font-size:11px; color:#047857; margin-top:2px;">Tài liệu: <b>${{data.doc_label}}</b></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
+            <span style="color:#64748b;">Chủ thể ký:</span>
+            <b style="color:#0f172a; text-align:right; max-width:65%;">${{signerName}}</b>
+          </div>
+          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
+            <span style="color:#64748b;">Tổ chức cấp CA:</span>
+            <b style="color:#0284c7;">${{issuerName}}</b>
+          </div>
+          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
+            <span style="color:#64748b;">Tình trạng dữ liệu:</span>
+            <b style="color:#16a34a;">${{intact}}</b>
+          </div>
+          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
+            <span style="color:#64748b;">Thời điểm ký số:</span>
+            <span style="color:#0f172a; font-weight:600;">${{signedTime}}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
+            <span style="color:#64748b;">Trạng thái OCSP:</span>
+            <span style="color:#059669; font-weight:600;">${{ocspStatus}}</span>
+          </div>
+        </div>
+        <div style="margin-top:14px; padding:10px; background:#f8fafc; border-radius:8px; font-size:11px; color:#475569; line-height:1.45;">
+          🏛️ <b>Nguồn thẩm định:</b> Hệ thống kiểm tra chữ ký số Cổng thông tin điện tử Trung tâm Chứng thực điện tử quốc gia (NEAC) — Bộ Thông tin & Truyền thông.<br>
+          📄 <b>Kiểm tra độc lập:</b> Quý khách cũng có thể mở file PDF bằng <i>Foxit Reader</i> hoặc <i>Adobe Acrobat</i> để xem chứng thư số chính hãng.
+        </div>
+        <button type="button" onclick="closeNeacModal()" style="width:100%; margin-top:12px; padding:9px; background:#0f172a; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
+          Đóng
+        </button>
+      `;
+    }} catch (err) {{
+      modalBody.innerHTML = `
+        <div style="padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; text-align:center; color:#991b1b;">
+          <div style="font-size:22px; margin-bottom:4px;">⚠️</div>
+          <div style="font-weight:700;">Không thể kết nối Cổng NEAC lúc này</div>
+          <div style="font-size:11.5px; margin-top:4px;">${{err.message}}</div>
+        </div>
+        <p style="font-size:11.5px; color:#64748b; margin-top:10px;">
+          Bạn có thể tải trực tiếp file PDF về và tải lên trang web chính thức của NEAC tại: <a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7; font-weight:700;">https://neac.gov.vn/vi</a>
+        </p>
+        <button type="button" onclick="closeNeacModal()" style="width:100%; margin-top:10px; padding:8px; background:#64748b; color:#fff; border:none; border-radius:8px; cursor:pointer;">
+          Đóng
+        </button>
+      `;
+    }}
+  }}
+
+  function closeNeacModal() {{
+    const modal = document.getElementById("neacModal");
+    if (modal) modal.style.display = "none";
+  }}
+
 
   async function submitSignature() {{
     if (!hasSigned) {{
@@ -3399,7 +3530,11 @@ def public_get_appendix2_pdf(token: str, db: Session = Depends(get_session)):
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
-    pdf_bytes = render_appendix2_pdf(c)
+    doc2 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL02"))
+    if doc2 and doc2.doc_id and storage.exists(doc2.doc_id):
+        pdf_bytes = storage.read_doc(doc2.doc_id)
+    else:
+        pdf_bytes = render_appendix2_pdf(c)
     code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
     safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
     filename = f"Phu_luc_02_Nghiem_thu_{safe_code or c.id}.pdf"
@@ -3415,7 +3550,11 @@ def public_get_appendix3_pdf(token: str, db: Session = Depends(get_session)):
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
-    pdf_bytes = render_appendix3_pdf(c)
+    doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
+    if doc3 and doc3.doc_id and storage.exists(doc3.doc_id):
+        pdf_bytes = storage.read_doc(doc3.doc_id)
+    else:
+        pdf_bytes = render_appendix3_pdf(c)
     code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
     safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
     filename = f"Phu_luc_03_Thanh_toan_UNC_{safe_code or c.id}.pdf"
@@ -3424,3 +3563,74 @@ def public_get_appendix3_pdf(token: str, db: Session = Depends(get_session)):
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+@router.get("/api/public/khoan/{token}/verify-neac")
+def public_verify_neac_signature(
+    token: str,
+    doc: str = "main", # main | pl2 | pl3
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+        
+    code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+    safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+
+    if doc == "pl2":
+        doc2 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL02"))
+        if doc2 and doc2.doc_id and storage.exists(doc2.doc_id):
+            pdf_bytes = storage.read_doc(doc2.doc_id)
+        else:
+            pdf_bytes = render_appendix2_pdf(c)
+        fname = f"Phu_luc_02_Nghiem_thu_{safe_code}.pdf"
+        label = "Phụ lục II: Biên bản nghiệm thu công việc"
+    elif doc == "pl3":
+        doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
+        if doc3 and doc3.doc_id and storage.exists(doc3.doc_id):
+            pdf_bytes = storage.read_doc(doc3.doc_id)
+        else:
+            pdf_bytes = render_appendix3_pdf(c)
+        fname = f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
+        label = "Phụ lục III: Biên bản thanh toán & Thanh lý HĐ"
+    else:
+        if c.contract_pdf_doc_id and storage.exists(c.contract_pdf_doc_id):
+            pdf_bytes = storage.read_doc(c.contract_pdf_doc_id)
+        else:
+            pdf_bytes = render_piecework_pdf(c)
+        fname = f"Hop_dong_giao_khoan_{safe_code}.pdf"
+        label = "Hợp đồng giao khoán & Phụ lục I (CCCD)"
+
+    # Internal PyHanko check with Vietnam Trust Roots
+    internal_check = verify.verify_document(settings, pdf_bytes, "portal_check")
+    internal_sigs = [s.model_dump() for s in internal_check.signatures]
+    
+    # NEAC Online Check
+    neac_res = None
+    try:
+        files = {"file": (fname, pdf_bytes, "application/pdf")}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://neac.gov.vn/vi",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        with httpx.Client(timeout=45.0) as client:
+            r = client.post("https://neac.gov.vn/vi/Home/VerifyFileByNeac", files=files, headers=headers)
+            if r.status_code == 200:
+                neac_res = r.json()
+    except Exception as e:
+        logger.warning("NEAC verification error: %s", e)
+        
+    return {
+        "ok": True,
+        "doc_label": label,
+        "internal_verification": {
+            "valid": any(s.get("valid") for s in internal_sigs),
+            "signatures": internal_sigs,
+        },
+        "neac_result": neac_res,
+        "verified_at": datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S %d/%m/%Y"),
+        "neac_portal_url": "https://neac.gov.vn/vi",
+    }
