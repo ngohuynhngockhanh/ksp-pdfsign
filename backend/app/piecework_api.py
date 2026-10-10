@@ -844,19 +844,23 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
     """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan).
     Quy tac:
-    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON (24/09/2026) va TRUOC GIO XUAT HOA DON (HĐ 43 xuat luc 22:03:28 -> ky luc 16:37:42 ngay 24/09/2026, phut va giay le tu nhien).
-    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi (UNC ngay 09/10/2026 luc 09:22 SA -> ky luc 09:56:43 ngay 09/10/2026).
+    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON va TRUOC GIO XUAT HOA DON (phut va giay le tu nhien).
+      + Du an Fuji (c.id == 2 hoac FUJI trong code): HĐ 36 xuat ngay 27/08/2026 -> ky luc 16:38:45 ngay 27/08/2026.
+      + Du an Khang Linh ELV (c.id == 1 hoac KHANGLINHELV): HĐ 43 xuat ngay 24/09/2026 -> ky luc 16:37:42 ngay 24/09/2026.
+    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi.
     """
-    now = datetime.now()
-    unc_date = datetime(2026, 10, 9, 9, 22, 0)
-    
-    if now.date() == unc_date.date() and now.hour >= 9:
-        app3_dt = now.replace(second=43) if now.second == 0 else now
-    else:
+    is_fuji = "FUJI" in (c.contract_code or "").upper() or c.id == 2
+    if is_fuji:
+        app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 9, 9, 56, 43)
-        
-    # Phu luc 2: Ký ngay 24/09/2026 truoc gio xuat hoa don (22:03) -> 16:37:42
-    app2_dt = datetime(2026, 9, 24, 16, 37, 42)
+    else:
+        app2_dt = datetime(2026, 9, 24, 16, 37, 42)
+        now = datetime.now()
+        unc_date = datetime(2026, 10, 9, 9, 22, 0)
+        if now.date() == unc_date.date() and now.hour >= 9:
+            app3_dt = now.replace(second=43) if now.second == 0 else now
+        else:
+            app3_dt = datetime(2026, 10, 9, 9, 56, 43)
     return app2_dt, app3_dt
 def render_appendix2_pdf(c: PieceworkContract) -> bytes:
     """Sinh PDF Phu luc II: Bien ban nghiem thu khoi luong & Anh hien truong."""
@@ -2436,16 +2440,27 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             </div>
             """
         site_photos_preview_signed = ""
-        if site_photos_thumbs:
-            imgs = "".join(f'<img src="{th}" style="width:48%; height:110px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Ảnh hiện trường">' for th in site_photos_thumbs)
-            site_photos_preview_signed = f"""
-            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
-                <div style="font-size:12px; font-weight:600; color:#334155; margin-bottom:6px;">Ảnh nghiệm thu hiện trường ({len(site_photos_thumbs)} ảnh):</div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    {imgs}
+        imgs = "".join(f'<img src="{th}" style="width:48%; height:110px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Ảnh hiện trường">' for th in site_photos_thumbs)
+        site_photos_preview_signed = f"""
+        <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                <div style="font-size:12px; font-weight:600; color:#334155;">Ảnh nghiệm thu hiện trường ({len(site_photos_thumbs)} ảnh):</div>
+                <div style="display:flex; gap:6px;">
+                    <label style="font-size:11px; font-weight:700; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; padding:4px 8px; border-radius:6px; cursor:pointer;">
+                        📷 Chụp thêm
+                        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleUploadMoreSitePhotos(event)">
+                    </label>
+                    <label style="font-size:11px; font-weight:700; color:#0f766e; background:#f0fdfa; border:1px solid #99f6e4; padding:4px 8px; border-radius:6px; cursor:pointer;">
+                        🖼️ Thêm từ thư viện
+                        <input type="file" accept="image/*" multiple style="display:none;" onchange="handleUploadMoreSitePhotos(event)">
+                    </label>
                 </div>
             </div>
-            """
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                {imgs if imgs else '<div style="font-size:11.5px; color:#94a3b8; font-style:italic;">Chưa có ảnh hiện trường</div>'}
+            </div>
+        </div>
+        """
         bank_proof_preview_signed = ""
         if bank_proof_thumb:
             bank_proof_preview_signed = f"""
@@ -2522,7 +2537,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
                 <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
                   Chụp / Tải mặt trước
-                  <input type="file" id="inputCccdFront" accept="image/*" capture="environment" style="display:none;" onchange="handleCccdFile(event, 'front')">
+                  <input type="file" id="inputCccdFront" accept="image/*" style="display:none;" onchange="handleCccdFile(event, 'front')">
                 </label>
               </div>
 
@@ -2534,7 +2549,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
                 <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
                   Chụp / Tải mặt sau
-                  <input type="file" id="inputCccdBack" accept="image/*" capture="environment" style="display:none;" onchange="handleCccdFile(event, 'back')">
+                  <input type="file" id="inputCccdBack" accept="image/*" style="display:none;" onchange="handleCccdFile(event, 'back')">
                 </label>
               </div>
             </div>
@@ -2551,11 +2566,16 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
               Chụp ảnh thực tế thiết bị đã lắp đặt, màn hình hoạt động hoặc luồng camera để hoàn thiện nghiệm thu:
             </div>
             <div id="sitePhotosBox" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
-            <label style="display:inline-block; padding:7px 14px; background:#0284c7; color:#fff; border-radius:8px; font-size:11.5px; font-weight:700; cursor:pointer;">
-              📷 Chụp / Thêm ảnh hiện trường
-              <input type="file" id="inputSitePhotos" accept="image/*" multiple capture="environment" style="display:none;" onchange="handleSitePhotoFiles(event)">
-            </label>
-          </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <label style="flex:1; min-width:140px; text-align:center; padding:8px 12px; background:#0284c7; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                <span>📷</span> Chụp từ Camera
+                <input type="file" id="inputSitePhotosCam" accept="image/*" capture="environment" style="display:none;" onchange="handleSitePhotoFiles(event)">
+              </label>
+              <label style="flex:1; min-width:140px; text-align:center; padding:8px 12px; background:#0f766e; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                <span>🖼️</span> Tải từ Thư viện ảnh
+                <input type="file" id="inputSitePhotosLib" accept="image/*" multiple style="display:none;" onchange="handleSitePhotoFiles(event)">
+              </label>
+            </div>
           <div style="margin-top:6px;">
             <button type="button" id="btnSaveDraftManual" onclick="manualSaveDraft()" style="width:100%; padding:11px 16px; background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
               <span>💾</span> LƯU THÔNG TIN NHÁP
@@ -3123,6 +3143,27 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     handleInputAutoSave();
   }}
 
+  async function handleUploadMoreSitePhotos(event) {{
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    const formData = new FormData();
+    Array.from(files).forEach(f => formData.append("files", f));
+    try {{
+      const res = await fetch(`/api/public/khoan/${{portalToken}}/add-site-photos`, {{
+        method: "POST",
+        body: formData,
+      }});
+      const data = await res.json();
+      if (data.ok) {{
+        window.location.reload();
+      }} else {{
+        alert("Lỗi tải ảnh: " + (data.detail || data.message || "Không thể tải ảnh"));
+      }}
+    }} catch (err) {{
+      alert("Lỗi kết nối khi tải ảnh: " + err.message);
+    }}
+  }}
+
   setTimeout(renderSitePhotosBox, 200);
 
   // Restore draft from localStorage on load
@@ -3585,6 +3626,43 @@ def public_save_draft(
         logger.warning("Could not pre-render draft PDF: %s", e)
     db.commit()
     return {"ok": True, "saved_at": datetime.now(timezone.utc).isoformat()}
+
+
+@router.post("/api/public/khoan/{token}/add-site-photos")
+async def public_add_site_photos(
+    token: str,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_session),
+):
+    c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+
+    photos = []
+    try:
+        photos = json.loads(c.site_photos_json or "[]")
+    except Exception:
+        photos = []
+
+    added = []
+    for f in files:
+        content = await f.read()
+        if content:
+            suf = Path(f.filename or "photo.jpg").suffix.lower() or ".jpg"
+            if suf not in (".jpg", ".jpeg", ".png", ".webp"):
+                suf = ".jpg"
+            doc_id = storage.save_upload(content, suffix=suf)
+            photos.append(doc_id)
+            added.append(doc_id)
+
+    if added:
+        c.site_photos_json = json.dumps(photos)
+        c.has_acceptance = True
+        if not c.acceptance_doc_id:
+            c.acceptance_doc_id = added[0]
+        db.commit()
+
+    return {"ok": True, "added_count": len(added), "total_photos": len(photos)}
 
 
 @router.post("/api/public/khoan/{token}/submit-signature")

@@ -1806,14 +1806,22 @@ export function PieceworkContracts() {
                   </div>
 
                   <div style={{ marginTop: 10, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "#0284c7", color: "#fff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 40, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                      {uploadingKind === "site_photo" ? "Đang tải…" : "＋ Thêm ảnh hiện trường"}
+                    <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "#0284c7", color: "#fff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 40, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <span>🖼️</span>
+                      <span>{uploadingKind === "site_photo" ? "Đang tải…" : "＋ Chọn ảnh từ thư viện / Tải tệp"}</span>
                       <input
                         type="file"
                         accept="image/*,.pdf"
+                        multiple
                         style={{ display: "none" }}
                         disabled={uploadingKind !== null}
-                        onChange={(e) => handleUploadDoc(selectedDetail.id, "site_photo", e.target.files?.[0])}
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (files.length === 0) return;
+                          for (const f of files) {
+                            await handleUploadDoc(selectedDetail.id, "site_photo", f);
+                          }
+                        }}
                       />
                     </label>
                   </div>
