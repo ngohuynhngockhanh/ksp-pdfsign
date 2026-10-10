@@ -1584,6 +1584,15 @@ def sync_piecework_contract_to_drive(
             fn_bk = f"Chung_tu_UNC_Techcombank_{clean_name}.png"
             (pkg_dir / fn_bk).write_bytes(storage.read_doc(c.bank_proof_doc_id, suffix=".png"))
             uploaded_files.append(fn_bk)
+        if c.site_photos_json:
+            try:
+                for idx, pid in enumerate(json.loads(c.site_photos_json), 1):
+                    if pid and storage.exists(pid, suffix=".jpg"):
+                        fn_p = f"Anh_hien_truong_{idx}_{clean_name}.jpg"
+                        (pkg_dir / fn_p).write_bytes(storage.read_doc(pid, suffix=".jpg"))
+                        uploaded_files.append(fn_p)
+            except Exception as e:
+                logger.warning("Could not stage site photos for Drive: %s", e)
 
         rclone_bin = shutil.which("rclone") or str(Path.home() / ".local" / "bin" / "rclone")
         cmd = [
