@@ -891,7 +891,7 @@ export function PieceworkContracts() {
                         <div style={{ fontWeight: 700, color: "#0284c7" }}>{c.contract_code}</div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>{c.contract_date}</div>
                         <span style={{ display: "inline-block", marginTop: 4, padding: "2px 8px", borderRadius: 4, fontSize: 11, background: "#f1f5f9", color: "#475569" }}>
-                          {c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : "Gia công")}
+                          {c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing"))}
                         </span>
                       </td>
 
@@ -1096,7 +1096,7 @@ export function PieceworkContracts() {
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 15, color: "#0284c7" }}>{c.contract_code}</div>
                       <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                        {c.contract_date} · <span style={{ padding: "1px 6px", borderRadius: 4, background: "#f1f5f9", fontSize: 11, color: "#475569" }}>{c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : "Gia công")}</span>
+                        {c.contract_date} · <span style={{ padding: "1px 6px", borderRadius: 4, background: "#f1f5f9", fontSize: 11, color: "#475569" }}>{c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing"))}</span>
                       </div>
                     </div>
                     <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: def.can_pay ? "#dcfce7" : (def.missing_count > 0 ? "#ffedd5" : "#f1f5f9"), color: def.can_pay ? "#166534" : (def.missing_count > 0 ? "#c2410c" : "#475569") }}>
@@ -2786,6 +2786,7 @@ export function PieceworkContracts() {
                   <option value="thi_cong">Thi công lắp đặt thiết bị / Kiosk</option>
                   <option value="boc_xep">Bốc xếp, vận chuyển nội bộ</option>
                   <option value="gia_cong">Gia công, đóng gói sản phẩm</option>
+                  <option value="marketing">Truyền thông & Marketing / Sáng tạo nội dung</option>
                 </select>
               </div>
 
@@ -2976,6 +2977,7 @@ export function PieceworkContracts() {
                   <option value="thi_cong">Thi công lắp đặt thiết bị / Kiosk</option>
                   <option value="boc_xep">Bốc xếp, vận chuyển nội bộ</option>
                   <option value="gia_cong">Gia công, đóng gói sản phẩm</option>
+                  <option value="marketing">Truyền thông & Marketing / Sáng tạo nội dung</option>
                 </select>
               </div>
 

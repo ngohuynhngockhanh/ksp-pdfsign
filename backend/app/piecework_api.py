@@ -70,7 +70,7 @@ class WorkItem(BaseModel):
 class PieceworkContractCreate(BaseModel):
     contractor_id: int | None = None
     contract_code: str = ""
-    contract_type: str = "thi_cong"  # thi_cong | boc_xep | gia_cong
+    contract_type: str = "thi_cong"  # thi_cong | boc_xep | gia_cong | marketing
     title: str = ""
     project_name: str = ""
     location: str = ""
@@ -1998,7 +1998,12 @@ def get_contractor_tax_summary(
             "contract_code": x.contract_code,
             "contract_date": x.contract_date,
             "project_name": x.project_name,
-            "contract_type_label": "Thi công lắp đặt" if x.contract_type == "thi_cong" else ("Bốc xếp" if x.contract_type == "boc_xep" else "Gia công"),
+            "contract_type_label": (
+                "Thi công lắp đặt" if x.contract_type == "thi_cong"
+                else ("Bốc xếp" if x.contract_type == "boc_xep"
+                else ("Gia công" if x.contract_type == "gia_cong"
+                else "Marketing / Truyền thông"))
+            ),
             "gross_amount": x.total_amount,
             "tax_rate": x.tax_rate,
             "tax_withheld": x.tax_amount,
