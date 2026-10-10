@@ -852,7 +852,7 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
     is_fuji = "FUJI" in (c.contract_code or "").upper() or c.id == 2
     if is_fuji:
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
-        app3_dt = datetime(2026, 10, 9, 9, 56, 43)
+        app3_dt = datetime(2026, 10, 10, 11, 2, 47)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
