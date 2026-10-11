@@ -174,7 +174,7 @@ def test_render_bbnt():
 
 def test_quote_templates_registry():
     keys = [t["key"] for t in bbbg.list_quote_templates()]
-    assert keys == ["bao_gia", "de_nghi_tt", "bbnt", "phieu_mua_hang"]
+    assert keys == ["bao_gia", "de_nghi_tt", "bbnt", "phieu_mua_hang", "bao_gia_billiard"]
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +245,44 @@ def test_quote_narrative_rong_bao_loi(monkeypatch):
     s = get_settings().model_copy(update={"ai_enabled": True})
     with pytest.raises(ai.AIError, match="AI_MAX_TOKENS"):
         ai.chat(s, [{"role": "user", "content": "hi"}])
+
+
+def test_billiard_pricing_and_quote_generation(client):
+    from app.billiard_pricing import build_billiard_quote_data, calculate_poe_hubs
+    # Test 10 tables PoE calculation
+    hubs_10 = calculate_poe_hubs(10)
+    assert len(hubs_10) == 2
+    assert "8 Port" in hubs_10[0]["ten"] and hubs_10[0]["don_gia"] == 1_100_000
+    assert "4 Port" in hubs_10[1]["ten"] and hubs_10[1]["don_gia"] == 825_000
+
+    # Test 12 tables PoE calculation
+    hubs_12 = calculate_poe_hubs(12)
+    assert len(hubs_12) == 2
+    assert "8 Port" in hubs_12[0]["ten"] and hubs_12[0]["don_gia"] == 1_100_000
+    assert "4 Port" in hubs_12[1]["ten"] and hubs_12[1]["don_gia"] == 825_000
+
+    # Test full quote data build
+    data_full = build_billiard_quote_data(10, include_software=True)
+    assert data_full["has_group_2"] is True
+    assert data_full["total_group_1"] == 15_075_000
+    assert data_full["total_group_2"] == 13_165_000
+    assert data_full["grand_total"] == 28_240_000
+
+    data_no_sw = build_billiard_quote_data(10, include_software=False)
+    assert data_no_sw["has_group_2"] is False
+    assert data_no_sw["grand_total"] == 15_075_000
+
+    # Test API endpoints
+    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+    res = client.get("/api/billiard/quote/estimate?tables=10&include_software=true")
+    assert res.status_code == 200
+    assert res.json()["data"]["grand_total"] == 28_240_000
+
+    gen_res = client.post("/api/billiard/quote/generate", json={
+        "num_tables": 10,
+        "include_software": False,
+        "client_name": "Test CLB",
+    })
+    assert gen_res.status_code == 200
+    assert gen_res.json()["ok"] is True
+    assert gen_res.json()["data"]["grand_total"] == 15_075_000

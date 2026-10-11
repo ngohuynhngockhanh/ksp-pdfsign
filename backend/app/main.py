@@ -22,6 +22,7 @@ from fastapi import (
     FastAPI,
     File,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -109,6 +110,7 @@ from .db import (
 )
 from .inventory import normalize_name
 from .schemas import (
+    BilliardQuotePayload,
     AccountCreate,
     AccountInfo,
     AgentTarget,
@@ -2814,6 +2816,109 @@ def quote_generate(
         "customer_id": customer_id,
         "doc_type": doc_type,
         "totals": totals,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bao gia Billiards (iNut BilliardLive - Camera & Check VAR)
+# ---------------------------------------------------------------------------
+@app.get("/api/billiard/quote/estimate")
+def billiard_estimate(
+    tables: int = Query(10, ge=1, le=100),
+    include_software: bool = Query(True),
+    client_name: str = Query(""),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Tính nhanh khối lượng và giá dự toán cho quán Bida theo số bàn."""
+    from .billiard_pricing import build_billiard_quote_data
+    data = build_billiard_quote_data(
+        num_tables=tables,
+        client_name=client_name,
+        include_software=include_software,
+    )
+    return {"ok": True, "data": data}
+
+
+@app.post("/api/billiard/quote/preview")
+def billiard_quote_preview(
+    body: BilliardQuotePayload,
+    user: CurrentUser = Depends(require_admin),
+):
+    """Sinh PDF xem trước báo giá Billiards (không lưu, không ký số)."""
+    from weasyprint import HTML
+    from .billiard_pricing import build_billiard_quote_data
+    data = build_billiard_quote_data(
+        num_tables=body.num_tables,
+        client_name=body.client_name,
+        contact_person=body.contact_person,
+        phone=body.phone,
+        address=body.address,
+        include_software=body.include_software,
+        custom_cable_meters=body.custom_cable_meters,
+        stream_boxes_count=body.stream_boxes_count,
+        date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
+    )
+    tmpl = bbbg._env.get_template("bao_gia_billiard.html")
+    html = tmpl.render(**data)
+    pdf = HTML(string=html).write_pdf()
+    return Response(content=pdf, media_type="application/pdf")
+
+
+@app.post("/api/billiard/quote/generate")
+def billiard_quote_generate(
+    body: BilliardQuotePayload,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Sinh PDF báo giá Billiards hoàn chỉnh gửi khách (không ký số)."""
+    from weasyprint import HTML
+    from .billiard_pricing import build_billiard_quote_data
+    data = build_billiard_quote_data(
+        num_tables=body.num_tables,
+        client_name=body.client_name,
+        contact_person=body.contact_person,
+        phone=body.phone,
+        address=body.address,
+        include_software=body.include_software,
+        custom_cable_meters=body.custom_cable_meters,
+        stream_boxes_count=body.stream_boxes_count,
+        date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
+    )
+    tmpl = bbbg._env.get_template("bao_gia_billiard.html")
+    html = tmpl.render(**data)
+    pdf = HTML(string=html).write_pdf()
+    doc_id = storage.save_upload(pdf, suffix=".pdf")
+
+    c_name = body.client_name.strip() or f"Billiards {body.num_tables} bàn"
+    safe_code = f"BG-BIDA-{body.num_tables}BAN" + ("-FULL" if body.include_software else "-CAM")
+    filename = body.filename.strip() or f"Bao_gia_{safe_code}.pdf"
+
+    doc = Document(
+        doc_id=doc_id,
+        filename=filename,
+        signer_name="iNut Technology",
+        signed=False,
+        doc_type="bao_gia",
+        note=f"Báo giá Billiards {body.num_tables} bàn ({'Camera + Billiard Live' if body.include_software else 'Chỉ Camera - Không phần mềm'}) · {money.vnd(data['grand_total'])}đ · Chưa VAT 8%",
+        source_system="billiard_quote",
+        source_external_id=safe_code,
+    )
+    db.add(doc)
+    db.commit()
+
+    _audit(
+        db, user, "billiard_quote_generate", filename,
+        f"Báo giá Bida {body.num_tables} bàn · {c_name} · {money.vnd(data['grand_total'])}đ",
+    )
+
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "id": doc.id,
+        "filename": filename,
+        "pdf_url": f"/api/documents/{doc.id}/view",
+        "download_url": f"/api/documents/{doc.id}/download",
+        "data": data,
     }
 
 

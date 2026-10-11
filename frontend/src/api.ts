@@ -2290,6 +2290,47 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
+  async billiardEstimate(params: { tables: number; include_software?: boolean; client_name?: string }) {
+    const q = new URLSearchParams();
+    q.set("tables", params.tables.toString());
+    if (params.include_software !== undefined) q.set("include_software", params.include_software ? "true" : "false");
+    if (params.client_name) q.set("client_name", params.client_name);
+    return req<{ ok: boolean; data: any }>(`/api/billiard/quote/estimate?${q.toString()}`);
+  },
+  async billiardQuotePreview(body: unknown): Promise<Blob> {
+    const res = await fetch("/api/billiard/quote/preview", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let msg = `Lỗi ${res.status}`;
+      try {
+        const err = await res.json();
+        if (err.detail) msg = err.detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+  async billiardQuoteGenerate(body: unknown) {
+    return req<{
+      ok: boolean;
+      doc_id: string;
+      id: number;
+      filename: string;
+      pdf_url: string;
+      download_url: string;
+      data: any;
+    }>("/api/billiard/quote/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   async aiStatus() {
     return req<{ enabled: boolean; model: string }>("/api/ai/status");
   },

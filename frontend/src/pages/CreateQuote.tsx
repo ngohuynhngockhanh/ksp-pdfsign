@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type DocRecord, type OrderRec } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
+import { BilliardQuoteTab } from "../components/BilliardQuoteTab";
 
 type QItem = { ten: string; dvt: string; so_luong: string; don_gia: string; thue_suat: string };
 type Product = Awaited<ReturnType<typeof api.listProducts>>[number];
@@ -78,6 +79,7 @@ export function CreateQuote({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewErr, setPreviewErr] = useState("");
 
+  const [activeQuoteMode, setActiveQuoteMode] = useState<"standard" | "billiard">("billiard");
   const today = new Date();
   const [ngay, setNgay] = useState<Ngay>({
     day: today.getDate(),
@@ -414,9 +416,48 @@ export function CreateQuote({
 
   return (
     <div className="page-1col quote-page">
-      <h3>Tạo Báo giá / Đề nghị thanh toán</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <h3 style={{ margin: 0 }}>Tạo Báo giá / Đề nghị thanh toán</h3>
+        <div style={{ display: "flex", gap: 6, background: "#f1f5f9", padding: 3, borderRadius: 8 }}>
+          <button
+            type="button"
+            onClick={() => setActiveQuoteMode("billiard")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 6,
+              fontSize: 12.5,
+              fontWeight: 700,
+              background: activeQuoteMode === "billiard" ? "#0284c7" : "transparent",
+              color: activeQuoteMode === "billiard" ? "#fff" : "#475569",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            🎱 Báo giá Billiards (Camera & Billiard Live)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveQuoteMode("standard")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 6,
+              fontSize: 12.5,
+              fontWeight: 700,
+              background: activeQuoteMode === "standard" ? "#0284c7" : "transparent",
+              color: activeQuoteMode === "standard" ? "#fff" : "#475569",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            📄 Báo giá Tiêu chuẩn
+          </button>
+        </div>
+      </div>
 
-      <div className="quote-2col">
+      {activeQuoteMode === "billiard" ? (
+        <BilliardQuoteTab onGenerated={onGenerated} />
+      ) : (
+        <div className="quote-2col" style={{ marginTop: 14 }}>
       <div className="q-form">
       <div className="panel">
         <label>
@@ -895,7 +936,8 @@ export function CreateQuote({
           <div className="pv-empty">Đang tạo bản xem trước…</div>
         )}
       </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

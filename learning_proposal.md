@@ -116,3 +116,57 @@ Khi người dùng ra lệnh trong quá trình chat, Assistant **BẮT BUỘC PH
   * Giá trị pháp lý: *Hợp lệ tại thời điểm ký*
   * Thu hồi chứng thư: *OCSP / CRL Đạt chuẩn*
 * **Dòng hướng dẫn công khai:** Luôn ghi rõ đường link chính thức của Trung tâm Chứng thực điện tử quốc gia (Bộ TTTT) tại `https://neac.gov.vn/vi` để khách hàng tự tải file PDF về kiểm tra độc lập.
+
+---
+
+## 7. Quy Chuẩn Báo Giá Giải Pháp Billiards (iNut BilliardLive - Camera & Check VAR)
+
+### 7.1. Nguyên tắc Ký số: "Báo Giá Bida Không Cần Ký Số"
+* **Tuyệt đối KHÔNG ký số điện tử (PAdES / WINCA) vào Báo giá Billiards:**
+  * Báo giá giải pháp quán bida là tài liệu chào giá thương mại nhanh gửi cho chủ câu lạc bộ (CLB) qua Zalo, Messenger hoặc in trực tiếp.
+  * Không ký số mật mã PAdES/CAdES, không cần cắm USB Token.
+* **Cơ chế sau khi quản lý cấu hình xong:**
+  * Hệ thống tự động sinh (generate) tệp **PDF sạch hoàn chỉnh**, định dạng chuẩn A4, hiển thị chữ ký/dấu xác nhận nội bộ của Trưởng bộ phận kinh doanh (`Đại diện trưởng bộ phận (Đã ký)`).
+  * Trả ra link PDF trực tiếp ngay khi bấm Generate để người dùng copy link gửi Zalo hoặc tải về gửi ngay cho khách hàng.
+
+### 7.2. Cấu trúc bóc tách khối lượng 02 Gói riêng biệt
+* **Gói I: Lắp đặt camera & hạ tầng thi công (Phần cứng & thi công hiện trường):**
+  1. Camera KBVision A5W (5MPixel Full Color đêm, mic/loa 2 chiều, góc rộng): Tính theo số bàn bida ($N \times 550.000$ đ).
+  2. POE Splitter 5V DC (chuyển POE LAN thành LAN + Nguồn): $N \times 65.000$ đ.
+  3. Switch PoE Gigabit (GPOE408 AI Watchdog): Tính theo số port ($\le 8$ bàn dùng Switch 8P 1.100.000 đ; từ 9 bàn trở lên dùng Switch 16P hoặc 2 Switch 8P).
+  4. Cáp mạng LAN Cat5e/Cat6: Dự toán theo thực tế $\sim 30 - 35$m/bàn $\times 10.000$ đ/m (ví dụ 9 bàn $\approx 300$m = 3.000.000 đ).
+  5. Vật tư phụ (hạt mạng, tắc kê, ốc vít, băng keo, ống ruột gà): 500.000 đ/gói.
+  6. Nhân công lắp đặt & căn chỉnh góc từng bàn: $N \times 300.000$ đ/bàn.
+  * $\rightarrow$ **Tổng cộng Gói I**: Có dòng tổng tiền riêng biệt.
+* **Gói II: Công nghệ Check VAR, cắt clip & Livestream (Thiết bị số hóa & Phần mềm):**
+  1. Thiết bị Stream Model C1 (Hộp xử lý, lưu trữ và số hóa 8-16 kênh camera, QR cắt clip, livestream Full HD 30fps lên Facebook/YouTube/OBS, bảng tỷ số): Đơn giá chuẩn 14.790.000 đ (hỗ trợ chiết khấu thương mại % ví dụ $5\% = -739.500$ đ $\rightarrow$ còn 14.050.500 đ).
+  2. Gói giảm giá Marketing / Khuyến mãi kích cầu mở quán: Trừ trực tiếp (ví dụ -885.500 đ).
+  * $\rightarrow$ **Tổng cộng Gói II**: Có dòng tổng tiền riêng biệt.
+* **Tổng cộng Dự án (I + II):** Bằng tổng Gói I + Gói II (ví dụ 26.000.000 đ).
+
+### 7.3. Quy định Thuế VAT & Lộ trình thanh toán trả góp
+* **Chính sách Thuế:** Báo giá niêm yết **CHƯA BAO GỒM VAT**. Bắt buộc ghi chú rõ ràng mức thuế 8%:  
+  `* Báo giá chưa bao gồm VAT 8% (Nếu quý khách hàng có nhu cầu xuất hóa đơn VAT 8% vui lòng liên hệ để được hỗ trợ)`
+* **Chính sách Bảo hành:**
+  * Thiết bị được bảo hành 1 năm 1 đổi 1; từ năm thứ 2 phí bảo hành 300.000 VNĐ/lần.
+  * Bộ nhớ / thẻ nhớ bảo hành 3 năm.
+* **Quy trình thanh toán linh hoạt (Trả góp 3–6 đợt):**
+  * Hỗ trợ trả 1 lần hoặc chia theo đợt (Đợt 1: Cọc/Bắt đầu thi công; Các đợt tiếp theo giãn cách hàng tháng, hỗ trợ trả góp không lãi suất).
+
+---
+
+## 8. Quy Chuẩn Ký Số Điện Tử & Định Dạng Con Dấu (Digital Signature Policy)
+* **Nguyên tắc "Đơn nguồn con dấu" (Single Source of Truth for Stamp):**
+  * Khi văn bản được ký số PAdES bằng USB Token WINCA / PyHanko, **mã HTML template tuyệt đối không vẽ khung con dấu tĩnh `.digital-stamp` trong HTML**.
+  * Khung ký tên chỉ để khoảng trống `.space` tự nhiên để duy nhất module ký số (`appearance.render_signature`) đóng dấu vào.
+  * Tránh hoàn toàn lỗi xuất hiện 2 con dấu của cùng một Bên A đè lên nhau hoặc lệch dòng.
+* **Quy chuẩn thời gian ký số giây và phút lẻ tự nhiên:**
+  * Không đặt mốc giây tròn `:00` hay phút tròn chục `:30` nhân tạo.
+  * Tự động tạo mốc giây và phút lẻ ngẫu nhiên thực tế (ví dụ: `10:37:43`, `16:38:45`, `09:56:43`).
+  * Thời gian hiển thị trên con dấu hình họa và thời gian mã hóa mật mã PAdES `/M` phải khớp nhau 100% từng giây.
+* **Thuật toán ngắt dòng cân đối (`wrap_balanced`):**
+  * Tự động cân đối từ ngữ, ưu tiên chọn cỡ chữ phù hợp để dòng `Ký bởi: CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT` hiển thị trọn vẹn trên 1 dòng, không để rớt từ đơn côi (`INUT`) xuống dòng riêng.
+* **Quy chuẩn Hợp đồng khoán việc dịch vụ / Marketing:**
+  * Khoán việc thuần túy dân sự theo sản phẩm đầu ra hoàn thành (deliverables-based), không quản lý giờ giấc/chấm công.
+  * Thù lao dưới 5.000.000 VNĐ/lần được miễn khấu trừ 10% thuế TNCN tại nguồn theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP.
+  * Cho phép người nhận khoán tải ảnh hiện trường/sản phẩm từ cả Camera và Thư viện ảnh (Gallery).

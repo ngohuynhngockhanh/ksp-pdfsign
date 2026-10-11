@@ -318,6 +318,19 @@ class QuoteGenerate(BaseModel):
     bbnt_dieu_khoan: str = ""  # rong = dung dieu kien bao hanh mac dinh
 
 
+# --- Bao gia Billiards (iNut BilliardLive) ---
+class BilliardQuotePayload(BaseModel):
+    num_tables: int = 10
+    client_name: str = ""
+    contact_person: str = ""
+    phone: str = ""
+    address: str = ""
+    include_software: bool = True
+    custom_cable_meters: int | None = None
+    stream_boxes_count: int | None = None
+    date_display: str = ""
+    filename: str = ""
+
 # --- Hop dong phan mem / van hanh ---
 class ContractGenerate(BaseModel):
     draft_id: int | None = None

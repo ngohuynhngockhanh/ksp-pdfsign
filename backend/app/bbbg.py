@@ -45,6 +45,11 @@ QUOTE_TEMPLATES: dict[str, dict] = {
         "label": "Phiếu mua hàng",
         "doc_type": "phieu_mua_hang",
     },
+    "bao_gia_billiard": {
+        "file": "bao_gia_billiard.html",
+        "label": "Báo giá Billiards (Check VAR & Camera)",
+        "doc_type": "bao_gia",
+    },
 }
 
 # Giay xuat xuong co bo truong rieng, khong tron voi BBBG/bao gia.

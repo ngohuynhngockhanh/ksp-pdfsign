@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ title or "Báo giá giải pháp Tải clip và Livestream Camera" }}</title>
+<style>
+    size: A4 portrait;
+    margin: 8mm 10mm 8mm 10mm;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 8.5px;
+    color: #111;
+    line-height: 1.25;
+    background: #fff;
+    margin: 0;
+    padding: 0;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1.5px solid #0284c7;
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  .header-left {
+    flex: 1;
+  }
+  .company-name {
+    font-weight: bold;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    color: #0f172a;
+  }
+  .company-meta {
+    font-size: 8px;
+    color: #475569;
+    margin-top: 1px;
+  }
+  
+  .doc-title {
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0369a1;
+    margin: 4px 0 5px 0;
+    letter-spacing: 0.3px;
+  }
+
+  .meta-grid {
+    display: table;
+    width: 100%;
+    margin-bottom: 5px;
+    font-size: 8.5px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+  .meta-row {
+    display: table-row;
+  }
+  .meta-cell {
+    display: table-cell;
+    padding: 1.5px 4px;
+    vertical-align: top;
+  }
+  .meta-label {
+    font-weight: bold;
+    color: #334155;
+    width: 14%;
+  }
+  .meta-val {
+    color: #0f172a;
+  }
+
+  table.quote-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2px;
+  }
+  table.quote-table th, table.quote-table td {
+    border: 1px solid #94a3b8;
+    padding: 2px 4px;
+    vertical-align: top;
+  }
+  table.quote-table th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: bold;
+    font-size: 8px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .col-num { width: 3.5%; text-align: center; font-weight: 600; font-size: 8px; }
+  .col-name { width: 21%; font-weight: bold; color: #0f172a; font-size: 8px; }
+  .col-desc { width: 36%; font-size: 7.2px; color: #334155; line-height: 1.15; }
+  .col-unit { width: 5.5%; text-align: center; font-size: 8px; }
+  .col-price { width: 9.5%; text-align: right; white-space: nowrap; font-size: 8px; }
+  .col-qty { width: 4.5%; text-align: center; font-weight: 600; font-size: 8px; }
+  .col-discount { width: 5.5%; text-align: center; color: #b91c1c; font-size: 8px; }
+  .col-total { width: 10.5%; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap; font-size: 8.5px; }
+  .col-note { width: 11%; font-size: 7.5px; color: #475569; text-align: center; }
+
+  tr.group-header td {
+    background: #e0f2fe;
+    color: #0369a1;
+    font-weight: bold;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    padding: 2.5px 5px;
+    border-left: 3px solid #0284c7;
+  }
+  tr.group-subtotal td {
+    background: #f8fafc;
+    font-weight: bold;
+    color: #0f172a;
+    border-top: 1.5px solid #64748b;
+    font-size: 8.5px;
+  }
+  tr.grand-total td {
+    background: #ecfdf5;
+    font-weight: bold;
+    font-size: 10px;
+    color: #065f46;
+    border-top: 1.5px solid #10b981;
+    border-bottom: 1.5px solid #10b981;
+    padding: 3px 5px;
+  }
+
+  .footer-container {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    gap: 10px;
+  }
+  .footer-left {
+    flex: 1.7;
+    font-size: 7.8px;
+    color: #334155;
+    line-height: 1.25;
+  }
+  .note-item {
+    margin-bottom: 1px;
+  }
+  .vat-highlight {
+    font-weight: bold;
+    color: #b91c1c;
+  }
+  .payment-plan {
+    margin-top: 4px;
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 2px;
+  }
+  .payment-plan-title {
+    font-weight: bold;
+    color: #0284c7;
+    font-size: 8px;
+    margin-bottom: 1px;
+  }
+  .payment-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5px 0;
+    font-size: 7.5px;
+  }
+
+  .footer-right {
+    width: 160px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .sign-role {
+    font-weight: bold;
+    font-size: 9px;
+    color: #0f172a;
+  }
+  .sign-hint {
+    font-style: italic;
+    font-size: 7.5px;
+    color: #64748b;
+    margin-bottom: 24px;
+  }
+  .sign-name {
+    font-weight: bold;
+    font-size: 9px;
+    color: #0f172a;
+    border-top: 1px solid #cbd5e1;
+    padding-top: 2px;
+    display: inline-block;
+    min-width: 110px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="company-name">{{ ben_a.company or "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT" }}</div>
+      <div class="company-meta">
+        Email: {{ email or "hotro@mysmarthome.com.vn" }} &nbsp;|&nbsp; 
+        Website: {{ website or "https://inut.vn/" }} &nbsp;|&nbsp; 
+        Hotline: {{ ben_a.phone or "0972.768.491" }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Document Title -->
+  <div class="doc-title">{{ title or "Báo giá giải pháp Tải clip và Livestream Camera" }}</div>
+
+  <!-- Client & Project Info -->
+  <div class="meta-grid">
+    <div class="meta-row">
+      <div class="meta-cell meta-label">Client:</div>
+      <div class="meta-cell meta-val"><b>{{ ben_b.name or "CLB Billiards" }}</b></div>
+      <div class="meta-cell meta-label">Date:</div>
+      <div class="meta-cell meta-val">{{ ngay_display }}</div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell meta-label">Contact:</div>
+      <div class="meta-cell meta-val">{{ ben_b.contact_person or "Ban Quản lý CLB" }}</div>
+      <div class="meta-cell meta-label">Phone:</div>
+      <div class="meta-cell meta-val">{{ ben_b.phone or "Đang cập nhật" }}</div>
+    </div>
+    {% if ben_b.address %}
+    <div class="meta-row">
+      <div class="meta-cell meta-label">Địa chỉ:</div>
+      <div class="meta-cell meta-val" colspan="3">{{ ben_b.address }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Main Quote Table -->
+  <table class="quote-table">
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-name">Hạng mục</th>
+        <th class="col-desc">Diễn giải kỹ thuật</th>
+        <th class="col-unit">ĐVT</th>
+        <th class="col-price">Đơn giá (VNĐ)</th>
+        <th class="col-qty">SL</th>
+        <th class="col-discount">Giảm</th>
+        <th class="col-total">Thành tiền</th>
+        <th class="col-note">Ghi chú</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- GÓI I: LẮP ĐẶT CAMERA & HẠ TẦNG -->
+      <tr class="group-header">
+        <td colspan="9">I. Gói lắp đặt camera &amp; Hạ tầng thi công (Phần cứng)</td>
+      </tr>
+      {% for it in items_group_1 %}
+      <tr>
+        <td class="col-num">{{ loop.index }}</td>
+        <td class="col-name">{{ it.ten }}</td>
+        <td class="col-desc">{{ it.dien_giai|replace('\n', '<br>')|safe }}</td>
+        <td class="col-unit">{{ it.dvt }}</td>
+        <td class="col-price">{{ it.don_gia|vnd }}</td>
+        <td class="col-qty">{{ it.so_luong }}</td>
+        <td class="col-discount">{{ it.giam_gia or "" }}</td>
+        <td class="col-total">{{ it.thanh_tien|vnd }} ₫</td>
+        <td class="col-note">{{ it.note or "" }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="group-subtotal">
+        <td colspan="7" style="text-align: right; padding-right: 10px;">Tổng cộng Gói I:</td>
+        <td class="col-total">{{ total_group_1|vnd }} ₫</td>
+        <td></td>
+      </tr>
+
+      {% if has_group_2 %}
+      <!-- GÓI II: CÔNG NGHỆ CHECK VAR & LIVESTREAM -->
+      <tr class="group-header">
+        <td colspan="9">II. Gói công nghệ &amp; Phần mềm Billiard Live (Cắt cam, Check VAR, Livestream)</td>
+      </tr>
+      {% for it in items_group_2 %}
+      <tr>
+        <td class="col-num">{{ loop.index }}</td>
+        <td class="col-name">{{ it.ten }}</td>
+        <td class="col-desc">{{ it.dien_giai|replace('\n', '<br>')|safe }}</td>
+        <td class="col-unit">{{ it.dvt }}</td>
+        <td class="col-price">{{ it.don_gia|vnd }}</td>
+        <td class="col-qty">{{ it.so_luong }}</td>
+        <td class="col-discount">{{ it.giam_gia or "" }}</td>
+        <td class="col-total">{{ it.thanh_tien|vnd }} ₫</td>
+        <td class="col-note">{{ it.note or "" }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="group-subtotal">
+        <td colspan="7" style="text-align: right; padding-right: 10px;">Tổng cộng Gói II:</td>
+        <td class="col-total">{{ total_group_2|vnd }} ₫</td>
+        <td></td>
+      </tr>
+
+      <!-- TỔNG CỘNG I + II -->
+      <tr class="grand-total">
+        <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG (GÓI I + GÓI II):</td>
+        <td class="col-total" style="font-size: 11.5px; color: #065f46;">{{ grand_total|vnd }} ₫</td>
+        <td></td>
+      </tr>
+      {% else %}
+      <!-- TỔNG CỘNG CHỈ GÓI I -->
+      <tr class="grand-total">
+        <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG BÁO GIÁ (CHƯA VAT):</td>
+        <td class="col-total" style="font-size: 11.5px; color: #065f46;">{{ grand_total|vnd }} ₫</td>
+        <td></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Footer & Notes -->
+  <div class="footer-container">
+    <div class="footer-left">
+      <div class="note-item">• <b>Chính sách bảo hành:</b> Thiết bị được bảo hành chính hãng trong vòng <b>1 năm 1 đổi 1</b>. Từ năm thứ 2 phí dịch vụ kỹ thuật bảo hành 300.000 VNĐ/Lần.</div>
+      <div class="note-item">• <b>Bộ nhớ lưu trữ:</b> Thẻ nhớ / Bộ nhớ chuyên dụng bảo hành <b>3 năm</b>.</div>
+      <div class="note-item vat-highlight">• <b>Ghi chú thuế:</b> Báo giá chưa bao gồm VAT 8% (Nếu quý khách hàng có nhu cầu xuất hóa đơn VAT 8% vui lòng liên hệ để được hỗ trợ).</div>
+
+      {% if payment_schedule %}
+      <div class="payment-plan">
+        <div class="payment-plan-title">Quy trình thanh toán &amp; Lộ trình chi trả:</div>
+        {% for step in payment_schedule %}
+        <div class="payment-row">
+          <span>{{ step.title }}</span>
+          <b>{{ step.amount|vnd }} ₫</b>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="footer-right">
+      <div class="sign-role">Đại diện trưởng bộ phận</div>
+      <div class="sign-hint">(Đã xác nhận &amp; ban hành)</div>
+      <div class="sign-name">{{ ben_a.rep or "iNut Technology" }}</div>
+    </div>
+  </div>
+
+</body>
+</html>
