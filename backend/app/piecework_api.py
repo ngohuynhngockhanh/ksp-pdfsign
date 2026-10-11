@@ -842,17 +842,16 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
     return HTML(string=html_text).write_pdf()
 
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
-    """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan).
-    Quy tac:
-    - Phu luc 2 (Nghiem thu): Ky vao NGAY XUAT HOA DON va TRUOC GIO XUAT HOA DON (phut va giay le tu nhien).
-      + Du an Fuji (c.id == 2 hoac FUJI trong code): HĐ 36 xuat ngay 27/08/2026 -> ky luc 16:38:45 ngay 27/08/2026.
-      + Du an Khang Linh ELV (c.id == 1 hoac KHANGLINHELV): HĐ 43 xuat ngay 24/09/2026 -> ky luc 16:37:42 ngay 24/09/2026.
-    - Phu luc 3 (Thanh toan & UNC): Sau thoi diem uy nhiem chi.
-    """
+    """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan)."""
     is_fuji = "FUJI" in (c.contract_code or "").upper() or c.id == 2
+    is_mkt = "MKT" in (c.contract_code or "").upper() or c.id == 3
     if is_fuji:
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 10, 11, 2, 47)
+    elif is_mkt:
+        # HĐ Marketing Tháng 9 ký 01/09/2026, nghiệm thu cuối tháng 30/09/2026, thanh toán 11/10/2026
+        app2_dt = datetime(2026, 9, 30, 16, 35, 42)
+        app3_dt = datetime(2026, 10, 11, 10, 25, 38)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
