@@ -177,6 +177,28 @@ def send_alert_email(db, subject: str, body: str) -> bool:
         client.send_message(msg)
     return True
 
+def send_custom_email(db, to_email: str, subject: str, plain_body: str, html_body: str | None = None) -> bool:
+    host = _setting(db, "smtp_host")
+    if not host or not to_email:
+        return False
+    port = int(_setting(db, "smtp_port") or 587)
+    username = _setting(db, "smtp_username")
+    password = _setting(db, "smtp_password", secret=True)
+    sender = _setting(db, "smtp_from") or username
+    msg = EmailMessage()
+    msg["Subject"], msg["From"], msg["To"] = subject, sender, to_email
+    if html_body:
+        msg.set_content(plain_body or "Vui lòng xem nội dung HTML đính kèm.")
+        msg.add_alternative(html_body, subtype="html")
+    else:
+        msg.set_content(plain_body or "")
+    with smtplib.SMTP(host, port, timeout=15) as client:
+        client.starttls()
+        if username and password:
+            client.login(username, password)
+        client.send_message(msg)
+    return True
+
 
 def daily_range(today: date | None = None) -> tuple[str, str]:
     today = today or date.today()

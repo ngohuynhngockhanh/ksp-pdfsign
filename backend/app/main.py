@@ -537,6 +537,38 @@ def telegram_send_message(
     return {"ok": True, "delivered_count": delivered, "message": payload.message}
 
 
+class MailSendIn(BaseModel):
+    to: str
+    subject: str
+    body: str | None = None
+    html: str | None = None
+    username: str | None = None
+    otp_code: str | None = None
+    expiry_minutes: int | None = 15
+
+
+@app.post("/api/mail/send")
+def mail_send_api(payload: MailSendIn, db: Session = Depends(get_session)):
+    """API phát email tập trung cho hệ sinh thái iNut qua cấu hình SMTP của KSP."""
+    to_email = payload.to.strip()
+    if not to_email:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu địa chỉ email người nhận")
+
+    html_content = payload.html or payload.body or ""
+    plain_content = payload.body or ""
+
+    ok = tax_ops.send_custom_email(
+        db,
+        to_email=to_email,
+        subject=payload.subject,
+        plain_body=plain_content,
+        html_body=html_content,
+    )
+    if not ok:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không thể gửi email qua SMTP của KSP (chưa cấu hình hoặc lỗi kết nối)")
+
+    return {"ok": True, "message": "Email đã được gửi thành công", "to": to_email}
+
 # ---------------------------------------------------------------------------
 # Ky so (admin)
 # ---------------------------------------------------------------------------
