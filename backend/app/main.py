@@ -2825,6 +2825,7 @@ def quote_generate(
 @app.get("/api/billiard/quote/estimate")
 def billiard_estimate(
     tables: int = Query(10, ge=1, le=100),
+    include_camera: bool = Query(True),
     include_software: bool = Query(True),
     client_name: str = Query(""),
     user: CurrentUser = Depends(require_admin),
@@ -2834,6 +2835,7 @@ def billiard_estimate(
     data = build_billiard_quote_data(
         num_tables=tables,
         client_name=client_name,
+        include_camera=include_camera,
         include_software=include_software,
     )
     return {"ok": True, "data": data}
@@ -2853,8 +2855,8 @@ def billiard_quote_preview(
         contact_person=body.contact_person,
         phone=body.phone,
         address=body.address,
+        include_camera=body.include_camera,
         include_software=body.include_software,
-        custom_cable_meters=body.custom_cable_meters,
         stream_boxes_count=body.stream_boxes_count,
         date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
     )
@@ -2879,8 +2881,8 @@ def billiard_quote_generate(
         contact_person=body.contact_person,
         phone=body.phone,
         address=body.address,
+        include_camera=body.include_camera,
         include_software=body.include_software,
-        custom_cable_meters=body.custom_cable_meters,
         stream_boxes_count=body.stream_boxes_count,
         date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
     )
@@ -2890,16 +2892,24 @@ def billiard_quote_generate(
     doc_id = storage.save_upload(pdf, suffix=".pdf")
 
     c_name = body.client_name.strip() or f"Billiards {body.num_tables} bàn"
-    safe_code = f"BG-BIDA-{body.num_tables}BAN" + ("-FULL" if body.include_software else "-CAM")
+    if body.include_camera and body.include_software:
+        mode_code = "-FULL"
+        mode_label = "Camera + Billiard Live"
+    elif body.include_software and not body.include_camera:
+        mode_code = "-PM"
+        mode_label = "Chỉ Phần mềm Billiard Live (Đã có Cam)"
+    else:
+        mode_code = "-CAM"
+        mode_label = "Chỉ Camera - Không phần mềm"
+    safe_code = f"BG-BIDA-{body.num_tables}BAN{mode_code}"
     filename = body.filename.strip() or f"Bao_gia_{safe_code}.pdf"
-
     doc = Document(
         doc_id=doc_id,
         filename=filename,
         signer_name="iNut Technology",
         signed=False,
         doc_type="bao_gia",
-        note=f"Báo giá Billiards {body.num_tables} bàn ({'Camera + Billiard Live' if body.include_software else 'Chỉ Camera - Không phần mềm'}) · {money.vnd(data['grand_total'])}đ · Chưa VAT 8%",
+        note=f"Báo giá Billiards {body.num_tables} bàn ({mode_label}) · {money.vnd(data['grand_total'])}đ · Chưa VAT 8%",
         source_system="billiard_quote",
         source_external_id=safe_code,
     )

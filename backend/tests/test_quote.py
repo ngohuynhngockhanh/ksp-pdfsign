@@ -261,22 +261,31 @@ def test_billiard_pricing_and_quote_generation(client):
     assert "8 Port" in hubs_12[0]["ten"] and hubs_12[0]["don_gia"] == 1_100_000
     assert "4 Port" in hubs_12[1]["ten"] and hubs_12[1]["don_gia"] == 825_000
 
-    # Test full quote data build
-    data_full = build_billiard_quote_data(10, include_software=True)
+    # Test full quote data build (10 cam: Model C1 base 17.790.000d - 5% = 16.900.500d, minus MKT 885.500d = 16.015.000d)
+    data_full = build_billiard_quote_data(10, include_camera=True, include_software=True)
+    assert data_full["has_group_1"] is True
     assert data_full["has_group_2"] is True
     assert data_full["total_group_1"] == 15_075_000
-    assert data_full["total_group_2"] == 13_165_000
-    assert data_full["grand_total"] == 28_240_000
+    assert data_full["total_group_2"] == 16_015_000
+    assert data_full["grand_total"] == 31_090_000
 
-    data_no_sw = build_billiard_quote_data(10, include_software=False)
+    # Test without camera (only software)
+    data_no_cam = build_billiard_quote_data(10, include_camera=False, include_software=True)
+    assert data_no_cam["has_group_1"] is False
+    assert data_no_cam["has_group_2"] is True
+    assert data_no_cam["total_group_1"] == 0
+    assert data_no_cam["total_group_2"] == 16_015_000
+    assert data_no_cam["grand_total"] == 16_015_000
+
+    data_no_sw = build_billiard_quote_data(10, include_camera=True, include_software=False)
+    assert data_no_sw["has_group_1"] is True
     assert data_no_sw["has_group_2"] is False
     assert data_no_sw["grand_total"] == 15_075_000
-
     # Test API endpoints
-    client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
+    l_res = client.post("/api/login", json={"username": "admin", "password": "NhapHang123@"})
     res = client.get("/api/billiard/quote/estimate?tables=10&include_software=true")
     assert res.status_code == 200
-    assert res.json()["data"]["grand_total"] == 28_240_000
+    assert res.json()["data"]["grand_total"] == 31_090_000
 
     gen_res = client.post("/api/billiard/quote/generate", json={
         "num_tables": 10,

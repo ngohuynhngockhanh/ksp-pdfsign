@@ -170,3 +170,14 @@ Khi người dùng ra lệnh trong quá trình chat, Assistant **BẮT BUỘC PH
   * Khoán việc thuần túy dân sự theo sản phẩm đầu ra hoàn thành (deliverables-based), không quản lý giờ giấc/chấm công.
   * Thù lao dưới 5.000.000 VNĐ/lần được miễn khấu trừ 10% thuế TNCN tại nguồn theo Khoản 2 Điều 50 Nghị định 253/2026/NĐ-CP.
   * Cho phép người nhận khoán tải ảnh hiện trường/sản phẩm từ cả Camera và Thư viện ảnh (Gallery).
+
+---
+
+## 9. Quy Chuẩn Tự Động Tăng Version & Auto-Commit (Version Bump & Delivery Policy)
+* **Quy tắc tăng phiên bản tự động (Auto-increment Version):**
+  - Khi hoàn thành một tính năng mới, cải tiến nghiệp vụ hoặc cập nhật module hệ thống trong `ksp-pdfsign`, trợ lý **tự động tăng số phiên bản** trong `frontend/package.json` và `frontend/package-lock.json` (ví dụ: `1.0.0` $\rightarrow$ `1.1.0` $\rightarrow$ `1.2.0`).
+  - Giúp đồng bộ phiên bản giao diện người dùng, cache busting và theo dõi tiến độ phát triển rõ ràng.
+* **Quy tắc Auto-Commit định kỳ:**
+  - Không để tồn đọng mã nguồn sửa đổi dở dang khi kết thúc mỗi lượt trao đổi hoặc khi hoàn thành từng mốc tính năng.
+  - Sử dụng thông điệp commit chuẩn hóa Conventional Commits (`feat(...)`, `fix(...)`, `docs(...)`) mô tả chính xác nội dung thay đổi.
+  - Tự động `git push origin main` sau khi toàn bộ test suite (`pytest`) và build (`npm run build`) đã kiểm tra đạt 100%.

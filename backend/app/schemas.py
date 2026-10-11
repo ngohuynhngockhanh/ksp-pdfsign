@@ -325,8 +325,8 @@ class BilliardQuotePayload(BaseModel):
     contact_person: str = ""
     phone: str = ""
     address: str = ""
+    include_camera: bool = True
     include_software: bool = True
-    custom_cable_meters: int | None = None
     stream_boxes_count: int | None = None
     date_display: str = ""
     filename: str = ""

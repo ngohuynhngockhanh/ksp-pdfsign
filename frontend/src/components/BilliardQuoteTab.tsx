@@ -7,6 +7,7 @@ export function BilliardQuoteTab({
   onGenerated?: (docId: string, filename: string, docType: string, customerId: number | null, orderId: number | null) => void;
 }) {
   const [numTables, setNumTables] = useState<number>(10);
+  const [includeCamera, setIncludeCamera] = useState<boolean>(true);
   const [includeSoftware, setIncludeSoftware] = useState<boolean>(true);
   const [clientName, setClientName] = useState<string>("Billiards 10 bàn");
   const [contactPerson, setContactPerson] = useState<string>("Chủ CLB Billiards");
@@ -29,6 +30,7 @@ export function BilliardQuoteTab({
     api
       .billiardEstimate({
         tables: numTables,
+        include_camera: includeCamera,
         include_software: includeSoftware,
         client_name: clientName,
       })
@@ -38,7 +40,7 @@ export function BilliardQuoteTab({
         }
       })
       .catch((err) => console.error("Error fetching billiard estimate:", err));
-  }, [numTables, includeSoftware, clientName]);
+  }, [numTables, includeCamera, includeSoftware, clientName]);
 
   // Debounced PDF preview
   const previewPayload = JSON.stringify({
@@ -47,6 +49,7 @@ export function BilliardQuoteTab({
     contact_person: contactPerson,
     phone,
     address,
+    include_camera: includeCamera,
     include_software: includeSoftware,
     date_display: dateDisplay,
   });
@@ -88,9 +91,10 @@ export function BilliardQuoteTab({
         contact_person: contactPerson,
         phone,
         address,
+        include_camera: includeCamera,
         include_software: includeSoftware,
         date_display: dateDisplay,
-        filename: `Bao_gia_Billiards_${numTables}_ban_${includeSoftware ? "Full_Phan_Mem" : "Khong_Phan_Mem"}.pdf`,
+        filename: `Bao_gia_Billiards_${numTables}_ban_${includeCamera && includeSoftware ? "Full_Combo" : (includeSoftware ? "Chi_Phan_Mem_17790k" : "Chi_Camera")}.pdf`,
       };
       const res = await api.billiardQuoteGenerate(payload);
       if (res.ok) {
@@ -194,23 +198,45 @@ export function BilliardQuoteTab({
             </div>
 
             {/* Software Toggle Checkbox */}
-            <div style={{ background: includeSoftware ? "#f0fdf4" : "#f8fafc", border: `1.5px solid ${includeSoftware ? "#86efac" : "#cbd5e1"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  checked={includeSoftware}
-                  onChange={(e) => setIncludeSoftware(e.target.checked)}
-                  style={{ width: 18, height: 18, cursor: "pointer" }}
-                />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: includeSoftware ? "#166534" : "#475569" }}>
-                    {includeSoftware ? "✓ Đã bao gồm Gói Phần mềm Billiard Live (Cắt cam, Check VAR, Livestream)" : "Chưa chọn phần mềm (Chỉ báo giá Gói I lắp đặt Camera & hạ tầng)"}
+            {/* Package Toggles */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+              <div style={{ background: includeCamera ? "#eff6ff" : "#f8fafc", border: `1.5px solid ${includeCamera ? "#3b82f6" : "#cbd5e1"}`, borderRadius: 10, padding: "10px 12px" }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={includeCamera}
+                    onChange={(e) => setIncludeCamera(e.target.checked)}
+                    style={{ width: 17, height: 17, marginTop: 2, cursor: "pointer" }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: includeCamera ? "#1d4ed8" : "#475569" }}>
+                      📷 Gói I: Lắp đặt Camera &amp; Hạ tầng
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      {numTables} camera KBVision 5MP, POE Splitter, Hub PoE (8P/4P tối ưu), cáp LAN, vật tư và nhân công.
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
-                    Bao gồm hộp thiết bị Stream Model C1, bản quyền cắt clip QR tại bàn, xem không cần App, livestream Full HD và xem lại tình huống bi trên màn hình lớn.
+                </label>
+              </div>
+
+              <div style={{ background: includeSoftware ? "#f0fdf4" : "#f8fafc", border: `1.5px solid ${includeSoftware ? "#10b981" : "#cbd5e1"}`, borderRadius: 10, padding: "10px 12px" }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={includeSoftware}
+                    onChange={(e) => setIncludeSoftware(e.target.checked)}
+                    style={{ width: 17, height: 17, marginTop: 2, cursor: "pointer" }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: includeSoftware ? "#15803d" : "#475569" }}>
+                      💻 Gói II: Phần mềm Billiard Live
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                      Thiết bị Stream Model C1 ({numTables === 10 ? "17.790.000đ" : "chuẩn theo kênh"}), QR cắt cam, Check VAR màn hình lớn, livestream, tỷ số.
+                    </div>
                   </div>
-                </div>
-              </label>
+                </label>
+              </div>
             </div>
 
             {/* Customer Info */}

@@ -2290,9 +2290,10 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  async billiardEstimate(params: { tables: number; include_software?: boolean; client_name?: string }) {
+  async billiardEstimate(params: { tables: number; include_camera?: boolean; include_software?: boolean; client_name?: string }) {
     const q = new URLSearchParams();
     q.set("tables", params.tables.toString());
+    if (params.include_camera !== undefined) q.set("include_camera", params.include_camera ? "true" : "false");
     if (params.include_software !== undefined) q.set("include_software", params.include_software ? "true" : "false");
     if (params.client_name) q.set("client_name", params.client_name);
     return req<{ ok: boolean; data: any }>(`/api/billiard/quote/estimate?${q.toString()}`);

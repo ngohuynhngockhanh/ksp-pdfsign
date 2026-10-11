@@ -250,6 +250,7 @@
       </tr>
     </thead>
     <tbody>
+      {% if has_group_1 %}
       <!-- GÓI I: LẮP ĐẶT CAMERA & HẠ TẦNG -->
       <tr class="group-header">
         <td colspan="9">I. Gói lắp đặt camera &amp; Hạ tầng thi công (Phần cứng)</td>
@@ -272,7 +273,7 @@
         <td class="col-total">{{ total_group_1|vnd }} ₫</td>
         <td></td>
       </tr>
-
+      {% endif %}
       {% if has_group_2 %}
       <!-- GÓI II: CÔNG NGHỆ CHECK VAR & LIVESTREAM -->
       <tr class="group-header">
@@ -296,17 +297,26 @@
         <td class="col-total">{{ total_group_2|vnd }} ₫</td>
         <td></td>
       </tr>
+      {% endif %}
 
+      {% if has_group_1 and has_group_2 %}
       <!-- TỔNG CỘNG I + II -->
       <tr class="grand-total">
         <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG (GÓI I + GÓI II):</td>
         <td class="col-total" style="font-size: 11.5px; color: #065f46;">{{ grand_total|vnd }} ₫</td>
         <td></td>
       </tr>
-      {% else %}
-      <!-- TỔNG CỘNG CHỈ GÓI I -->
+      {% elif has_group_2 %}
+      <!-- TỔNG CỘNG CHỈ GÓI II PHẦN MỀM -->
       <tr class="grand-total">
-        <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG BÁO GIÁ (CHƯA VAT):</td>
+        <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG BÁO GIÁ PHẦN MỀM BILLIARD LIVE (CHƯA VAT):</td>
+        <td class="col-total" style="font-size: 11.5px; color: #065f46;">{{ grand_total|vnd }} ₫</td>
+        <td></td>
+      </tr>
+      {% else %}
+      <!-- TỔNG CỘNG CHỈ GÓI I CAMERA -->
+      <tr class="grand-total">
+        <td colspan="7" style="text-align: right; padding-right: 10px; font-size: 11px;">TỔNG CỘNG BÁO GIÁ CAMERA (CHƯA VAT):</td>
         <td class="col-total" style="font-size: 11.5px; color: #065f46;">{{ grand_total|vnd }} ₫</td>
         <td></td>
       </tr>
