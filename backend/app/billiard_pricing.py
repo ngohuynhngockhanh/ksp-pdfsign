@@ -23,7 +23,7 @@ Chuan hoa theo logic thuc te:
 - Quy dinh thue & bao hanh:
   + Don gia chua bao gom VAT 8%
   + Thiet bi bao hanh 1 nam 1 doi 1, nam thu 2 tro di phi dich vu 300.000d/lan
-  + Bo nho bao hanh 3 nam
+  + Bo nho / The nho chuyen dung bao hanh 2 nam (do bao gia linh kien)
   + Khong ky so dien tu, xuat PDF sach gui truc tiep cho khach hang.
 """
 from pathlib import Path

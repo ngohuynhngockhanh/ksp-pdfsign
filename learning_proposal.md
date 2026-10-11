@@ -149,7 +149,7 @@ Khi người dùng ra lệnh trong quá trình chat, Assistant **BẮT BUỘC PH
   `* Báo giá chưa bao gồm VAT 8% (Nếu quý khách hàng có nhu cầu xuất hóa đơn VAT 8% vui lòng liên hệ để được hỗ trợ)`
 * **Chính sách Bảo hành:**
   * Thiết bị được bảo hành 1 năm 1 đổi 1; từ năm thứ 2 phí bảo hành 300.000 VNĐ/lần.
-  * Bộ nhớ / thẻ nhớ bảo hành 3 năm.
+  * Bộ nhớ / thẻ nhớ bảo hành 2 năm (do bão giá thị trường linh kiện).
 * **Quy trình thanh toán linh hoạt (Trả góp 3–6 đợt):**
   * Hỗ trợ trả 1 lần hoặc chia theo đợt (Đợt 1: Cọc/Bắt đầu thi công; Các đợt tiếp theo giãn cách hàng tháng, hỗ trợ trả góp không lãi suất).
 
