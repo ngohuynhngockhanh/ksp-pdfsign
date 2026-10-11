@@ -849,9 +849,9 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 10, 11, 2, 47)
     elif is_mkt:
-        # HĐ Marketing Tháng 9 ký 01/09/2026, nghiệm thu cuối tháng 30/09/2026, thanh toán 11/10/2026
+        # HĐ Marketing Tháng 9 ký 01/09/2026, nghiệm thu 30/09/2026, thanh toán UNC 11/10/2026 (sau 12:54 CH)
         app2_dt = datetime(2026, 9, 30, 16, 35, 42)
-        app3_dt = datetime(2026, 10, 11, 10, 25, 38)
+        app3_dt = datetime(2026, 10, 11, 13, 5, 43)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
