@@ -325,6 +325,7 @@ class BilliardQuotePayload(BaseModel):
     contact_person: str = ""
     phone: str = ""
     address: str = ""
+    agency: str = "inut"  # inut | 16pool
     include_camera: bool = True
     include_software: bool = True
     stream_boxes_count: int | None = None

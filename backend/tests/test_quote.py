@@ -274,8 +274,13 @@ def test_billiard_pricing_and_quote_generation(client):
     assert data_no_cam["has_group_1"] is False
     assert data_no_cam["has_group_2"] is True
     assert data_no_cam["total_group_1"] == 0
-    assert data_no_cam["total_group_2"] == 16_015_000
-    assert data_no_cam["grand_total"] == 16_015_000
+    assert data_no_cam["total_group_2"] == 17_790_000
+    assert data_no_cam["grand_total"] == 17_790_000
+
+    # Test with agency 16pool
+    data_16pool = build_billiard_quote_data(10, agency="16pool", include_camera=False, include_software=True)
+    assert "16POOL" in data_16pool["ben_a"]["company"]
+    assert data_16pool["grand_total"] == 17_790_000
 
     data_no_sw = build_billiard_quote_data(10, include_camera=True, include_software=False)
     assert data_no_sw["has_group_1"] is True

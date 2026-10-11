@@ -26,10 +26,39 @@ Chuan hoa theo logic thuc te:
   + Bo nho bao hanh 3 nam
   + Khong ky so dien tu, xuat PDF sach gui truc tiep cho khach hang.
 """
-from __future__ import annotations
+from pathlib import Path
+import base64
+from .config import REPO_ROOT
+
+AGENCY_CONFIGS: dict[str, dict[str, str]] = {
+    "inut": {
+        "key": "inut",
+        "company": "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+        "sub_title": "Đơn vị phát triển giải pháp iNut Smartcity & BilliardLive",
+        "address": "161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk",
+        "phone": "0972.768.491",
+        "email": "hotro@mysmarthome.com.vn",
+        "website": "https://inut.vn/",
+        "logo_file": "logo.png",
+        "rep": "Ngô Huỳnh Ngọc Khánh",
+        "role_title": "Đại diện công ty iNut",
+    },
+    "16pool": {
+        "key": "16pool",
+        "company": "ĐẠI LÝ PHÂN PHỐI ỦY QUYỀN: 16POOL STUDIO - 16POOL.VN",
+        "sub_title": "Hệ thống Phân phối & Triển khai Giải pháp Billiard Live - Hải Phòng",
+        "address": "TDP 6 An Dương, TP. Hải Phòng",
+        "phone": "0888.221.087",
+        "email": "contact@16pool.vn",
+        "website": "https://16pool.vn/",
+        "logo_file": "logo_16pool.png",
+        "rep": "Đại diện 16Pool Studio",
+        "role_title": "Đại diện Đại lý 16Pool",
+    },
+}
+
 import math
 from typing import Any
-
 PRICE_CAMERA_A5W = 550_000
 PRICE_POE_SPLITTER = 65_000
 PRICE_HUB_POE_8PORT = 1_100_000
@@ -140,6 +169,7 @@ def build_billiard_quote_data(
     contact_person: str = "",
     phone: str = "",
     address: str = "",
+    agency: str = "inut",
     include_camera: bool = True,
     include_software: bool = True,
     custom_cable_meters: int | None = None,
@@ -149,6 +179,16 @@ def build_billiard_quote_data(
     """Xay dung du lieu bao gia Billiards hoan chinh theo dung so ban va yeu cau."""
     num_cameras = num_tables
     client_display = client_name.strip() or f"CLB Billiards ({num_tables} bàn)"
+
+    agency_key = "16pool" if "16pool" in (agency or "").lower() else "inut"
+    agency_info = AGENCY_CONFIGS.get(agency_key, AGENCY_CONFIGS["inut"])
+    agency_logo_uri = ""
+    try:
+        logo_path = REPO_ROOT / "backend" / "app" / "assets" / agency_info["logo_file"]
+        if logo_path.exists():
+            agency_logo_uri = "data:image/png;base64," + base64.b64encode(logo_path.read_bytes()).decode()
+    except Exception:
+        pass
 
     # --- GOI I: LAP DAT CAMERA & HA TANG ---
     items_g1: list[dict[str, Any]] = []
@@ -224,33 +264,45 @@ def build_billiard_quote_data(
     total_g2 = 0
     if include_software:
         base_price_c1 = get_stream_c1_base_price(num_cameras)
-        c1_discount_amount = round(base_price_c1 * (DISCOUNT_PCT_C1 / 100))
-        c1_price_final = base_price_c1 - c1_discount_amount
-
-        items_g2.append({
-            "ten": f"Thiết bị Stream Model C1 & Bản quyền Phần mềm Billiard Live ({'Hệ ' + str(num_cameras) + ' kênh' if num_cameras > 8 else 'Hệ 8 kênh'})",
-            "dien_giai": f"Xử lý, lưu trữ và số hóa đồng thời {num_cameras} kênh Camera bàn bida Full HD-2K-4K, CPU ARM Multi-core, RAM tốc độ cao.\nTính năng phần mềm Billiard Live:\n- Cắt cam thông minh: Xuất mã QR tại bàn, khách quét mã xem và tải video clip về điện thoại không cần cài App\n- Check VAR chuyên nghiệp: Xem lại tình huống bi gây tranh cãi ngay tức thì trên màn hình lớn qua tính năng tua chậm\n- Livestream đa nền tảng: Phát trực tiếp luồng camera bàn lên Facebook, Fanpage, YouTube, hoặc tích hợp OBS\n- Hệ thống Dashboard quản trị quán, tích hợp bảng tỷ số trận đấu và quảng cáo khuyến mãi của quán",
-            "dvt": "Bộ",
-            "so_luong": 1,
-            "don_gia": base_price_c1,
-            "giam_gia": f"{DISCOUNT_PCT_C1}%",
-            "thanh_tien": c1_price_final,
-            "note": "Bảo hành 1 năm 1 đổi 1\nHỗ trợ trả góp 3-6 tháng",
-        })
-
-        items_g2.append({
-            "ten": "Gói giảm giá MKT",
-            "dien_giai": "Chính sách trợ giá khai trương & kích cầu truyền thông cho CLB Billiards",
-            "dvt": "Gói",
-            "so_luong": 1,
-            "don_gia": -VOUCHER_MKT,
-            "giam_gia": "",
-            "thanh_tien": -VOUCHER_MKT,
-            "note": "Trừ trực tiếp",
-        })
+        if include_camera:
+            # Mua Full Combo ca Cam lan Phan mem: Ap dung chiet khau 5% va voucher MKT
+            c1_discount_amount = round(base_price_c1 * (DISCOUNT_PCT_C1 / 100))
+            c1_price_final = base_price_c1 - c1_discount_amount
+            items_g2.append({
+                "ten": f"Thiết bị Stream Model C1 & Bản quyền Phần mềm Billiard Live ({'Hệ ' + str(num_cameras) + ' kênh' if num_cameras > 8 else 'Hệ 8 kênh'})",
+                "dien_giai": f"Xử lý, lưu trữ và số hóa đồng thời {num_cameras} kênh Camera bàn bida Full HD-2K-4K, CPU ARM Multi-core, RAM tốc độ cao.\nTính năng phần mềm Billiard Live:\n- Cắt cam thông minh: Xuất mã QR tại bàn, khách quét mã xem và tải video clip về điện thoại không cần cài App\n- Check VAR chuyên nghiệp: Xem lại tình huống bi gây tranh cãi ngay tức thì trên màn hình lớn qua tính năng tua chậm\n- Livestream đa nền tảng: Phát trực tiếp luồng camera bàn lên Facebook, Fanpage, YouTube, hoặc tích hợp OBS\n- Hệ thống Dashboard quản trị quán, tích hợp bảng tỷ số trận đấu và quảng cáo khuyến mãi của quán",
+                "dvt": "Bộ",
+                "so_luong": 1,
+                "don_gia": base_price_c1,
+                "giam_gia": f"{DISCOUNT_PCT_C1}%",
+                "thanh_tien": c1_price_final,
+                "note": "Bảo hành 1 năm 1 đổi 1\nHỗ trợ trả góp 3-6 tháng",
+            })
+            items_g2.append({
+                "ten": "Gói giảm giá MKT",
+                "dien_giai": "Chính sách trợ giá khai trương & kích cầu truyền thông cho CLB Billiards",
+                "dvt": "Gói",
+                "so_luong": 1,
+                "don_gia": -VOUCHER_MKT,
+                "giam_gia": "",
+                "thanh_tien": -VOUCHER_MKT,
+                "note": "Trừ trực tiếp",
+            })
+        else:
+            # QUY TẮC MỚI: Chỉ mua phần mềm không mua cam -> KHÔNG GIẢM GIÁ / KHÔNG CHIẾT KHẤU
+            c1_price_final = base_price_c1
+            items_g2.append({
+                "ten": f"Thiết bị Stream Model C1 & Bản quyền Phần mềm Billiard Live ({'Hệ ' + str(num_cameras) + ' kênh' if num_cameras > 8 else 'Hệ 8 kênh'})",
+                "dien_giai": f"Xử lý, lưu trữ và số hóa đồng thời {num_cameras} kênh Camera bàn bida Full HD-2K-4K, CPU ARM Multi-core, RAM tốc độ cao.\nTính năng phần mềm Billiard Live:\n- Cắt cam thông minh: Xuất mã QR tại bàn, khách quét mã xem và tải video clip về điện thoại không cần cài App\n- Check VAR chuyên nghiệp: Xem lại tình huống bi gây tranh cãi ngay tức thì trên màn hình lớn qua tính năng tua chậm\n- Livestream đa nền tảng: Phát trực tiếp luồng camera bàn lên Facebook, Fanpage, YouTube, hoặc tích hợp OBS\n- Hệ thống Dashboard quản trị quán, tích hợp bảng tỷ số trận đấu và quảng cáo khuyến mãi của quán\n- Hỗ trợ kết nối & tích hợp luồng RTSP camera có sẵn tại quán",
+                "dvt": "Bộ",
+                "so_luong": 1,
+                "don_gia": base_price_c1,
+                "giam_gia": "",
+                "thanh_tien": c1_price_final,
+                "note": "Bảo hành 1 năm 1 đổi 1\n(Giá niêm yết không chiết khấu khi mua lẻ phần mềm)",
+            })
 
         total_g2 = sum(it["thanh_tien"] for it in items_g2)
-
     grand_total = total_g1 + total_g2
 
     # --- QUY TRINH THANH TOAN ---
@@ -296,10 +348,18 @@ def build_billiard_quote_data(
     return {
         "title": title,
         "ben_a": {
-            "company": "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
-            "phone": "0972.768.491",
-            "rep": "Ngô Huỳnh Ngọc Khánh",
+            "company": agency_info["company"],
+            "sub_title": agency_info["sub_title"],
+            "phone": agency_info["phone"],
+            "rep": agency_info["rep"],
+            "role_title": agency_info["role_title"],
+            "website": agency_info["website"],
+            "email": agency_info["email"],
+            "address": agency_info["address"],
         },
+        "agency_logo_data_uri": agency_logo_uri,
+        "email": agency_info["email"],
+        "website": agency_info["website"],
         "ben_b": {
             "name": client_display,
             "contact_person": contact_person or "Ban Quản lý CLB",

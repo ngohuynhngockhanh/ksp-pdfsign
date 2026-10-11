@@ -13,6 +13,7 @@ export function BilliardQuoteTab({
   const [contactPerson, setContactPerson] = useState<string>("Chủ CLB Billiards");
   const [phone, setPhone] = useState<string>("09xx.xxx.xxx");
   const [address, setAddress] = useState<string>("TP. Hồ Chí Minh / Toàn quốc");
+  const [agency, setAgency] = useState<string>("16pool");
   const [dateDisplay, setDateDisplay] = useState<string>(() => {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -30,6 +31,7 @@ export function BilliardQuoteTab({
     api
       .billiardEstimate({
         tables: numTables,
+        agency,
         include_camera: includeCamera,
         include_software: includeSoftware,
         client_name: clientName,
@@ -40,7 +42,7 @@ export function BilliardQuoteTab({
         }
       })
       .catch((err) => console.error("Error fetching billiard estimate:", err));
-  }, [numTables, includeCamera, includeSoftware, clientName]);
+  }, [numTables, agency, includeCamera, includeSoftware, clientName]);
 
   // Debounced PDF preview
   const previewPayload = JSON.stringify({
@@ -49,6 +51,7 @@ export function BilliardQuoteTab({
     contact_person: contactPerson,
     phone,
     address,
+    agency,
     include_camera: includeCamera,
     include_software: includeSoftware,
     date_display: dateDisplay,
@@ -91,10 +94,11 @@ export function BilliardQuoteTab({
         contact_person: contactPerson,
         phone,
         address,
+        agency,
         include_camera: includeCamera,
         include_software: includeSoftware,
         date_display: dateDisplay,
-        filename: `Bao_gia_Billiards_${numTables}_ban_${includeCamera && includeSoftware ? "Full_Combo" : (includeSoftware ? "Chi_Phan_Mem_17790k" : "Chi_Camera")}.pdf`,
+        filename: `Bao_gia_Billiards_${numTables}_ban_${agency}_${includeCamera && includeSoftware ? "Full_Combo" : (includeSoftware ? "Chi_Phan_Mem_17790k" : "Chi_Camera")}.pdf`,
       };
       const res = await api.billiardQuoteGenerate(payload);
       if (res.ok) {
@@ -126,28 +130,44 @@ export function BilliardQuoteTab({
               Tự động phân bổ Hub PoE (8 cam/hub 8P, phần dư &le;4 cam dùng hub 4P rẻ hơn 25%) · Tách riêng Gói Camera &amp; Gói Phần mềm Billiard Live · Chưa VAT (VAT 8%) · <b>Không cần ký số</b>.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={() => {
                 setNumTables(10);
+                setAgency("16pool");
+                setIncludeCamera(true);
                 setIncludeSoftware(true);
-                setClientName("Billiards 10 bàn");
+                setClientName("Billiards 10 bàn (16Pool Full Combo)");
               }}
-              style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: includeSoftware && numTables === 10 ? "#38bdf8" : "rgba(255,255,255,0.15)", color: includeSoftware && numTables === 10 ? "#0f172a" : "#fff", border: "none", cursor: "pointer" }}
+              style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: agency === "16pool" && includeCamera && includeSoftware && numTables === 10 ? "#38bdf8" : "rgba(255,255,255,0.15)", color: agency === "16pool" && includeCamera && includeSoftware && numTables === 10 ? "#0f172a" : "#fff", border: "none", cursor: "pointer" }}
             >
-              10 Cam + Phần mềm
+              🔥 10 Cam + PM (16Pool)
             </button>
             <button
               type="button"
               onClick={() => {
                 setNumTables(10);
-                setIncludeSoftware(false);
-                setClientName("Billiards 10 bàn (Không PM)");
+                setAgency("16pool");
+                setIncludeCamera(false);
+                setIncludeSoftware(true);
+                setClientName("Billiards 10 bàn (Chỉ PM 17.790k - 16Pool)");
               }}
-              style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: !includeSoftware && numTables === 10 ? "#38bdf8" : "rgba(255,255,255,0.15)", color: !includeSoftware && numTables === 10 ? "#0f172a" : "#fff", border: "none", cursor: "pointer" }}
+              style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: agency === "16pool" && !includeCamera && includeSoftware && numTables === 10 ? "#38bdf8" : "rgba(255,255,255,0.15)", color: agency === "16pool" && !includeCamera && includeSoftware && numTables === 10 ? "#0f172a" : "#fff", border: "none", cursor: "pointer" }}
             >
-              10 Cam (0 phần mềm)
+              💻 10 Bàn Chỉ PM 17.790k (16Pool)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNumTables(10);
+                setIncludeCamera(true);
+                setIncludeSoftware(false);
+                setClientName("Billiards 10 bàn (Chỉ Camera)");
+              }}
+              style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: includeCamera && !includeSoftware && numTables === 10 ? "#38bdf8" : "rgba(255,255,255,0.15)", color: includeCamera && !includeSoftware && numTables === 10 ? "#0f172a" : "#fff", border: "none", cursor: "pointer" }}
+            >
+              📷 10 Bàn Chỉ Camera (0 PM)
             </button>
           </div>
         </div>
@@ -237,6 +257,21 @@ export function BilliardQuoteTab({
                   </div>
                 </label>
               </div>
+            </div>
+
+            {/* Agency Selector */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 3 }}>
+                🏢 Đơn vị xuất báo giá / Đại lý phân phối
+              </label>
+              <select
+                value={agency}
+                onChange={(e) => setAgency(e.target.value)}
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1.5px solid #cbd5e1", fontSize: 12.5, fontWeight: 600, background: "#fff", color: "#0f172a" }}
+              >
+                <option value="16pool">🎱 Đại lý phân phối 16POOL STUDIO (16pool.vn - Hải Phòng)</option>
+                <option value="inut">⚖️ Trực tiếp CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT (Mặc định)</option>
+              </select>
             </div>
 
             {/* Customer Info */}

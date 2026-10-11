@@ -199,12 +199,18 @@
 
   <!-- Header -->
   <div class="header">
-    <div class="header-left">
-      <div class="company-name">{{ ben_a.company or "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT" }}</div>
-      <div class="company-meta">
-        Email: {{ email or "hotro@mysmarthome.com.vn" }} &nbsp;|&nbsp; 
-        Website: {{ website or "https://inut.vn/" }} &nbsp;|&nbsp; 
-        Hotline: {{ ben_a.phone or "0972.768.491" }}
+    <div style="display: flex; align-items: center; gap: 10px;">
+      {% if agency_logo_data_uri %}
+      <img src="{{ agency_logo_data_uri }}" style="width: 44px; height: 44px; object-fit: contain; border-radius: 6px;" alt="Logo">
+      {% endif %}
+      <div class="header-left">
+        <div class="company-name">{{ ben_a.company or "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT" }}</div>
+        <div class="company-meta">
+          {% if ben_a.sub_title %}<div><b style="color: #0284c7;">{{ ben_a.sub_title }}</b></div>{% endif %}
+          Email: {{ email or "hotro@mysmarthome.com.vn" }} &nbsp;|&nbsp; 
+          Website: {{ website or "https://inut.vn/" }} &nbsp;|&nbsp; 
+          Hotline: {{ ben_a.phone or "0972.768.491" }}
+        </div>
       </div>
     </div>
   </div>
@@ -345,7 +351,7 @@
     </div>
 
     <div class="footer-right">
-      <div class="sign-role">Đại diện trưởng bộ phận</div>
+      <div class="sign-role">{{ ben_a.role_title or "Đại diện trưởng bộ phận" }}</div>
       <div class="sign-hint">(Đã xác nhận &amp; ban hành)</div>
       <div class="sign-name">{{ ben_a.rep or "iNut Technology" }}</div>
     </div>

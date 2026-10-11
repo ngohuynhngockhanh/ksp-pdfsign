@@ -2827,6 +2827,7 @@ def billiard_estimate(
     tables: int = Query(10, ge=1, le=100),
     include_camera: bool = Query(True),
     include_software: bool = Query(True),
+    agency: str = Query("inut"),
     client_name: str = Query(""),
     user: CurrentUser = Depends(require_admin),
 ):
@@ -2835,6 +2836,7 @@ def billiard_estimate(
     data = build_billiard_quote_data(
         num_tables=tables,
         client_name=client_name,
+        agency=agency,
         include_camera=include_camera,
         include_software=include_software,
     )
@@ -2855,6 +2857,7 @@ def billiard_quote_preview(
         contact_person=body.contact_person,
         phone=body.phone,
         address=body.address,
+        agency=body.agency,
         include_camera=body.include_camera,
         include_software=body.include_software,
         stream_boxes_count=body.stream_boxes_count,
@@ -2881,9 +2884,9 @@ def billiard_quote_generate(
         contact_person=body.contact_person,
         phone=body.phone,
         address=body.address,
+        agency=body.agency,
         include_camera=body.include_camera,
         include_software=body.include_software,
-        stream_boxes_count=body.stream_boxes_count,
         date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
     )
     tmpl = bbbg._env.get_template("bao_gia_billiard.html")
