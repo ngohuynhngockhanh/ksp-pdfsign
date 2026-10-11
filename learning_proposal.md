@@ -181,3 +181,12 @@ Khi người dùng ra lệnh trong quá trình chat, Assistant **BẮT BUỘC PH
   - Không để tồn đọng mã nguồn sửa đổi dở dang khi kết thúc mỗi lượt trao đổi hoặc khi hoàn thành từng mốc tính năng.
   - Sử dụng thông điệp commit chuẩn hóa Conventional Commits (`feat(...)`, `fix(...)`, `docs(...)`) mô tả chính xác nội dung thay đổi.
   - Tự động `git push origin main` sau khi toàn bộ test suite (`pytest`) và build (`npm run build`) đã kiểm tra đạt 100%.
+
+---
+
+## 10. Quy Chuẩn Cập Nhật Văn Bản Ghi Đè Link Cũ (In-Place Document & Share URL Update Policy)
+* **Nguyên tắc bất biến: "Cập nhật tài liệu phải giữ nguyên Link chia sẻ cũ" (In-Place Update)**
+  - Khi người dùng yêu cầu điều chỉnh số liệu, sửa nội dung, đổi gói cấu hình hoặc sửa sai sót của một Báo giá / Đề nghị thanh toán / Hợp đồng đã có link chia sẻ công khai (`/s/{token}`):
+    * **BẮT BUỘC PHẢI GHI ĐÈ TRỰC TIẾP LÊN BẢN GHI VÀ LINK CŨ** (`update in-place`), giữ nguyên 100% mã `token` của đường link đã cấp.
+    * Cập nhật mã băm nội dung mới vào kho lưu trữ `storage` và trỏ trường `doc_id` của bản ghi Document cũ sang file mới.
+    * **Tuyệt đối KHÔNG tự ý tạo bản ghi mới và sinh link mới (`/s/token_moi`)**: Điều này khiến đường link người dùng đã copy gửi Zalo / Email cho khách hàng trước đó bị xem bản lỗi hoặc trở thành link chết. Khách hàng bấm vào link cũ phải thấy ngay bản sửa đổi mới nhất.
