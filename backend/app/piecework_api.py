@@ -836,6 +836,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "id_card_back_data_uri": id_card_back_data_uri,
         "vietqr_data_uri": vietqr_data_uri,
         "transfer_memo": transfer_memo,
+        "contract_type": c.contract_type or "thi_cong",
+        "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
@@ -843,8 +845,10 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
 
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
     """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan)."""
-    is_fuji = "FUJI" in (c.contract_code or "").upper() or c.id == 2
-    is_mkt = "MKT" in (c.contract_code or "").upper() or c.id == 3
+    code_up = (c.contract_code or "").upper()
+    is_fuji = "FUJI" in code_up or c.id == 2
+    is_mkt = "MKT" in code_up or c.id == 3
+    is_rk = "RK3528" in code_up or "RK3518" in code_up or c.id == 4
     if is_fuji:
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 10, 11, 2, 47)
@@ -852,6 +856,10 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
         # HĐ Marketing Tháng 9 ký 01/09/2026, nghiệm thu 30/09/2026, thanh toán UNC 11/10/2026 (sau 12:54 CH)
         app2_dt = datetime(2026, 9, 30, 16, 35, 42)
         app3_dt = datetime(2026, 10, 11, 13, 5, 43)
+    elif is_rk:
+        # HĐ Phần mềm & Kiểm thử RK3528 Image Creator ký 01/10/2026, hoàn thành & bàn giao trong 07 ngày (08/10/2026), thanh toán Tháng 10/2026
+        app2_dt = datetime(2026, 10, 8, 16, 42, 19)
+        app3_dt = datetime(2026, 10, 14, 14, 28, 35)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
@@ -912,6 +920,8 @@ def render_appendix2_pdf(c: PieceworkContract) -> bytes:
         "inut_signed_date_display": c.inut_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.inut_signed_at else ngay_nghiem_thu_display,
         "worker_signature_data": c.worker_signature_data,
         "worker_face_photo_data": c.worker_face_photo_data,
+        "contract_type": c.contract_type or "thi_cong",
+        "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
     }
     html_text = _env.get_template("phu_luc_2_nghiem_thu.html").render(**ctx)
     return HTML(string=html_text).write_pdf()

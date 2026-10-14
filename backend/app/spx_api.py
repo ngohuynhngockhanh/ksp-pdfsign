@@ -102,6 +102,34 @@ def test_connection(
     )
 
 
+@router.get("/session/validate")
+def validate_session(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Kiem tra tinh hop le cua phien lam viec SPX Express hien tai."""
+    return spx.validate_spx_session(db)
+
+
+@router.post("/session/refresh")
+@router.post("/auto-login")
+def refresh_session(
+    payload: SpxTestIn | None = None,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Tu dong dang nhap lai tai khoan SPX Express qua Headless Chromium de lay cookie moi."""
+    try:
+        return spx.auto_login_spx(
+            db,
+            username=payload.username if payload else None,
+            password=payload.password if payload else None,
+        )
+    except Exception as e:
+        logger.exception("Loi tu dong dang nhap SPX: %s", e)
+        raise HTTPException(status_code=500, detail=f"Lỗi tự động đăng nhập SPX: {e}")
+
+
 @router.get("/stats", response_model=SpxStatsOut)
 def get_stats(
     user: CurrentUser = Depends(require_admin),
@@ -266,11 +294,12 @@ def get_order(
 @router.get("/orders/{tracking_no}/label")
 def get_order_label(
     tracking_no: str,
+    force_refresh: bool = Query(default=False),
     db: Session = Depends(get_session),
 ):
-    """Tai hoac in tem nhan A6 PDF (100x150mm) cua van don."""
+    """Tai hoac in tem nhan PDF chinh hang cua van don SPX."""
     try:
-        pdf_bytes = spx.get_spx_order_label(db, tracking_no)
+        pdf_bytes = spx.get_spx_order_label(db, tracking_no, force_refresh=force_refresh)
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",

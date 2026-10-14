@@ -66,7 +66,11 @@
 
   <div class="basis">
     - Căn cứ Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b> ngày {{ contract_date_display }} ký giữa hai Bên;<br>
+    {% if is_software %}
+    - Căn cứ kết quả kiểm thử thực tế phần mềm <b>iNut RK3528 Image Creator</b> trên máy chủ Linux và lô bo mạch <b>Mạch điện tử PCBA Model: RK3518 EMCP, Hiệu: Haoyu (Mã kho: HH9019)</b> tại kho sản xuất nội bộ Công ty iNut.
+    {% else %}
     - Căn cứ kết quả khảo sát, thi công lắp đặt và kiểm thử vận hành thực tế tại hiện trường công trình.
+    {% endif %}
   </div>
 
   <p style="margin: 4px 0;">Hôm nay, ngày {{ ngay_nghiem_thu_display }}, tại hiện trường công trình, hai Bên tiến hành nghiệm thu công việc với thành phần gồm:</p>
@@ -115,9 +119,15 @@
   </table>
 
   <div style="font-weight: bold; margin-top: 6px; color: #174b72;">II. ĐÁNH GIÁ VÀ KẾT LUẬN NGHIỆM THU:</div>
+  {% if is_software %}
+  <p style="margin: 2px 0;">1. Bên B đã hoàn thành đầy đủ trong thời hạn 07 ngày (01/10/2026 – 08/10/2026) và bàn giao trọn bộ mã nguồn (Source code), kịch bản tự động hóa cùng các phân hệ phần mềm <b>iNut RK3528 Image Creator</b> chạy ổn định trên môi trường máy chủ Linux (Ubuntu/Debian Server) do Bên B tự chủ máy móc triển khai.</p>
+  <p style="margin: 2px 0;">2. Hệ thống tự động nhận diện cổng USB Maskrom/Loader và nạp tự động <b>Bootloader + Firmware Image chuẩn của Công ty iNut</b> vào dòng hàng đầu vào <b>Linh kiện máy tính: Mạch điện tử PCBA đã gia công linh kiện, chưa hoàn chỉnh, không có firmware. Model: RK3518 EMCP, Hiệu: Haoyu. Hàng mới 100% (Mã kho: HH9019)</b> chính xác 100%, kiểm tra checksum SHA256/MD5 và xuất bản báo cáo kiểm thử xuất xưởng thành phẩm <b>iNut Smartcity - Data Logger v1.1 - Rockchip (Mã kho: INUT_RK3518)</b> đạt yêu cầu kỹ thuật.</p>
+  <p style="margin: 2px 0;">3. Hai Bên thống nhất nghiệm thu đạt yêu cầu 100%, hạch toán vào chi phí sản xuất nội bộ trong kỳ và làm căn cứ thanh toán thù lao giao khoán bằng chuyển khoản ngân hàng trong Tháng 10/2026.</p>
+  {% else %}
   <p style="margin: 2px 0;">1. Toàn bộ thiết bị phần cứng, dây cáp tín hiệu PoE đã được kéo rải và lắp đặt an toàn, đúng tiêu chuẩn kỹ thuật.</p>
   <p style="margin: 2px 0;">2. Hệ thống truyền luồng hình ảnh camera vận hành ổn định, chất lượng hình ảnh sắc nét, tính năng CheckVar hoạt động chính xác.</p>
   <p style="margin: 2px 0;">3. Hai Bên thống nhất nghiệm thu đạt yêu cầu 100% và làm căn cứ thanh toán thù lao giao khoán theo thỏa thuận hợp đồng.</p>
+  {% endif %}
 
   <!-- Hình ảnh hiện trường đính kèm -->
   {% if site_photos_data_uris %}
