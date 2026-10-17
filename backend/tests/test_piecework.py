@@ -60,7 +60,7 @@ def test_piecework_public_portal_and_signature(client):
         c = db.query(PieceworkContract).filter(PieceworkContract.portal_token == portal_slug).first()
         assert c.is_signed_by_worker is True
         assert c.worker_signature_data == dummy_sig
-        assert c.is_signed_by_inut is True
+        assert c.is_signed_by_inut is False
         assert c.contract_pdf_doc_id != ""
         break
 
@@ -144,9 +144,8 @@ def test_piecework_sign_inut_realtime(client):
 
     list_res = client.get("/api/piecework/contracts")
     contracts = list_res.json()["contracts"]
-    c = contracts[1]
+    c = next(x for x in contracts if x["is_signed_by_worker"])
     cid = c["id"]
-
     # Sign without body (realtime)
     sign_res = client.post(f"/api/piecework/contracts/{cid}/sign-inut")
     assert sign_res.status_code == 200

@@ -41,7 +41,7 @@ def _encode_ps(script: str) -> str:
 def _run(settings: Settings, host: str, admin_password: str, script: str) -> str:
     """Chay PowerShell tren may Windows qua SSH, tra ve stdout (text)."""
     # Tu dong resolve host qua nmap neu IP khong thong
-    resolved_host = resolve_windows_host(host or settings.agent_default_ip)
+    resolved_host = resolve_windows_host(host or settings.agent_default_ip, probe_port=445)
     enc = _encode_ps(script)
     key_path = Path(getattr(settings, "ecus_ssh_key_path", "/home/ksp/.ssh/id_ed25519"))
     if not key_path.is_file():
@@ -57,6 +57,10 @@ def _run(settings: Settings, host: str, admin_password: str, script: str) -> str
             "BatchMode=yes",
             "-o",
             "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ProxyCommand=nc -q 0 %h %p",
             "-o",
             f"ConnectTimeout={settings.ssh_connect_timeout}",
             f"{settings.ssh_user}@{resolved_host}",

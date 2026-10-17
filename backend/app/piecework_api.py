@@ -157,6 +157,7 @@ class SignInutPayload(BaseModel):
     cert_id: str | None = None
     pin: str | None = "12345678"
     signer_name: str | None = None
+    allow_unsigned_worker: bool = False
 
 
 class TimedPdfSigner(signers.PdfSigner):
@@ -280,24 +281,130 @@ def _next_sig_field_name(pdf_bytes: bytes) -> str:
     return f"Signature{i}"
 
 
-def sign_piecework_pdf_pyhanko(pdf_bytes: bytes, sign_dt: datetime, location: str = "Đắk Lắk") -> bytes:
-    signer = _get_inut_signer()
-    field_name = _next_sig_field_name(pdf_bytes)
+def _detect_ben_a_signature_box(pdf_bytes: bytes) -> tuple[int, tuple[float, float, float, float]]:
+    """Tự động định vị tọa độ khung ký Bên A (INUT) trên trang chữ ký của PDF."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for pno, page in enumerate(pdf.pages):
+                words = page.extract_words()
+                for idx, w in enumerate(words):
+                    if w["text"] == "(Ký" and idx + 1 < len(words) and "số," in words[idx + 1]["text"]:
+                        ngo = [x for x in words if x["text"] == "NGÔ" and x["top"] > w["bottom"]]
+                        h = float(page.height)
+                        ngo_top = ngo[0]["top"] if ngo else w["bottom"] + 78.0
+                        y_top = h - w["bottom"] - 2.0
+                        y_bot = h - ngo_top + 2.0
+                        if y_top - y_bot < 45.0:
+                            y_bot = y_top - 60.0
+                        return pno, (50.0, round(y_bot, 1), 280.0, round(y_top, 1))
+    except Exception as e:
+        logger.warning("Could not auto-detect signature box via pdfplumber: %s", e)
+    return 1, (50.0, 380.0, 280.0, 445.0)
+
+
+def sign_piecework_pdf_pyhanko(
+    pdf_bytes: bytes,
+    sign_dt: datetime,
+    location: str = "Đắk Lắk",
+    reason: str = "Ký số điện tử Hợp đồng giao khoán INUT",
+    cert_id: str | None = None,
+    pin: str = "12345678",
+) -> bytes:
+    from pyhanko.pdf_utils.images import PdfImage
+    from pyhanko.pdf_utils.layout import AxisAlignment, InnerScaling, SimpleBoxLayoutRule
+    from pyhanko.stamp import TextStampStyle
+    from . import appearance, signing, token_backend
+    from .schemas import AgentTarget, Rect, SignRequest
+
+    settings = get_settings()
+    vn_tz = timezone(timedelta(hours=7))
+    if sign_dt.tzinfo is None:
+        sign_dt = sign_dt.replace(tzinfo=vn_tz)
+    else:
+        sign_dt = sign_dt.astimezone(vn_tz)
+
+    page_idx, box = _detect_ben_a_signature_box(pdf_bytes)
+    x1, y1, x2, y2 = box
+    box_w, box_h = x2 - x1, y2 - y1
+
+    signer_name = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
+    mst = "4401053694"
+    signer = None
+    field_name = "Signature_INUT"
+
+    if cert_id:
+        try:
+            chain = token_backend.get_cert_chain(settings, settings.agent_default_ip, "", cert_id)
+            signing_cert, registry = signing._build_cert_registry(chain)
+            req_obj = SignRequest(
+                doc_id="piecework",
+                rect=Rect(page=page_idx, x1=x1, y1=y1, x2=x2, y2=y2),
+                cert_id=cert_id,
+                agent=AgentTarget(ip=settings.agent_default_ip, admin_password="", pin=pin or "12345678"),
+                reason=reason,
+                location=location or "Đắk Lắk",
+                signer_name=signer_name,
+            )
+            signer = signing.ExternalTokenSigner(settings, req_obj, signing_cert, registry)
+            signer_name = signing._subject_common_name(signing_cert) or signer_name
+            mst = signing._subject_mst(signing_cert) or mst
+        except Exception as e:
+            logger.warning("USB Token signing unavailable (%s), falling back to software signer", e)
+
+    if signer is None:
+        signer = _get_inut_signer()
+        field_name = _next_sig_field_name(pdf_bytes)
+
+    ts_str = sign_dt.strftime("%H:%M:%S %d/%m/%Y")
+    img = appearance.render_signature(
+        settings,
+        box_w,
+        box_h,
+        signer_name,
+        mst=mst,
+        reason=reason,
+        location=location or "Đắk Lắk",
+        ts=ts_str,
+    )
+    stamp_style = TextStampStyle(
+        stamp_text="",
+        border_width=0,
+        background=PdfImage(img),
+        background_opacity=1.0,
+        background_layout=SimpleBoxLayoutRule(
+            x_align=AxisAlignment.ALIGN_MID,
+            y_align=AxisAlignment.ALIGN_MID,
+            inner_content_scaling=InnerScaling.STRETCH_FILL,
+        ),
+    )
+    new_field = fields.SigFieldSpec(
+        sig_field_name=field_name,
+        on_page=page_idx,
+        box=box,
+    )
     sig_meta = signers.PdfSignatureMetadata(
         field_name=field_name,
-        name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
-        reason="Ký số điện tử Hợp đồng giao khoán INUT",
+        name=signer_name,
+        reason=reason,
         location=location or "Đắk Lắk",
         subfilter=fields.SigSeedSubFilter.PADES,
     )
     pdf_signer = TimedPdfSigner(
         sig_meta,
         signer=signer,
+        stamp_style=stamp_style,
+        new_field_spec=new_field,
         custom_system_time=sign_dt,
     )
     writer = IncrementalPdfFileWriter(io.BytesIO(pdf_bytes))
     out = io.BytesIO()
-    pdf_signer.sign_pdf(writer, output=out)
+    pdf_signer.sign_pdf(
+        writer,
+        existing_fields_only=False,
+        output=out,
+        appearance_text_params={"signer": signer_name},
+    )
     return out.getvalue()
 
 def inspect_uploaded_content(content: bytes, suffix: str) -> dict[str, Any]:
@@ -857,7 +964,7 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
         app2_dt = datetime(2026, 9, 30, 16, 35, 42)
         app3_dt = datetime(2026, 10, 11, 13, 5, 43)
     elif is_rk:
-        # HĐ Phần mềm & Kiểm thử RK3528 Image Creator ký 01/10/2026, hoàn thành & bàn giao trong 07 ngày (08/10/2026), thanh toán Tháng 10/2026
+        # HĐ Phần mềm & Kiểm thử RK3528 Image Creator ký 01/10/2026, hoàn thành & bàn giao trong 07 ngày (08/10/2026), thanh toán UNC ngày 14/10/2026 11:36 SA
         app2_dt = datetime(2026, 10, 8, 16, 42, 19)
         app3_dt = datetime(2026, 10, 14, 14, 28, 35)
     else:
@@ -1431,6 +1538,11 @@ def sign_piecework_contract_inut(
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng khoán")
 
+    if not c.is_signed_by_worker and not (body and body.allow_unsigned_worker):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Người nhận khoán (Bên B) chưa ký điện tử trên cổng Portal! Quy trình chuẩn: phải chờ người lao động nhận khoán điền thông tin và ký tên trước rồi Bên A (INUT) mới thực hiện ký số đóng dấu.",
+        )
     sign_dt = None
     if body and body.sign_date:
         raw = body.sign_date.strip()
@@ -1462,13 +1574,22 @@ def sign_piecework_contract_inut(
         sign_dt = now
     c.is_signed_by_inut = True
     c.inut_signed_at = sign_dt
+    cert_id = (body.cert_id if body and body.cert_id else None)
+    pin = (body.pin if body and body.pin else "12345678")
 
     # Render PDF with INUT signature stamp
     pdf_bytes = render_piecework_pdf(c)
 
     # Embed cryptographic digital signature using PyHanko with system_time
     try:
-        pdf_bytes = sign_piecework_pdf_pyhanko(pdf_bytes, sign_dt, location=settings.default_location)
+        pdf_bytes = sign_piecework_pdf_pyhanko(
+            pdf_bytes,
+            sign_dt,
+            location=settings.default_location,
+            reason=c.title or "Ký số điện tử Hợp đồng giao khoán INUT",
+            cert_id=cert_id,
+            pin=pin,
+        )
     except Exception as e:
         logger.exception("Lỗi ký số PyHanko cho hợp đồng khoán: %s", e)
 
@@ -1476,19 +1597,103 @@ def sign_piecework_contract_inut(
     c.contract_pdf_doc_id = doc_id
 
     # Save into Document storage
-    doc_name = f"HDGK_{c.contract_code.replace('/', '_')}_INUT_signed.pdf"
-    doc = Document(
-        doc_id=doc_id,
-        filename=doc_name,
-        signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
-        signed=True,
-        doc_type="hop_dong",
-        note=f"Hợp đồng giao khoán {c.contract_code} · {c.worker_name} · {c.total_amount:,.0f}đ · Đã ký số Bên A INUT",
-        source_system="piecework_contract",
-        source_external_id=c.contract_code,
-        source_synced_at=datetime.now(timezone.utc),
-    )
-    db.add(doc)
+    code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
+    safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
+    doc_name = f"Hop_dong_giao_khoan_{safe_code}_DA_KY.pdf"
+    doc = db.scalar(select(Document).where(Document.source_external_id == str(c.id), Document.source_system == "piecework"))
+    if doc:
+        doc.doc_id = doc_id
+        doc.filename = doc_name
+        doc.signed = True
+        doc.source_synced_at = datetime.now(timezone.utc)
+    else:
+        doc = Document(
+            doc_id=doc_id,
+            filename=doc_name,
+            signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+            signed=True,
+            doc_type="hop_dong",
+            note=f"Hợp đồng giao khoán {c.contract_code} · {c.worker_name} · {c.total_amount:,.0f}đ · Đã ký số Bên A INUT",
+            source_system="piecework",
+            source_external_id=str(c.id),
+            source_synced_at=datetime.now(timezone.utc),
+        )
+        db.add(doc)
+
+    # Ký số đồng bộ Phụ lục II (Nghiệm thu) và Phụ lục III (Thanh toán & UNC) nếu đã có nghiệm thu / UNC
+    vn_tz = timezone(timedelta(hours=7))
+    app2_dt, app3_dt = _calculate_appendix_dates(c)
+    app2_dt = app2_dt.replace(tzinfo=vn_tz) if app2_dt.tzinfo is None else app2_dt
+    app3_dt = app3_dt.replace(tzinfo=vn_tz) if app3_dt.tzinfo is None else app3_dt
+
+    if c.has_acceptance:
+        try:
+            b_pl2 = render_appendix2_pdf(c)
+            b_pl2 = sign_piecework_pdf_pyhanko(
+                b_pl2,
+                app2_dt,
+                location=settings.default_location,
+                reason="Nghiệm thu hoàn thành công việc giao khoán",
+                cert_id=cert_id,
+                pin=pin,
+            )
+            pl2_id = storage.save_upload(b_pl2, suffix=".pdf")
+            doc2 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL02"))
+            if doc2:
+                doc2.doc_id = pl2_id
+                doc2.signed = True
+                doc2.source_synced_at = datetime.now(timezone.utc)
+            else:
+                doc2 = Document(
+                    doc_id=pl2_id,
+                    filename=f"Phu_luc_02_Nghiem_thu_{safe_code}.pdf",
+                    signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+                    signed=True,
+                    doc_type="bbnt",
+                    note=f"Phụ lục II: Biên bản nghiệm thu công việc ({c.total_amount:,.0f}đ) · HĐ {c.contract_code} · Ký ngày {app2_dt.strftime('%d/%m/%Y %H:%M:%S')}",
+                    source_system="piecework_appendix",
+                    source_external_id=f"{c.id}_PL02",
+                    source_synced_at=datetime.now(timezone.utc),
+                )
+                db.add(doc2)
+        except Exception as e:
+            logger.warning("Could not sign Appendix 2 for contract %s: %s", c.id, e)
+
+    if c.has_bank_proof and c.bank_proof_doc_id:
+        try:
+            b_pl3 = render_appendix3_pdf(c)
+            b_pl3 = sign_piecework_pdf_pyhanko(
+                b_pl3,
+                app3_dt,
+                location=settings.default_location,
+                reason="Xác nhận chi trả thù lao & thanh lý hợp đồng",
+                cert_id=cert_id,
+                pin=pin,
+            )
+            pl3_id = storage.save_upload(b_pl3, suffix=".pdf")
+            doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
+            if doc3:
+                doc3.doc_id = pl3_id
+                doc3.signed = True
+                doc3.source_synced_at = datetime.now(timezone.utc)
+            else:
+                doc3 = Document(
+                    doc_id=pl3_id,
+                    filename=f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf",
+                    signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+                    signed=True,
+                    doc_type="thanh_ly",
+                    note=f"Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý HĐ (kèm UNC Techcombank) · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}",
+                    source_system="piecework_appendix",
+                    source_external_id=f"{c.id}_PL03",
+                    source_synced_at=datetime.now(timezone.utc),
+                )
+                db.add(doc3)
+        except Exception as e:
+            logger.warning("Could not sign Appendix 3 for contract %s: %s", c.id, e)
+
+    deficiency = evaluate_deficiencies(c)
+    c.status = deficiency["status_code"]
     db.commit()
     db.refresh(c)
 
@@ -3768,8 +3973,10 @@ def public_submit_signature(
             except Exception as e:
                 logger.warning("Could not save face photo: %s", e)
     
-    # Do NOT auto-stamp Bên A (INUT): Bên A only signs after admin explicitly reviews and executes signature.
-        
+    # Neu Ben A da bi ky truoc khi Ben B ky, reset trang thai ky so Ben A de bat buoc ky so lai SAU khi Ben B da ky
+    if c.is_signed_by_inut:
+        c.is_signed_by_inut = False
+        c.inut_signed_at = None
     # Re-evaluate deficiencies
     deficiency = evaluate_deficiencies(c)
     c.status = deficiency["status_code"]
@@ -3777,26 +3984,24 @@ def public_submit_signature(
     
     # Re-render PDF with worker signature
     try:
-        if not (c.is_signed_by_inut and c.contract_pdf_doc_id):
-            pdf_bytes = render_piecework_pdf(c)
-            doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
-            c.contract_pdf_doc_id = doc_id
-            
-            # Save into Documents
-            code_clean = c.contract_code.replace('/', '_')
-            doc_name = f"Hop_dong_giao_khoan_{code_clean}_worker_signed.pdf"
-            doc = Document(
-                doc_id=doc_id,
-                filename=doc_name,
-                signer_name=c.worker_name,
-                signed=False,
-                doc_type="hop_dong",
-                note=f"HĐGK {c.contract_code} · {c.worker_name} · Ký online qua Portal · Chờ Bên A ký số",
-                source_system="piecework_portal",
-                source_external_id=c.contract_code,
-                source_synced_at=datetime.now(timezone.utc),
-            )
-            db.add(doc)
+        pdf_bytes = render_piecework_pdf(c)
+        doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+        c.contract_pdf_doc_id = doc_id
+        # Save into Documents
+        code_clean = c.contract_code.replace('/', '_')
+        doc_name = f"Hop_dong_giao_khoan_{code_clean}_worker_signed.pdf"
+        doc = Document(
+            doc_id=doc_id,
+            filename=doc_name,
+            signer_name=c.worker_name,
+            signed=False,
+            doc_type="hop_dong",
+            note=f"HĐGK {c.contract_code} · {c.worker_name} · Ký online qua Portal · Chờ Bên A ký số",
+            source_system="piecework_portal",
+            source_external_id=c.contract_code,
+            source_synced_at=datetime.now(timezone.utc),
+        )
+        db.add(doc)
     except Exception as e:
         logger.exception("Error updating worker signature PDF: %s", e)
     db.commit()

@@ -987,12 +987,12 @@ export function PieceworkContracts() {
                             </button>
 
                             <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: c.is_signed_by_inut ? "#0369a1" : "#0284c7", color: "#fff", border: "none", cursor: "pointer", fontWeight: 600 }}
-                              disabled={actionLoading === c.id}
+                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: !c.is_signed_by_worker ? "#94a3b8" : (c.is_signed_by_inut ? "#0369a1" : "#0284c7"), color: "#fff", border: "none", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer", fontWeight: 600 }}
+                              disabled={actionLoading === c.id || !c.is_signed_by_worker}
                               onClick={() => openSigningModal(c)}
-                              title={c.is_signed_by_inut ? "Bấm để ký lại số điện tử với chứng thư hoặc mốc thời gian khác" : "Ký số điện tử Bên A (INUT)"}
+                              title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : (c.is_signed_by_inut ? "Bấm để ký lại số điện tử với chứng thư hoặc mốc thời gian khác" : "Ký số điện tử Bên A (INUT)")}
                             >
-                              {actionLoading === c.id ? "Đang ký…" : (c.is_signed_by_inut ? "✍️ Ký lại" : "✍️ Ký INUT")}
+                              {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại" : "✍️ Ký INUT"))}
                             </button>
 
                             <button
@@ -1193,12 +1193,12 @@ export function PieceworkContracts() {
                     </a>
 
                     <button
-                      className="piecework-touch-btn"
-                      style={{ background: c.is_signed_by_inut ? "#0369a1" : "#0284c7", color: "#fff" }}
-                      disabled={actionLoading === c.id}
+                      style={{ background: !c.is_signed_by_worker ? "#94a3b8" : (c.is_signed_by_inut ? "#0369a1" : "#0284c7"), color: "#fff", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer" }}
+                      disabled={actionLoading === c.id || !c.is_signed_by_worker}
                       onClick={() => openSigningModal(c)}
+                      title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
                     >
-                      {actionLoading === c.id ? "Đang ký…" : (c.is_signed_by_inut ? "✍️ Ký lại INUT" : "✍️ Ký số INUT")}
+                      {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại INUT" : "✍️ Ký số INUT"))}
                     </button>
 
                     <button
@@ -1972,11 +1972,12 @@ export function PieceworkContracts() {
                 🛡️ Thẩm định Chữ ký số
               </button>
               <button
-                className="primary"
-                style={{ background: selectedDetail.is_signed_by_inut ? "#0369a1" : "#0284c7", fontWeight: 600 }}
+                style={{ background: !selectedDetail.is_signed_by_worker ? "#94a3b8" : (selectedDetail.is_signed_by_inut ? "#0369a1" : "#0284c7"), fontWeight: 600, cursor: !selectedDetail.is_signed_by_worker ? "not-allowed" : "pointer" }}
+                disabled={!selectedDetail.is_signed_by_worker}
                 onClick={() => openSigningModal(selectedDetail)}
+                title={!selectedDetail.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
               >
-                {selectedDetail.is_signed_by_inut ? "✍️ Ký lại số INUT" : "✍️ Ký số Bên A (INUT)"}
+                {!selectedDetail.is_signed_by_worker ? "⏳ Chờ Bên B ký trước" : (selectedDetail.is_signed_by_inut ? "✍️ Ký lại số INUT" : "✍️ Ký số Bên A (INUT)")}
               </button>
               <a
                 href={`/api/public/khoan/${selectedDetail.portal_token}/pdf`}

@@ -1886,8 +1886,8 @@ def _seed_piecework_contracts() -> None:
                     has_tax_commitment=False,
                     has_bank_proof=False,
                     is_signed_by_worker=False,
-                    is_signed_by_inut=True,
-                    inut_signed_at=datetime(2026, 10, 2, 8, 41, 12, tzinfo=timezone.utc),
+                    is_signed_by_inut=False,
+                    inut_signed_at=None,
                     portal_token="sonla-ll100-token-850082",
                 ),
                 PieceworkContract(

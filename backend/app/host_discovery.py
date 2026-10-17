@@ -73,7 +73,7 @@ def resolve_windows_host(
     current_host: str = "",
     target_name: str = DEFAULT_WINDOWS_HOSTNAME,
     subnet: str = DEFAULT_WINDOWS_SUBNET,
-    probe_port: int = 22,
+    probe_port: int = 445,
 ) -> str:
     """Tra ve IP hoat dong tot nhat cua may Windows.
 
