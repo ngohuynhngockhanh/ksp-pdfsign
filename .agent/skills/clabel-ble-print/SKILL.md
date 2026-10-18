@@ -149,9 +149,47 @@ Ho tro cac loai phan tu: `logo`, `image`, `text`, `qrcode`, `barcode`, `line`, `
 
 ---
 
-## 4. REST API trong `ksp-pdfsign` (`/api/clabel/*`)
+## 4. REST API Endpoints trong `ksp-pdfsign` (`http://127.0.0.1:2032/api/clabel/*`) & MCP (`clabel_ble_print`)
 
-- `GET /api/clabel/status`: Kiem tra trang thai `bluetooth.service`, `ble-remote.service` va ket noi BLE toi `CT221B-X420` tren `77.88.207.23`.
-- `POST /api/clabel/scan`: Quet danh sach thiet bi BLE xung quanh gateway `77.88.207.23`.
-- `POST /api/clabel/preview`: Render va tra ve file anh `image/png` 1-bit (`320x240`) de xem truoc.
-- `POST /api/clabel/print`: Render va gui lenh in TSPL qua BLE Gateway sang may in `CT221B-X420`.
+Khi goi truc tiep tren may chu local (`http://127.0.0.1:2032/api/clabel/...`), endpoint cho phep goi thang khong can cookie/token (hoac dung Admin JWT / MCP Bearer token khi goi tu xa):
+
+### 4.1. In tem nhan bang JSON (`POST /api/clabel/print`)
+```bash
+curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "iNut JSC",
+    "subtitle": "IoT & Edge Computing",
+    "lines": ["Gateway: 77.88.207.23", "Printer: CT221B-X420", "Size: 400x300 (320x240px)"],
+    "badge": "INUT-BLE GATEWAY READY",
+    "footer_title": "Đắk Lắk - TP.HCM",
+    "footer_lines": ["MST: 4401053694", "https://inut.vn"],
+    "qr_data": "https://inut.vn",
+    "show_logo": true,
+    "border": true,
+    "width": 400,
+    "height": 300,
+    "copies": 1
+  }'
+```
+
+### 4.2. In nhanh 1 dong qua Query Params (`GET /api/clabel/print`)
+```bash
+curl -sS "http://127.0.0.1:2032/api/clabel/print?title=iNut+JSC&subtitle=IoT+Gateway&badge=READY&qr_data=https://inut.vn"
+```
+
+### 4.3. Upload file hinh anh truc tiep de in (`POST /api/clabel/print-image`)
+```bash
+curl -sS -X POST http://127.0.0.1:2032/api/clabel/print-image \
+  -F "file=@backend/app/assets/logo.png" \
+  -F "width=400" \
+  -F "height=300" \
+  -F "dither=false"
+```
+
+### 4.4. Xem truoc anh PNG (`GET/POST /api/clabel/preview`), Trang thai & Quet BLE
+- `GET http://127.0.0.1:2032/api/clabel/status`: Kiem tra `bluetooth.service`, `ble-remote.service` va `CT221B-X420` tren `77.88.207.23`.
+- `POST http://127.0.0.1:2032/api/clabel/scan`: Quet danh sach thiet bi BLE xung quanh gateway `77.88.207.23`.
+- `GET/POST http://127.0.0.1:2032/api/clabel/preview`: Render va tra ve file anh `image/png` 1-bit (`320x240`).
+- `POST http://127.0.0.1:2032/api/clabel/print-tspl`: Gui truc tiep chuoi lenh TSPL (`tspl` hoac `tspl_base64`) sang may in.
+- **MCP Tool (`inut-crm-mcp`)**: `clabel_ble_print` (`operation: "print" | "scan" | "print_tspl"`).

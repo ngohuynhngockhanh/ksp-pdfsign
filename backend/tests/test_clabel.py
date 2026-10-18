@@ -86,3 +86,53 @@ def test_tspl_native_commands():
     assert b'BARCODE 20,80,"128",40,1,0,2,2,"12345678"\r\n' in raw
     assert b'QRCODE 220,80,M,4,A,0,"https://inut.vn"\r\n' in raw
     assert raw.endswith(b"PRINT 1,2\r\n")
+
+
+def test_clabel_api_endpoints():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # 1. GET /api/clabel/preview
+    r_prev = client.get("/api/clabel/preview", params={"title": "iNut JSC", "subtitle": "BLE Endpoint"})
+    assert r_prev.status_code == 200
+    assert r_prev.headers["content-type"] == "image/png"
+    im = Image.open(io.BytesIO(r_prev.content))
+    assert im.size == (320, 240)
+
+    # 2. POST /api/clabel/print (dry-run via print_remote=False)
+    r_print = client.post(
+        "/api/clabel/print",
+        json={
+            "title": "iNut JSC",
+            "subtitle": "IoT & Edge Computing",
+            "lines": ["Gateway: 77.88.207.23", "Printer: CT221B-X420"],
+            "badge": "INUT-BLE GATEWAY READY",
+            "qr_data": "https://inut.vn",
+            "width": 400,
+            "height": 300,
+            "print_remote": False,
+        },
+    )
+    assert r_print.status_code == 200
+    body = r_print.json()
+    assert body["width_mm"] == 40
+    assert body["height_mm"] == 30
+    assert body["width_dots"] == 320
+    assert body["height_dots"] == 240
+    assert body["tspl_bytes_len"] > 9650
+    assert body["is_printed"] is False
+    assert len(base64.b64decode(body["preview_png_base64"])) > 500
+
+    # 3. POST /api/clabel/print-image (multipart upload, dry-run)
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 100), (0, 0, 0)).save(buf, format="PNG")
+    buf.seek(0)
+    r_up = client.post(
+        "/api/clabel/print-image",
+        files={"file": ("test.png", buf.getvalue(), "image/png")},
+        data={"width": "400", "height": "300", "print_remote": "false"},
+    )
+    assert r_up.status_code == 200
+    assert r_up.json()["width_dots"] == 320

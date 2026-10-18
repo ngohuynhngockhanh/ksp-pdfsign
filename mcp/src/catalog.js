@@ -138,6 +138,7 @@ const definitions = [
   ['nas', 'Read NAS status/browse/disk or prepare/execute test and sync operations.', 'high_risk', 'prepare_execute', 'integrations'],
   ['spx', 'Read SPX stats/orders or prepare/execute order, label, print, sync, and cancel operations.', 'high_risk', 'prepare_execute', 'integrations'],
   ['spx_print_by_label', 'In nhanh tem vận đơn SPX theo mã (SPXVN... / VN...) chuẩn Tỉ lệ vàng 65% sang máy in nhiệt TP732H.', 'high_risk', 'prepare_execute', 'integrations'],
+  ['clabel_ble_print', 'In tem nhãn nhiệt Clabel CT221B-X420 (logo iNut, text, hình ảnh, QR, barcode, JSON elements) qua BLE Gateway 77.88.207.23 trên khổ giấy 400x300.', 'high_risk', 'prepare_execute', 'integrations'],
   ['pymid', 'Read or prepare/execute PYMID staff, catalog, and order operations.', 'write', 'prepare_execute', 'integrations'],
   ['training', 'Read or prepare/execute admin training search, ask, jobs, history, and knowledge operations.', 'write', 'prepare_execute', 'knowledge'],
   ['ai', 'Read AI status or prepare/execute bounded AI test and narrative operations.', 'write', 'prepare_execute', 'knowledge'],
@@ -180,6 +181,6 @@ export const routeCoverage = {
   bidding: ['search', 'tenders', 'bookmarks', 'watchlist', 'contractors', 'won-packages', 'playbook', 'attachments', 'competitors'],
   inventory: ['warehouses', 'items', 'stock', 'purchase', 'sale', 'issues', 'productions', 'recipes', 'customs'],
   tax_finance: ['tax', 'tax-review', 'tax-reports', 'ihoadon', 'payroll', 'email-sync'],
-  integrations: ['telegram', 'facebook', 'customs-drive', 'nas', 'spx', 'spx_print_by_label', 'pymid'],
+  integrations: ['telegram', 'facebook', 'customs-drive', 'nas', 'spx', 'spx_print_by_label', 'clabel_ble_print', 'pymid'],
   knowledge: ['training', 'ai', 'standards', 'standards-tqc', 'operations'],
 }
