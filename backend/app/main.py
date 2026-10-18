@@ -159,6 +159,7 @@ from .standards_api import resume_tqc_import_jobs, router as standards_router  #
 from .tax_defense_api import router as tax_defense_router  # noqa: E402
 from .trademark_api import router as trademark_router  # noqa: E402
 from .piecework_api import router as piecework_router  # noqa: E402
+from .clabel_api import router as clabel_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -172,6 +173,7 @@ app.include_router(standards_router)
 app.include_router(tax_defense_router)
 app.include_router(trademark_router)
 app.include_router(piecework_router)
+app.include_router(clabel_router)
 
 
 

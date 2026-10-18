@@ -196,6 +196,20 @@ class Settings(BaseSettings):
     # Kiem tra chu ky: co thu tai OCSP/CRL khi kiem tra khong (can Internet).
     verify_allow_fetching: bool = False
 
+    # BLE Gateway (inut-ble) & May in nhan Clabel CT221B
+    ble_gateway_host: str = "77.88.207.23"
+    ble_gateway_user: str = "root"
+    ble_gateway_port: int = 22
+    ble_gateway_ssh_key_path: str = "/home/ksp/.ssh/id_ed25519"
+    ble_gateway_timeout: int = 30
+    clabel_printer_name: str = "CT221B-X420"
+    clabel_printer_mac: str = "03:22:32:84:D6:7F"
+    clabel_default_width: int = 400  # 400x300 (0.1mm) = 40mm x 30mm = 320x240 dots @ 203dpi
+    clabel_default_height: int = 300
+    clabel_default_density: int = 8
+    clabel_default_speed: int = 3
+    clabel_default_gap_mm: int = 2
+
     # Luu tru
     data_dir: str = "./backend/data"
 
