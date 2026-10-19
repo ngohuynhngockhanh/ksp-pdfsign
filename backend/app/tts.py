@@ -76,11 +76,22 @@ class TtsSynthesisResult:
 
 
 def clean_text_for_tts(raw: str, max_chars: int = 800) -> str:
-    """Làm sạch văn bản (bỏ link, markdown, ký tự trang trí) để đọc tiếng Việt tự nhiên."""
+    """Làm sạch văn bản (bỏ link, mã job/hash dài, tên file .img, markdown) để đọc tiếng Việt gọn và tự nhiên."""
     if not raw:
         return ""
     text = str(raw).strip()
-    # Bỏ các dòng chỉ chứa link hoặc ID kỹ thuật trong thông báo Messenger/KSP
+
+    # Rút gọn mã thiết bị inut_207_184 -> iNut 184 trước khi lọc token dài
+    text = re.sub(r"\binut_207_(\d+)\b", r"iNut \1", text, flags=re.IGNORECASE)
+
+    # Đổi các cặp stage|job_id của RK Burner thành tên bước ngắn gọn
+    text = re.sub(r"\btinc\|[A-Za-z0-9_-]+", "Bước 1 VPN", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bphase2\|[A-Za-z0-9_-]+", "Bước 2", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bphase3\|[A-Za-z0-9_-]+", "Bước 3", text, flags=re.IGNORECASE)
+    text = re.sub(r"\boptional\|[A-Za-z0-9_-]+", "Bước cài đặt mở rộng", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bburn\|[A-Za-z0-9_-]+", "Bước nạp phần mềm", text, flags=re.IGNORECASE)
+
+    # Bỏ các dòng chỉ chứa link, Job ID, tên file Image hoặc ID kỹ thuật
     filtered_lines: list[str] = []
     for line in text.splitlines():
         s = line.strip()
@@ -90,6 +101,8 @@ def clean_text_for_tts(raw: str, max_chars: int = 800) -> str:
         if any(
             low.startswith(prefix)
             for prefix in (
+                "job:",
+                "image:",
                 "mở trang:",
                 "mở cuộc trò chuyện:",
                 "mở business inbox:",
@@ -104,13 +117,17 @@ def clean_text_for_tts(raw: str, max_chars: int = 800) -> str:
 
     # Bỏ URL http/https
     text = re.sub(r"https?://\S+", "", text)
+    # Bỏ tên file kỹ thuật (.img, .bin, .tar, .gz, .zip, .json, .apk, .sh, .pdf)
+    text = re.sub(r"\b\S+\.(?:img|bin|tar|gz|xz|zip|json|apk|sh|py|go|pdf)\b", "", text, flags=re.IGNORECASE)
+    # Bỏ các chuỗi mã ID / hash dài loằng ngoằng (>= 8 ký tự vừa chữ vừa số hoặc có gạch nối/gạch dưới)
+    text = re.sub(r"\b(?=[A-Za-z0-9_-]{8,}\b)(?=[A-Za-z0-9_-]*[A-Za-z])(?=[A-Za-z0-9_-]*[\d_-])[A-Za-z0-9_-]+\b", "", text)
     # Bỏ ký tự markdown & khung trang trí
     text = re.sub(r"[`*_#~>|━─═]+", " ", text)
-    # Bỏ các chuỗi emoji trang trí lặp lại nhưng giữ chữ/số/dấu câu tiếng Việt
+    # Bỏ các chuỗi emoji trang trí
     text = re.sub(r"[\U00010000-\U0010ffff]", " ", text)
     text = re.sub(r"[✅❌⚠️🚨📢🔔💬📄🔗⬇️🖨️🧾🏛️📜🚚✦◈◉◆□◇⚙⌘▱⌕✍️⏳👮📲🎯]+", " ", text)
     # Chuẩn hóa khoảng trắng và dấu chấm câu
-    text = re.sub(r"\s*\.\s*\.\s*", ". ", text)
+    text = re.sub(r"\.(?:\s*\.)+", ". ", text)
     text = re.sub(r"\s+", " ", text).strip(" .-;:")
     if not text:
         return ""
@@ -124,7 +141,6 @@ def clean_text_for_tts(raw: str, max_chars: int = 800) -> str:
     if len(text) < 3:
         text = text + "..."
     return text
-
 
 def matches_telegram_tts_filter(
     raw_message: str,
@@ -200,24 +216,27 @@ def resolve_telegram_alarm_sound(raw_message: str, configured_sound: str = "auto
     return "notification"
 
 def format_telegram_tts_text(raw: str, max_chars: int = 500) -> str:
-    """Chuyển đổi nội dung tin nhắn Telegram (đặc biệt là RK Burner) thành câu thông báo đọc loa rõ ràng."""
+    """Chuyển đổi nội dung tin nhắn Telegram (đặc biệt là RK Burner) thành câu thông báo đọc loa ngắn gọn, rõ ràng."""
     if not raw or not str(raw).strip():
         return ""
     text = str(raw).strip()
 
-    # Chuẩn hóa phát âm cho thông báo RK Burner
+    # Rút gọn tối đa cho thông báo RK Burner
     if re.search(r"RK\s*Burner", text, flags=re.IGNORECASE):
+        if re.search(r"rkdeveloptool\s+rd\s+hoàn\s+tất|burn\s+image\s+đã\s+an\s+toàn", text, flags=re.IGNORECASE):
+            return "RK Burner: Đã nạp phần mềm hoàn tất, sẵn sàng chuyển bước tiếp theo."
         spoken = text
-        spoken = re.sub(r"rkdeveloptool\s+rd", "rờ ca đờ vê lốp tun rờ đê", spoken, flags=re.IGNORECASE)
-        spoken = re.sub(r"\bburn\s+image\b", "nạp i mịch", spoken, flags=re.IGNORECASE)
+        spoken = re.sub(r"rkdeveloptool\s+rd", "khởi động lại", spoken, flags=re.IGNORECASE)
+        spoken = re.sub(r"\bburn\s+image\b", "nạp phần mềm", spoken, flags=re.IGNORECASE)
         spoken = re.sub(r"\bsucceeded\b", "thành công", spoken, flags=re.IGNORECASE)
         spoken = re.sub(r"\bpartial_failed\b", "lỗi một phần", spoken, flags=re.IGNORECASE)
         spoken = re.sub(r"\bfailed\b", "thất bại", spoken, flags=re.IGNORECASE)
         spoken = re.sub(r"\breboot_complete\b", "khởi động lại hoàn tất", spoken, flags=re.IGNORECASE)
         cleaned_rk = clean_text_for_tts(spoken, max_chars=max_chars)
-        if not cleaned_rk.lower().startswith(("cảnh báo", "thông báo")):
-            cleaned_rk = f"Thông báo RK Burner: {cleaned_rk}"
-        return clean_text_for_tts(cleaned_rk, max_chars=max_chars)
+        cleaned_rk = re.sub(r"^(?:thông báo\s+)?rk\s*burner[\s.:,-]*", "", cleaned_rk, flags=re.IGNORECASE).strip()
+        if not cleaned_rk:
+            return "Thông báo từ RK Burner."
+        return clean_text_for_tts(f"RK Burner: {cleaned_rk}", max_chars=max_chars)
 
     if "Tin nhắn Messenger mới" in text:
         sender = ""
@@ -642,10 +661,13 @@ def speak_on_ble_speaker(
     Nếu toàn bộ nguồn TTS cloud đều lỗi, fallback gọi trực tiếp `/api/speak` trên 77.88.207.23.
     """
     cfg = settings or get_settings()
-    cleaned = clean_text_for_tts(text, max_chars=max_chars)
+    raw_input = str(text or "")
+    if re.search(r"RK\s*Burner", raw_input, flags=re.IGNORECASE):
+        cleaned = format_telegram_tts_text(raw_input, max_chars=max_chars)
+    else:
+        cleaned = clean_text_for_tts(raw_input, max_chars=max_chars)
     if not cleaned:
         raise TtsError("Nội dung cần đọc đang trống")
-
     eff_provider = (provider or cfg.tts_default_provider or "auto").strip()
     eff_alarm = resolve_telegram_alarm_sound(text, alarm_sound if alarm_sound is not None else cfg.telegram_tts_alarm_sound)
     try:

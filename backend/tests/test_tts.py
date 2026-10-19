@@ -204,9 +204,14 @@ def test_rk_burner_regex_filter_and_phonetic_format():
     assert tts.enqueue_telegram_tts_announcement(msg_other, cfg) is False
 
     spoken_rk = tts.format_telegram_tts_text(msg_rk)
-    assert "Thông báo RK Burner" in spoken_rk
-    assert "rờ ca đờ vê lốp tun rờ đê" in spoken_rk
-    assert "nạp i mịch" in spoken_rk
+    assert spoken_rk == "RK Burner: Đã nạp phần mềm hoàn tất, sẵn sàng chuyển bước tiếp theo."
+    assert "burn-207-194" not in spoken_rk
+    assert "inut-v1.1.img" not in spoken_rk
+
+    spoken_step = tts.format_telegram_tts_text("🔔 RK Burner\noptional|optional_9e5e709dab204ba19d7708e776d345d1\nTrạng thái: succeeded")
+    assert "optional_9e5e709dab204ba19d7708e776d345d1" not in spoken_step
+    assert "Bước cài đặt mở rộng" in spoken_step
+    assert "thành công" in spoken_step
 
     # Auto sound resolution: success -> 'success', fail -> 'alarm'
     assert tts.resolve_telegram_alarm_sound(msg_rk, "auto") == "success"
@@ -214,7 +219,6 @@ def test_rk_burner_regex_filter_and_phonetic_format():
     assert tts.resolve_telegram_alarm_sound("🔔 RK Burner\nvpn|inut_207_184\nTrạng thái: failed", "auto") == "alarm"
     assert tts.resolve_telegram_alarm_sound("🔔 RK Burner\nvpn|inut_207_184\nTrạng thái: partial_failed", "auto") == "alarm"
     assert tts.resolve_telegram_alarm_sound("❌ RK Burner: thiết bị Rockchip đã ngắt kết nối", "auto") == "alarm"
-
 
 def test_tts_api_endpoints(tmp_path, monkeypatch):
     from app.db import reset_engine_for_tests
