@@ -9,6 +9,53 @@ export interface CertInfo {
   valid_to: string;
 }
 
+export interface TelegramStatus {
+  enabled: boolean;
+  bot_username: string;
+  connected: boolean;
+  username: string;
+  display_name: string;
+  connected_at: string | null;
+}
+
+export interface TtsStatus {
+  ok: boolean;
+  tts_enabled: boolean;
+  ble_speaker_enabled: boolean;
+  telegram_tts_speaker_enabled: boolean;
+  telegram_tts_filter_enabled: boolean;
+  telegram_tts_regex: string;
+  telegram_tts_alarm_sound: string;
+  default_provider: string;
+  default_voice: string;
+  default_speed: number;
+  providers: Array<{ id: string; label: string }>;
+  voices: {
+    kokoro: Array<{ id: string; label: string }>;
+    google: Array<{ id: string; label: string }>;
+    microsoft: Array<{ id: string; label: string }>;
+  };
+  ble_speaker_base_url: string;
+  speaker_status: {
+    ok: boolean;
+    error?: string;
+    speaker?: {
+      mac: string;
+      name: string;
+      alias: string;
+      connected: boolean;
+      battery: number | null;
+      volume: number | null;
+      mute: boolean;
+      sink_name: string;
+    };
+    playback?: {
+      is_playing: boolean;
+    };
+    available_sounds?: string[];
+  };
+}
+
 export interface TaxFinding {
   level: "do" | "vang";
   title: string;
@@ -1920,15 +1967,8 @@ export const api = {
       body: JSON.stringify(body),
     });
   },
-  async telegramStatus() {
-    return req<{
-      enabled: boolean;
-      bot_username: string;
-      connected: boolean;
-      username: string;
-      display_name: string;
-      connected_at: string | null;
-    }>("/api/telegram/status");
+  async telegramStatus(): Promise<TelegramStatus> {
+    return req<TelegramStatus>("/api/telegram/status");
   },
   async telegramConnect() {
     return req<{ ok: boolean; url: string; expires_at: string }>("/api/telegram/connect", {
@@ -1937,6 +1977,90 @@ export const api = {
   },
   async telegramDisconnect() {
     return req<{ ok: boolean }>("/api/telegram/connection", { method: "DELETE" });
+  },
+  async telegramSend(message: string, speak_tts = true) {
+    return req<{ ok: boolean; delivered_count: number; message: string }>("/api/telegram/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, speak_tts }),
+    });
+  },
+  async ttsStatus(): Promise<TtsStatus> {
+    return req<TtsStatus>("/api/tts/status");
+  },
+  async ttsSaveConfig(body: {
+    telegram_tts_speaker_enabled?: boolean;
+    telegram_tts_filter_enabled?: boolean;
+    telegram_tts_regex?: string;
+    telegram_tts_alarm_sound?: string;
+    tts_default_provider?: string;
+    tts_default_voice?: string;
+    tts_default_speed?: number;
+  }) {
+    return req<{
+      ok: boolean;
+      telegram_tts_speaker_enabled: boolean;
+      telegram_tts_filter_enabled: boolean;
+      telegram_tts_regex: string;
+      telegram_tts_alarm_sound: string;
+      default_provider: string;
+      default_voice: string;
+      default_speed: number;
+    }>("/api/tts/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async ttsTestRegex(body: { message: string; regex?: string; filter_enabled?: boolean }) {
+    return req<{
+      ok: boolean;
+      matched: boolean;
+      filter_enabled: boolean;
+      regex: string;
+      matched_text: string;
+      reason: string;
+      spoken_preview: string;
+    }>("/api/tts/test-regex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async ttsSpeak(body: { text: string; voice?: string; speed?: number; provider?: string; alarm_sound?: string }) {
+    return req<{
+      ok: boolean;
+      text: string;
+      provider: string;
+      voice: string;
+      alarm_sound: string;
+      audio_format: string;
+      audio_bytes_len: number;
+      request_id: string;
+      async_url: string;
+      fallback_errors: string[];
+    }>("/api/tts/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async ttsSpeakerVolume(volume: number) {
+    return req<{ ok: boolean; volume: number }>("/api/tts/speaker/volume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ volume }),
+    });
+  },
+  async ttsSpeakerSound(sound: string) {
+    return req<{ ok: boolean; playing: string }>("/api/tts/speaker/sound", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sound }),
+    });
+  },
+  async ttsSpeakerStop() {
+    return req<{ ok: boolean }>("/api/tts/speaker/stop", { method: "POST" });
   },
   async aiTest(prompt = "") {
     return req<{ ok: boolean; message: string; reply: string }>("/api/ai/test", {

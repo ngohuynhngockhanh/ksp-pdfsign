@@ -66,6 +66,7 @@ from . import (
     storage,
     token_backend,
     telegram,
+    tts,
     verify,
 )
 from .customs_drive_api import router as customs_drive_router
@@ -506,6 +507,7 @@ def telegram_disconnect(
 class TelegramSendMessageIn(BaseModel):
     message: str
     chat_id: str | None = None
+    speak_tts: bool = True
 
 
 @app.post("/api/telegram/send")
@@ -515,7 +517,7 @@ def telegram_send_message(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
-    """Gửi tin nhắn Telegram trực tiếp tới Admin chat hoặc chat_id chỉ định."""
+    """Gửi tin nhắn Telegram trực tiếp tới Admin chat hoặc chat_id chỉ định (kèm phát TTS ra loa BLE nếu bật)."""
     if not telegram.is_configured(settings):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Telegram chưa được cấu hình trên máy chủ")
 
@@ -527,9 +529,9 @@ def telegram_send_message(
     delivered = 0
     try:
         for cid in chats:
-            if cid and str(cid).isdigit():
+            if cid and str(cid).lstrip("-").isdigit():
                 try:
-                    client.send_message(cid, payload.message)
+                    client.send_message(cid, payload.message, speak_tts=payload.speak_tts)
                     delivered += 1
                 except Exception as e:
                     logger.warning("Lỗi gửi Telegram tới chat %s: %s", cid, e)
@@ -538,6 +540,226 @@ def telegram_send_message(
 
     return {"ok": True, "delivered_count": delivered, "message": payload.message}
 
+
+class TtsSpeakIn(BaseModel):
+    text: str
+    voice: str | None = None
+    speed: int | None = None
+    provider: str = "auto"
+    alarm_sound: str | None = None
+
+
+class TtsConfigUpdateIn(BaseModel):
+    telegram_tts_speaker_enabled: bool | None = None
+    telegram_tts_filter_enabled: bool | None = None
+    telegram_tts_regex: str | None = None
+    telegram_tts_alarm_sound: str | None = None
+    tts_default_provider: str | None = None
+    tts_default_voice: str | None = None
+    tts_default_speed: int | None = None
+
+
+class TtsRegexTestIn(BaseModel):
+    message: str
+    regex: str | None = None
+    filter_enabled: bool | None = None
+
+
+class TtsVolumeIn(BaseModel):
+    volume: int
+
+
+class TtsSoundIn(BaseModel):
+    sound: str = "notification"
+
+
+@app.get("/api/tts/status")
+def tts_status_api(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Trạng thái hệ thống TTS Tiếng Việt (Kokoro / VNMap / 9Router Google & Microsoft) và Loa BLE 77.88.207.23."""
+    speaker_info: dict[str, Any] = {"ok": False}
+    try:
+        speaker_info = tts.get_ble_speaker_status(settings)
+    except Exception as exc:
+        speaker_info = {"ok": False, "error": str(exc)}
+    return {
+        "ok": True,
+        "tts_enabled": settings.tts_enabled,
+        "ble_speaker_enabled": settings.ble_speaker_enabled,
+        "telegram_tts_speaker_enabled": settings.telegram_tts_speaker_enabled,
+        "telegram_tts_filter_enabled": settings.telegram_tts_filter_enabled,
+        "telegram_tts_regex": settings.telegram_tts_regex,
+        "telegram_tts_alarm_sound": settings.telegram_tts_alarm_sound,
+        "default_provider": settings.tts_default_provider,
+        "default_voice": settings.tts_default_voice,
+        "default_speed": settings.tts_default_speed,
+        "providers": [
+            {"id": "auto", "label": "Tự động (Kokoro → VNMap → Chị Google → Microsoft)"},
+            {"id": "kokoro", "label": f"Kokoro ({settings.tts_kokoro_base_url})"},
+            {"id": "vnmap-tts", "label": f"VNMap TTS ({settings.tts_vnmap_base_url})"},
+            {"id": "google", "label": f"AppHub 9Router · Chị Google ({settings.tts_google_model})"},
+            {"id": "microsoft", "label": f"AppHub 9Router · Microsoft ({settings.tts_microsoft_model})"},
+        ],
+        "voices": {
+            "kokoro": [{"id": k, "label": v} for k, v in tts.KOKORO_VOICES.items()],
+            "google": [{"id": k, "label": v} for k, v in tts.GOOGLE_VOICES.items()],
+            "microsoft": [{"id": k, "label": v} for k, v in tts.MICROSOFT_VOICES.items()],
+        },
+        "ble_speaker_base_url": settings.ble_speaker_base_url,
+        "speaker_status": speaker_info,
+    }
+
+
+@app.put("/api/tts/config")
+def tts_config_update_api(
+    payload: TtsConfigUpdateIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Lưu cấu hình lọc Regex Telegram (RK Burner), âm báo động và giọng TTS mặc định."""
+    if payload.telegram_tts_regex is not None and payload.telegram_tts_regex.strip():
+        try:
+            re.compile(payload.telegram_tts_regex.strip())
+        except re.error as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Biểu thức Regex không hợp lệ: {exc}") from exc
+
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    settings_store.set_overrides(updates)
+    settings_store.reload_settings()
+    _audit(db, user, "tts_config_update", "telegram_tts", json.dumps(updates, ensure_ascii=False))
+    fresh = get_settings()
+    return {
+        "ok": True,
+        "telegram_tts_speaker_enabled": fresh.telegram_tts_speaker_enabled,
+        "telegram_tts_filter_enabled": fresh.telegram_tts_filter_enabled,
+        "telegram_tts_regex": fresh.telegram_tts_regex,
+        "telegram_tts_alarm_sound": fresh.telegram_tts_alarm_sound,
+        "default_provider": fresh.tts_default_provider,
+        "default_voice": fresh.tts_default_voice,
+        "default_speed": fresh.tts_default_speed,
+    }
+
+
+@app.post("/api/tts/test-regex")
+def tts_test_regex_api(
+    payload: TtsRegexTestIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Kiểm thử tin nhắn mẫu với biểu thức Regex lọc thông báo Telegram ra loa BLE."""
+    match_res = tts.matches_telegram_tts_filter(
+        payload.message,
+        settings,
+        custom_regex=payload.regex,
+        filter_enabled=payload.filter_enabled,
+    )
+    return {
+        "ok": True,
+        **match_res,
+        "spoken_preview": tts.format_telegram_tts_text(payload.message),
+    }
+
+
+@app.post("/api/tts/synthesize")
+def tts_synthesize_api(
+    payload: TtsSpeakIn,
+    response_format: str = "audio",
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Tổng hợp giọng nói Tiếng Việt (trả về file WAV/MP3 hoặc JSON base64)."""
+    try:
+        res = tts.synthesize_vietnamese_tts(
+            payload.text,
+            settings,
+            voice=payload.voice,
+            speed=payload.speed,
+            provider=payload.provider,
+        )
+    except tts.TtsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    if response_format == "json":
+        import base64
+
+        return {
+            "ok": True,
+            "provider": res.provider,
+            "voice": res.voice,
+            "audio_format": res.audio_format,
+            "content_type": res.content_type,
+            "text": res.text,
+            "request_id": res.request_id,
+            "async_url": res.async_url,
+            "fallback_errors": res.fallback_errors,
+            "audio_base64": base64.b64encode(res.audio_bytes).decode("ascii"),
+        }
+    return Response(
+        content=res.audio_bytes,
+        media_type=res.content_type,
+        headers={
+            "X-TTS-Provider": res.provider,
+            "X-TTS-Voice": res.voice,
+            "X-TTS-Format": res.audio_format,
+        },
+    )
+
+
+@app.post("/api/tts/speak")
+def tts_speak_api(
+    payload: TtsSpeakIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    """Tổng hợp giọng nói Tiếng Việt và phát trực tiếp ra loa BLE tại 77.88.207.23:8080."""
+    try:
+        return tts.speak_on_ble_speaker(
+            payload.text,
+            settings,
+            voice=payload.voice,
+            speed=payload.speed,
+            provider=payload.provider,
+            alarm_sound=payload.alarm_sound,
+        )
+    except tts.TtsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
+@app.post("/api/tts/speaker/volume")
+def tts_speaker_volume_api(
+    payload: TtsVolumeIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return tts.set_ble_speaker_volume(payload.volume, settings)
+    except tts.TtsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
+@app.post("/api/tts/speaker/sound")
+def tts_speaker_sound_api(
+    payload: TtsSoundIn,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return tts.play_ble_speaker_sound(payload.sound, settings)
+    except tts.TtsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+
+@app.post("/api/tts/speaker/stop")
+def tts_speaker_stop_api(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return tts.stop_ble_speaker(settings)
+    except tts.TtsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
 class MailSendIn(BaseModel):
     to: str

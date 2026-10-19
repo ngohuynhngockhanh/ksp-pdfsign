@@ -210,6 +210,27 @@ class Settings(BaseSettings):
     clabel_default_speed: int = 3
     clabel_default_gap_mm: int = 2
 
+    # TTS Tieng Viet (Kokoro / VNMap TTS + AppHub 9Router Google & Microsoft fallback) & Loa BLE (77.88.207.23:8080)
+    tts_enabled: bool = True
+    tts_kokoro_base_url: str = "https://kokoro.p2p.inut.io.vn"
+    tts_kokoro_api_key: str = "71d74094bb4aee46a0c7b19003f2052a94068eda9c5302b5"
+    tts_vnmap_base_url: str = "https://vnmap-tts.a.inut.vn"
+    tts_vnmap_api_key: str = "175f61e9773a44344c01fd475be82dc745b556c50d64c58d"
+    tts_default_provider: str = "auto"
+    tts_default_voice: str = "diem_trinh"
+    tts_default_speed: int = 0
+    tts_9router_base_url: str = ""
+    tts_9router_api_key: str = ""
+    tts_google_model: str = "google-tts/vi"
+    tts_microsoft_model: str = "edge-tts/vi-VN-HoaiMyNeural"
+    ble_speaker_enabled: bool = True
+    ble_speaker_base_url: str = "http://77.88.207.23:8080"
+    ble_speaker_timeout: float = 20.0
+    telegram_tts_speaker_enabled: bool = True
+    telegram_tts_filter_enabled: bool = True
+    telegram_tts_regex: str = r"RK\s*Burner"
+    telegram_tts_alarm_sound: str = "alarm"
+
     # Luu tru
     data_dir: str = "./backend/data"
 

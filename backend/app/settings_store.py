@@ -38,6 +38,16 @@ ALLOWED_KEYS: dict[str, str] = {
     "smtp_password": "str",
     "smtp_from": "str",
     "smtp_to": "str",
+    "tts_enabled": "bool",
+    "tts_default_provider": "str",
+    "tts_default_voice": "str",
+    "tts_default_speed": "int",
+    "ble_speaker_enabled": "bool",
+    "ble_speaker_base_url": "str",
+    "telegram_tts_speaker_enabled": "bool",
+    "telegram_tts_filter_enabled": "bool",
+    "telegram_tts_regex": "str",
+    "telegram_tts_alarm_sound": "str",
 }
 
 # Key bi mat — che khi tra ra web (GET /settings)

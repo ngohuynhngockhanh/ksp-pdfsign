@@ -80,11 +80,12 @@ class TelegramClient:
 
     def __init__(self, settings: Settings, *, transport: httpx.BaseTransport | None = None) -> None:
         token, _ = _validate_settings(settings)
+        self._settings = settings
+        self._has_custom_transport = transport is not None
         self._token = token
         self._base = _validate_api_base(settings.telegram_api_base_url)
         self._timeout = max(5.0, float(settings.facebook_timeout))
         self._http = httpx.Client(timeout=self._timeout, transport=transport)
-
     def close(self) -> None:
         self._http.close()
 
@@ -103,7 +104,7 @@ class TelegramClient:
             raise TelegramError(description[:240])
         return body.get("result")
 
-    def send_message(self, chat_id: str, text: str) -> dict[str, Any]:
+    def send_message(self, chat_id: str, text: str, *, speak_tts: bool = True) -> dict[str, Any]:
         chat = str(chat_id or "").strip()
         if not _CHAT_ID_RE.fullmatch(chat):
             raise TelegramError("Telegram chat id khong hop le")
@@ -111,8 +112,14 @@ class TelegramClient:
         if not message:
             raise TelegramError("Noi dung Telegram dang trong")
         result = self.call("sendMessage", {"chat_id": chat, "text": message[:4096], "disable_web_page_preview": True})
-        return result if isinstance(result, dict) else {}
+        if speak_tts and not self._has_custom_transport:
+            try:
+                from . import tts
 
+                tts.enqueue_telegram_tts_announcement(message, self._settings)
+            except Exception:
+                pass
+        return result if isinstance(result, dict) else {}
     def send_document(self, chat_id: str, content: bytes, filename: str, caption: str = "") -> dict[str, Any]:
         chat = str(chat_id or "").strip()
         if not _CHAT_ID_RE.fullmatch(chat):
@@ -137,8 +144,14 @@ class TelegramClient:
             description = str(body.get("description", "Telegram tu choi tai lieu")) if isinstance(body, dict) else "Telegram tra ve du lieu khong hop le"
             raise TelegramError(description[:240])
         result = body.get("result")
-        return result if isinstance(result, dict) else {}
+        if caption and not self._has_custom_transport:
+            try:
+                from . import tts
 
+                tts.enqueue_telegram_tts_announcement(caption, self._settings)
+            except Exception:
+                pass
+        return result if isinstance(result, dict) else {}
     def get_updates(self, offset: int | None, timeout: int) -> list[dict[str, Any]]:
         payload: dict[str, Any] = {"timeout": max(1, min(int(timeout), 50)), "allowed_updates": ["message"]}
         if offset is not None:
@@ -260,7 +273,14 @@ def _handle_update(settings: Settings, update: dict[str, Any]) -> None:
     if not chat_id or not text:
         return
     if not text.startswith("/"):
-        _handle_tax_captcha_reply(settings, chat_id, text)
+        handled = _handle_tax_captcha_reply(settings, chat_id, text)
+        if not handled:
+            try:
+                from . import tts
+
+                tts.enqueue_telegram_tts_announcement(text, settings)
+            except Exception:
+                pass
         return
     command, _, argument = text.partition(" ")
     command = command.split("@", 1)[0].lower()
@@ -277,6 +297,18 @@ def _handle_update(settings: Settings, update: dict[str, Any]) -> None:
                 gen.close()
         elif command == "/status":
             client.send_message(chat_id, "Telegram đã sẵn sàng. Bạn có thể tạo link kết nối mới trong KSP nếu cần.")
+        elif command in {"/speak", "/loa", "/tts"} and argument.strip():
+            try:
+                from . import tts
+
+                res = tts.speak_on_ble_speaker(argument.strip(), settings)
+                client.send_message(
+                    chat_id,
+                    f"🔊 Đã đọc ra loa ({res.get('provider')} · {res.get('voice')}): {res.get('text')}",
+                    speak_tts=False,
+                )
+            except Exception as exc:
+                client.send_message(chat_id, f"Không phát được loa: {exc}", speak_tts=False)
         elif command == "/disconnect":
             gen = get_session(); db = next(gen)
             try:
