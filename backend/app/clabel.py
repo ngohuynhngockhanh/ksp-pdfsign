@@ -1184,7 +1184,9 @@ max_retries = {int(retries)}
 data = sys.stdin.buffer.read()
 
 def attempt_print(scan_first=False):
+    subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if scan_first:
+        subprocess.run(["bluetoothctl", "disconnect", mac], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "--timeout", "4", "scan", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     p = subprocess.Popen(
         ["gatttool", "-b", mac, "-I"],
@@ -1256,7 +1258,7 @@ def attempt_print(scan_first=False):
         except Exception:
             pass
         p.terminate()
-
+        subprocess.Popen(["bluetoothctl", "connect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 last_err = None
 for attempt in range(max_retries + 1):
     ok, info = attempt_print(scan_first=(attempt > 0))
@@ -1322,7 +1324,9 @@ pause_sec = {float(inter_label_pause)}
 items = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 
 def open_gatt(scan_first=False):
+    subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if scan_first:
+        subprocess.run(["bluetoothctl", "disconnect", mac], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "--timeout", "4", "scan", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     p = subprocess.Popen(
         ["gatttool", "-b", mac, "-I"],
@@ -1429,7 +1433,7 @@ finally:
         except Exception:
             pass
         p.terminate()
-
+    subprocess.Popen(["bluetoothctl", "connect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 print(json.dumps({{
     "ok": True,
     "mac": mac,
