@@ -208,6 +208,13 @@ def test_rk_burner_regex_filter_and_phonetic_format():
     assert "rờ ca đờ vê lốp tun rờ đê" in spoken_rk
     assert "nạp i mịch" in spoken_rk
 
+    # Auto sound resolution: success -> 'success', fail -> 'alarm'
+    assert tts.resolve_telegram_alarm_sound(msg_rk, "auto") == "success"
+    assert tts.resolve_telegram_alarm_sound("🔔 RK Burner\nvpn|inut_207_184\nTrạng thái: succeeded", "auto") == "success"
+    assert tts.resolve_telegram_alarm_sound("🔔 RK Burner\nvpn|inut_207_184\nTrạng thái: failed", "auto") == "alarm"
+    assert tts.resolve_telegram_alarm_sound("🔔 RK Burner\nvpn|inut_207_184\nTrạng thái: partial_failed", "auto") == "alarm"
+    assert tts.resolve_telegram_alarm_sound("❌ RK Burner: thiết bị Rockchip đã ngắt kết nối", "auto") == "alarm"
+
 
 def test_tts_api_endpoints(tmp_path, monkeypatch):
     from app.db import reset_engine_for_tests

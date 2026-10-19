@@ -229,7 +229,7 @@ class Settings(BaseSettings):
     telegram_tts_speaker_enabled: bool = True
     telegram_tts_filter_enabled: bool = True
     telegram_tts_regex: str = r"RK\s*Burner"
-    telegram_tts_alarm_sound: str = "alarm"
+    telegram_tts_alarm_sound: str = "auto"
 
     # Luu tru
     data_dir: str = "./backend/data"

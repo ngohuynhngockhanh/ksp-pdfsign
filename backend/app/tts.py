@@ -175,6 +175,30 @@ def matches_telegram_tts_filter(
         }
 
 
+def resolve_telegram_alarm_sound(raw_message: str, configured_sound: str = "auto") -> str:
+    """Tự động chọn âm hiệu theo trạng thái tin nhắn khi `configured_sound == 'auto'`:
+    - Nếu tin báo lỗi / thất bại (`failed`, `partial_failed`, `thất bại`, `lỗi`, `❌`, `🚨`, `⚠️`) -> `'alarm'`
+    - Nếu tin báo hoàn tất / thành công (`✅`, `succeeded`, `hoàn tất`, `thành công`, `đã an toàn`) -> `'success'`
+    - Còn lại -> `'notification'`
+    """
+    cfg_snd = str(configured_sound or "auto").strip().lower()
+    if cfg_snd and cfg_snd != "auto":
+        return "none" if cfg_snd in ("none", "off", "false") else cfg_snd
+    text = str(raw_message or "").strip()
+    if re.search(
+        r"(?:❌|🚨|⚠️|\bpartial_failed\b|\bfailed\b|\bfail\b|\berror\b|thất\s+bại|gặp\s+lỗi|bị\s+lỗi|ngắt\s+kết\s+nối|không\s+thành\s+công)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return "alarm"
+    if re.search(
+        r"(?:✅|🎉|\bsucceeded\b|\bsuccess\b|hoàn\s+tất|thành\s+công|đã\s+an\s+toàn)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return "success"
+    return "notification"
+
 def format_telegram_tts_text(raw: str, max_chars: int = 500) -> str:
     """Chuyển đổi nội dung tin nhắn Telegram (đặc biệt là RK Burner) thành câu thông báo đọc loa rõ ràng."""
     if not raw or not str(raw).strip():
@@ -623,8 +647,7 @@ def speak_on_ble_speaker(
         raise TtsError("Nội dung cần đọc đang trống")
 
     eff_provider = (provider or cfg.tts_default_provider or "auto").strip()
-    eff_alarm = (alarm_sound or "").strip().lower()
-
+    eff_alarm = resolve_telegram_alarm_sound(text, alarm_sound if alarm_sound is not None else cfg.telegram_tts_alarm_sound)
     try:
         tts_res = synthesize_vietnamese_tts(
             cleaned,
@@ -732,6 +755,8 @@ def enqueue_telegram_tts_announcement(
         if _tts_executor is None:
             _tts_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="telegram-tts-speaker")
 
+    resolved_alarm = resolve_telegram_alarm_sound(raw_message, cfg.telegram_tts_alarm_sound)
+
     def _job() -> None:
         try:
             speak_on_ble_speaker(
@@ -740,7 +765,7 @@ def enqueue_telegram_tts_announcement(
                 voice=cfg.tts_default_voice,
                 speed=cfg.tts_default_speed,
                 provider=cfg.tts_default_provider,
-                alarm_sound=cfg.telegram_tts_alarm_sound,
+                alarm_sound=resolved_alarm,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Không phát được TTS thông báo Telegram ra loa BLE: %s", exc)

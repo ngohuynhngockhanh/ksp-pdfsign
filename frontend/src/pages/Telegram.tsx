@@ -13,7 +13,7 @@ export function Telegram() {
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
   const [filterEnabled, setFilterEnabled] = useState(true);
   const [regexPattern, setRegexPattern] = useState("RK\\s*Burner");
-  const [alarmSound, setAlarmSound] = useState("alarm");
+  const [alarmSound, setAlarmSound] = useState("auto");
   const [ttsProvider, setTtsProvider] = useState("auto");
   const [ttsVoice, setTtsVoice] = useState("diem_trinh");
   const [ttsSpeed, setTtsSpeed] = useState(0);
@@ -43,7 +43,7 @@ export function Telegram() {
         setSpeakerEnabled(ts.telegram_tts_speaker_enabled ?? true);
         setFilterEnabled(ts.telegram_tts_filter_enabled ?? true);
         setRegexPattern(ts.telegram_tts_regex ?? "RK\\s*Burner");
-        setAlarmSound(ts.telegram_tts_alarm_sound || "alarm");
+        setAlarmSound(ts.telegram_tts_alarm_sound || "auto");
         setTtsProvider(ts.default_provider || "auto");
         setTtsVoice(ts.default_voice || "diem_trinh");
         setTtsSpeed(ts.default_speed || 0);
@@ -311,14 +311,15 @@ export function Telegram() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 14 }}>
             <div>
-              <label>Còi báo động trước khi đọc</label>
+              <label>Âm báo trước khi đọc TTS</label>
               <select value={alarmSound} onChange={(e) => setAlarmSound(e.target.value)} style={{ width: "100%" }}>
-                <option value="alarm">🚨 Alarm (Còi báo động)</option>
-                <option value="chime">🔔 Chime (Chuông báo)</option>
-                <option value="notification">💬 Notification (Ting)</option>
-                <option value="success">🎉 Success (Hoàn thành)</option>
-                <option value="beep">⚡ Beep</option>
-                <option value="none">🔇 Không phát còi (Chỉ đọc TTS)</option>
+                <option value="auto">🤖 Tự động (Thành công → 🎉 Success · Lỗi/Fail → 🚨 Alarm)</option>
+                <option value="success">🎉 Luôn phát Success (Hoàn thành)</option>
+                <option value="alarm">🚨 Luôn phát Alarm (Còi báo động)</option>
+                <option value="chime">🔔 Luôn phát Chime (Chuông báo)</option>
+                <option value="notification">💬 Luôn phát Notification (Ting)</option>
+                <option value="beep">⚡ Luôn phát Beep</option>
+                <option value="none">🔇 Không phát âm hiệu (Chỉ đọc TTS)</option>
               </select>
             </div>
             <div>

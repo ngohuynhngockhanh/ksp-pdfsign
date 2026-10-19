@@ -658,6 +658,7 @@ def tts_test_regex_api(
     return {
         "ok": True,
         **match_res,
+        "resolved_alarm_sound": tts.resolve_telegram_alarm_sound(payload.message, settings.telegram_tts_alarm_sound),
         "spoken_preview": tts.format_telegram_tts_text(payload.message),
     }
 
