@@ -182,6 +182,22 @@ def main() -> int:
             )
             for item in batch_res.get("items", []):
                 print(f"  - [{item['index']:02d}] {item['label']}: {item['bytes_sent']} bytes ({item['chunks_sent']} chunks) in {item['elapsed_sec']}s")
+            try:
+                from contextlib import closing
+                from app.db import get_session, init_db
+
+                init_db()
+                with closing(next(get_session())) as db:
+                    for did in dev_ids:
+                        clabel.record_clabel_device_print(
+                            db,
+                            did,
+                            mfg_date=args.mfg_date,
+                            model_name=args.model_name,
+                            wifi_pass=args.wifi_pass,
+                        )
+            except Exception:
+                pass
             return 0
 
         qr_override = args.qr if (args.qr and args.qr != "https://inut.vn") else dev_ids[0]
@@ -244,6 +260,22 @@ def main() -> int:
     print(f"  - Kho giay: {w_mm}x{h_mm}mm ({w_dots}x{h_dots} dots)")
     print(f"  - Dung luong TSPL: {res['bytes_sent']} bytes ({res['chunks_sent']} BLE GATT chunks)")
     print(f"  - Negotiated MTU: {res['negotiated_mtu']} | Thoi gian truyen: {res['elapsed_sec']}s")
+    if args.device_id:
+        try:
+            from contextlib import closing
+            from app.db import get_session, init_db
+
+            init_db()
+            with closing(next(get_session())) as db:
+                clabel.record_clabel_device_print(
+                    db,
+                    args.device_id.strip(),
+                    mfg_date=args.mfg_date,
+                    model_name=args.model_name,
+                    wifi_pass=args.wifi_pass,
+                )
+        except Exception:
+            pass
     return 0
 
 

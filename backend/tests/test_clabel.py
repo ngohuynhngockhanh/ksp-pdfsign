@@ -170,3 +170,48 @@ def test_sanxuat_v1_1_rockchip_label_and_api():
     assert body["width_dots"] == 320
     assert body["height_dots"] == 240
     assert body["is_printed"] is False
+
+
+def test_sanxuat_batch_printer_api(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import config, db
+    from app.main import app
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    config.get_settings.cache_clear()
+    db.reset_engine_for_tests()
+    db.init_db()
+
+    try:
+        client = TestClient(app)
+        r_devs = client.get("/api/clabel/sanxuat-devices")
+        assert r_devs.status_code == 200
+        seeded = {d["device_id"] for d in r_devs.json()["devices"]}
+        assert "inut_207_153" in seeded
+        assert "inut_207_183" in seeded
+
+        csv_10 = "inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183"
+        r_batch = client.post(
+            "/api/clabel/sanxuat-batch",
+            json={
+                "device_ids": csv_10,
+                "auto_print_missing_clabel": False,
+                "print_batch_sheet_remote": False,
+            },
+        )
+        assert r_batch.status_code == 200
+        data = r_batch.json()
+        assert data["device_count"] == 10
+        assert data["device_ids_csv"] == csv_10
+        assert len(data["already_clabel_printed"]) == 10
+        assert data["auto_clabel_printed"] == []
+        assert len(data["items"]) == 10
+        assert all(it["mfg_date"] == "19/10/2026" for it in data["items"])
+
+        r_batches = client.get("/api/clabel/sanxuat-batches")
+        assert r_batches.status_code == 200
+        assert r_batches.json()["count"] == 1
+    finally:
+        monkeypatch.delenv("DATA_DIR", raising=False)
+        config.get_settings.cache_clear()
+        db.reset_engine_for_tests()

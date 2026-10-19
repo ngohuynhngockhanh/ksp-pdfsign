@@ -25,9 +25,10 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Sequence
+
 import numpy as np
 import qrcode
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
@@ -1605,5 +1606,647 @@ def print_sanxuat_v1_1_label(
         send_res = gw.send_tspl(tspl_bytes, mac=mac)
         result.update(send_res)
         result["is_printed"] = True
+        try:
+            from contextlib import closing
+            from .db import get_session, init_db
+
+            init_db()
+            with closing(next(get_session())) as db:
+                record_clabel_device_print(
+                    db,
+                    clean_id,
+                    mfg_date=resolved_date,
+                    model_name=model_name,
+                    wifi_pass=wifi_pass,
+                )
+        except Exception:
+            pass
 
     return result
+
+
+def parse_device_id_list(raw: str | Sequence[str]) -> list[str]:
+    """Chuan hoa danh sach ma thiet bi (phan cach bang dau phay, xuong dong hoac khoang trang)."""
+    if isinstance(raw, str):
+        tokens = re.split(r"[,;\n\r\t ]+", raw)
+    else:
+        tokens = []
+        for item in raw:
+            tokens.extend(re.split(r"[,;\n\r\t ]+", str(item)))
+    seen: set[str] = set()
+    out: list[str] = []
+    for tk in tokens:
+        clean = tk.strip()
+        if clean and clean not in seen:
+            seen.add(clean)
+            out.append(clean)
+    return out
+
+
+def record_clabel_device_print(
+    db: Any,
+    device_id: str,
+    *,
+    mfg_date: str | None = None,
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    wifi_pass: str = "inut12345",
+    batch_code: str = "",
+) -> Any:
+    """Ghi nhan hoac cap nhat trang thai da in tem le Clabel (400x300) cho 1 ma thiet bi trong CSDL."""
+    from sqlalchemy import select
+    from .db import SanxuatDeviceLabel
+
+    clean_id = device_id.strip()
+    resolved_date = mfg_date or datetime.now().strftime("%d/%m/%Y")
+    now_utc = datetime.now(timezone.utc)
+    row = db.scalar(select(SanxuatDeviceLabel).where(SanxuatDeviceLabel.device_id == clean_id))
+    if row:
+        if not row.mfg_date:
+            row.mfg_date = resolved_date
+        row.is_clabel_printed = True
+        row.clabel_print_count = int(row.clabel_print_count or 0) + 1
+        row.clabel_printed_at = now_utc
+        if batch_code:
+            row.last_batch_code = batch_code
+    else:
+        row = SanxuatDeviceLabel(
+            device_id=clean_id,
+            model_name=model_name,
+            wifi_pass=wifi_pass,
+            mfg_date=resolved_date,
+            is_clabel_printed=True,
+            clabel_print_count=1,
+            clabel_printed_at=now_utc,
+            last_batch_code=batch_code,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def generate_sanxuat_batch_70x100_pdf(
+    items: Sequence[dict[str, Any]],
+    *,
+    batch_code: str,
+    printed_at_str: str | None = None,
+    title: str = "QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1",
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    wifi_pass: str = "inut12345",
+    apply_golden_ratio: bool = True,
+) -> bytes:
+    """Tao file PDF Bang In Tong Hop Lo San Xuat 70x100 (7cm x 10cm) in tron ven tren may in nhiet TP732H @ inut-dev.
+    - Co Logo iNut + icon ® & ©, thong tin Cong ty INUT JSC, MAKE IN VIETNAM
+    - Co Ngay gio in to phieu batch (DD/MM/YYYY HH:MM:SS)
+    - Liet ke toan bo thiet bi inut tung dong kem Ngay san xuat (NSX) va trang thai tem Clabel
+    - Co Ma QR chua danh sach cac ma inut cach nhau bang dau phay (vd: inut_207_153,inut_207_159,...)
+    - Nen trang 100% + vien den & chu den sac net.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas as rl_canvas
+    from .spx import scale_pdf_golden_ratio
+
+    font_reg = "Helvetica"
+    font_bold = "Helvetica-Bold"
+    font_mono = "Courier-Bold"
+    try:
+        if os.path.exists(FONT_REGULAR_PATH):
+            pdfmetrics.registerFont(TTFont("DejaVuSans", FONT_REGULAR_PATH))
+            pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", FONT_BOLD_PATH))
+            font_reg = "DejaVuSans"
+            font_bold = "DejaVuSans-Bold"
+        if os.path.exists(FONT_MONO_BOLD_PATH):
+            pdfmetrics.registerFont(TTFont("DejaVuSansMono-Bold", FONT_MONO_BOLD_PATH))
+            font_mono = "DejaVuSansMono-Bold"
+    except Exception:
+        pass
+
+    if not printed_at_str:
+        vn_tz = timezone(timedelta(hours=7))
+        printed_at_str = datetime.now(vn_tz).strftime("%d/%m/%Y %H:%M:%S")
+
+    # Kich thuoc goc truoc khi scale Ti Le Vang 65% (104.82 x 147.83 mm -> sau 65% la 68.1 x 96.1 mm vua khit 70x100mm)
+    page_w = 104.82 * mm
+    page_h = 147.83 * mm
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(page_w, page_h))
+    c.setTitle(f"Batch_SanXuat_{batch_code}")
+
+    m = 2.6 * mm
+    inner_w = page_w - 2 * m
+    inner_h = page_h - 2 * m
+
+    # Khung vien ngoai (nen trang, vien den)
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.black)
+    c.setLineWidth(1.3)
+    c.roundRect(m, m, inner_w, inner_h, 2.2 * mm, fill=0, stroke=1)
+
+    # =========================================================================
+    # 1. HEADER: LOGO INUT + THÔNG TIN CÔNG TY + MAKE IN VIETNAM (Y: top -> top - 20mm)
+    # =========================================================================
+    y_top = page_h - m
+    logo_mm = 15.5 * mm
+    logo_x = m + 2.0 * mm
+    logo_y = y_top - logo_mm - 1.8 * mm
+
+    try:
+        mono_logo = render_monochrome_image(
+            get_settings().logo_path,
+            width=180,
+            height=180,
+            threshold=172,
+            preserve_outline=True,
+        )
+        logo_buf = io.BytesIO()
+        mono_logo.save(logo_buf, format="PNG")
+        logo_buf.seek(0)
+        c.drawImage(ImageReader(logo_buf), logo_x, logo_y, width=logo_mm, height=logo_mm, mask="auto")
+    except Exception:
+        c.rect(logo_x, logo_y, logo_mm, logo_mm, fill=0, stroke=1)
+
+    # Icon ® goc tren phai cua logo
+    c.setFillColor(colors.white)
+    c.setLineWidth(0.7)
+    c.circle(logo_x + logo_mm - 1.0 * mm, logo_y + logo_mm - 1.0 * mm, 1.8 * mm, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont(font_bold, 6.2)
+    c.drawCentredString(logo_x + logo_mm - 1.0 * mm, logo_y + logo_mm - 1.8 * mm, "R")
+
+    # Thong tin Cong ty ben phai logo
+    tx = logo_x + logo_mm + 2.2 * mm
+    c.setFont(font_bold, 7.2)
+    c.drawString(tx, y_top - 4.8 * mm, "CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT (INUT® JSC)")
+    c.setFont(font_reg, 6.3)
+    c.drawString(tx, y_top - 8.2 * mm, "MST: 4401053694 · Đ/c: 161 Trường Chinh, P. Tuy Hòa, Đắk Lắk")
+    c.drawString(tx, y_top - 11.4 * mm, "Hotline: 0972.768.491 · Web: https://inut.vn · DN KH&CN ©")
+
+    # Huy hieu ★ MAKE IN VIETNAM (nen trang, vien den)
+    c.setLineWidth(0.9)
+    c.roundRect(tx, y_top - 17.2 * mm, 51.0 * mm, 4.6 * mm, 1.0 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 6.0)
+    c.drawCentredString(tx + 25.5 * mm, y_top - 15.8 * mm, "★ MAKE IN VIETNAM · ROCKCHIP v1.1 ®")
+
+    # Khung so luong goc phai
+    qty_x = tx + 52.4 * mm
+    qty_w = page_w - m - qty_x - 1.8 * mm
+    c.roundRect(qty_x, y_top - 17.2 * mm, qty_w, 4.6 * mm, 1.0 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 6.3)
+    c.drawCentredString(
+        qty_x + qty_w / 2,
+        y_top - 15.8 * mm,
+        f"TỔNG: {len(items)} BỘ",
+    )
+    y_h_sep = y_top - 19.0 * mm
+    c.setLineWidth(1.0)
+    c.line(m, y_h_sep, page_w - m, y_h_sep)
+
+    # =========================================================================
+    # 2. TIÊU ĐỀ PHIẾU & NGÀY GIỜ IN TỜ BATCH (Y: y_h_sep -> y_h_sep - 15.5mm)
+    # =========================================================================
+    c.setFont(font_bold, 9.2)
+    c.drawCentredString(page_w / 2, y_h_sep - 4.4 * mm, title.upper())
+    c.setFont(font_bold, 7.4)
+    c.drawCentredString(page_w / 2, y_h_sep - 8.0 * mm, f"Tên SP: {model_name}")
+
+    # Khung Ngay gio in phieu & Ma lo
+    meta_y = y_h_sep - 14.5 * mm
+    c.setLineWidth(0.7)
+    c.roundRect(m + 1.8 * mm, meta_y, inner_w - 3.6 * mm, 5.2 * mm, 1.0 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 6.7)
+    c.drawString(m + 3.2 * mm, meta_y + 1.6 * mm, f"Mã lô: {batch_code}")
+    c.drawRightString(page_w - m - 3.2 * mm, meta_y + 1.6 * mm, f"Ngày giờ in phiếu: {printed_at_str}")
+
+    y_tbl_top = meta_y - 1.5 * mm
+
+    # =========================================================================
+    # 3. BẢNG LIỆT KÊ TOÀN BỘ THIẾT BỊ INUT TỪNG DÒNG
+    # =========================================================================
+    # Chiều cao dành cho phần QR ở đáy: 44mm
+    y_qr_section_top = m + 44.5 * mm
+    avail_tbl_h = y_tbl_top - y_qr_section_top - 1.5 * mm
+    n_rows = max(1, len(items))
+    header_row_h = 5.2 * mm
+    row_h = min(6.2 * mm, max(3.6 * mm, (avail_tbl_h - header_row_h) / n_rows))
+    total_tbl_h = header_row_h + n_rows * row_h
+    y_tbl_bottom = y_tbl_top - total_tbl_h
+
+    tbl_x = m + 1.8 * mm
+    tbl_w = inner_w - 3.6 * mm
+    col_stt_w = 9.0 * mm
+    col_id_w = 40.5 * mm
+    col_nsx_w = 24.5 * mm
+    # col_status_w = tbl_w - col_stt_w - col_id_w - col_nsx_w
+
+    x_col1 = tbl_x + col_stt_w
+    x_col2 = x_col1 + col_id_w
+    x_col3 = x_col2 + col_nsx_w
+
+    # Viền ngoài bảng
+    c.setLineWidth(0.9)
+    c.rect(tbl_x, y_tbl_bottom, tbl_w, total_tbl_h, fill=0, stroke=1)
+
+    # Dòng tiêu đề bảng
+    y_hdr_line = y_tbl_top - header_row_h
+    c.setLineWidth(0.9)
+    c.line(tbl_x, y_hdr_line, tbl_x + tbl_w, y_hdr_line)
+    c.setFont(font_bold, 6.8)
+    hdr_text_y = y_hdr_line + 1.6 * mm
+    c.drawCentredString(tbl_x + col_stt_w / 2, hdr_text_y, "STT")
+    c.drawCentredString(x_col1 + col_id_w / 2, hdr_text_y, "MÃ THIẾT BỊ (SN / ID)")
+    c.drawCentredString(x_col2 + col_nsx_w / 2, hdr_text_y, "NGÀY SẢN XUẤT")
+    c.drawCentredString((x_col3 + tbl_x + tbl_w) / 2, hdr_text_y, "TEM CLABEL")
+
+    # Các đường kẻ dọc của bảng
+    c.setLineWidth(0.6)
+    c.line(x_col1, y_tbl_bottom, x_col1, y_tbl_top)
+    c.line(x_col2, y_tbl_bottom, x_col2, y_tbl_top)
+    c.line(x_col3, y_tbl_bottom, x_col3, y_tbl_top)
+
+    # Từng dòng thiết bị
+    row_font_size = 7.8 if n_rows <= 10 else (7.0 if n_rows <= 13 else 6.2)
+    for idx, it in enumerate(items):
+        ry_top = y_hdr_line - idx * row_h
+        ry_bot = ry_top - row_h
+        if idx > 0:
+            c.setLineWidth(0.45)
+            c.line(tbl_x, ry_top, tbl_x + tbl_w, ry_top)
+
+        text_y = ry_bot + (row_h - 2.4 * mm) / 2 + 0.3 * mm
+        stt_str = f"{idx + 1:02d}"
+        dev_id = str(it.get("device_id", ""))
+        mfg_date = str(it.get("mfg_date", ""))
+        action = str(it.get("clabel_action", "already_printed"))
+        st_str = "Đã in [✓]" if action == "already_printed" else "Auto in [✓]"
+
+        c.setFont(font_bold, row_font_size - 0.4)
+        c.drawCentredString(tbl_x + col_stt_w / 2, text_y, stt_str)
+        c.setFont(font_mono, row_font_size + 0.3)
+        c.drawCentredString(x_col1 + col_id_w / 2, text_y, dev_id)
+        c.setFont(font_bold, row_font_size - 0.3)
+        c.drawCentredString(x_col2 + col_nsx_w / 2, text_y, mfg_date)
+        c.setFont(font_reg, row_font_size - 0.7)
+        c.drawCentredString((x_col3 + tbl_x + tbl_w) / 2, text_y, st_str)
+
+    # =========================================================================
+    # 4. CỤM MÃ QR DANH SÁCH CÁC MÃ INUT (CÁCH NHAU DẤU PHẨY) & KIỂM ĐẾM (ĐÁY PHIẾU)
+    # =========================================================================
+    c.setLineWidth(0.9)
+    c.line(m, y_qr_section_top, page_w - m, y_qr_section_top)
+
+    csv_payload = ",".join(str(it.get("device_id", "")).strip() for it in items if it.get("device_id"))
+    qr_mm = 37.5 * mm
+    qr_x = m + 2.0 * mm
+    qr_y = m + 5.0 * mm
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=6,
+        border=1,
+    )
+    qr.add_data(csv_payload or "inut")
+    qr.make(fit=True)
+    qr_pil = qr.make_image(fill_color="black", back_color="white").convert("1")
+    qr_buf = io.BytesIO()
+    qr_pil.save(qr_buf, format="PNG")
+    qr_buf.seek(0)
+    c.drawImage(ImageReader(qr_buf), qr_x, qr_y, width=qr_mm, height=qr_mm)
+    c.setLineWidth(0.7)
+    c.rect(qr_x, qr_y, qr_mm, qr_mm, fill=0, stroke=1)
+
+    c.setFont(font_bold, 6.2)
+    c.drawCentredString(qr_x + qr_mm / 2, m + 1.8 * mm, f"QR LIST ({len(items)} MÃ CÁCH DẤU PHẨY)")
+
+    # Cột phải cạnh QR: Hiển thị chuỗi CSV & Thống kê kiểm đếm
+    rx = qr_x + qr_mm + 2.5 * mm
+    rw = page_w - m - rx - 1.8 * mm
+    ry_top = y_qr_section_top - 3.8 * mm
+
+    c.setFont(font_bold, 7.0)
+    c.drawString(rx, ry_top, "CHUỖI MÃ QR LÔ SẢN XUẤT (CSV):")
+
+    # Box chứa chuỗi CSV
+    csv_box_h = 20.5 * mm
+    csv_box_y = ry_top - csv_box_h - 1.0 * mm
+    c.setLineWidth(0.6)
+    c.roundRect(rx, csv_box_y, rw, csv_box_h, 1.0 * mm, fill=0, stroke=1)
+
+    # Cắt dòng chuỗi CSV để hiển thị trọn vẹn trong box
+    c.setFont(font_mono, 6.1)
+    max_chars_per_line = 27
+    csv_lines: list[str] = []
+    cur_line = ""
+    for part in csv_payload.split(","):
+        piece = part if not cur_line else f",{part}"
+        if len(cur_line) + len(piece) <= max_chars_per_line:
+            cur_line += piece
+        else:
+            if cur_line:
+                csv_lines.append(cur_line + ",")
+            cur_line = part
+    if cur_line:
+        csv_lines.append(cur_line)
+
+    cy = csv_box_y + csv_box_h - 3.3 * mm
+    for ln in csv_lines[:6]:
+        c.drawString(rx + 1.5 * mm, cy, ln)
+        cy -= 3.1 * mm
+
+    # Khung thống kê kiểm đếm dưới cùng bên phải
+    already_cnt = sum(1 for it in items if it.get("clabel_action") == "already_printed")
+    auto_cnt = len(items) - already_cnt
+    stat_y = m + 1.8 * mm
+    stat_h = csv_box_y - stat_y - 1.4 * mm
+    c.setLineWidth(0.6)
+    c.roundRect(rx, stat_y, rw, stat_h, 1.0 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 5.2)
+    c.drawString(rx + 1.5 * mm, stat_y + stat_h - 3.5 * mm, f"• Kiểm đếm: {len(items)}/{len(items)} TB · Wi-Fi: {wifi_pass}")
+    c.setFont(font_reg, 5.2)
+    c.drawString(rx + 1.5 * mm, stat_y + stat_h - 6.8 * mm, f"• Clabel 40x30: Đã in {already_cnt} | Auto in {auto_cnt}")
+    c.setFont(font_bold, 5.2)
+    c.drawString(rx + 1.5 * mm, stat_y + 1.8 * mm, "• KCS: ĐẠT CHUẨN v1.1 ® © INUT JSC")
+
+    c.showPage()
+    c.save()
+    raw_pdf = buf.getvalue()
+
+    if not apply_golden_ratio:
+        return raw_pdf
+    return scale_pdf_golden_ratio(raw_pdf)
+
+
+def print_pdf_on_inut_dev(
+    pdf_path: str | Path,
+    *,
+    win_file_name: str,
+    host: str = "192.168.1.10",
+    printer_name: str = "TP732H",
+) -> dict[str, Any]:
+    """SCP file PDF sang may inut-dev (Windows host) va goi Foxit Reader CLI in ra may in nhiet TP732H."""
+    from .host_discovery import resolve_windows_host
+
+    target_host = "192.168.1.10" if host in ("inut-dev", "", None) else host
+    try:
+        resolved_host = resolve_windows_host(target_host, probe_port=445)
+    except TypeError:
+        resolved_host = resolve_windows_host(target_host)
+
+    scp_cmd = [
+        "scp",
+        "-O",
+        "-i",
+        "/home/ksp/.ssh/id_ed25519",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ProxyCommand=nc -q 0 %h %p",
+        "-o",
+        "ConnectTimeout=60",
+        str(pdf_path),
+        f"Administrator@{resolved_host}:C:/ksp/{win_file_name}",
+    ]
+    scp_proc = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
+    if scp_proc.returncode != 0:
+        raise RuntimeError(f"Loi chuyen file PDF sang may inut-dev ({resolved_host}): {scp_proc.stderr}")
+
+    foxit_cmd = f'"C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe" /t "C:\\ksp\\{win_file_name}" "{printer_name}"'
+    ssh_print_cmd = [
+        "ssh",
+        "-n",
+        "-i",
+        "/home/ksp/.ssh/id_ed25519",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ProxyCommand=nc -q 0 %h %p",
+        "-o",
+        "ConnectTimeout=60",
+        f"Administrator@{resolved_host}",
+        foxit_cmd,
+    ]
+    print_proc = subprocess.run(ssh_print_cmd, capture_output=True, text=True, timeout=90)
+    if print_proc.returncode != 0:
+        raise RuntimeError(f"Loi thuc thi lenh in Foxit tren inut-dev ({resolved_host}): {print_proc.stderr}")
+
+    return {
+        "success": True,
+        "resolved_host": resolved_host,
+        "printer_name": printer_name,
+        "remote_file": f"C:\\ksp\\{win_file_name}",
+    }
+
+
+def run_sanxuat_batch_printer(
+    db: Any,
+    device_ids: str | Sequence[str],
+    *,
+    batch_code: str | None = None,
+    title: str = "Quá trình sản xuất iNut Data Logger v1.1",
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    wifi_pass: str = "inut12345",
+    auto_print_missing_clabel: bool = True,
+    force_reprint_clabel: bool = False,
+    print_batch_sheet_remote: bool = True,
+    inut_dev_host: str = "inut-dev",
+    inut_dev_printer: str = "TP732H",
+    clabel_gateway_host: str | None = None,
+    clabel_mac: str | None = None,
+) -> dict[str, Any]:
+    """Quy trinh khép kín 'Quá trình sản xuất iNut Data Logger v1.1':
+    1. Nhận danh sách mã thiết bị (VD: 10 con inut_207_153,inut_207_159,...).
+    2. Kiểm tra từng mã trong CSDL (`sanxuat_device_labels`):
+       - Nếu ĐÃ in tem lẻ Clabel trước đó: lấy nguyên Ngày sản xuất (`mfg_date`) đã lưu, KHÔNG in lại Clabel.
+       - Nếu CHƯA từng in tem lẻ Clabel: tự động gọi Clabel BLE (`CT221B-X420`) in tem 400x300 trước, rồi lưu `mfg_date` hôm nay vào CSDL.
+    3. Tạo bảng tổng hợp 70x100 (`generate_sanxuat_batch_70x100_pdf`) có:
+       - Logo iNut, thông tin công ty, ngày giờ in tờ batch
+       - Bảng liệt kê từng dòng thiết bị kèm ngày sản xuất
+       - Mã QR chứa danh sách các mã inut cách nhau bằng dấu phẩy (`inut_207_153,inut_207_159,...`)
+    4. Lưu vào `ksp-pdfsign` (`Document` + `Share` + `SanxuatBatchSheet`) và gửi lệnh in sang máy in nhiệt `TP732H` trên `inut-dev`.
+    """
+    import json
+    import secrets
+    from sqlalchemy import select
+    from . import storage
+    from .db import Document, SanxuatBatchSheet, SanxuatDeviceLabel, Share, init_db
+
+    init_db()
+    clean_ids = parse_device_id_list(device_ids)
+    if not clean_ids:
+        raise ValueError("Danh sach ma thiet bi trong.")
+
+    vn_tz = timezone(timedelta(hours=7))
+    now_vn = datetime.now(vn_tz)
+    today_str = now_vn.strftime("%d/%m/%Y")
+    printed_at_str = now_vn.strftime("%d/%m/%Y %H:%M:%S")
+
+    if not batch_code:
+        batch_code = f"SX-V1.1-{now_vn.strftime('%Y%m%d-%H%M%S')}"
+
+    existing_rows = {
+        r.device_id: r
+        for r in db.scalars(
+            select(SanxuatDeviceLabel).where(SanxuatDeviceLabel.device_id.in_(clean_ids))
+        ).all()
+    }
+
+    missing_ids: list[str] = []
+    already_ids: list[str] = []
+    for did in clean_ids:
+        row = existing_rows.get(did)
+        if row and row.is_clabel_printed and row.mfg_date and not force_reprint_clabel:
+            already_ids.append(did)
+        else:
+            missing_ids.append(did)
+
+    clabel_batch_result: dict[str, Any] | None = None
+    if missing_ids and auto_print_missing_clabel:
+        payloads: list[bytes] = []
+        for did in missing_ids:
+            im_i = render_sanxuat_v1_1_label(
+                device_id=did,
+                mfg_date=today_str,
+                model_name=model_name,
+                wifi_pass=wifi_pass,
+                qr_data=did,
+                qr_logo=True,
+            )
+            payloads.append(build_label_tspl(im_i))
+        gw = ClabelBLEGateway(host=clabel_gateway_host or get_settings().ble_gateway_host)
+        clabel_batch_result = gw.send_tspl_batch(payloads, labels=missing_ids, mac=clabel_mac)
+        for did in missing_ids:
+            rec = record_clabel_device_print(
+                db,
+                did,
+                mfg_date=today_str,
+                model_name=model_name,
+                wifi_pass=wifi_pass,
+                batch_code=batch_code,
+            )
+            existing_rows[did] = rec
+
+    items: list[dict[str, Any]] = []
+    for idx, did in enumerate(clean_ids):
+        row = existing_rows.get(did)
+        if row and did in already_ids:
+            row.last_batch_code = batch_code
+            mfg_val = row.mfg_date or today_str
+            action = "already_printed"
+        else:
+            mfg_val = row.mfg_date if row and row.mfg_date else today_str
+            action = "auto_printed" if auto_print_missing_clabel else "pending_clabel"
+            if not row:
+                rec = record_clabel_device_print(
+                    db,
+                    did,
+                    mfg_date=mfg_val,
+                    model_name=model_name,
+                    wifi_pass=wifi_pass,
+                    batch_code=batch_code,
+                )
+                existing_rows[did] = rec
+        items.append({
+            "stt": idx + 1,
+            "device_id": did,
+            "mfg_date": mfg_val,
+            "clabel_action": action,
+        })
+    db.commit()
+
+    pdf_bytes = generate_sanxuat_batch_70x100_pdf(
+        items,
+        batch_code=batch_code,
+        printed_at_str=printed_at_str,
+        title=title,
+        model_name=model_name,
+        wifi_pass=wifi_pass,
+        apply_golden_ratio=True,
+    )
+
+    doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
+    csv_str = ",".join(clean_ids)
+    now_utc = datetime.now(timezone.utc)
+
+    doc = Document(
+        doc_id=doc_id,
+        filename=f"SanXuat_Batch_70x100_{batch_code}.pdf",
+        signer_name="INUT JSC — Sản xuất v1.1",
+        signed=False,
+        note=f"{title} ({len(clean_ids)} thiết bị: {csv_str[:160]}) · Lô {batch_code}",
+        doc_type="xuat_xuong",
+        source_system="sanxuat_v1.1",
+        source_external_id=batch_code,
+        source_synced_at=now_utc,
+    )
+    db.add(doc)
+    db.flush()
+
+    token = secrets.token_urlsafe(24)
+    share = Share(
+        token=token,
+        document_id=doc.id,
+        expires_at=now_utc.replace(tzinfo=None) + timedelta(days=90),
+    )
+    db.add(share)
+
+    sheet = SanxuatBatchSheet(
+        batch_code=batch_code,
+        title=title,
+        model_name=model_name,
+        device_ids_csv=csv_str,
+        device_count=len(clean_ids),
+        auto_clabel_printed_csv=",".join(missing_ids) if auto_print_missing_clabel else "",
+        already_clabel_printed_csv=",".join(already_ids),
+        items_json=json.dumps(items, ensure_ascii=False),
+        pdf_doc_id=doc_id,
+        share_token=token,
+        printer_host=inut_dev_host,
+        printer_name=inut_dev_printer,
+        is_printed=False,
+    )
+    db.add(sheet)
+    db.commit()
+    db.refresh(sheet)
+
+    print_info: dict[str, Any] = {}
+    if print_batch_sheet_remote:
+        pdf_path = storage.path_for(doc_id)
+        win_name = f"batch_{re.sub(r'[^A-Za-z0-9_-]', '_', batch_code)}.pdf"
+        print_info = print_pdf_on_inut_dev(
+            pdf_path,
+            win_file_name=win_name,
+            host=inut_dev_host,
+            printer_name=inut_dev_printer,
+        )
+        sheet.is_printed = True
+        sheet.printed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(sheet)
+
+    base_url = get_settings().public_base_url.rstrip("/")
+    return {
+        "success": True,
+        "batch_id": sheet.id,
+        "batch_code": batch_code,
+        "title": title,
+        "model_name": model_name,
+        "printed_at_display": printed_at_str,
+        "device_count": len(clean_ids),
+        "device_ids_csv": csv_str,
+        "already_clabel_printed": already_ids,
+        "auto_clabel_printed": missing_ids if auto_print_missing_clabel else [],
+        "clabel_batch_result": clabel_batch_result,
+        "items": items,
+        "document_id": doc.id,
+        "pdf_doc_id": doc_id,
+        "share_token": token,
+        "share_url": f"{base_url}/s/{token}",
+        "view_url": f"{base_url}/api/share/{token}/view",
+        "download_url": f"{base_url}/api/share/{token}/download",
+        "is_printed": sheet.is_printed,
+        "print_info": print_info,
+    }

@@ -477,6 +477,7 @@ class PieceworkContract(Base):
     worker_bank_account: Mapped[str] = mapped_column(String(50), default="")
     worker_bank_name: Mapped[str] = mapped_column(String(100), default="")
     
+    payment_method: Mapped[str] = mapped_column(String(30), default="bank_transfer") # bank_transfer | cash
     # Giá trị & Thuế TNCN (Theo Nghị định 253/2026/NĐ-CP)
     total_amount: Mapped[float] = mapped_column(default=0.0) # Gross
     tax_rate: Mapped[float] = mapped_column(default=0.0) # 0.0 hoặc 10.0
@@ -1586,6 +1587,53 @@ class IpTrademark(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+
+
+class SanxuatDeviceLabel(Base):
+    """So cai theo doi tem le Clabel (400x300) da in trong Qua trinh San xuat iNut Data Logger v1.1."""
+
+    __tablename__ = "sanxuat_device_labels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    model_name: Mapped[str] = mapped_column(
+        String(255), default="iNut Smartcity - Data Logger v1.1 - Rockchip"
+    )
+    wifi_pass: Mapped[str] = mapped_column(String(50), default="inut12345")
+    mfg_date: Mapped[str] = mapped_column(String(20), default="")  # DD/MM/YYYY
+    is_clabel_printed: Mapped[bool] = mapped_column(Boolean, default=True)
+    clabel_print_count: Mapped[int] = mapped_column(Integer, default=1)
+    clabel_printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_batch_code: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class SanxuatBatchSheet(Base):
+    """Phieu in tong hop lo san xuat 70x100 (TP732H @ inut-dev) — Qua trinh San xuat iNut Data Logger v1.1."""
+
+    __tablename__ = "sanxuat_batch_sheets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_code: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    title: Mapped[str] = mapped_column(
+        String(255), default="Quá trình sản xuất iNut Data Logger v1.1"
+    )
+    model_name: Mapped[str] = mapped_column(
+        String(255), default="iNut Smartcity - Data Logger v1.1 - Rockchip"
+    )
+    device_ids_csv: Mapped[str] = mapped_column(Text, default="")
+    device_count: Mapped[int] = mapped_column(Integer, default=0)
+    auto_clabel_printed_csv: Mapped[str] = mapped_column(Text, default="")
+    already_clabel_printed_csv: Mapped[str] = mapped_column(Text, default="")
+    items_json: Mapped[str] = mapped_column(Text, default="[]")
+    pdf_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    share_token: Mapped[str] = mapped_column(String(64), default="")
+    printer_host: Mapped[str] = mapped_column(String(100), default="inut-dev")
+    printer_name: Mapped[str] = mapped_column(String(100), default="TP732H")
+    is_printed: Mapped[bool] = mapped_column(Boolean, default=False)
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 _engine = None
 _SessionLocal = None
 
@@ -1614,6 +1662,51 @@ def init_db() -> None:
     _seed_ip_trademarks()
     _seed_piecework_contracts()
     _seed_bidding_reviews()
+    _seed_sanxuat_device_labels()
+
+
+def _seed_sanxuat_device_labels() -> None:
+    """Khoi tao danh sach 11 thiet bi iNut Data Logger v1.1 da in tem Clabel ngay 19/10/2026."""
+    seeded_ids = [
+        "inut_207_153",
+        "inut_207_36",
+        "inut_207_159",
+        "inut_207_160",
+        "inut_207_161",
+        "inut_207_178",
+        "inut_207_179",
+        "inut_207_180",
+        "inut_207_181",
+        "inut_207_182",
+        "inut_207_183",
+    ]
+    with _SessionLocal() as db:
+        existing = set(
+            db.scalars(
+                select(SanxuatDeviceLabel.device_id).where(
+                    SanxuatDeviceLabel.device_id.in_(seeded_ids)
+                )
+            ).all()
+        )
+        now_ts = datetime(2026, 10, 19, 5, 0, 0, tzinfo=timezone.utc)
+        new_rows = [
+            SanxuatDeviceLabel(
+                device_id=did,
+                model_name="iNut Smartcity - Data Logger v1.1 - Rockchip",
+                wifi_pass="inut12345",
+                mfg_date="19/10/2026",
+                is_clabel_printed=True,
+                clabel_print_count=1,
+                clabel_printed_at=now_ts,
+            )
+            for did in seeded_ids
+            if did not in existing
+        ]
+        if new_rows:
+            db.add_all(new_rows)
+            db.commit()
+
+
 def _seed_warehouses() -> None:
     """Tao 3 kho mac dinh neu chua co."""
     with _SessionLocal() as db:
@@ -2490,6 +2583,7 @@ def _migrate_add_columns() -> None:
             "drive_synced_at": "DATETIME DEFAULT NULL",
             "drive_folder": "VARCHAR(255) DEFAULT ''",
             "drive_link": "VARCHAR(500) DEFAULT ''",
+            "payment_method": "VARCHAR(30) DEFAULT 'bank_transfer'",
         },
     }
     with _engine.begin() as conn:

@@ -467,3 +467,142 @@ def clabel_print_sanxuat(
     except Exception as exc:
         logger.exception("Loi khi in tem Mau Xuat Xuong v1.1 Rockchip")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+class SanxuatBatchRequest(BaseModel):
+    device_ids: str | list[str] = Field(
+        ...,
+        description="Danh sach ma thiet bi cach nhau dau phay hoac mang (vd: 'inut_207_153,inut_207_159,...').",
+    )
+    batch_code: str | None = None
+    title: str = "Quá trình sản xuất iNut Data Logger v1.1"
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    wifi_pass: str = "inut12345"
+    auto_print_missing_clabel: bool = True
+    force_reprint_clabel: bool = False
+    print_batch_sheet_remote: bool = True
+    inut_dev_host: str = "inut-dev"
+    inut_dev_printer: str = "TP732H"
+
+
+@router.get("/sanxuat-devices")
+def list_sanxuat_devices(
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """Danh sach toan bo ma thiet bi da in tem Clabel 400x300 trong Qua trinh San xuat v1.1."""
+    from sqlalchemy import desc, select
+    from .db import SanxuatDeviceLabel, init_db
+
+    init_db()
+    rows = db.scalars(
+        select(SanxuatDeviceLabel).order_by(desc(SanxuatDeviceLabel.updated_at), desc(SanxuatDeviceLabel.id))
+    ).all()
+    return {
+        "count": len(rows),
+        "devices": [
+            {
+                "id": r.id,
+                "device_id": r.device_id,
+                "model_name": r.model_name,
+                "wifi_pass": r.wifi_pass,
+                "mfg_date": r.mfg_date,
+                "is_clabel_printed": r.is_clabel_printed,
+                "clabel_print_count": r.clabel_print_count,
+                "clabel_printed_at": r.clabel_printed_at.isoformat() if r.clabel_printed_at else None,
+                "last_batch_code": r.last_batch_code,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/sanxuat-batches")
+def list_sanxuat_batches(
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """Danh sach cac to phieu lo san xuat 70x100 da xuat trong Qua trinh San xuat iNut Data Logger v1.1."""
+    from sqlalchemy import desc, select
+    from .db import SanxuatBatchSheet, init_db
+
+    init_db()
+    base_url = get_settings().public_base_url.rstrip("/")
+    rows = db.scalars(select(SanxuatBatchSheet).order_by(desc(SanxuatBatchSheet.id))).all()
+    return {
+        "count": len(rows),
+        "batches": [
+            {
+                "id": r.id,
+                "batch_code": r.batch_code,
+                "title": r.title,
+                "model_name": r.model_name,
+                "device_count": r.device_count,
+                "device_ids_csv": r.device_ids_csv,
+                "already_clabel_printed_csv": r.already_clabel_printed_csv,
+                "auto_clabel_printed_csv": r.auto_clabel_printed_csv,
+                "pdf_doc_id": r.pdf_doc_id,
+                "share_token": r.share_token,
+                "share_url": f"{base_url}/s/{r.share_token}" if r.share_token else "",
+                "is_printed": r.is_printed,
+                "printed_at": r.printed_at.isoformat() if r.printed_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/sanxuat-batch")
+def run_sanxuat_batch_get(
+    device_ids: str = Query(..., description="Danh sach ma inut cach nhau dau phay"),
+    batch_code: str | None = Query(default=None),
+    auto_print_missing_clabel: bool = Query(default=True),
+    force_reprint_clabel: bool = Query(default=False),
+    print_batch_sheet_remote: bool = Query(default=True),
+    inut_dev_host: str = Query(default="inut-dev"),
+    inut_dev_printer: str = Query(default="TP732H"),
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """Chay quy trinh Batch Printer San Xuat (auto in Clabel neu chua in + in to phieu 70x100 tren inut-dev)."""
+    try:
+        return clabel.run_sanxuat_batch_printer(
+            db,
+            device_ids=device_ids,
+            batch_code=batch_code,
+            auto_print_missing_clabel=auto_print_missing_clabel,
+            force_reprint_clabel=force_reprint_clabel,
+            print_batch_sheet_remote=print_batch_sheet_remote,
+            inut_dev_host=inut_dev_host,
+            inut_dev_printer=inut_dev_printer,
+        )
+    except Exception as exc:
+        logger.exception("Loi khi chay Batch Printer San Xuat (GET)")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/sanxuat-batch")
+def run_sanxuat_batch_post(
+    payload: SanxuatBatchRequest,
+    db: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """Chay quy trinh Batch Printer San Xuat qua JSON POST."""
+    try:
+        return clabel.run_sanxuat_batch_printer(
+            db,
+            device_ids=payload.device_ids,
+            batch_code=payload.batch_code,
+            title=payload.title,
+            model_name=payload.model_name,
+            wifi_pass=payload.wifi_pass,
+            auto_print_missing_clabel=payload.auto_print_missing_clabel,
+            force_reprint_clabel=payload.force_reprint_clabel,
+            print_batch_sheet_remote=payload.print_batch_sheet_remote,
+            inut_dev_host=payload.inut_dev_host,
+            inut_dev_printer=payload.inut_dev_printer,
+        )
+    except Exception as exc:
+        logger.exception("Loi khi chay Batch Printer San Xuat (POST)")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
