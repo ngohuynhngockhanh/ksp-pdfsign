@@ -4663,6 +4663,7 @@ export interface PieceworkContractItem {
   worker_address: string;
   worker_bank_account: string;
   worker_bank_name: string;
+  payment_method?: "bank_transfer" | "cash";
   total_amount: number;
   tax_rate: number;
   tax_amount: number;

@@ -84,6 +84,7 @@ class PieceworkContractCreate(BaseModel):
     worker_address: str = ""
     worker_bank_account: str = ""
     worker_bank_name: str = ""
+    payment_method: str = "bank_transfer"  # bank_transfer | cash (admin-only option)
     total_amount: float = 0.0
     items: list[WorkItem] = Field(default_factory=list)
     note: str = ""
@@ -143,6 +144,7 @@ class PieceworkContractUpdate(BaseModel):
     worker_address: str | None = None
     worker_bank_account: str | None = None
     worker_bank_name: str | None = None
+    payment_method: str | None = None
     total_amount: float | None = None
     items: list[WorkItem] | None = None
     note: str | None = None
@@ -662,16 +664,27 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "doc_ids": [c.id_card_front_doc_id, c.id_card_back_doc_id],
     })
     
-    # 2. STK Ngan hang chinh chu
-    bank_val = validate_bank_account(c.worker_bank_account, c.worker_bank_name, c.worker_name)
-    has_bank = bool(c.worker_bank_account.strip() and c.worker_bank_name.strip() and bank_val.get("valid"))
-    checklist.append({
-        "key": "bank_account",
-        "label": "Tài khoản ngân hàng chính chủ",
-        "ok": has_bank,
-        "detail": f"{c.worker_bank_account} ({c.worker_bank_name}) · Chính chủ: {c.worker_name}" if has_bank else "Chưa có số tài khoản hoặc ngân hàng thụ hưởng",
-        "validation": bank_val,
-    })
+    # 2. Phuong thuc nhan thu lao (STK Ngan hang hoac Tien mat tai chan cong trinh)
+    is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+    if is_cash:
+        has_bank = True
+        checklist.append({
+            "key": "bank_account",
+            "label": "Hình thức nhận thù lao (Tiền mặt)",
+            "ok": True,
+            "detail": f"💵 Nhận tiền mặt trực tiếp tại chân công trình ({c.total_amount:,.0f}đ · Hợp lệ dưới 5M)",
+            "validation": {"valid": True, "mode": "cash", "note": "Nhận tiền mặt tại chân công trình"},
+        })
+    else:
+        bank_val = validate_bank_account(c.worker_bank_account, c.worker_bank_name, c.worker_name)
+        has_bank = bool(c.worker_bank_account.strip() and c.worker_bank_name.strip() and bank_val.get("valid"))
+        checklist.append({
+            "key": "bank_account",
+            "label": "Tài khoản ngân hàng chính chủ",
+            "ok": has_bank,
+            "detail": f"{c.worker_bank_account} ({c.worker_bank_name}) · Chính chủ: {c.worker_name}" if has_bank else "Chưa có số tài khoản hoặc ngân hàng thụ hưởng",
+            "validation": bank_val,
+        })
     
     # 3. Nghiem thu & Anh hien truong
     photos = []
@@ -742,16 +755,27 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "doc_id": c.contract_pdf_doc_id,
     })
     
-    # 7. Uy nhiem chi Ngan hang (UNC Techcombank 79713)
+    # 7. Chung tu thanh toan (UNC Ngan hang hoac Xac nhan tien mat tai chan cong trinh)
     unc_val = inspect_document_file(c.bank_proof_doc_id) if c.bank_proof_doc_id else None
-    checklist.append({
-        "key": "bank_unc",
-        "label": "Ủy nhiệm chi Techcombank 79713",
-        "ok": c.has_bank_proof,
-        "detail": "Đã kẹp chứng từ UNC thanh toán không dùng tiền mặt" if c.has_bank_proof else "Chưa thanh toán hoặc chưa kẹp UNC",
-        "validation": unc_val,
-        "doc_id": c.bank_proof_doc_id,
-    })
+    if is_cash:
+        cash_ok = bool(c.has_bank_proof or c.is_signed_by_worker)
+        checklist.append({
+            "key": "bank_unc",
+            "label": "Xác nhận nhận tiền mặt tại chân công trình (Phụ lục III)",
+            "ok": cash_ok,
+            "detail": "Đã xác nhận nhận đủ tiền mặt trực tiếp tại chân công trình" if cash_ok else "Chờ nghiệm thu & ký xác nhận nhận tiền mặt tại chân công trình",
+            "validation": unc_val,
+            "doc_id": c.bank_proof_doc_id,
+        })
+    else:
+        checklist.append({
+            "key": "bank_unc",
+            "label": "Ủy nhiệm chi Techcombank 79713",
+            "ok": c.has_bank_proof,
+            "detail": "Đã kẹp chứng từ UNC thanh toán không dùng tiền mặt" if c.has_bank_proof else "Chưa thanh toán hoặc chưa kẹp UNC",
+            "validation": unc_val,
+            "doc_id": c.bank_proof_doc_id,
+        })
     
     missing_keys = [item["key"] for item in checklist if not item["ok"] and item["key"] not in ("bank_unc",)]
     can_pay = (has_id and has_bank and has_acc and tax_ok and c.is_signed_by_worker)
@@ -783,6 +807,8 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "status_label": status_label,
         "status_color": status_color,
         "is_sub_5m": is_sub_5m,
+        "payment_method": "cash" if is_cash else "bank_transfer",
+        "is_cash": is_cash,
     }
 
 
@@ -846,7 +872,8 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
 
     vietqr_data_uri = ""
     transfer_memo = ""
-    if c.worker_bank_account and c.worker_name:
+    is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+    if not is_cash and c.worker_bank_account and c.worker_name:
         from .standards import _strip_accents
         import httpx
         clean_name = _strip_accents(c.worker_name).upper().strip()[:46]
@@ -945,6 +972,9 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "transfer_memo": transfer_memo,
         "contract_type": c.contract_type or "thi_cong",
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
+        "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
+        "payment_method": "cash" if is_cash else "bank_transfer",
+        "is_cash": is_cash,
     }
     
     html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
@@ -956,6 +986,7 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
     is_fuji = "FUJI" in code_up or c.id == 2
     is_mkt = "MKT" in code_up or c.id == 3
     is_rk = "RK3528" in code_up or "RK3518" in code_up or c.id == 4
+    is_pickleball = "PICKLE" in code_up or c.id == 5
     if is_fuji:
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 10, 11, 2, 47)
@@ -967,6 +998,10 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
         # HĐ Phần mềm & Kiểm thử RK3528 Image Creator ký 01/10/2026, hoàn thành & bàn giao trong 07 ngày (08/10/2026), thanh toán UNC ngày 14/10/2026 11:36 SA
         app2_dt = datetime(2026, 10, 8, 16, 42, 19)
         app3_dt = datetime(2026, 10, 14, 14, 28, 35)
+    elif is_pickleball:
+        # HĐ Khoán lắp đặt, bảo hành & bảo trì KN Pickleball Club ký 01/10/2026, nghiệm thu 16/10/2026, thanh toán Tháng 10/2026
+        app2_dt = datetime(2026, 10, 16, 16, 28, 34)
+        app3_dt = datetime(2026, 10, 18, 15, 18, 27)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
@@ -1029,6 +1064,9 @@ def render_appendix2_pdf(c: PieceworkContract) -> bytes:
         "worker_face_photo_data": c.worker_face_photo_data,
         "contract_type": c.contract_type or "thi_cong",
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
+        "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
+        "payment_method": "cash" if (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash" else "bank_transfer",
+        "is_cash": (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash",
     }
     html_text = _env.get_template("phu_luc_2_nghiem_thu.html").render(**ctx)
     return HTML(string=html_text).write_pdf()
@@ -1077,6 +1115,9 @@ def render_appendix3_pdf(c: PieceworkContract) -> bytes:
         "inut_signed_date_display": c.inut_signed_at.strftime("%d/%m/%Y %H:%M:%S") if c.inut_signed_at else ngay_thanh_toan_display,
         "worker_signature_data": c.worker_signature_data,
         "worker_face_photo_data": c.worker_face_photo_data,
+        "location": c.location or "Hiện trường công trình",
+        "payment_method": "cash" if (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash" else "bank_transfer",
+        "is_cash": (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash",
     }
     html_text = _env.get_template("phu_luc_3_thanh_toan.html").render(**ctx)
     return HTML(string=html_text).write_pdf()
@@ -1125,6 +1166,7 @@ def list_piecework_contracts(
             "worker_address": c.worker_address,
             "worker_bank_account": c.worker_bank_account,
             "worker_bank_name": c.worker_bank_name,
+            "payment_method": getattr(c, "payment_method", "bank_transfer") or "bank_transfer",
             "total_amount": c.total_amount,
             "tax_rate": c.tax_rate,
             "tax_amount": c.tax_amount,
@@ -1172,6 +1214,7 @@ def get_piecework_contract(
         "worker_address": c.worker_address,
         "worker_bank_account": c.worker_bank_account,
         "worker_bank_name": c.worker_bank_name,
+        "payment_method": getattr(c, "payment_method", "bank_transfer") or "bank_transfer",
         "total_amount": c.total_amount,
         "tax_rate": c.tax_rate,
         "tax_amount": c.tax_amount,
@@ -1312,6 +1355,7 @@ def create_piecework_contract(
         worker_address=body.worker_address,
         worker_bank_account=body.worker_bank_account,
         worker_bank_name=body.worker_bank_name,
+        payment_method="cash" if (body.payment_method or "").strip().lower() == "cash" else "bank_transfer",
         total_amount=total,
         tax_rate=tax_rate,
         tax_amount=tax_amount,
@@ -1365,6 +1409,8 @@ def update_piecework_contract(
     if body.worker_address is not None: c.worker_address = body.worker_address
     if body.worker_bank_account is not None: c.worker_bank_account = body.worker_bank_account
     if body.worker_bank_name is not None: c.worker_bank_name = body.worker_bank_name
+    if body.payment_method is not None:
+        c.payment_method = "cash" if body.payment_method.strip().lower() == "cash" else "bank_transfer"
     if body.note is not None: c.note = body.note
     
     if body.has_id_card_front is not None: c.has_id_card_front = body.has_id_card_front
@@ -2699,19 +2745,53 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
             </div>
             """
+        is_cash_portal = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+        pay_row_signed = (
+            '<div class="field-row"><span class="field-label">Hình thức nhận thù lao:</span><span class="field-val" style="color:#15803d;">💵 Nhận tiền mặt tại chân công trình</span></div>'
+            if is_cash_portal
+            else f'<div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account or "Chưa có"} ({c.worker_bank_name or ""})</span></div>'
+        )
         worker_info_html = f"""
         <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{c.worker_name or 'Chưa có'}</span></div>
         <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{c.worker_id_card or 'Chưa có'}</span></div>
         <div class="field-row"><span class="field-label">Số điện thoại:</span><span class="field-val">{c.worker_phone or 'Chưa có'}</span></div>
-        <div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account or 'Chưa có'} ({c.worker_bank_name or ''})</span></div>
+        {pay_row_signed}
         <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{c.worker_address or 'Chưa có'}</span></div>
         {cccd_preview_signed}
         {site_photos_preview_signed}
         {bank_proof_preview_signed}
         """
     else:
+        is_cash_portal = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+        if is_cash_portal:
+            payment_inputs_html = f"""
+          <div style="padding:12px 14px; background:#ecfdf5; border:1.5px solid #6ee7b7; border-radius:10px; display:flex; align-items:flex-start; gap:10px;">
+            <span style="font-size:22px; line-height:1;">💵</span>
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:#065f46;">Hình thức nhận thù lao: Nhận tiền mặt tại chân công trình</div>
+              <div style="font-size:12px; color:#047857; margin-top:3px;">
+                Hợp đồng này được duyệt chi trả trực tiếp <b>{c.total_amount:,.0f} VNĐ bằng tiền mặt tại chân công trình</b> ngay khi nghiệm thu hoàn thành công việc (không cần kê khai số tài khoản ngân hàng).
+              </div>
+            </div>
+          </div>
+            """
+            intro_text_portal = "Vui lòng điền / kiểm tra chính xác thông tin cá nhân của bạn trước khi ký xác nhận nhận khoán (nhận tiền mặt tại chân công trình):"
+        else:
+            payment_inputs_html = f"""
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số tài khoản ngân hàng (*):</label>
+              <input type="text" id="inputWorkerBankAcc" value="{c.worker_bank_account or ''}" placeholder="STK nhận thù lao" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Tên ngân hàng (*):</label>
+              <input type="text" id="inputWorkerBankName" value="{c.worker_bank_name or ''}" placeholder="Vietcombank, MB, Techcombank, ACB, VPBank..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            </div>
+          </div>
+            """
+            intro_text_portal = "Vui lòng điền / kiểm tra chính xác thông tin cá nhân và tài khoản ngân hàng nhận thù lao của bạn trước khi ký:"
         worker_info_html = f"""
-        <p style="font-size:12px; color:#64748b; margin:0 0 12px 0;">Vui lòng điền / kiểm tra chính xác thông tin cá nhân và tài khoản ngân hàng nhận thù lao của bạn trước khi ký:</p>
+        <p style="font-size:12px; color:#64748b; margin:0 0 12px 0;">{intro_text_portal}</p>
         <div style="display:flex; flex-direction:column; gap:10px;">
           <div>
             <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Họ và tên người nhận khoán (*):</label>
@@ -2741,16 +2821,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Địa chỉ thường trú / Nơi ở (*):</label>
             <input type="text" id="inputWorkerAddress" value="{c.worker_address or ''}" placeholder="Địa chỉ theo CCCD hoặc nơi cư trú" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
           </div>
-          <div style="display:flex; gap:10px;">
-            <div style="flex:1;">
-              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số tài khoản ngân hàng (*):</label>
-              <input type="text" id="inputWorkerBankAcc" value="{c.worker_bank_account or ''}" placeholder="STK nhận thù lao" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-            </div>
-            <div style="flex:1;">
-              <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Tên ngân hàng (*):</label>
-            <input type="text" id="inputWorkerBankName" value="{c.worker_bank_name or ''}" placeholder="Vietcombank, MB, Techcombank, ACB, VPBank..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-            </div>
-          </div>
+          {payment_inputs_html}
           <!-- Chụp / Tải 2 mặt CCCD -->
           <div style="margin-top:6px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
             <div style="font-size:12.5px; font-weight:700; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
@@ -2986,6 +3057,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     <div style="margin-top:8px; padding:8px 12px; background:#f0fdf4; border-radius:8px; font-size:12.5px; color:#166534;">
       {deficiency['checklist'][3]['detail']}
     </div>
+    {f'<div style="margin-top:8px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12.5px; font-weight:700; color:#065f46;">💵 Hình thức nhận thù lao: Nhận tiền mặt trực tiếp tại chân công trình ({c.total_amount:,.0f} VNĐ)</div>' if is_cash_portal else ''}
   </div>
 
   <!-- Deficiency Checklist -->
@@ -2993,7 +3065,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     <h3 style="font-size:15px; margin:0 0 8px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
       <span>📋</span> Giám sát hồ sơ & Yêu cầu bổ sung
     </h3>
-    <p style="font-size:12.5px; color:#64748b; margin:0 0 12px 0;">Để công ty chuyển khoản thanh toán nhanh nhất, vui lòng hoàn thiện các mục hồ sơ sau:</p>
+    <p style="font-size:12.5px; color:#64748b; margin:0 0 12px 0;">{'Để hoàn tất hồ sơ nhận tiền mặt tại chân công trình, vui lòng hoàn thiện các mục sau:' if is_cash_portal else 'Để công ty chuyển khoản thanh toán nhanh nhất, vui lòng hoàn thiện các mục hồ sơ sau:'}</p>
     {checklist_html}
   </div>
 
@@ -3016,7 +3088,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
           <div style="font-weight:700; font-size:13px; color:#0f172a;">1. Hợp đồng giao khoán & Phụ lục I (CCCD)</div>
-          <div style="font-size:11.5px; color:#64748b;">Số: {c.contract_code} · Ngày ký: {c.contract_date or '20/09/2026'}</div>
+          <div style="font-size:11.5px; color:#64748b;">Số: {c.contract_code} · Ngày ký: {c.contract_date or '01/10/2026'}</div>
         </div>
         <a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="padding:6px 12px; background:#0284c7; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           📄 Xem PDF
@@ -3027,18 +3099,18 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
           <div style="font-weight:700; font-size:13px; color:#0f172a;">2. Phụ lục II: Biên bản nghiệm thu & Ảnh hiện trường</div>
-          <div style="font-size:11.5px; color:#64748b;">Nghiệm thu ĐẠT 100% · Ký ngày: 24/09/2026 (trước giờ xuất HĐ)</div>
+          <div style="font-size:11.5px; color:#64748b;">Nghiệm thu khối lượng công việc thực tế ({c.total_amount:,.0f}đ)</div>
         </div>
         <a href="/api/public/khoan/{c.portal_token}/phu-luc-2/pdf" target="_blank" style="padding:6px 12px; background:#10b981; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           🏗️ Xem PDF
         </a>
       </div>
 
-      <!-- Doc 3: Phụ lục 3: Thanh toán & UNC -->
+      <!-- Doc 3: Phụ lục 3: Thanh toán -->
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
-          <div style="font-weight:700; font-size:13px; color:#0f172a;">3. Phụ lục III: Xác nhận thanh toán & Thanh lý HĐ (Kèm UNC)</div>
-          <div style="font-size:11.5px; color:#64748b;">Đã thanh toán 2.668.500đ · Ký ngày: 09/10/2026 (sau UNC)</div>
+          <div style="font-weight:700; font-size:13px; color:#0f172a;">{'3. Phụ lục III: Xác nhận nhận tiền mặt tại chân công trình & Thanh lý HĐ' if is_cash_portal else '3. Phụ lục III: Xác nhận thanh toán & Thanh lý HĐ (Kèm UNC)'}</div>
+          <div style="font-size:11.5px; color:#64748b;">{f'Nhận tiền mặt tại chân công trình ({c.total_amount:,.0f}đ)' if is_cash_portal else f'Thanh toán chuyển khoản ({c.total_amount:,.0f}đ)'}</div>
         </div>
         <a href="/api/public/khoan/{c.portal_token}/phu-luc-3/pdf" target="_blank" style="padding:6px 12px; background:#6366f1; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           💳 Xem PDF

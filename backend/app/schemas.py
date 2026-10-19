@@ -287,11 +287,11 @@ class FactoryCertificateGenerate(BaseModel):
 # --- Bao gia / De nghi thanh toan ---
 class QuoteItem(BaseModel):
     ten: str = ""
+    ghi_chu: str = ""
     dvt: str = ""
     so_luong: float = 0
     don_gia: float = 0
     thue_suat: float = 0  # % (0/5/8/10)
-
 
 class QuoteGenerate(BaseModel):
     template_key: str = "bao_gia"  # bao_gia | de_nghi_tt

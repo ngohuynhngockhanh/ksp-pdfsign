@@ -146,6 +146,7 @@ export function PieceworkContracts() {
     worker_address: "",
     worker_bank_account: "",
     worker_bank_name: "Techcombank",
+    payment_method: "bank_transfer" as "bank_transfer" | "cash",
     note: "",
     items: [
       { ten: "Thi công lắp đặt thiết bị theo yêu cầu kỹ thuật", dvt: "Gói", so_luong: 1, don_gia: 4500000, thanh_tien: 4500000 },
@@ -317,6 +318,7 @@ export function PieceworkContracts() {
       worker_address: c.address,
       worker_bank_account: c.bank_account,
       worker_bank_name: c.bank_name,
+      payment_method: "bank_transfer",
       note: `Giao khoán cho nhà cung cấp/thợ ${c.name} (${c.code}).`,
       items: [
         { ten: c.skills || "Thi công lắp đặt thiết bị theo yêu cầu kỹ thuật", dvt: "Gói", so_luong: 1, don_gia: 4500000, thanh_tien: 4500000 },
@@ -589,6 +591,7 @@ export function PieceworkContracts() {
         worker_address: editingContract.worker_address,
         worker_bank_account: editingContract.worker_bank_account,
         worker_bank_name: editingContract.worker_bank_name,
+        payment_method: editingContract.payment_method || "bank_transfer",
         total_amount: total,
         items: editingContract.items,
         note: editingContract.note,
@@ -899,7 +902,11 @@ export function PieceworkContracts() {
                         <div style={{ fontWeight: 600, color: "#0f172a" }}>{c.worker_name}</div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>CCCD: {c.worker_id_card || "Chưa có"}</div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>SĐT: {c.worker_phone || "Chưa có"}</div>
-                        <div style={{ fontSize: 11.5, color: "#0284c7" }}>{c.worker_bank_account} ({c.worker_bank_name})</div>
+                        {c.payment_method === "cash" ? (
+                          <div style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>💵 Nhận tiền mặt tại chân công trình</div>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: "#0284c7" }}>{c.worker_bank_account} ({c.worker_bank_name})</div>
+                        )}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>
@@ -1115,8 +1122,12 @@ export function PieceworkContracts() {
                       <span style={{ color: "#334155" }}>{c.worker_id_card || "Chưa có"} · {c.worker_phone || "N/A"}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>STK nhận tiền:</span>
-                      <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.worker_bank_account} ({c.worker_bank_name})</span>
+                      <span style={{ color: "#64748b" }}>Hình thức nhận:</span>
+                      {c.payment_method === "cash" ? (
+                        <span style={{ color: "#15803d", fontWeight: 700 }}>💵 Nhận tiền mặt tại chân công trình</span>
+                      ) : (
+                        <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.worker_bank_account} ({c.worker_bank_name})</span>
+                      )}
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "#64748b" }}>Công trình:</span>
@@ -2863,6 +2874,19 @@ export function PieceworkContracts() {
                 />
               </div>
 
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#0f766e", marginBottom: 4 }}>
+                  💳 Hình thức chi trả thù lao (Chỉ Admin được chọn)
+                </label>
+                <select
+                  value={editingContract.payment_method || "bank_transfer"}
+                  onChange={(e) => setEditingContract({ ...editingContract, payment_method: e.target.value as "bank_transfer" | "cash" })}
+                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1.5px solid #0f766e", background: editingContract.payment_method === "cash" ? "#ecfdf5" : "#fff", fontSize: 13, fontWeight: 600, minHeight: 40 }}
+                >
+                  <option value="bank_transfer">🏦 Chuyển khoản ngân hàng (Mặc định)</option>
+                  <option value="cash">💵 Nhận tiền mặt tại chân công trình (Chỉ áp dụng &lt; 5 triệu đồng)</option>
+                </select>
+              </div>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số tài khoản ngân hàng chính chủ</label>
                 <input
@@ -3060,6 +3084,19 @@ export function PieceworkContracts() {
                 />
               </div>
 
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#0f766e", marginBottom: 4 }}>
+                  💳 Hình thức chi trả thù lao (Chỉ Admin được chọn)
+                </label>
+                <select
+                  value={formData.payment_method}
+                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as "bank_transfer" | "cash" })}
+                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1.5px solid #0f766e", background: formData.payment_method === "cash" ? "#ecfdf5" : "#fff", fontSize: 13, fontWeight: 600, minHeight: 40 }}
+                >
+                  <option value="bank_transfer">🏦 Chuyển khoản ngân hàng (Mặc định)</option>
+                  <option value="cash">💵 Nhận tiền mặt tại chân công trình (Chỉ áp dụng &lt; 5 triệu đồng)</option>
+                </select>
+              </div>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số tài khoản ngân hàng chính chủ</label>
                 <input

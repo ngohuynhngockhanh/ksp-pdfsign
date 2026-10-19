@@ -50,6 +50,11 @@ QUOTE_TEMPLATES: dict[str, dict] = {
         "label": "Báo giá Billiards (Check VAR & Camera)",
         "doc_type": "bao_gia",
     },
+    "bao_gia_solar": {
+        "file": "bao_gia_solar.html",
+        "label": "Báo giá Giải pháp Giám sát Điện Mặt Trời (iNut Solar & Hub)",
+        "doc_type": "bao_gia",
+    },
 }
 
 # Giay xuat xuong co bo truong rieng, khong tron voi BBBG/bao gia.

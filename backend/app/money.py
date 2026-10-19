@@ -108,12 +108,15 @@ def compute_totals(items: list[dict]) -> dict:
         tong_thue += thue
         out_items.append({
             "ten": it.get("ten", ""),
+            "ghi_chu": it.get("ghi_chu", ""),
+            "nhom": it.get("nhom", ""),
             "dvt": it.get("dvt", ""),
             "so_luong": sl,
             "don_gia": dg,
             "thue_suat": ts,
             "thanh_tien": thanh_tien,
             "tien_thue": thue,
+            "tong_dong": thanh_tien + thue,
         })
     tong = round(tong_truoc_thue) + round(tong_thue)
     return {

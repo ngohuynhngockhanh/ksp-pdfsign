@@ -38,6 +38,7 @@
   .party-table .sep { width: 2%; text-align: center; }
   
   table.data-table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  table.data-table tr { page-break-inside: avoid; break-inside: avoid; }
   table.data-table th, table.data-table td { border: 1px solid #333; padding: 4px 6px; font-size: 10.5px; }
   table.data-table th { background-color: #f1f6f9; text-align: center; font-weight: bold; }
   table.data-table td.c { text-align: center; }
@@ -68,6 +69,8 @@
     - Căn cứ Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b> ngày {{ contract_date_display }} ký giữa hai Bên;<br>
     {% if is_software %}
     - Căn cứ kết quả kiểm thử thực tế phần mềm <b>iNut RK3528 Image Creator</b> trên máy chủ Linux và lô bo mạch <b>Mạch điện tử PCBA Model: RK3518 EMCP, Hiệu: Haoyu (Mã kho: HH9019)</b> tại kho sản xuất nội bộ Công ty iNut.
+    {% elif is_pickleball %}
+    - Căn cứ kết quả lắp đặt hoàn thiện, căn chỉnh góc quét, tích hợp mã QR CheckVar, hướng dẫn vận hành và kiểm tra bảo hành – bảo trì thực tế hệ thống 08 Camera Dahua (02 DH-H3AE, 06 DH-F4C-LED) và Thiết bị Cắt cam & CheckVar <b>iNut Smartcity – Model iNut4C</b> tại cụm sân <b>KN Pickleball Club</b> (theo Hợp đồng kinh tế số <b>20072026-INUT-KN PICKLEBALL</b>).
     {% else %}
     - Căn cứ kết quả khảo sát, thi công lắp đặt và kiểm thử vận hành thực tế tại hiện trường công trình.
     {% endif %}
@@ -123,6 +126,10 @@
   <p style="margin: 2px 0;">1. Bên B đã hoàn thành đầy đủ trong thời hạn 07 ngày (01/10/2026 – 08/10/2026) và bàn giao trọn bộ mã nguồn (Source code), kịch bản tự động hóa cùng các phân hệ phần mềm <b>iNut RK3528 Image Creator</b> chạy ổn định trên môi trường máy chủ Linux (Ubuntu/Debian Server) do Bên B tự chủ máy móc triển khai.</p>
   <p style="margin: 2px 0;">2. Hệ thống tự động nhận diện cổng USB Maskrom/Loader và nạp tự động <b>Bootloader + Firmware Image chuẩn của Công ty iNut</b> vào dòng hàng đầu vào <b>Linh kiện máy tính: Mạch điện tử PCBA đã gia công linh kiện, chưa hoàn chỉnh, không có firmware. Model: RK3518 EMCP, Hiệu: Haoyu. Hàng mới 100% (Mã kho: HH9019)</b> chính xác 100%, kiểm tra checksum SHA256/MD5 và xuất bản báo cáo kiểm thử xuất xưởng thành phẩm <b>iNut Smartcity - Data Logger v1.1 - Rockchip (Mã kho: INUT_RK3518)</b> đạt yêu cầu kỹ thuật.</p>
   <p style="margin: 2px 0;">3. Hai Bên thống nhất nghiệm thu đạt yêu cầu 100%, hạch toán vào chi phí sản xuất nội bộ trong kỳ và làm căn cứ thanh toán thù lao giao khoán bằng chuyển khoản ngân hàng trong Tháng 10/2026.</p>
+  {% elif is_pickleball %}
+  <p style="margin: 2px 0;">1. Bên B đã hoàn thành đầy đủ công tác lắp đặt hoàn thiện, căn chỉnh góc quét tối ưu, kiểm tra đường truyền tín hiệu/nguồn cho <b>08 Camera Dahua (02 bộ DH-H3AE 3MP trong nhà xoay 360° & 06 bộ DH-F4C-LED 4MP ngoài trời)</b> và bộ thiết bị giám sát tại cụm sân <b>KN Pickleball Club</b>.</p>
+  <p style="margin: 2px 0;">2. Thiết bị <b>iNut Smartcity: Thiết bị Cắt cam và CheckVar – Model iNut4C</b> cùng <b>04 bảng mã QR</b> tại sân hoạt động ổn định 100% (xử lý & lưu trữ đồng thời 04 luồng Full HD 1080p, quét QR xem/tải clip trực tiếp trên Android & iOS không cần cài App, luồng Livestream Facebook/OBS thông suốt); kỹ thuật viên và quản lý sân đã được hướng dẫn sử dụng thành thạo và xác nhận công tác bảo hành, bảo trì đạt chuẩn theo Điều 3 & Điều 5 Hợp đồng kinh tế số <b>20072026-INUT-KN PICKLEBALL</b>.</p>
+  <p style="margin: 2px 0;">3. Hai Bên thống nhất nghiệm thu đạt yêu cầu 100% và làm căn cứ thanh toán thù lao giao khoán bằng {% if is_cash %}<b>tiền mặt trực tiếp tại chân công trình</b>{% else %}chuyển khoản ngân hàng{% endif %} theo đúng thỏa thuận hợp đồng.</p>
   {% else %}
   <p style="margin: 2px 0;">1. Toàn bộ thiết bị phần cứng, dây cáp tín hiệu PoE đã được kéo rải và lắp đặt an toàn, đúng tiêu chuẩn kỹ thuật.</p>
   <p style="margin: 2px 0;">2. Hệ thống truyền luồng hình ảnh camera vận hành ổn định, chất lượng hình ảnh sắc nét, tính năng CheckVar hoạt động chính xác.</p>

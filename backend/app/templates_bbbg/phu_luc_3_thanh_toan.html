@@ -63,7 +63,11 @@
   <div class="basis">
     - Căn cứ Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b> ngày {{ contract_date_display }} ký giữa hai Bên;<br>
     - Căn cứ Biên bản nghiệm thu hoàn thành công việc (Phụ lục II);<br>
+    {% if is_cash %}
+    - Căn cứ việc chi trả và giao nhận trực tiếp 100% tiền mặt thù lao giao khoán tại chân công trình giữa đại diện Bên A và Bên B.
+    {% else %}
     - Căn cứ chứng từ lệnh chuyển khoản thanh toán ngân hàng Techcombank của Bên A.
+    {% endif %}
   </div>
 
   <p style="margin: 4px 0;">Hôm nay, ngày {{ ngay_thanh_toan_display }}, hai Bên cùng thống nhất lập Biên bản xác nhận thanh toán và thanh lý hợp đồng với các nội dung sau:</p>
@@ -71,19 +75,27 @@
   <div class="party-title">BÊN GIAO KHOÁN (BÊN A): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
   <table class="party-table">
     <tr><td class="key">Đại diện</td><td class="sep">:</td><td>Ông <b>NGÔ HUỲNH NGỌC KHÁNH</b> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Giám đốc</td></tr>
+    {% if is_cash %}
+    <tr><td class="key">Phương thức chi trả</td><td class="sep">:</td><td><b>Chi tiền mặt trực tiếp tại chân công trình</b> (MST: 4401053694)</td></tr>
+    {% else %}
     <tr><td class="key">Tài khoản chi trả</td><td class="sep">:</td><td><b>79713</b> tại Techcombank (MST: 4401053694)</td></tr>
+    {% endif %}
   </table>
 
   <div class="party-title">BÊN NHẬN KHOÁN (BÊN B): ÔNG {{ worker_name|upper }}</div>
   <table class="party-table">
     <tr><td class="key">Họ và tên</td><td class="sep">:</td><td><b>{{ worker_name }}</b> &nbsp;&nbsp;&nbsp;&nbsp; Số CCCD: <b>{{ worker_id_card }}</b></td></tr>
+    {% if is_cash %}
+    <tr><td class="key">Hình thức nhận tiền</td><td class="sep">:</td><td><b style="color:#15803d;">Nhận tiền mặt trực tiếp tại chân công trình</b> ({{ location or "Hiện trường công trình" }})</td></tr>
+    {% else %}
     <tr><td class="key">Tài khoản nhận tiền</td><td class="sep">:</td><td><b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b> (Chính chủ: {{ worker_name }})</td></tr>
+    {% endif %}
   </table>
 
   <div class="pay-box">
     <b>NỘI DUNG XÁC NHẬN THANH TOÁN & THANH LÝ:</b><br>
     1. <b>Số tiền thù lao thanh toán:</b> <span style="font-size: 13.5px; font-weight: bold; color: #15803d;">{{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ</span> (Bằng chữ: <i>{{ total_amount_in_word }}</i>).<br>
-    2. <b>Hình thức thanh toán:</b> Chuyển khoản ngân hàng trực tiếp từ tài khoản Bên A sang tài khoản thụ hưởng chính chủ của Bên B.<br>
+    2. <b>Hình thức thanh toán:</b> {% if is_cash %}Chi trả trực tiếp bằng <b style="color:#15803d;">TIỀN MẶT TẠI CHÂN CÔNG TRÌNH</b> ({{ location or "hiện trường công trình" }}). Bên B đã kiểm đếm và nhận đủ 100% tiền mặt tại chỗ.{% else %}Chuyển khoản ngân hàng trực tiếp từ tài khoản Bên A sang tài khoản thụ hưởng chính chủ của Bên B.{% endif %}<br>
     3. <b>Xác nhận của Bên B:</b> Bên B xác nhận đã nhận đầy đủ 100% thù lao khoán việc, không còn bất kỳ thắc mắc hay khiếu nại tài chính nào đối với Bên A.<br>
     4. <b>Thanh lý hợp đồng:</b> Hai Bên cùng thống nhất thanh lý Hợp đồng giao khoán công việc số <b>{{ contract_code }}</b>.
   </div>

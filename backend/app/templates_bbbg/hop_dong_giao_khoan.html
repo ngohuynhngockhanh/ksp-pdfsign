@@ -5,7 +5,7 @@
 <style>
   @page { 
     size: A4; 
-    margin: 12mm 15mm 12mm 15mm; 
+    margin: 10mm 14mm 10mm 14mm; 
     @bottom-center { 
       content: "Trang " counter(page) "/" counter(pages); 
       font-size: 10px; 
@@ -15,8 +15,8 @@
   * { box-sizing: border-box; }
   body { 
     font-family: "DejaVu Serif", "Times New Roman", serif; 
-    font-size: 11.2px; 
-    line-height: 1.38; 
+    font-size: 10.8px; 
+    line-height: 1.32; 
     color: #111; 
   }
   .header { display: flex; justify-content: space-between; text-align: center; margin-bottom: 5px; }
@@ -27,21 +27,22 @@
   .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
   .soline { margin-top: 2px; font-size: 11px; font-weight: normal; }
   
-  h1 { text-align: center; font-size: 16px; margin: 12px 0 2px; text-transform: uppercase; }
-  .number { text-align: center; font-size: 12px; font-style: italic; margin-bottom: 8px; }
-  .basis { text-align: justify; margin-bottom: 8px; font-style: italic; font-size: 11.5px; }
+  h1 { text-align: center; font-size: 15px; margin: 6px 0 2px; text-transform: uppercase; }
+  .number { text-align: center; font-size: 11.2px; font-style: italic; margin-bottom: 5px; }
+  .basis { text-align: justify; margin-bottom: 5px; font-style: italic; font-size: 10.8px; }
   
-  .party-title { font-weight: bold; text-transform: uppercase; font-size: 12px; margin-top: 6px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
-  .party-table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
-  .party-table td { padding: 1.5px 3px; vertical-align: top; }
+  .party-title { font-weight: bold; text-transform: uppercase; font-size: 11.2px; margin-top: 4px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
+  .party-table { width: 100%; border-collapse: collapse; margin: 2px 0 5px; }
+  .party-table td { padding: 1px 3px; vertical-align: top; }
   .party-table .key { width: 22%; font-weight: bold; }
   .party-table .sep { width: 2%; text-align: center; }
   
-  .article-title { font-weight: bold; text-transform: uppercase; margin-top: 9px; margin-bottom: 3px; font-size: 12px; color: #174b72; }
-  p { margin: 3px 0; text-align: justify; }
+  .article-title { font-weight: bold; text-transform: uppercase; margin-top: 6px; margin-bottom: 2px; font-size: 11.2px; color: #174b72; }
+  p { margin: 2px 0; text-align: justify; }
   
   table.data-table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-  table.data-table th, table.data-table td { border: 1px solid #333; padding: 4.5px 6px; font-size: 11px; }
+  table.data-table tr { page-break-inside: avoid; break-inside: avoid; }
+  table.data-table th, table.data-table td { border: 1px solid #333; padding: 3.5px 5px; font-size: 10.5px; }
   table.data-table th { background-color: #f1f6f9; text-align: center; font-weight: bold; }
   table.data-table td.c { text-align: center; }
   table.data-table td.r { text-align: right; }
@@ -94,7 +95,11 @@
     {% if worker_tax_code %}<tr><td class="key">Mã số thuế cá nhân</td><td class="sep">:</td><td>{{ worker_tax_code }}</td></tr>{% endif %}
     <tr><td class="key">Địa chỉ thường trú</td><td class="sep">:</td><td>{{ worker_address }}</td></tr>
     <tr><td class="key">Số điện thoại liên hệ</td><td class="sep">:</td><td>{{ worker_phone }}</td></tr>
+    {% if is_cash %}
+    <tr><td class="key">Hình thức nhận tiền</td><td class="sep">:</td><td><b style="color:#15803d;">Nhận tiền mặt trực tiếp tại chân công trình</b></td></tr>
+    {% else %}
     <tr><td class="key">Tài khoản ngân hàng</td><td class="sep">:</td><td><b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b> (Chính chủ: {{ worker_name }})</td></tr>
+    {% endif %}
   </table>
 
   <p>Hai Bên cùng bàn bạc và thống nhất ký kết Hợp đồng giao khoán công việc với các điều khoản cụ thể sau:</p>
@@ -106,6 +111,8 @@
   {% if is_software %}
   <p>- <b>Thời gian thực hiện & bàn giao:</b> Trong vòng <b>07 (bảy) ngày</b> kể từ ngày 01/10/2026 đến hết ngày 08/10/2026.</p>
   <p>- <b>Vật tư / Tài nguyên đầu vào do Bên A cung cấp:</b> Phôi bo mạch phần cứng đầu vào <b>Linh kiện máy tính: Mạch điện tử PCBA đã gia công linh kiện, chưa hoàn chỉnh, không có firmware. Model: RK3518 EMCP, Hiệu: Haoyu. Hàng mới 100%</b> (Mã kho: <code>HH9019</code>, nhập khẩu chính ngạch theo Tờ khai Hải quan số <code>108286660050</code> & <code>108557300610</code> để sản xuất thành phẩm nội bộ <b>iNut Smartcity - Data Logger v1.1 - Rockchip</b> - Mã kho: <code>INUT_RK3518</code>) cùng gói <b>Bootloader (MiniLoaderAll.bin, u-boot.itb, trust.img)</b> và <b>Firmware Image gốc (.img)</b> của Công ty iNut.</p>
+  {% elif is_pickleball %}
+  <p>- <b>Căn cứ triển khai & Thiết bị áp dụng:</b> Thực hiện nghĩa vụ lắp đặt hoàn thiện, hướng dẫn sử dụng, bảo hành (01 năm lỗi 1 đổi 1) và bảo trì kỹ thuật theo <b>Hợp đồng kinh tế số 20072026-INUT-KN PICKLEBALL</b> ký ngày 20/07/2026 giữa <b>CÔNG TY TNHH KN PICKLEBALL CLUB</b> (MST: <code>0319378237</code>) và Bên A đối với tổ hợp thiết bị: <b>02 Bộ Camera Dahua DH-H3AE (3MP xoay 360 độ)</b>, <b>06 Bộ Camera Dahua DH-F4C-LED (4MP ngoài trời)</b>, <b>01 Bộ thiết bị vật tư giám sát lắp đặt tại sân</b>, <b>01 Bộ iNut Smartcity: Thiết bị Cắt cam và CheckVar – Model iNut4C</b> (số hóa 04 luồng Camera Full HD 1080p, xem/tải clip không cần cài App, Livestream Facebook/OBS) cùng <b>04 Bảng mã QR</b> tại sân.</p>
   {% endif %}
   <p>1.2. Chi tiết các hạng mục và khối lượng công việc giao khoán:</p>
 
@@ -152,7 +159,11 @@
 
   {% if tax_amount == 0 %}
   <div class="tax-notice">
+    {% if is_cash %}
+    <b>Chính sách thuế TNCN & Chi trả tiền mặt:</b> Giá trị khoán chi trả dưới 5.000.000 VNĐ/lần thuộc đối tượng được miễn khấu trừ 10% thuế TNCN tại nguồn theo <b>Khoản 2 Điều 50 Nghị định số 253/2026/NĐ-CP</b> và thuộc ngưỡng dưới 5.000.000 VNĐ được phép thanh toán trực tiếp bằng tiền mặt. Bên B nhận trọn vẹn 100% thù lao bằng tiền mặt tại chân công trình.
+    {% else %}
     <b>Chính sách thuế TNCN:</b> Giá trị khoán chi trả dưới 5.000.000 VNĐ/lần thuộc đối tượng được miễn khấu trừ 10% thuế TNCN tại nguồn theo đúng quy định tại <b>Khoản 2 Điều 50 Nghị định số 253/2026/NĐ-CP</b>. Bên B nhận trọn vẹn 100% thù lao chuyển khoản.
+    {% endif %}
   </div>
   {% else %}
   <div class="tax-notice">
@@ -166,6 +177,18 @@
   {% else %}
   <p>2.1. <b>Nghiệm thu:</b> Sau khi Bên B hoàn thành toàn bộ khối lượng công việc, hai Bên tiến hành nghiệm thu thực tế tại hiện trường. Hồ sơ nghiệm thu gồm: Biên bản nghiệm thu khối lượng hoàn thành, hình ảnh chụp thực tế thiết bị/công trình và Bảng thanh toán tiền thuê ngoài (Mẫu 07-TT).</p>
   {% endif %}
+  {% if is_cash %}
+  <p>2.2. <b>Thanh toán:</b> Khi có Biên bản nghiệm thu khối lượng hoàn thành đạt yêu cầu, Bên A thực hiện thanh toán tiền thù lao cho Bên B bằng hình thức <b>chi trả tiền mặt trực tiếp tại chân công trình</b> (kèm theo Biên bản xác nhận thanh toán & thanh lý hợp đồng — Phụ lục III).</p>
+  <div class="bank-box" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; page-break-inside: avoid;">
+    <div style="flex: 1;">
+      <b>Thông tin nhận thù lao tiền mặt của Bên B:</b><br>
+      - Người nhận tiền: <b>{{ worker_name|upper }}</b> {% if worker_id_card %}(Số CCCD: <b>{{ worker_id_card }}</b>){% endif %}<br>
+      - Hình thức nhận thù lao: <b style="color: #15803d;">Nhận tiền mặt trực tiếp tại chân công trình</b><br>
+      - Địa điểm giao nhận tiền mặt: <b>{{ location }}</b><br>
+      - Số tiền thù lao nhận khoán thực lĩnh: <b style="color: #b91c1c;">{{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ</b>
+    </div>
+  </div>
+  {% else %}
   <p>2.2. <b>Thanh toán:</b> Khi có Biên bản nghiệm thu khối lượng hoàn thành đạt yêu cầu, Bên A thực hiện thanh toán tiền thù lao cho Bên B bằng hình thức chuyển khoản ngân hàng không dùng tiền mặt trong vòng 30 (ba mươi) ngày kể từ ngày ký Biên bản nghiệm thu hợp đồng khoán.</p>
   <div class="bank-box" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; page-break-inside: avoid;">
     <div style="flex: 1;">
@@ -182,6 +205,7 @@
     </div>
     {% endif %}
   </div>
+  {% endif %}
 
   <div class="article-title">ĐIỀU 3. CAM KẾT KHÔNG PHÁT SINH QUAN HỆ LAO ĐỘNG</div>
   <p>3.1. Hai Bên khẳng định quan hệ hợp tác theo Hợp đồng này là <b>quan hệ giao khoán công việc theo sản phẩm/kết quả đầu ra thuần túy dân sự</b>, không cấu thành Hợp đồng lao động theo Bộ luật Lao động 2019 và không thuộc diện tham gia Bảo hiểm xã hội bắt buộc theo Luật BHXH 2024.</p>
