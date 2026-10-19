@@ -1,14 +1,13 @@
 ---
 name: batch-printer-sanxuat
-description: Quy trinh "Qua trinh san xuat iNut Data Logger v1.1" — Nhan danh sach ma thiet bi (vd 10 con inut_207_153,inut_207_159,...), kiem tra CSDL: neu ma nao da in tem Clabel 40x30 thi lay ngay san xuat da luu (khong in lai), neu chua in thi tu dong goi Clabel BLE in tem 40x30 truoc; sau do tao va in Bang Tong Hop Lo San Xuat 70x100 (Logo iNut, Thong tin Cong ty, Ngay gio in phieu, Bang tung dong thiet bi + NSX, va Ma QR chua danh sach ma inut cach nhau dau phay) sang may in nhiet TP732H tren may inut-dev va luu vao ksp-pdfsign.
+description: Quy trinh "Qua trinh san xuat iNut Data Logger v1.1" — Nhan danh sach ma thiet bi (vd 10 con inut_207_153,inut_207_159,...), kiem tra CSDL: neu ma nao da in tem Clabel 40x30 thi lay ngay san xuat da luu (khong in lai), neu chua in thi tu dong goi Clabel BLE in tem 40x30 truoc; sau do tao va in Bang Tong Hop Lo San Xuat (kho trang 70x130mm, vung thiet ke nam gon trong 70x80mm o phan tren, khong nen 65%) sang may in nhiet TP732H tren may inut-dev va luu vao ksp-pdfsign.
 ---
 
-# Batch Printer San Xuat — Qua Trinh San Xuat iNut Data Logger v1.1 (70x100 @ `inut-dev` + Auto Clabel)
+# Batch Printer San Xuat — Qua Trinh San Xuat iNut Data Logger v1.1 (70x80 tren kho 70x130 @ `inut-dev` + Auto Clabel)
 
 Skill nay van hanh day chuyen kiem dem & xuat xuong **"Quá trình sản xuất iNut Data Logger v1.1"** ket hop 2 may in nhiet trong he sinh thai `ksp-pdfsign`:
 1. **May in tem le Clabel `CT221B-X420` (`400x300` / `40x30mm`)** qua BLE Gateway `77.88.207.23`: In tem dan tren tung thiet bi.
-2. **May in nhiet `TP732H` (`70x100` / `7cm x 10cm`)** tren may **`inut-dev` (`Administrator@192.168.1.10`)**: In to **Phieu Tong Hop & Kiem Dem Lo San Xuat 70x100** dan ngoai thung/lo.
-
+2. **May in nhiet `TP732H` (kho trang PDF `70x130mm`, khung in nam gon trong `70x80mm` phia tren, full scale 100%)** tren may **`inut-dev` (`Administrator@192.168.1.10`)**: In to **Phieu Tong Hop & Kiem Dem Lo San Xuat** dan ngoai thung/lo.
 ---
 
 ## 1. Co Che Tu Dong Kiem Tra & In Bu Tem Clabel (`sanxuat_device_labels`)
@@ -21,10 +20,10 @@ Khi truyen mot danh sach ma thiet bi (vi du `inut_207_153,inut_207_159,inut_207_
    - **Neu thiet bi CHUA TUNG IN tem le Clabel**:
      - Tu dong ket noi BLE Gateway (`77.88.207.23` $\rightarrow$ `CT221B-X420`) va **in ngay tem le `Mẫu Xuất Xưởng v1.1 Rockchip` (`400x300`)** cho cac ma chua in.
      - Luu `mfg_date` (ngay hom nay `DD/MM/YYYY`) va thoi diem in vao bang `sanxuat_device_labels`.
-2. **Tao & In Phieu Tong Hop Lo San Xuat `70x100` (`TP732H` @ `inut-dev`)**:
-   - **Header**: Logo iNut + bieu tuong `®` & `©`, ten va thong tin **CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT (`MST: 4401053694`)**, huy hieu **`★ MAKE IN VIETNAM · ROCKCHIP v1.1 ®`**.
-   - **Tieu de & Thoi gian**: **`QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1`**, ten xuat hoa don **`iNut Smartcity - Data Logger v1.1 - Rockchip`**, **Mã lô (`SX-V1.1-...`)** va **Ngày giờ in phiếu (`DD/MM/YYYY HH:MM:SS`)**.
-   - **Bang liet ke tung dong thiet bi**: `STT | MÃ THIẾT BỊ (SN / ID) | NGÀY SẢN XUẤT | TEM CLABEL`.
+2. **Tao & In Phieu Tong Hop Lo San Xuat (`70x80mm` tren trang `70x130mm`, `TP732H` @ `inut-dev`)**:
+   - **Kich thuoc chuan**: Trang PDF `70mm x 130mm` (in full 100% khong nen 65%), toan bo khung noi dung duoc day len nam gon trong vung **`70mm x 80mm`** o phia tren (`y: 51.0mm -> 128.5mm`).
+   - **Header**: Logo iNut + bieu tuong `®` & `©`, ten va thong tin **CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT ® (`MST: 4401053694`)** tu dong co co chu (`fit_font`) nam gon trong khung, huy hieu **`★ MAKE IN VIETNAM · v1.1 ®`**.
+   - **Tieu de & Thoi gian (2 dong rieng biet)**: **`QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1`**, ten xuat hoa don **`iNut Smartcity - Data Logger v1.1 - Rockchip`**, dong 1 **Mã lô sản xuất (`SX-V1.1-...`)**, dong 2 **Ngày giờ in phiếu (`DD/MM/YYYY HH:MM:SS`)**.
    - **Cum Ma QR Danh Sach (cach nhau dau phay)**:
      - Ma QR ma hoa chinh xac chuoi danh sach cac ma `inut_...` cach nhau bang dau phay:
        `inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183`
