@@ -1781,7 +1781,7 @@ def generate_sanxuat_batch_70x100_pdf(
 
     # Thong tin Cong ty ben phai logo
     tx = logo_x + logo_mm + 1.6 * mm
-    c.setFont(font_bold, 5.6)
+    c.setFont(font_bold, 5.1)
     c.drawString(tx, y_top - 3.8 * mm, "CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT (INUT®)")
     c.setFont(font_reg, 4.7)
     c.drawString(tx, y_top - 6.5 * mm, "MST: 4401053694 · 161 Trường Chinh, Tuy Hòa, Đắk Lắk")
@@ -1963,11 +1963,11 @@ def generate_sanxuat_batch_70x100_pdf(
     stat_h = csv_box_y - stat_y - 1.0 * mm
     c.setLineWidth(0.55)
     c.roundRect(rx, stat_y, rw, stat_h, 0.8 * mm, fill=0, stroke=1)
-    c.setFont(font_bold, 4.6)
+    c.setFont(font_bold, 4.2)
     c.drawString(rx + 1.0 * mm, stat_y + stat_h - 2.9 * mm, f"• Kiểm đếm: {len(items)}/{len(items)} TB · Wi-Fi: {wifi_pass}")
-    c.setFont(font_reg, 4.5)
+    c.setFont(font_reg, 4.2)
     c.drawString(rx + 1.0 * mm, stat_y + stat_h - 5.7 * mm, f"• Clabel 40x30: Đã in {already_cnt} | Auto {auto_cnt}")
-    c.setFont(font_bold, 4.5)
+    c.setFont(font_bold, 4.2)
     c.drawString(rx + 1.0 * mm, stat_y + 1.3 * mm, "• KCS: ĐẠT CHUẨN v1.1 ® © INUT")
 
     c.showPage()
