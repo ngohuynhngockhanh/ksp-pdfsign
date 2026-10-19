@@ -1729,32 +1729,38 @@ def generate_sanxuat_batch_70x100_pdf(
         vn_tz = timezone(timedelta(hours=7))
         printed_at_str = datetime.now(vn_tz).strftime("%d/%m/%Y %H:%M:%S")
 
-    # Kich thuoc chuan 70x130 (70mm x 130mm), day noi dung len tren (bottom margin 6.5mm) de khong bi hut chan
+    # Kich thuoc trang 70x130 (70mm x 130mm), nhung toan bo khung thiet ke nam gon trong 70x100 o phan tren (y: 31.5mm -> 128.5mm)
     page_w = 70.0 * mm
     page_h = 130.0 * mm
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=(page_w, page_h))
     c.setTitle(f"Batch_SanXuat_{batch_code}")
 
+    def fit_font(f_name: str, text_str: str, start_pt: float, max_w_pt: float, min_pt: float = 3.6) -> float:
+        sz = float(start_pt)
+        while sz > min_pt and c.stringWidth(text_str, f_name, sz) > max_w_pt:
+            sz = round(sz - 0.15, 2)
+        return sz
+
     m_x = 2.0 * mm
-    m_top = 2.0 * mm
-    m_bot = 6.5 * mm  # Đẩy toàn bộ khung lên trên 6.5mm so với mép dưới
+    m_top = 1.5 * mm
+    m_bot = 31.5 * mm  # Khung in nằm gọn trong đúng 70x100 ở phía trên của khổ 70x130
     inner_w = page_w - 2 * m_x
-    inner_h = page_h - m_top - m_bot
+    inner_h = page_h - m_top - m_bot  # 97.0 mm (nằm trọn trong vùng 70x100)
 
     # Khung vien ngoai (nen trang, vien den)
     c.setStrokeColor(colors.black)
     c.setFillColor(colors.black)
     c.setLineWidth(1.1)
-    c.roundRect(m_x, m_bot, inner_w, inner_h, 1.8 * mm, fill=0, stroke=1)
+    c.roundRect(m_x, m_bot, inner_w, inner_h, 1.6 * mm, fill=0, stroke=1)
 
     # =========================================================================
-    # 1. HEADER: LOGO INUT + THÔNG TIN CÔNG TY + MAKE IN VIETNAM (Y: 128mm -> 112.6mm)
+    # 1. HEADER: LOGO INUT + THÔNG TIN CÔNG TY + MAKE IN VIETNAM (Cao 13.2mm)
     # =========================================================================
     y_top = page_h - m_top
-    logo_mm = 12.0 * mm
-    logo_x = m_x + 1.4 * mm
-    logo_y = y_top - logo_mm - 1.6 * mm
+    logo_mm = 10.6 * mm
+    logo_x = m_x + 1.2 * mm
+    logo_y = y_top - logo_mm - 1.3 * mm
 
     try:
         mono_logo = render_monochrome_image(
@@ -1773,109 +1779,119 @@ def generate_sanxuat_batch_70x100_pdf(
 
     # Icon ® goc tren phai cua logo
     c.setFillColor(colors.white)
-    c.setLineWidth(0.6)
-    c.circle(logo_x + logo_mm - 0.8 * mm, logo_y + logo_mm - 0.8 * mm, 1.4 * mm, fill=1, stroke=1)
+    c.setLineWidth(0.55)
+    c.circle(logo_x + logo_mm - 0.7 * mm, logo_y + logo_mm - 0.7 * mm, 1.25 * mm, fill=1, stroke=1)
     c.setFillColor(colors.black)
-    c.setFont(font_bold, 5.0)
-    c.drawCentredString(logo_x + logo_mm - 0.8 * mm, logo_y + logo_mm - 1.4 * mm, "R")
+    c.setFont(font_bold, 4.5)
+    c.drawCentredString(logo_x + logo_mm - 0.7 * mm, logo_y + logo_mm - 1.25 * mm, "R")
 
-    # Thong tin Cong ty ben phai logo
-    tx = logo_x + logo_mm + 1.6 * mm
-    c.setFont(font_bold, 5.1)
-    c.drawString(tx, y_top - 3.8 * mm, "CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT (INUT®)")
-    c.setFont(font_reg, 4.7)
-    c.drawString(tx, y_top - 6.5 * mm, "MST: 4401053694 · 161 Trường Chinh, Tuy Hòa, Đắk Lắk")
-    c.drawString(tx, y_top - 9.1 * mm, "ĐT: 0972.768.491 · Web: https://inut.vn · DN KH&CN ©")
+    # Thong tin Cong ty ben phai logo (auto-fit khong bao gio loi ra khoi header)
+    tx = logo_x + logo_mm + 1.4 * mm
+    hdr_max_w = (page_w - m_x - 1.2 * mm) - tx
+    comp_str = "CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT ®"
+    c.setFont(font_bold, fit_font(font_bold, comp_str, 5.2, hdr_max_w))
+    c.drawString(tx, y_top - 3.3 * mm, comp_str)
+
+    addr_str = "MST: 4401053694 · 161 Trường Chinh, Tuy Hòa, Đắk Lắk"
+    c.setFont(font_reg, fit_font(font_reg, addr_str, 4.5, hdr_max_w))
+    c.drawString(tx, y_top - 5.7 * mm, addr_str)
+
+    web_str = "ĐT: 0972.768.491 · Web: https://inut.vn · DN KH&CN ©"
+    c.setFont(font_reg, fit_font(font_reg, web_str, 4.5, hdr_max_w))
+    c.drawString(tx, y_top - 8.0 * mm, web_str)
 
     # Huy hieu ★ MAKE IN VIETNAM + Tong so bo (nen trang, vien den)
-    c.setLineWidth(0.75)
+    c.setLineWidth(0.7)
     miv_w = 34.5 * mm
-    c.roundRect(tx, y_top - 14.0 * mm, miv_w, 3.8 * mm, 0.8 * mm, fill=0, stroke=1)
-    c.setFont(font_bold, 4.7)
-    c.drawCentredString(tx + miv_w / 2, y_top - 12.8 * mm, "★ MAKE IN VIETNAM · v1.1 ®")
+    c.roundRect(tx, y_top - 12.2 * mm, miv_w, 3.3 * mm, 0.7 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 4.4)
+    c.drawCentredString(tx + miv_w / 2, y_top - 11.2 * mm, "★ MAKE IN VIETNAM · v1.1 ®")
 
     qty_x = tx + miv_w + 1.0 * mm
     qty_w = page_w - m_x - qty_x - 1.2 * mm
-    c.roundRect(qty_x, y_top - 14.0 * mm, qty_w, 3.8 * mm, 0.8 * mm, fill=0, stroke=1)
-    c.setFont(font_bold, 4.8)
-    c.drawCentredString(qty_x + qty_w / 2, y_top - 12.8 * mm, f"SL: {len(items)} BỘ")
+    c.roundRect(qty_x, y_top - 12.2 * mm, qty_w, 3.3 * mm, 0.7 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 4.5)
+    c.drawCentredString(qty_x + qty_w / 2, y_top - 11.2 * mm, f"SL: {len(items)} BỘ")
 
-    y_h_sep = y_top - 15.4 * mm
-    c.setLineWidth(0.85)
+    y_h_sep = y_top - 13.3 * mm
+    c.setLineWidth(0.8)
     c.line(m_x, y_h_sep, page_w - m_x, y_h_sep)
 
     # =========================================================================
-    # 2. TIÊU ĐỀ PHIẾU & MÃ LÔ / NGÀY GIỜ IN TỜ BATCH (TÁCH 2 DÒNG RIÊNG KHÔNG TRÙNG)
+    # 2. TIÊU ĐỀ PHIẾU & MÃ LÔ / NGÀY GIỜ IN TỜ BATCH (TÁCH 2 DÒNG RIÊNG, Cao 12.4mm)
     # =========================================================================
-    c.setFont(font_bold, 6.8)
-    c.drawCentredString(page_w / 2, y_h_sep - 3.6 * mm, title.upper())
-    c.setFont(font_bold, 5.5)
-    c.drawCentredString(page_w / 2, y_h_sep - 6.6 * mm, f"SP: {model_name}")
+    title_str = title.upper()
+    c.setFont(font_bold, fit_font(font_bold, title_str, 6.2, inner_w - 2.4 * mm))
+    c.drawCentredString(page_w / 2, y_h_sep - 3.1 * mm, title_str)
+
+    sp_str = f"SP: {model_name}"
+    c.setFont(font_bold, fit_font(font_bold, sp_str, 5.1, inner_w - 2.4 * mm))
+    c.drawCentredString(page_w / 2, y_h_sep - 5.6 * mm, sp_str)
 
     # Khung Ma lo & Ngay gio in phieu (2 DÒNG RIÊNG BIỆT)
-    meta_h = 7.4 * mm
-    meta_y = y_h_sep - 7.8 * mm - meta_h
-    c.setLineWidth(0.65)
-    c.roundRect(m_x + 1.2 * mm, meta_y, inner_w - 2.4 * mm, meta_h, 0.9 * mm, fill=0, stroke=1)
-    c.setFont(font_bold, 5.4)
-    c.drawString(m_x + 2.4 * mm, meta_y + 4.3 * mm, f"• Mã lô sản xuất: {batch_code}")
-    c.drawString(m_x + 2.4 * mm, meta_y + 1.3 * mm, f"• Ngày giờ in phiếu: {printed_at_str}")
+    meta_h = 6.2 * mm
+    meta_y = y_h_sep - 6.5 * mm - meta_h
+    c.setLineWidth(0.6)
+    c.roundRect(m_x + 1.2 * mm, meta_y, inner_w - 2.4 * mm, meta_h, 0.8 * mm, fill=0, stroke=1)
+    c.setFont(font_bold, 4.9)
+    c.drawString(m_x + 2.2 * mm, meta_y + 3.6 * mm, f"• Mã lô sản xuất: {batch_code}")
+    c.drawString(m_x + 2.2 * mm, meta_y + 1.1 * mm, f"• Ngày giờ in phiếu: {printed_at_str}")
 
-    y_tbl_top = meta_y - 1.2 * mm
+    y_tbl_top = meta_y - 1.0 * mm
 
     # =========================================================================
     # 3. BẢNG LIỆT KÊ TOÀN BỘ THIẾT BỊ INUT TỪNG DÒNG
     # =========================================================================
-    # Đẩy cụm QR đáy lên cao (từ m_bot = 6.5mm lên m_bot + 35.5mm = 42.0mm)
-    y_qr_section_top = m_bot + 35.5 * mm
-    avail_tbl_h = y_tbl_top - y_qr_section_top - 1.2 * mm
+    # Cụm QR ở đáy cao 28.0mm (từ m_bot = 31.5mm lên 59.5mm)
+    y_qr_section_top = m_bot + 28.0 * mm
+    avail_tbl_h = y_tbl_top - y_qr_section_top - 1.0 * mm
     n_rows = max(1, len(items))
-    header_row_h = 4.2 * mm
-    row_h = min(5.0 * mm, max(3.2 * mm, (avail_tbl_h - header_row_h) / n_rows))
+    header_row_h = 3.6 * mm
+    row_h = min(4.2 * mm, max(2.8 * mm, (avail_tbl_h - header_row_h) / n_rows))
     total_tbl_h = header_row_h + n_rows * row_h
     y_tbl_bottom = y_tbl_top - total_tbl_h
 
     tbl_x = m_x + 1.2 * mm
     tbl_w = inner_w - 2.4 * mm
-    col_stt_w = 6.8 * mm
-    col_id_w = 27.2 * mm
-    col_nsx_w = 16.2 * mm
+    col_stt_w = 6.5 * mm
+    col_id_w = 27.5 * mm
+    col_nsx_w = 16.0 * mm
 
     x_col1 = tbl_x + col_stt_w
     x_col2 = x_col1 + col_id_w
     x_col3 = x_col2 + col_nsx_w
 
     # Viền ngoài bảng
-    c.setLineWidth(0.8)
+    c.setLineWidth(0.75)
     c.rect(tbl_x, y_tbl_bottom, tbl_w, total_tbl_h, fill=0, stroke=1)
 
     # Dòng tiêu đề bảng
     y_hdr_line = y_tbl_top - header_row_h
-    c.setLineWidth(0.75)
+    c.setLineWidth(0.7)
     c.line(tbl_x, y_hdr_line, tbl_x + tbl_w, y_hdr_line)
-    c.setFont(font_bold, 5.2)
-    hdr_text_y = y_hdr_line + 1.3 * mm
+    c.setFont(font_bold, 4.8)
+    hdr_text_y = y_hdr_line + 1.1 * mm
     c.drawCentredString(tbl_x + col_stt_w / 2, hdr_text_y, "STT")
     c.drawCentredString(x_col1 + col_id_w / 2, hdr_text_y, "MÃ THIẾT BỊ (SN / ID)")
     c.drawCentredString(x_col2 + col_nsx_w / 2, hdr_text_y, "NGÀY SX")
     c.drawCentredString((x_col3 + tbl_x + tbl_w) / 2, hdr_text_y, "CLABEL")
 
     # Các đường kẻ dọc của bảng
-    c.setLineWidth(0.5)
+    c.setLineWidth(0.45)
     c.line(x_col1, y_tbl_bottom, x_col1, y_tbl_top)
     c.line(x_col2, y_tbl_bottom, x_col2, y_tbl_top)
     c.line(x_col3, y_tbl_bottom, x_col3, y_tbl_top)
 
     # Từng dòng thiết bị
-    row_font_size = 6.1 if n_rows <= 10 else (5.5 if n_rows <= 13 else 5.0)
+    row_font_size = 5.6 if n_rows <= 10 else (5.0 if n_rows <= 13 else 4.5)
     for idx, it in enumerate(items):
         ry_top = y_hdr_line - idx * row_h
         ry_bot = ry_top - row_h
         if idx > 0:
-            c.setLineWidth(0.4)
+            c.setLineWidth(0.35)
             c.line(tbl_x, ry_top, tbl_x + tbl_w, ry_top)
 
-        text_y = ry_bot + (row_h - 1.9 * mm) / 2 + 0.2 * mm
+        text_y = ry_bot + (row_h - 1.6 * mm) / 2 + 0.15 * mm
         stt_str = f"{idx + 1:02d}"
         dev_id = str(it.get("device_id", ""))
         mfg_date = str(it.get("mfg_date", ""))
@@ -1888,19 +1904,19 @@ def generate_sanxuat_batch_70x100_pdf(
         c.drawCentredString(x_col1 + col_id_w / 2, text_y, dev_id)
         c.setFont(font_bold, row_font_size - 0.3)
         c.drawCentredString(x_col2 + col_nsx_w / 2, text_y, mfg_date)
-        c.setFont(font_reg, row_font_size - 0.7)
+        c.setFont(font_reg, row_font_size - 0.6)
         c.drawCentredString((x_col3 + tbl_x + tbl_w) / 2, text_y, st_str)
 
     # =========================================================================
-    # 4. CỤM MÃ QR DANH SÁCH CÁC MÃ INUT (CÁCH NHAU DẤU PHẨY) & KIỂM ĐẾM (ĐÁY PHIẾU ĐẨY CAO)
+    # 4. CỤM MÃ QR DANH SÁCH CÁC MÃ INUT (CÁCH NHAU DẤU PHẨY) & KIỂM ĐẾM (Cao 28mm)
     # =========================================================================
-    c.setLineWidth(0.8)
+    c.setLineWidth(0.75)
     c.line(m_x, y_qr_section_top, page_w - m_x, y_qr_section_top)
 
     csv_payload = ",".join(str(it.get("device_id", "")).strip() for it in items if it.get("device_id"))
-    qr_mm = 29.5 * mm
-    qr_x = m_x + 1.4 * mm
-    qr_y = m_bot + 4.2 * mm
+    qr_mm = 23.2 * mm
+    qr_x = m_x + 1.2 * mm
+    qr_y = m_bot + 3.6 * mm
 
     qr = qrcode.QRCode(
         version=None,
@@ -1915,29 +1931,28 @@ def generate_sanxuat_batch_70x100_pdf(
     qr_pil.save(qr_buf, format="PNG")
     qr_buf.seek(0)
     c.drawImage(ImageReader(qr_buf), qr_x, qr_y, width=qr_mm, height=qr_mm)
-    c.setLineWidth(0.6)
+    c.setLineWidth(0.55)
     c.rect(qr_x, qr_y, qr_mm, qr_mm, fill=0, stroke=1)
 
-    c.setFont(font_bold, 4.7)
-    c.drawCentredString(qr_x + qr_mm / 2, m_bot + 1.4 * mm, f"QR LIST ({len(items)} MÃ CÁCH PHẨY)")
+    c.setFont(font_bold, 4.1)
+    c.drawCentredString(qr_x + qr_mm / 2, m_bot + 1.2 * mm, f"QR LIST ({len(items)} MÃ CÁCH PHẨY)")
 
     # Cột phải cạnh QR: Hiển thị chuỗi CSV & Thống kê kiểm đếm
-    rx = qr_x + qr_mm + 1.6 * mm
+    rx = qr_x + qr_mm + 1.4 * mm
     rw = page_w - m_x - rx - 1.2 * mm
-    ry_top = y_qr_section_top - 3.0 * mm
+    ry_top = y_qr_section_top - 2.5 * mm
 
-    c.setFont(font_bold, 5.1)
-    c.drawString(rx, ry_top, "CHUỖI MÃ QR LÔ (CSV):")
+    c.setFont(font_bold, 4.6)
+    c.drawString(rx, ry_top, "CHUỖI MÃ QR LÔ SẢN XUẤT (CSV):")
 
     # Box chứa chuỗi CSV
-    csv_box_h = 17.5 * mm
-    csv_box_y = ry_top - csv_box_h - 0.8 * mm
-    c.setLineWidth(0.55)
-    c.roundRect(rx, csv_box_y, rw, csv_box_h, 0.8 * mm, fill=0, stroke=1)
+    csv_box_h = 13.8 * mm
+    csv_box_y = ry_top - csv_box_h - 0.6 * mm
+    c.setLineWidth(0.5)
+    c.roundRect(rx, csv_box_y, rw, csv_box_h, 0.7 * mm, fill=0, stroke=1)
 
-    # Cắt dòng chuỗi CSV để hiển thị trọn vẹn trong box
-    c.setFont(font_mono, 4.5)
-    max_chars_per_line = 25
+    c.setFont(font_mono, 4.2)
+    max_chars_per_line = 29
     csv_lines: list[str] = []
     cur_line = ""
     for part in csv_payload.split(","):
@@ -1951,24 +1966,30 @@ def generate_sanxuat_batch_70x100_pdf(
     if cur_line:
         csv_lines.append(cur_line)
 
-    cy = csv_box_y + csv_box_h - 2.6 * mm
+    cy = csv_box_y + csv_box_h - 2.2 * mm
     for ln in csv_lines[:6]:
         c.drawString(rx + 1.0 * mm, cy, ln)
-        cy -= 2.6 * mm
+        cy -= 2.1 * mm
 
     # Khung thống kê kiểm đếm dưới cùng bên phải
     already_cnt = sum(1 for it in items if it.get("clabel_action") == "already_printed")
     auto_cnt = len(items) - already_cnt
-    stat_y = m_bot + 1.4 * mm
-    stat_h = csv_box_y - stat_y - 1.0 * mm
-    c.setLineWidth(0.55)
-    c.roundRect(rx, stat_y, rw, stat_h, 0.8 * mm, fill=0, stroke=1)
-    c.setFont(font_bold, 4.2)
-    c.drawString(rx + 1.0 * mm, stat_y + stat_h - 2.9 * mm, f"• Kiểm đếm: {len(items)}/{len(items)} TB · Wi-Fi: {wifi_pass}")
-    c.setFont(font_reg, 4.2)
-    c.drawString(rx + 1.0 * mm, stat_y + stat_h - 5.7 * mm, f"• Clabel 40x30: Đã in {already_cnt} | Auto {auto_cnt}")
-    c.setFont(font_bold, 4.2)
-    c.drawString(rx + 1.0 * mm, stat_y + 1.3 * mm, "• KCS: ĐẠT CHUẨN v1.1 ® © INUT")
+    stat_y = m_bot + 1.2 * mm
+    stat_h = csv_box_y - stat_y - 0.8 * mm
+    c.setLineWidth(0.5)
+    c.roundRect(rx, stat_y, rw, stat_h, 0.7 * mm, fill=0, stroke=1)
+
+    stat1 = f"• Kiểm đếm: Đủ {len(items)}/{len(items)} TB · Wi-Fi: {wifi_pass}"
+    c.setFont(font_bold, fit_font(font_bold, stat1, 4.3, rw - 2.0 * mm))
+    c.drawString(rx + 1.0 * mm, stat_y + stat_h - 2.4 * mm, stat1)
+
+    stat2 = f"• Clabel 40x30: Đã in {already_cnt} | Auto {auto_cnt}"
+    c.setFont(font_reg, fit_font(font_reg, stat2, 4.3, rw - 2.0 * mm))
+    c.drawString(rx + 1.0 * mm, stat_y + stat_h - 4.7 * mm, stat2)
+
+    stat3 = "• KCS: ĐẠT CHUẨN v1.1 ® © INUT JSC"
+    c.setFont(font_bold, fit_font(font_bold, stat3, 4.3, rw - 2.0 * mm))
+    c.drawString(rx + 1.0 * mm, stat_y + 1.0 * mm, stat3)
 
     c.showPage()
     c.save()
