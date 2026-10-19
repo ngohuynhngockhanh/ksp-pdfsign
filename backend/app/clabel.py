@@ -1693,7 +1693,7 @@ def generate_sanxuat_batch_70x100_pdf(
     title: str = "QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1",
     model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
     wifi_pass: str = "inut12345",
-    apply_golden_ratio: bool = True,
+    apply_golden_ratio: bool = False,
 ) -> bytes:
     """Tao file PDF Bang In Tong Hop Lo San Xuat 70x100 (7cm x 10cm) in tron ven tren may in nhiet TP732H @ inut-dev.
     - Co Logo iNut + icon ® & ©, thong tin Cong ty INUT JSC, MAKE IN VIETNAM
@@ -2164,7 +2164,7 @@ def run_sanxuat_batch_printer(
         title=title,
         model_name=model_name,
         wifi_pass=wifi_pass,
-        apply_golden_ratio=True,
+        apply_golden_ratio=False,
     )
 
     doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
