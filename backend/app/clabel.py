@@ -934,35 +934,45 @@ def render_sanxuat_v1_1_label(
     draw.line([(8, 74), (w_dots - 9, 74)], fill=0, width=2)
 
     # Cột trái (x = 10..198, y = 80..195):
-    # 1. Khung SN / MÃ THIẾT BỊ (Nền trắng, viền đen 2px, vạch ngăn mảnh, chữ đen sắc nét)
-    draw.rounded_rectangle([10, 80, 198, 132], radius=5, fill=1, outline=0, width=2)
-    draw.line([(10, 98), (198, 98)], fill=0, width=1)
+    # 1. Khung SN / MÃ THIẾT BỊ (Nền trắng, viền đen 2px, chữ mã thiết bị to hơn 50%: 25px)
+    box_x1, box_x2 = 8, 200
+    box_w = box_x2 - box_x1
+    draw.rounded_rectangle([box_x1, 79, box_x2, 136], radius=5, fill=1, outline=0, width=2)
+    draw.line([(box_x1, 96), (box_x2, 96)], fill=0, width=1)
     font_tag = _load_font(10, bold=True)
     tag_txt = "SN / MÃ THIẾT BỊ (DEVICE ID)"
     bbox_tag = draw.textbbox((0, 0), tag_txt, font=font_tag)
     tw_tag = bbox_tag[2] - bbox_tag[0]
-    draw.text((10 + max(4, (188 - tw_tag) // 2), 83), tag_txt, font=font_tag, fill=0)
+    draw.text((box_x1 + max(4, (box_w - tw_tag) // 2), 82), tag_txt, font=font_tag, fill=0)
 
-    id_font_size = 17 if len(clean_id) <= 14 else (14 if len(clean_id) <= 18 else 12)
+    id_font_size = 25
+    while id_font_size > 14:
+        font_id = _load_font(id_font_size, bold=True, mono=True)
+        bbox_id = draw.textbbox((0, 0), clean_id, font=font_id)
+        if (bbox_id[2] - bbox_id[0]) <= (box_w - 8):
+            break
+        id_font_size -= 1
     font_id = _load_font(id_font_size, bold=True, mono=True)
     bbox_id = draw.textbbox((0, 0), clean_id, font=font_id)
     tw_id = bbox_id[2] - bbox_id[0]
-    draw.text((10 + max(4, (188 - tw_id) // 2), 104), clean_id, font=font_id, fill=0)
+    th_id = bbox_id[3] - bbox_id[1]
+    id_y = 97 + max(1, (38 - th_id) // 2) - bbox_id[1]
+    draw.text((box_x1 + max(3, (box_w - tw_id) // 2) - bbox_id[0], id_y), clean_id, font=font_id, fill=0)
 
     # 2. Dòng Pass Wi-Fi mặc định: inut12345 (Nền trắng, viền đen, chữ đen)
-    draw.rounded_rectangle([10, 138, 198, 163], radius=4, fill=1, outline=0, width=1)
+    draw.rounded_rectangle([box_x1, 141, box_x2, 165], radius=4, fill=1, outline=0, width=1)
     font_wifi_lbl = _load_font(11, bold=True)
     font_wifi_val = _load_font(12, bold=True, mono=True)
-    draw.text((15, 144), "Pass Wi-Fi:", font=font_wifi_lbl, fill=0)
-    draw.text((94, 143), wifi_pass, font=font_wifi_val, fill=0)
+    draw.text((14, 147), "Pass Wi-Fi:", font=font_wifi_lbl, fill=0)
+    draw.text((94, 146), wifi_pass, font=font_wifi_val, fill=0)
 
     # 3. Hộp Ngày sản xuất (NSX = ngày kêu in) + dấu QC PASS (Nền trắng, viền đen, chữ đen)
-    draw.rounded_rectangle([10, 169, 198, 195], radius=4, fill=1, outline=0, width=1)
+    draw.rounded_rectangle([box_x1, 170, box_x2, 195], radius=4, fill=1, outline=0, width=1)
     font_date = _load_font(11, bold=True)
-    draw.text((15, 176), f"NSX: {mfg_date}", font=font_date, fill=0)
-    draw.rounded_rectangle([138, 172, 194, 192], radius=3, fill=1, outline=0, width=1)
+    draw.text((14, 176), f"NSX: {mfg_date}", font=font_date, fill=0)
+    draw.rounded_rectangle([140, 173, 196, 192], radius=3, fill=1, outline=0, width=1)
     font_qc = _load_font(9, bold=True, mono=True)
-    draw.text((144, 176), "QC PASS", font=font_qc, fill=0)
+    draw.text((146, 177), "QC PASS", font=font_qc, fill=0)
 
     # Cột phải (x = 206..310, y = 80..200): QR Code mã thiết bị có logo iNut ở tâm (GIỮ NGUYÊN)
     qr_size = 104
