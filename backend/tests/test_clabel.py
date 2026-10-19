@@ -136,3 +136,37 @@ def test_clabel_api_endpoints():
     )
     assert r_up.status_code == 200
     assert r_up.json()["width_dots"] == 320
+
+
+def test_sanxuat_v1_1_rockchip_label_and_api():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    img = clabel.render_sanxuat_v1_1_label("inut_207_153")
+    assert img.size == (320, 240)
+    assert img.mode == "1"
+    extrema = img.getextrema()
+    assert extrema[0] == 0
+    assert extrema[1] > 0
+
+    client = TestClient(app)
+    r_prev = client.get("/api/clabel/preview-sanxuat", params={"device_id": "inut_207_153"})
+    assert r_prev.status_code == 200
+    assert r_prev.headers["content-type"] == "image/png"
+    im = Image.open(io.BytesIO(r_prev.content))
+    assert im.size == (320, 240)
+
+    r_print = client.get(
+        "/api/clabel/print-sanxuat",
+        params={"device_id": "inut_207_153", "print_remote": "false"},
+    )
+    assert r_print.status_code == 200
+    body = r_print.json()
+    assert body["template"] == "sanxuat_v1.1"
+    assert body["device_id"] == "inut_207_153"
+    assert body["serial_number"] == "inut_207_153"
+    assert body["wifi_pass"] == "inut12345"
+    assert body["model_name"] == "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    assert body["width_dots"] == 320
+    assert body["height_dots"] == 240
+    assert body["is_printed"] is False

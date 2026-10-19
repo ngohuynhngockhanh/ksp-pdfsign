@@ -105,6 +105,14 @@ Ket qua dich nguoc bang **REA MCP** tu `Clabel_Mini_v1.7.1.apk` (`com.ct.clabel.
   --qr "https://inut.vn"
 ```
 
+### 3.1b. In Tem "Mẫu Xuất Xưởng v1.1 Rockchip" (`clabel-sanxuat-v1.1` — 400x300)
+Mẫu tem xuất xưởng chuẩn công nghiệp có **Logo iNut + biểu tượng `®` & `©`**, huy hiệu **`★ MAKE IN VIETNAM`**, **QR mã thiết bị có gắn logo iNut ở tâm** và **Ngày sản xuất (`NSX`) tự động lấy theo ngày gọi lệnh in**:
+```bash
+./scripts/print_clabel.py --sanxuat-v1.1 inut_207_153
+# Hoặc qua API:
+curl -sS "http://127.0.0.1:2032/api/clabel/print-sanxuat?device_id=inut_207_153"
+```
+
 ### 3.2. In tem co Ma vach 1D (Code128) hoac tat Logo/QR
 ```bash
 ./scripts/print_clabel.py \

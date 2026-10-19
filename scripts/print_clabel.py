@@ -47,6 +47,28 @@ def main() -> int:
     )
     parser.add_argument("--status", action="store_true", help="Kiem tra trang thai BLE Gateway va may in")
     parser.add_argument("--scan", action="store_true", help="Quet danh sach thiet bi BLE tren gateway")
+    parser.add_argument(
+        "--sanxuat-v1.1",
+        "--sanxuat",
+        "--device-id",
+        dest="device_id",
+        default=None,
+        help="In Mau Xuat Xuong v1.1 Rockchip (400x300) theo ma thiet bi (vd: inut_207_153)",
+    )
+    parser.add_argument(
+        "--mfg-date",
+        default=None,
+        help="Ngay san xuat DD/MM/YYYY tren tem xuat xuong (mac dinh: ngay goi lenh in)",
+    )
+    parser.add_argument(
+        "--model-name",
+        default="iNut Smartcity - Data Logger v1.1 - Rockchip",
+        help="Ten san pham xuat hoa don tren tem xuat xuong",
+    )
+    parser.add_argument("--product-line", default="Rockchip · Xuất xưởng v1.1 ©", help="Dong phu tren tem xuat xuong")
+    parser.add_argument("--wifi-pass", default="inut12345", help="Mat khau Wi-Fi mac dinh (mac dinh: inut12345)")
+    parser.add_argument("--serial-number", default=None, help="So serial / Ma thiet bi")
+    parser.add_argument("--no-qr-logo", action="store_true", help="Tat logo iNut mini o tam ma QR")
     parser.add_argument("--title", default="iNut JSC", help="Tieu de chinh tren tem")
     parser.add_argument("--subtitle", default="IoT & Edge Computing", help="Tieu de phu")
     parser.add_argument(
@@ -118,6 +140,64 @@ def main() -> int:
             height=args.height,
             border=not args.no_border,
         )
+    elif args.device_id:
+        dev_ids = [d.strip() for d in args.device_id.split(",") if d.strip()]
+        if len(dev_ids) > 1:
+            payloads: list[bytes] = []
+            for idx, did in enumerate(dev_ids):
+                im_i = clabel.render_sanxuat_v1_1_label(
+                    device_id=did,
+                    mfg_date=args.mfg_date,
+                    model_name=args.model_name,
+                    product_line=args.product_line,
+                    wifi_pass=args.wifi_pass,
+                    serial_number=args.serial_number,
+                    qr_data=did,
+                    qr_logo=not args.no_qr_logo,
+                    logo_path=args.logo,
+                    width=args.width,
+                    height=args.height,
+                )
+                if idx == 0 and args.preview_out:
+                    im_i.save(args.preview_out)
+                    print(f"[PREVIEW] Da luu anh xem truoc mau dau ({w_dots}x{h_dots}px): {args.preview_out}")
+                payloads.append(
+                    clabel.build_label_tspl(
+                        im_i,
+                        width=args.width,
+                        height=args.height,
+                        copies=args.copies,
+                        density=args.density,
+                        speed=args.speed,
+                        threshold=args.threshold,
+                    )
+                )
+            if args.dry_run:
+                print(f"[DRY-RUN] Batch {len(dev_ids)} tem ({', '.join(dev_ids)}), tong {sum(len(p) for p in payloads)} bytes.")
+                return 0
+            batch_res = gw.send_tspl_batch(payloads, labels=dev_ids, mac=args.mac)
+            print(
+                f"[SUCCESS] Da in thanh cong {batch_res['printed_count']}/{len(dev_ids)} tem sang Clabel ({batch_res['mac']}) "
+                f"qua BLE Gateway {batch_res['gateway_host']} trong {batch_res['total_elapsed_sec']}s!"
+            )
+            for item in batch_res.get("items", []):
+                print(f"  - [{item['index']:02d}] {item['label']}: {item['bytes_sent']} bytes ({item['chunks_sent']} chunks) in {item['elapsed_sec']}s")
+            return 0
+
+        qr_override = args.qr if (args.qr and args.qr != "https://inut.vn") else dev_ids[0]
+        img = clabel.render_sanxuat_v1_1_label(
+            device_id=dev_ids[0],
+            mfg_date=args.mfg_date,
+            model_name=args.model_name,
+            product_line=args.product_line,
+            wifi_pass=args.wifi_pass,
+            serial_number=args.serial_number,
+            qr_data=qr_override,
+            qr_logo=not args.no_qr_logo,
+            logo_path=args.logo,
+            width=args.width,
+            height=args.height,
+        )
     else:
         img = clabel.render_inut_label(
             title=args.title,
@@ -134,7 +214,6 @@ def main() -> int:
             width=args.width,
             height=args.height,
         )
-
     if args.preview_out:
         img.save(args.preview_out)
         print(f"[PREVIEW] Da luu anh xem truoc ({w_dots}x{h_dots}px): {args.preview_out}")

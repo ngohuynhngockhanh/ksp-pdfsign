@@ -56,6 +56,23 @@ def require_clabel_access(
 
 
 class ClabelPrintRequest(BaseModel):
+    template: str | None = Field(
+        default=None,
+        description="Ten mau tem (vd: 'sanxuat_v1.1' / 'xuat_xuong_v1.1' / 'rockchip_v1.1').",
+    )
+    device_id: str | None = Field(
+        default=None,
+        description="Ma thiet bi xuat xuong (vd: 'inut_200_177', 'inut_207_153').",
+    )
+    mfg_date: str | None = Field(
+        default=None,
+        description="Ngay san xuat DD/MM/YYYY (mac dinh la ngay goi lenh in).",
+    )
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    product_line: str = "Rockchip · Xuất xưởng v1.1 ©"
+    wifi_pass: str = "inut12345"
+    serial_number: str | None = None
+    qr_logo: bool = True
     title: str = "iNut JSC"
     subtitle: str = "IoT & Edge Computing"
     lines: list[str] | None = None
@@ -95,6 +112,16 @@ class ClabelRawTSPLRequest(BaseModel):
     gateway_host: str | None = None
 
 
+SANXUAT_TEMPLATES = {
+    "sanxuat_v1.1",
+    "sanxuat_1.1",
+    "sanxuat",
+    "xuat_xuong_v1.1",
+    "xuat_xuong",
+    "rockchip_v1.1",
+}
+
+
 def _render_from_payload(payload: ClabelPrintRequest):
     _, _, w_dots, h_dots = clabel.normalize_paper_size(payload.width, payload.height)
     if payload.image_base64:
@@ -117,6 +144,22 @@ def _render_from_payload(payload: ClabelPrintRequest):
             height=payload.height,
             border=payload.border,
         )
+    tpl = (payload.template or "").strip().lower()
+    if tpl in SANXUAT_TEMPLATES or payload.device_id:
+        dev_id = (payload.device_id or "inut_200_177").strip()
+        qr_val = payload.qr_data if (payload.qr_data and payload.qr_data != "https://inut.vn") else dev_id
+        return clabel.render_sanxuat_v1_1_label(
+            device_id=dev_id,
+            mfg_date=payload.mfg_date,
+            model_name=payload.model_name,
+            product_line=payload.product_line,
+            wifi_pass=payload.wifi_pass,
+            serial_number=payload.serial_number,
+            qr_data=qr_val,
+            qr_logo=payload.qr_logo,
+            width=payload.width,
+            height=payload.height,
+        )
     return clabel.render_inut_label(
         title=payload.title,
         subtitle=payload.subtitle,
@@ -131,8 +174,6 @@ def _render_from_payload(payload: ClabelPrintRequest):
         width=payload.width,
         height=payload.height,
     )
-
-
 def _execute_print(payload: ClabelPrintRequest) -> dict[str, Any]:
     img = _render_from_payload(payload)
     tspl_bytes = clabel.build_label_tspl(
@@ -359,4 +400,70 @@ def clabel_print_raw_tspl(
         return res
     except Exception as exc:
         logger.exception("Loi khi gui raw TSPL qua BLE Gateway")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/preview-sanxuat")
+def clabel_preview_sanxuat(
+    device_id: str = Query(default="inut_200_177", description="Ma thiet bi / SN (vd: inut_207_153)"),
+    mfg_date: str | None = Query(default=None, description="Ngay san xuat DD/MM/YYYY (mac dinh hom nay)"),
+    model_name: str = Query(default="iNut Smartcity - Data Logger v1.1 - Rockchip"),
+    product_line: str = Query(default="Rockchip · Xuất xưởng v1.1 ©"),
+    wifi_pass: str = Query(default="inut12345"),
+    serial_number: str | None = Query(default=None),
+    qr_data: str | None = Query(default=None),
+    qr_logo: bool = Query(default=True),
+    width: int = Query(default=400),
+    height: int = Query(default=300),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> Response:
+    """Xem truoc anh PNG 1-bit cua Mau Xuat Xuong v1.1 Rockchip (400x300)."""
+    img = clabel.render_sanxuat_v1_1_label(
+        device_id=device_id,
+        mfg_date=mfg_date,
+        model_name=model_name,
+        product_line=product_line,
+        wifi_pass=wifi_pass,
+        serial_number=serial_number,
+        qr_data=qr_data,
+        qr_logo=qr_logo,
+        width=width,
+        height=height,
+    )
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.get("/print-sanxuat")
+@router.post("/print-sanxuat")
+def clabel_print_sanxuat(
+    device_id: str = Query(default="inut_200_177", description="Ma thiet bi / SN (vd: inut_207_153)"),
+    mfg_date: str | None = Query(default=None, description="Ngay san xuat DD/MM/YYYY (mac dinh hom nay)"),
+    model_name: str = Query(default="iNut Smartcity - Data Logger v1.1 - Rockchip"),
+    product_line: str = Query(default="Rockchip · Xuất xưởng v1.1 ©"),
+    wifi_pass: str = Query(default="inut12345"),
+    serial_number: str | None = Query(default=None),
+    qr_data: str | None = Query(default=None),
+    qr_logo: bool = Query(default=True),
+    copies: int = Query(default=1, ge=1, le=20),
+    print_remote: bool = Query(default=True),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """In nhanh tem Mau Xuat Xuong v1.1 Rockchip (400x300) voi ma thiet bi va ngay san xuat hom nay."""
+    try:
+        return clabel.print_sanxuat_v1_1_label(
+            device_id=device_id,
+            mfg_date=mfg_date,
+            model_name=model_name,
+            product_line=product_line,
+            wifi_pass=wifi_pass,
+            serial_number=serial_number,
+            qr_data=qr_data,
+            qr_logo=qr_logo,
+            copies=copies,
+            print_remote=print_remote,
+        )
+    except Exception as exc:
+        logger.exception("Loi khi in tem Mau Xuat Xuong v1.1 Rockchip")
         raise HTTPException(status_code=502, detail=str(exc)) from exc

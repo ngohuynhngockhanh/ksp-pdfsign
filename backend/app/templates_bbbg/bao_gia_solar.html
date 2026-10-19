@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ tieu_de or "BÁO GIÁ GIẢI PHÁP VIỄN TRẮC & ĐIỀU PHỐI ĐIỆN MẶT TRỜI (INUT-SOLAR & INUT-SOLAR-HUB)" }}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 7.5mm 10.5mm 8.5mm 10.5mm;
+    @bottom-left {
+      content: "INUT JSC — Giải pháp Viễn trắc Năng lượng Mặt trời (inut-solar & inut-solar-hub | Solis V2 & V3)";
+      font-family: "DejaVu Serif", "Times New Roman", serif;
+      font-size: 7.3px;
+      color: #64748b;
+    }
+    @bottom-right {
+      content: "Trang " counter(page) " / " counter(pages);
+      font-family: "DejaVu Serif", "Times New Roman", serif;
+      font-size: 7.8px;
+      font-weight: bold;
+      color: #334155;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Serif", "Times New Roman", serif;
+    font-size: 8.3px;
+    color: #0f172a;
+    line-height: 1.24;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+  .watermark {
+    position: fixed;
+    top: 46%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 55%;
+    opacity: 0.05;
+    z-index: -1;
+  }
+  /* Header */
+  .letterhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid #0369a1;
+    padding-bottom: 4px;
+    margin-bottom: 4.5px;
+  }
+  .lh-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .lh-left img.logo {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+  }
+  .lh-info .company {
+    font-weight: bold;
+    font-size: 10.4px;
+    text-transform: uppercase;
+    color: #0c4a6e;
+  }
+  .lh-info .sub {
+    font-size: 8px;
+    color: #0284c7;
+    font-weight: bold;
+    margin-top: 1px;
+  }
+  .lh-info .meta {
+    font-size: 7.8px;
+    color: #334155;
+    margin-top: 1px;
+  }
+  .doc-badge {
+    text-align: right;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 4px;
+    padding: 4px 7px;
+    font-size: 8px;
+    color: #0f172a;
+    min-width: 148px;
+  }
+  .doc-badge .code {
+    font-weight: bold;
+    color: #0369a1;
+    font-size: 9px;
+  }
+
+  /* Title */
+  .title-box {
+    text-align: center;
+    margin: 2.5px 0 4.5px;
+  }
+  .title-box h1 {
+    font-size: 12.4px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0c4a6e;
+    margin: 0;
+    letter-spacing: 0.2px;
+  }
+  .title-box .subtitle {
+    font-size: 8.2px;
+    font-style: italic;
+    color: #475569;
+    margin-top: 1.5px;
+  }
+
+  /* Parties */
+  .parties {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4.5px;
+  }
+  .party-card {
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    padding: 4px 6.5px;
+    font-size: 8px;
+    line-height: 1.28;
+  }
+  .party-head {
+    font-weight: bold;
+    font-size: 8.1px;
+    text-transform: uppercase;
+    color: #0369a1;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 1.5px;
+    margin-bottom: 2px;
+  }
+  .party-name {
+    font-weight: bold;
+    font-size: 8.9px;
+    color: #0f172a;
+    text-transform: uppercase;
+  }
+
+  /* Section Header */
+  .sec-head {
+    font-size: 8.5px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #ffffff;
+    background: #0c4a6e;
+    padding: 2.2px 5.5px;
+    margin: 3.2px 0 2px;
+    border-radius: 3px;
+    letter-spacing: 0.12px;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .sec-head.phase2 {
+    background: #0f766e;
+  }
+
+  /* Quote Table — strict fixed layout inside 100% page width */
+  table.qtable {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin-bottom: 1.5px;
+  }
+  table.qtable tr, table.arch-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  table.qtable th, table.qtable td {
+    border: 1px solid #94a3b8;
+    padding: 1.8px 3.5px;
+    vertical-align: top;
+    font-size: 7.6px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  table.qtable th {
+    background: #e0f2fe;
+    color: #0c4a6e;
+    font-weight: bold;
+    text-align: center;
+    text-transform: uppercase;
+    font-size: 7.2px;
+    line-height: 1.16;
+  }
+  table.qtable.phase2-tbl th {
+    background: #ccfbf1;
+    color: #115e59;
+  }
+  td.c { text-align: center; }
+  td.r { text-align: right; white-space: nowrap; }
+  td.label-r { text-align: right; white-space: normal; }
+  tr.pkg-row td {
+    background: #f1f5f9;
+    color: #0369a1;
+    font-weight: bold;
+    font-size: 7.5px;
+    text-transform: uppercase;
+    border-left: 3px solid #0284c7;
+    white-space: normal;
+    padding: 1.6px 3.5px;
+  }
+  tr.pkg-row.p2 td {
+    background: #f0fdfa;
+    color: #0f766e;
+    border-left: 3px solid #0d9488;
+  }
+  .item-title {
+    font-weight: bold;
+    color: #0f172a;
+    font-size: 7.85px;
+    line-height: 1.2;
+  }
+  .item-desc {
+    font-size: 7.25px;
+    color: #334155;
+    margin-top: 1px;
+    line-height: 1.18;
+  }
+  tr.subtotal-row td {
+    background: #f8fafc;
+    font-weight: bold;
+    color: #0f172a;
+    font-size: 7.65px;
+  }
+  tr.grand-row td {
+    background: #ecfdf5;
+    font-weight: bold;
+    font-size: 8.4px;
+    color: #065f46;
+    border-top: 1.5px solid #059669;
+    border-bottom: 1.5px solid #059669;
+  }
+  tr.tender-row td {
+    background: #f0fdfa;
+    font-weight: bold;
+    font-size: 7.9px;
+    color: #0f766e;
+    border-top: 1.5px solid #0d9488;
+    border-bottom: 1.5px solid #0d9488;
+  }
+  .bang-chu {
+    font-style: italic;
+    font-size: 7.65px;
+    margin: 1px 0 2.5px;
+    color: #1e293b;
+  }
+  .tender-note {
+    border: 1px dashed #0d9488;
+    background: #f0fdfa;
+    border-radius: 4px;
+    padding: 2.8px 5.5px;
+    font-size: 7.35px;
+    color: #134e4a;
+    margin-top: 1.5px;
+    margin-bottom: 2px;
+    line-height: 1.2;
+  }
+
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* Payment Milestones */
+  .pay-wrap {
+    display: flex;
+    gap: 5px;
+    margin: 3.5px 0 5px;
+    page-break-inside: avoid;
+  }
+  .pay-box {
+    flex: 1;
+    border: 1px solid #bae6fd;
+    background: #f0f9ff;
+    border-radius: 4px;
+    padding: 4.5px 6px;
+  }
+  .pay-box.hw {
+    border: 1.5px solid #059669;
+    background: #ecfdf5;
+    flex: 1.35;
+  }
+  .pay-tag {
+    font-size: 7.5px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0369a1;
+  }
+  .pay-box.hw .pay-tag {
+    color: #065f46;
+    font-size: 7.8px;
+  }
+  .pay-amt {
+    font-size: 9.8px;
+    font-weight: bold;
+    color: #0f172a;
+    margin: 1.5px 0;
+  }
+  .pay-box.hw .pay-amt {
+    font-size: 10.5px;
+    color: #065f46;
+  }
+  .pay-desc {
+    font-size: 7.5px;
+    color: #334155;
+    line-height: 1.24;
+  }
+
+  /* Decomposition Table */
+  table.arch-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin: 3.5px 0 5px;
+  }
+  table.arch-table th, table.arch-table td {
+    border: 1px solid #cbd5e1;
+    padding: 3.5px 5px;
+    vertical-align: top;
+    font-size: 7.9px;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  table.arch-table th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: bold;
+    text-align: left;
+    font-size: 7.9px;
+  }
+  .badge-deliver {
+    display: inline-block;
+    background: #dcfce7;
+    color: #166534;
+    font-weight: bold;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 7.1px;
+  }
+  .badge-tender {
+    display: inline-block;
+    background: #ccfbf1;
+    color: #115e59;
+    font-weight: bold;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 7.1px;
+  }
+  .badge-rnd {
+    display: inline-block;
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: bold;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 7.1px;
+  }
+
+  /* Strategic Clauses */
+  .clause-box {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #f8fafc;
+    padding: 5px 7.5px;
+    margin-bottom: 5px;
+    page-break-inside: avoid;
+  }
+  .clause-item {
+    margin-bottom: 3px;
+    font-size: 7.9px;
+    text-align: justify;
+    line-height: 1.28;
+  }
+  .clause-item:last-child {
+    margin-bottom: 0;
+  }
+  .clause-title {
+    font-weight: bold;
+    color: #0c4a6e;
+  }
+
+  /* Bank & Signatures */
+  .bottom-grid {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 6px;
+    page-break-inside: avoid;
+  }
+  .bank-card {
+    flex: 1.25;
+    border: 1px solid #94a3b8;
+    border-left: 3.5px solid #0369a1;
+    border-radius: 4px;
+    padding: 5.5px 7.5px;
+    background: #ffffff;
+    font-size: 8.1px;
+    line-height: 1.34;
+  }
+  .bank-card .b-head {
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #0c4a6e;
+    margin-bottom: 2px;
+  }
+  .sig-wrap {
+    flex: 1;
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+  }
+  .sig-col {
+    width: 48%;
+  }
+  .sig-role {
+    font-weight: bold;
+    font-size: 8.3px;
+    text-transform: uppercase;
+    color: #0f172a;
+  }
+  .sig-sub {
+    font-size: 7.4px;
+    font-style: italic;
+    color: #64748b;
+  }
+  .sig-space {
+    height: 44px;
+  }
+  .sig-name {
+    font-weight: bold;
+    font-size: 8.5px;
+    color: #0c4a6e;
+  }
+</style>
+</head>
+<body>
+  {% if logo_data_uri %}<img class="watermark" src="{{ logo_data_uri }}">{% endif %}
+
+  <!-- HEADER -->
+  <div class="letterhead">
+    <div class="lh-left">
+      {% if logo_data_uri %}<img class="logo" src="{{ logo_data_uri }}">{% endif %}
+      <div class="lh-info">
+        <div class="company">{{ ben_a.company }}</div>
+        <div class="sub">Chứng nhận Doanh nghiệp Khoa học &amp; Công nghệ · Đơn vị làm chủ công nghệ iNut Solar &amp; Smartcity</div>
+        <div class="meta">Địa chỉ: {{ ben_a.address }}</div>
+        <div class="meta">Mã số thuế: <b>{{ ben_a.mst }}</b> · Hotline: <b>{{ ben_a.phone }}</b> · Email: {{ email }} · Website: {{ website }}</div>
+      </div>
+    </div>
+    <div class="doc-badge">
+      <div>Số báo giá: <span class="code">{{ so or "01/2026/BG-SOLAR-VHP" }}</span></div>
+      <div>Ngày lập: <b>{{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}</b></div>
+      <div>Hiệu lực: <b>{{ hieu_luc }} ngày</b></div>
+    </div>
+  </div>
+
+  <!-- TITLE -->
+  <div class="title-box">
+    <h1>{{ tieu_de or "BẢNG BÁO GIÁ & DỰ TOÁN PHÂN KỲ GÓI THẦU HỆ THỐNG INUT-SOLAR & INUT-SOLAR-HUB" }}</h1>
+    <div class="subtitle">{{ sub_title or "Gói I: 16 Thiết bị Biên (Đã gồm Bắn bù NMS) & Phần mềm R&D Setup Hết VNPT NMS · Gói II (Gói sau): Cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp) inut-solar-hub Đưa vào Thầu" }}</div>
+  </div>
+
+  <!-- PARTIES -->
+  <div class="parties">
+    <div class="party-card">
+      <div class="party-head">BÊN NHẬN BÁO GIÁ (BÊN B — ĐỐI TÁC ĐỘC QUYỀN MẢNG NMS VNPT)</div>
+      <div class="party-name">{{ ben_b.name }}</div>
+      <div><b>Mã số thuế:</b> {{ ben_b.mst }}</div>
+      <div><b>Địa chỉ:</b> {{ ben_b.address }}</div>
+      <div><b>Phạm vi hợp tác:</b> Triển khai 16 thiết bị biên <code>inut-solar</code> tự động bắn bù &amp; setup hết VNPT NMS (Gói I); đưa cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code> vào hồ sơ thầu gói sau (Gói II).</div>
+    </div>
+    <div class="party-card">
+      <div class="party-head">ĐƠN VỊ CUNG CẤP &amp; PHÁT TRIỂN (BÊN A — INUT TECHNOLOGY)</div>
+      <div class="party-name">{{ ben_a.company }}</div>
+      <div><b>Mã số thuế:</b> {{ ben_a.mst }} &nbsp;|&nbsp; <b>Đại diện:</b> {{ ben_a.rep }} ({{ ben_a.title }})</div>
+      <div><b>Địa chỉ:</b> {{ ben_a.address }}</div>
+      <div><b>Đội ngũ kỹ thuật chuyên trách:</b> <b>01 Kỹ sư Kiến trúc Hệ thống</b> (System Architect) &amp; <b>02 Kỹ sư Phát triển Phần mềm</b> (Embedded Go / Full-Stack).</div>
+    </div>
+  </div>
+
+  <!-- SECTION I: PACKAGE 1 (CURRENT PACKAGE - 100% PAYMENT) -->
+  <div class="sec-head">I. GÓI HIỆN TẠI (GÓI I — TRIỂN KHAI NGAY): THIẾT BỊ PHẦN CỨNG &amp; PHẦN MỀM R&amp;D HỖ TRỢ SETUP HẾT VNPT NMS (THANH TOÁN LẦN 1: 100%)</div>
+
+  <table class="qtable">
+    <colgroup>
+      <col style="width: 4.5%;">
+      <col style="width: 43.5%;">
+      <col style="width: 6.5%;">
+      <col style="width: 5.5%;">
+      <col style="width: 10.5%;">
+      <col style="width: 11%;">
+      <col style="width: 7%;">
+      <col style="width: 11.5%;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>STT</th>
+        <th>Hạng mục &amp; Đặc tả Kỹ thuật / Nội dung Xuất Hóa đơn (Gói I)</th>
+        <th>ĐVT</th>
+        <th>SL</th>
+        <th>Đơn giá (đ)</th>
+        <th>Thành tiền (đ)</th>
+        <th>Thuế GTGT</th>
+        <th>Tổng cộng (đ)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="pkg-row">
+        <td colspan="8">GÓI I (TRIỂN KHAI NGAY ĐỢT NÀY) — FULL 100% THIẾT BỊ PHẦN CỨNG (16 BỘ) + 10.000.000Đ PHẦN MỀM NGHIÊN CỨU (KCT) HỖ TRỢ SETUP HẾT VNPT NMS</td>
+      </tr>
+      {% for it in items %}
+      <tr>
+        <td class="c"><b>{{ loop.index }}</b></td>
+        <td>
+          <div class="item-title">{{ it.ten }}</div>
+          {% if it.ghi_chu %}<div class="item-desc">{{ it.ghi_chu|replace('\n', '<br>')|safe }}</div>{% endif %}
+        </td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c"><b>{{ it.so_luong|qty }}</b></td>
+        <td class="r">{% if it.don_gia > 0 %}{{ it.don_gia|vnd }}{% else %}Thương lượng{% endif %}</td>
+        <td class="r"><b>{% if it.thanh_tien > 0 %}{{ it.thanh_tien|vnd }}{% else %}Tùy chọn{% endif %}</b></td>
+        <td class="c">
+          {% if it.don_gia == 0 %}
+            Tùy chọn<br><span style="font-size:6.9px;color:#475569;">(Theo nhu cầu)</span>
+          {% elif it.thue_suat == 0 %}
+            <b>KCT (0%)</b><br><span style="font-size:6.9px;color:#047857;">(0 đ)</span>
+          {% else %}
+            {{ it.thue_suat|int }}%<br><span style="font-size:6.9px;color:#475569;">({{ it.tien_thue|vnd }})</span>
+          {% endif %}
+        </td>
+        <td class="r"><b>{% if (it.thanh_tien + it.tien_thue) > 0 %}{{ (it.thanh_tien + it.tien_thue)|vnd }}{% else %}Thương lượng{% endif %}</b></td>
+      </tr>
+      {% endfor %}
+      <tr class="subtotal-row">
+        <td colspan="5" class="label-r">TỔNG CỘNG GÓI I TRƯỚC THUẾ &amp; THUẾ GTGT (16 Bộ Thiết bị [VAT 8%] + Phần mềm R&amp;D Setup hết NMS [KCT 0%]):</td>
+        <td class="r">{{ tong_truoc_thue|vnd }}</td>
+        <td class="r">{{ tong_thue|vnd }}</td>
+        <td class="r">{{ tong_thanh_toan|vnd }}</td>
+      </tr>
+      <tr class="grand-row">
+        <td colspan="5" class="label-r">TỔNG GIÁ TRỊ THANH TOÁN GÓI I (THANH TOÁN LẦN 1: 100% FULL THIẾT BỊ + 10TR HỖ TRỢ PHẦN MỀM):</td>
+        <td colspan="3" class="r" style="font-size: 9.8px;">{{ tong_thanh_toan|vnd }} VNĐ</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="bang-chu">(Số tiền thanh toán Gói I bằng chữ: <b>{{ bang_chu }}</b> — Thanh toán 100% trong 01 lần ngay khi xác nhận đặt hàng / ký Hợp đồng Gói I)</div>
+
+  <!-- SECTION II: PACKAGE 2 (NEXT PACKAGE FOR TENDERING - FULL 70M R&D + 3.3M HUB) -->
+  <div class="sec-head phase2">II. BẢNG DỰ TOÁN CHI PHÍ GÓI SAU (GÓI II — CỤC PHẦN MỀM QUẢN TRỊ ĐA CẤP N-CẤP INUT-SOLAR-HUB &amp; R&amp;D CHUYÊN SÂU ĐỂ ĐƯA VÀO THẦU)</div>
+
+  <table class="qtable phase2-tbl">
+    <colgroup>
+      <col style="width: 4.5%;">
+      <col style="width: 43.5%;">
+      <col style="width: 6.5%;">
+      <col style="width: 5.5%;">
+      <col style="width: 10.5%;">
+      <col style="width: 11%;">
+      <col style="width: 7%;">
+      <col style="width: 11.5%;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>STT</th>
+        <th>Hạng mục Đưa vào Dự toán Hồ sơ Thầu Gói sau (Gói II — Phần mềm R&amp;D, Quản trị N-cấp &amp; Máy chủ Hub)</th>
+        <th>ĐVT</th>
+        <th>SL</th>
+        <th>Đơn giá (đ)</th>
+        <th>Thành tiền (đ)</th>
+        <th>Thuế GTGT</th>
+        <th>Tổng cộng (đ)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="pkg-row p2">
+        <td colspan="8">GÓI II (DỰ TOÁN ĐƯA VÀO HỒ SƠ THẦU GÓI SAU) — CỤC PHẦN MỀM R&amp;D QUẢN TRỊ TẬP TRUNG ĐA CẤP (N-CẤP) INUT-SOLAR-HUB &amp; ĐỘC QUYỀN NMS VNPT</td>
+      </tr>
+      <tr>
+        <td class="c"><b>II.1</b></td>
+        <td>
+          <div class="item-title">Cục Phần mềm Nghiên cứu &amp; Phát triển (R&amp;D) Hệ thống Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code>, Làm chủ Chuyên sâu Solis V2 &amp; V3 &amp; Cấp quyền Độc quyền Phân phối Mảng VNPT NMS <span style="color:#0f766e;">(Đưa vào Hồ sơ Thầu Gói sau)</span></div>
+          <div class="item-desc">
+            • <b>Phần mềm Quản trị Tập trung Đa cấp (N-cấp / Multi-tier Hierarchical RBAC &amp; N-Level Agency Tree):</b> Xây dựng kiến trúc phân quyền N-cấp không giới hạn theo mô hình tổ chức của Việt Hùng Solar (Tổng công ty &rarr; Chi nhánh/Tỉnh &rarr; Phòng ban/Đội kỹ thuật O&amp;M &rarr; Nhân viên chuyên trách &rarr; Khách hàng/Trạm); tích hợp bảng điều khiển giám sát toàn đội trạm (Fleet Radar), đối soát chất lượng đồng bộ NMS toàn mạng lưới và đường hầm đảo ngược <b>Yamux Reverse Tunnel (<code>:31797</code>)</b> truy cập trực tiếp từng trạm xuyên NAT/CGNAT 4G.<br>
+            • <b>Chuyển giao Quyền Độc quyền &amp; Lõi R&amp;D Solis V2/V3:</b> Làm chủ toàn diện giao thức kép Solis V2 (<code>S2-WL-ST</code> Modbus TCP 502 + BLE GATT + OpenAPI V2) &amp; Solis V3 (<code>S3-WiFi-ST</code> + SolisCloud V3 + BLE Hybrid), kèm cấp quyền <b>độc quyền phân phối thương mại giải pháp mảng VNPT NMS</b> cho Việt Hùng Power. Thuộc danh mục sản phẩm phần mềm &amp; R&amp;D <b>Không chịu thuế GTGT (KCT — VAT 0 đồng)</b>.
+          </div>
+        </td>
+        <td class="c">Gói</td>
+        <td class="c"><b>1</b></td>
+        <td class="r">70.000.000</td>
+        <td class="r"><b>70.000.000</b></td>
+        <td class="c"><b>KCT (0%)</b><br><span style="font-size:6.9px;color:#047857;">(0 đ)</span></td>
+        <td class="r"><b>70.000.000</b></td>
+      </tr>
+      <tr>
+        <td class="c"><b>II.2</b></td>
+        <td>
+          <div class="item-title">Cục Hạ tầng Máy chủ Vận hành Phần mềm Quản trị Tập trung Đa cấp (<code>inut-solar-hub</code> Server) <span style="color:#0f766e;">(Đưa vào Thầu Gói sau)</span></div>
+          <div class="item-desc">
+            • Phục vụ vận hành hệ thống phần mềm quản trị tập trung phân cấp N-tầng cho các phòng ban, nhân sự Việt Hùng Solar và duy trì kết nối đường hầm điều khiển từ xa toàn bộ các trạm.<br>
+            • Linh hoạt triển khai: Vận hành trên Cloud Server của iNut hoặc <b>hỗ trợ cài đặt trực tiếp lên máy chủ Linux của Việt Hùng Power / Chủ đầu tư</b>.
+          </div>
+        </td>
+        <td class="c">Năm</td>
+        <td class="c"><b>1</b></td>
+        <td class="r">3.000.000</td>
+        <td class="r"><b>3.000.000</b></td>
+        <td class="c">10%<br><span style="font-size:6.9px;color:#475569;">(300.000)</span></td>
+        <td class="r"><b>3.300.000</b></td>
+      </tr>
+      <tr>
+        <td class="c"><b>II.3</b></td>
+        <td>
+          <div class="item-title">Cục Thiết bị Phần cứng Biên <code>iNut Smartcity Data Logger v1.1</code> (Kèm sẵn <code>inut-solar</code> tự động bắn bù NMS) <span style="color:#0f766e;">(Đơn giá Định mức Thầu)</span></div>
+          <div class="item-desc">
+            • Đơn giá định mức chuẩn (<b>3.500.000 đ/bộ + VAT 8% = 3.780.000 đ/bộ</b>) để Việt Hùng Power đưa cục thiết bị biên <code>iNut Smartcity v1.1</code> (nguồn 5VDC kèm Adapter 220VAC–5VDC, Wi-Fi 2.4/5GHz + BLE 5.0, tích hợp sẵn phần mềm biên <code>inut-solar</code> lưu cache SQLite WAL 50.000 mẫu tự động bắn bù VNPT NMS) vào dự toán thầu các trạm mở rộng.
+          </div>
+        </td>
+        <td class="c">Bộ</td>
+        <td class="c"><b>Theo thầu</b></td>
+        <td class="r">3.500.000</td>
+        <td class="r"><b>Theo SL</b></td>
+        <td class="c">8%<br><span style="font-size:6.9px;color:#475569;">(280.000)</span></td>
+        <td class="r"><b>3.780.000/bộ</b></td>
+      </tr>
+      <tr>
+        <td class="c"><b>II.4</b></td>
+        <td>
+          <div class="item-title">Phí Bảo trì &amp; Nâng cấp Phần mềm Định kỳ (Từ năm thứ 2 / Theo quy mô gói thầu)</div>
+          <div class="item-desc">
+            • Thương lượng mức giá hợp lý theo quy mô thực tế, hoặc <b>KHÔNG cần gia hạn</b> nếu iNut đánh giá hệ thống ổn định để Việt Hùng Power tự chủ quản lý và nâng cấp.
+          </div>
+        </td>
+        <td class="c">Gói/Năm</td>
+        <td class="c"><b>1</b></td>
+        <td class="r">Thương lượng</td>
+        <td class="r"><b>Tùy chọn</b></td>
+        <td class="c">Tùy chọn</td>
+        <td class="r"><b>Thương lượng</b></td>
+      </tr>
+      <tr class="tender-row">
+        <td colspan="5" class="label-r">TỔNG CHI PHÍ GÓI SAU (GÓI II — CỤC PHẦN MỀM R&amp;D 70TR [KCT] + MÁY CHỦ HUB 3,3TR [GỒM VAT 10%] ĐƯA VÀO THẦU):</td>
+        <td class="r">73.000.000</td>
+        <td class="r">300.000</td>
+        <td class="r">73.300.000 VNĐ</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="tender-note">
+    <b>💡 Ghi chú Đưa vào Hồ sơ Thầu Gói sau:</b> Bảng II thể hiện rõ cấu trúc chi phí của <b>Gói sau (Gói II)</b> để <b>CÔNG TY CỔ PHẦN VIỆT HÙNG POWER</b> nắm chi phí và đưa trọn bộ <b>Cục Phần mềm R&amp;D Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code> (70.000.000 VNĐ — KCT)</b> + <b>Phí Máy chủ Hub (3.300.000 VNĐ/năm gồm VAT 10%) = 73.300.000 VNĐ</b> (cùng đơn giá định mức cục thiết bị biên <code>iNut Smartcity v1.1</code> <b>3.780.000 VNĐ/bộ</b>) vào dự toán Hồ sơ thầu giai đoạn tiếp theo.
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- SECTION III: PAYMENT SCHEDULE -->
+  <div class="sec-head">III. ĐIỀU KIỆN THANH TOÁN GÓI HIỆN TẠI (GÓI I: 100% LẦN 1) &amp; LỘ TRÌNH THANH TOÁN CHO GÓI SAU (GÓI II: 73.300.000 VNĐ)</div>
+  <div class="pay-wrap">
+    <div class="pay-box hw">
+      <div class="pay-tag">GÓI HIỆN TẠI (GÓI I) — THANH TOÁN LẦN 1: 100% TRỌN GÓI</div>
+      <div class="pay-amt">70.480.000 VNĐ <span style="font-size:7.6px;font-weight:normal;">(Thanh toán 1 lần 100%)</span></div>
+      <div class="pay-desc">
+        • <b>100% Tiền thiết bị phần cứng (16 bộ <code>iNut Smartcity v1.1</code>):</b> <b>60.480.000 VNĐ</b> (56.000.000đ + 4.480.000đ VAT 8%).<br>
+        • <b>100% Tiền hỗ trợ phần mềm:</b> <b>10.000.000 VNĐ (KCT — VAT 0đ)</b>, xuất hóa đơn <i>"Phần mềm nghiên cứu phát triển (R&amp;D) — Gói hỗ trợ thiết lập &amp; tích hợp đồng bộ toàn bộ hệ thống VNPT NMS (Setup hết NMS)"</i>.<br>
+        • Thanh toán 100% ngay khi xác nhận đặt hàng / ký Hợp đồng Gói I. Bảo hành phần cứng 01 năm (trừ sét lan truyền).
+      </div>
+    </div>
+    <div class="pay-box">
+      <div class="pay-tag">GÓI SAU (GÓI II) — ĐỢT 1 (CỌC 50%)</div>
+      <div class="pay-amt">36.650.000 VNĐ <span style="font-size:7.4px;font-weight:normal;">(50% Gói II)</span></div>
+      <div class="pay-desc">• Áp dụng khi triển khai Gói sau (Gói II): Tương ứng <b>50% Phần mềm R&amp;D (35.000.000đ KCT)</b> + <b>50% Phí Server Hub (1.650.000đ gồm VAT 10%)</b>.<br>• Thanh toán khi kích hoạt hợp đồng Gói II.</div>
+    </div>
+    <div class="pay-box">
+      <div class="pay-tag">GÓI SAU (GÓI II) — ĐỢT 2 (NGHIỆM THU 30%)</div>
+      <div class="pay-amt">21.990.000 VNĐ <span style="font-size:7.4px;font-weight:normal;">(30% Gói II)</span></div>
+      <div class="pay-desc">• Tương ứng <b>30% Phần mềm R&amp;D (21.000.000đ KCT)</b> + <b>30% Phí Server Hub (990.000đ gồm VAT 10%)</b>.<br>• Thanh toán sau khi nghiệm thu hệ thống Quản trị Đa cấp N-cấp <code>inut-solar-hub</code> (tối đa không quá 03 tháng).</div>
+    </div>
+    <div class="pay-box">
+      <div class="pay-tag">GÓI SAU (GÓI II) — ĐỢT 3 (VẬN HÀNH 20%)</div>
+      <div class="pay-amt">14.660.000 VNĐ <span style="font-size:7.4px;font-weight:normal;">(20% Gói II)</span></div>
+      <div class="pay-desc">• Tương ứng <b>20% Phần mềm R&amp;D (14.000.000đ KCT)</b> + <b>20% Phí Server Hub (660.000đ gồm VAT 10%)</b>.<br>• Thanh toán sau <b>03 tháng vận hành ổn định sau nghiệm thu</b> để dự phòng xử lý lỗi &amp; bảo trì phần mềm.</div>
+    </div>
+  </div>
+
+  <!-- SECTION IV: MODULE DECOMPOSITION -->
+  <div class="sec-head">IV. PHÂN RÃ KIẾN TRÚC KỸ THUẬT: PHÂN HỆ BIÊN INUT-SOLAR (ĐÃ GỒM BẮN BÙ NMS) &amp; PHẦN MỀM QUẢN TRỊ N-CẤP INUT-SOLAR-HUB</div>
+  <table class="arch-table">
+    <colgroup>
+      <col style="width: 22%;">
+      <col style="width: 17%;">
+      <col style="width: 61%;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Phân hệ / Cục Kỹ thuật</th>
+        <th>Phân kỳ Gói thầu</th>
+        <th>Chi tiết Chức năng Kỹ thuật &amp; Ranh giới Thực hiện</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>1. Phân hệ Biên<br><code>inut-solar</code> (Edge)</b><br><span style="font-size:7.3px;color:#475569;">(Chạy trên 16 thiết bị iNut Smartcity v1.1 — 5VDC, Wi-Fi 2.4/5GHz &amp; BLE)</span></td>
+        <td><span class="badge-deliver">GÓI I (HIỆN TẠI)</span><br><span style="font-size:7.2px;color:#334155;">16 Bộ Thiết bị (60,48tr) + 10tr KCT Setup hết NMS (Đã có Tự động Bắn bù)</span></td>
+        <td>
+          • <b>Hỗ trợ Chuyên sâu 02 Thế hệ Biến tần / Stick Solis V2 &amp; Solis V3:</b><br>
+          &nbsp;&nbsp;+ <i>Solis V2 (Stick <code>S2-WL-ST</code> &amp; OpenAPI V2.0.3 <code>:13333</code>):</i> Đọc thanh ghi Modbus <code>33000–33099</code> &amp; Pin Hybrid <code>33132–33146</code> qua <b>Modbus TCP (Port 502)</b> kết hợp <b>BLE GATT (<code>0000ffe1/ffe2</code>)</b> tự xử lý xung đột RS485 (<code>0xC3</code>) và chữ ký HMAC-SHA1 OpenAPI V2.<br>
+          &nbsp;&nbsp;+ <i>Solis V3 (Stick <code>S3-WiFi-ST</code> &amp; SolisCloud V3 <code>v3.soliscloud.com</code>):</i> Khắc phục triệt để hạn chế khóa cổng TCP 502 trên dòng stick V3 bằng cơ chế thu thập đa luồng (BLE + Cloud V3 + Local ARP Discovery), chuẩn hóa đẩy NATS VNPT NMS (<code>raw_pvdata</code> &amp; <code>scsdata</code>), kẹp áp PV1 chiều tối (74.4V) và lọc sạch <code>NaN</code>.<br>
+          • <b>Tích hợp Sẵn Lưu Đệm Offline &amp; Tự Động Bắn Bù Lên VNPT NMS Ngay Tại Thiết Bị Biên:</b> Bản thân phần mềm biên <code>inut-solar</code> đã trang bị bộ đệm <b>RAM RingBuffer 7.200 điểm</b> + hàng đợi ngoại tuyến <b>SQLite WAL <code>sync_queue.db</code> (lưu 50.000 mẫu)</b> kèm Circuit Breaker tự động xả hàng đợi và <b>bắn bù đầy đủ dữ liệu lịch sử lên VNPT NMS ngay khi có mạng trở lại</b>; phát Wi-Fi AP (2.4/5GHz) hoặc BLE để kỹ thuật viên cài đặt tại chỗ.
+        </td>
+      </tr>
+      <tr>
+        <td><b>2. Cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp)<br><code>inut-solar-hub</code></b><br><span style="font-size:7.3px;color:#475569;">(Cloud Hub hoặc cài trên Server Linux của Việt Hùng Power)</span></td>
+        <td><span class="badge-tender">GÓI II (ĐƯA VÀO THẦU)</span><br><span style="font-size:7.2px;color:#115e59;">70tr Phần mềm R&amp;D (KCT) + 3,3tr Server Hub/năm</span></td>
+        <td>
+          • <b>Hạng mục "Cục Phần mềm Quản trị Tập trung N-cấp" để Việt Hùng Power đưa vào Hồ sơ Thầu Gói sau:</b><br>
+          &nbsp;&nbsp;+ <i>Kiến trúc Quản trị Phân cấp Đa tầng (N-cấp / Hierarchical Multi-tier Agency Tree &amp; RBAC):</i> Cho phép khởi tạo và phân quyền <b>N-cấp không giới hạn</b> theo mô hình quản trị của Việt Hùng Solar (Tổng công ty &rarr; Công ty con / Chi nhánh tỉnh &rarr; Phòng ban / Đội kỹ thuật vận hành &rarr; Nhân viên phụ trách &rarr; Khách hàng / Cụm trạm) với các vai trò chuyên biệt (<i>Admin / Operator / Viewer</i>).<br>
+          &nbsp;&nbsp;+ <i>Điều phối Đội trạm Tập trung &amp; Đường hầm Xuyên NAT Yamux:</i> Giám sát tập trung toàn bộ các trạm trên một mặt phẳng điều hành duy nhất (Fleet Cockpit SCADA), đối soát tỷ lệ bản tin NMS toàn hệ thống, và tích hợp đường hầm đảo ngược <b>Yamux Reverse Tunnel (<code>:31797</code>)</b> để kỹ thuật viên truy cập trực tiếp vào giao diện cấu hình từng trạm từ xa xuyên qua mạng 4G/CGNAT mà không cần mở port modem.<br>
+          &nbsp;&nbsp;+ <i>Độc quyền Phân phối &amp; Linh hoạt Hạ tầng:</i> Cấp quyền độc quyền phân phối thương mại mảng tích hợp VNPT NMS; vận hành trên Cloud Server của iNut hoặc cài đặt trực tiếp lên máy chủ Linux của Việt Hùng Power / Chủ đầu tư.
+        </td>
+      </tr>
+      <tr>
+        <td><b>3. Phân hệ Nghiên cứu<br><code>R&amp;D Bản chất NLMT</code></b><br><span style="font-size:7.3px;color:#475569;">(Solar Physics, String Diagnostics &amp; Advanced EMS)</span></td>
+        <td><span class="badge-rnd">QUYỀN R&amp;D CỦA INUT</span><br><span style="font-size:7.2px;color:#92400e;">Chưa thuộc phạm vi bàn giao</span></td>
+        <td>
+          • <b>Phạm vi loại trừ rõ ràng:</b> Gói nghiên cứu chuyên sâu nhằm <i>"hiểu bản chất vật lý và suy hao của Năng lượng Mặt trời"</i> (chẩn đoán lỗi vật lý chuỗi PV, điểm nóng Hotspot/Bypass Diode, suy hao bức xạ/nhiệt độ, chỉ số <code>Yf/CSI/PCR</code>, tối ưu hóa phụ tải EMS) <b>chưa bao gồm trong phạm vi bàn giao</b>. <b>INUT JSC có toàn quyền thu thập, lưu trữ và sử dụng dữ liệu viễn trắc từ hệ thống NMS</b> nhằm phục vụ công tác R&amp;D hiểu bản chất năng lượng mặt trời.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION V: STRATEGIC TERMS -->
+  <div class="sec-head">V. ĐIỀU KHOẢN XUẤT HÓA ĐƠN KCT, ĐỘC QUYỀN PHÂN PHỐI, BẢO HÀNH &amp; SỞ HỮU TRÍ TUỆ</div>
+  <div class="clause-box">
+    <div class="clause-item">
+      <span class="clause-title">1. Cơ chế Thanh toán &amp; Xuất Hóa đơn Phần mềm Nghiên cứu (KCT 0%) ở Gói I và Dự toán Gói II Đưa vào Thầu:</span>
+      Tại <b>Gói I (triển khai ngay đợt này)</b>, Bên B thanh toán <b>100% trong 01 lần (70.480.000 VNĐ)</b> bao gồm <b>60.480.000 VNĐ</b> tiền 16 bộ thiết bị phần cứng (đã gồm VAT 8%, tích hợp sẵn phần mềm biên <code>inut-solar</code> tự động bắn bù dữ liệu lịch sử lên NMS) và <b>10.000.000 VNĐ</b> tiền hỗ trợ phần mềm (xuất hóa đơn <b>Không chịu thuế GTGT — KCT 0%</b> dưới nội dung <i>"Phần mềm nghiên cứu phát triển (R&amp;D) — Gói hỗ trợ thiết lập &amp; tích hợp đồng bộ toàn bộ hệ thống VNPT NMS"</i>). Đối với <b>Gói II (Gói sau)</b>, toàn bộ chi phí <b>Cục Phần mềm R&amp;D Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code> (70.000.000 VNĐ KCT) + Máy chủ Hub (3.300.000 VNĐ/năm gồm VAT 10%) = 73.300.000 VNĐ</b> được giữ nguyên định mức chuẩn và mô tả chi tiết để Bên B nắm rõ chi phí và đưa vào Hồ sơ dự thầu giai đoạn tiếp theo.
+    </div>
+    <div class="clause-item">
+      <span class="clause-title">2. Cấp quyền Độc quyền Phân phối mảng tích hợp VNPT NMS &amp; Chính sách Bảo hành Phần cứng (01 Năm — Trừ Sét Lan Truyền):</span>
+      Trên cơ sở hợp tác và thanh toán theo lộ trình Gói I &amp; Gói II, Bên A (<b>INUT JSC</b>) cấp quyền cho Bên B (<b>CÔNG TY CỔ PHẦN VIỆT HÙNG POWER</b>) <b>độc quyền phân phối thương mại giải pháp thiết bị &amp; phần mềm đồng bộ hệ thống VNPT CSHT Solar NMS</b> (tập trung dòng biến tần Solis V2 &amp; V3). Thiết bị <code>iNut Smartcity Data Logger v1.1</code> (nguồn <code>5 VDC</code>, kèm sẵn Adapter <code>220 VAC – 5 VDC</code>) được bảo hành kỹ thuật <b>01 năm (12 tháng)</b> kể từ ngày bàn giao; <b>không bao gồm hư hỏng do sét đánh trực tiếp hoặc sét lan truyền</b>, chập cháy quá áp hoặc ngập nước.
+    </div>
+    <div class="clause-item">
+      <span class="clause-title">3. Vận hành Máy chủ Quản trị N-cấp (3.000.000đ/năm + VAT 10%), Bảo trì Linh hoạt &amp; Quyền R&amp;D Dữ liệu của iNut:</span>
+      Phí máy chủ <b>3.000.000 VNĐ/năm</b> (+ VAT 10%) phục vụ vận hành hệ thống phần mềm quản trị tập trung đa cấp (N-cấp) <code>inut-solar-hub</code> cho các phòng ban, chi nhánh của Việt Hùng Solar (có thể cài đặt trực tiếp trên máy chủ Linux của Việt Hùng Power). Phí bảo trì &amp; nâng cấp phần mềm các năm sau <b>có thể thương lượng hoặc không cần gia hạn</b> nếu hệ thống ổn định để chuyển giao Việt Hùng Power tự chủ quản lý. <b>INUT JSC giữ bản quyền công nghệ lõi và toàn quyền khai thác dữ liệu thu thập từ NMS để R&amp;D bản chất năng lượng mặt trời.</b>
+    </div>
+  </div>
+
+  <!-- BANK & SIGNATURES -->
+  <div class="bottom-grid">
+    <div class="bank-card">
+      <div class="b-head">THÔNG TIN TÀI KHOẢN NHẬN THANH TOÁN (BÊN A)</div>
+      <div>• Đơn vị thụ hưởng: <b>{{ bank.account_name }}</b></div>
+      <div>• Số tài khoản: <b style="font-size: 9.8px; color: #0369a1;">{{ bank.account_number }}</b></div>
+      <div>• Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+      <div>• Nội dung chuyển khoản Gói I (70.480.000đ): <i>VIET HUNG POWER TT GOI 1 INUT SOLAR NMS</i></div>
+    </div>
+    <div class="sig-wrap">
+      <div class="sig-col">
+        <div class="sig-role">XÁC NHẬN CỦA BÊN MUA</div>
+        <div class="sig-sub">CÔNG TY CỔ PHẦN VIỆT HÙNG POWER</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">Đại diện có thẩm quyền</div>
+      </div>
+      <div class="sig-col">
+        <div class="sig-role">ĐẠI DIỆN ĐƠN VỊ BÁO GIÁ</div>
+        <div class="sig-sub">{{ ben_a.title }} — INUT JSC</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">{{ ben_a.rep }}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

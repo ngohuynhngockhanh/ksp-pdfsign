@@ -25,9 +25,9 @@ import re
 import shlex
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Sequence
-
 import numpy as np
 import qrcode
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
@@ -552,9 +552,17 @@ def render_elements_canvas(
         elif etype == "qrcode":
             data = str(el.get("data", el.get("content", "https://inut.vn")))
             size = int(el.get("size", el.get("width", 88)))
+            center_logo = bool(el.get("center_logo", el.get("logo", False)))
+            ecc_str = str(el.get("ecc", "H" if center_logo else "M")).upper()
+            ecc_map = {
+                "L": qrcode.constants.ERROR_CORRECT_L,
+                "M": qrcode.constants.ERROR_CORRECT_M,
+                "Q": qrcode.constants.ERROR_CORRECT_Q,
+                "H": qrcode.constants.ERROR_CORRECT_H,
+            }
             qr = qrcode.QRCode(
                 version=None,
-                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                error_correction=ecc_map.get(ecc_str, qrcode.constants.ERROR_CORRECT_H),
                 box_size=4,
                 border=int(el.get("border", 1)),
             )
@@ -563,7 +571,25 @@ def render_elements_canvas(
             qr_img = qr.make_image(fill_color="black", back_color="white").convert("1")
             qr_img = qr_img.resize((size, size), Image.Resampling.NEAREST)
             canvas.paste(qr_img, (x, y))
-
+            if center_logo:
+                c_size = max(16, int(round(size * 0.21)))
+                cx = x + (size - c_size) // 2
+                cy = y + (size - c_size) // 2
+                draw.rounded_rectangle(
+                    [cx - 2, cy - 2, cx + c_size + 1, cy + c_size + 1],
+                    radius=3,
+                    fill=1,
+                    outline=0,
+                    width=1,
+                )
+                mini_logo = render_monochrome_image(
+                    get_settings().logo_path,
+                    width=c_size,
+                    height=c_size,
+                    threshold=172,
+                    preserve_outline=True,
+                )
+                canvas.paste(mini_logo, (cx, cy))
         elif etype == "barcode":
             code_val = str(el.get("code", el.get("data", el.get("content", ""))))
             bc_w = int(el.get("width", 180))
@@ -820,6 +846,184 @@ def render_inut_label(
     return render_elements_canvas(elements, width=width, height=height, border=border)
 
 
+def render_sanxuat_v1_1_label(
+    device_id: str = "inut_200_177",
+    *,
+    mfg_date: str | None = None,
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    product_line: str = "Rockchip · Xuất xưởng v1.1 ©",
+    wifi_pass: str = "inut12345",
+    serial_number: str | None = None,
+    qr_data: str | None = None,
+    qr_logo: bool = True,
+    logo_path: str | Path | None = None,
+    width: int = 400,
+    height: int = 300,
+) -> Image.Image:
+    """Render tem nhan 'Mau Xuat Xuong v1.1 Rockchip' (400x300 / 40x30mm = 320x240 dots):
+    - 100% nen trang (fill=1) + vien den & chu den (fill=0), khong dung nen den de tranh nhoe nhiet
+    - Logo iNut sac net kem bieu tuong (R) Registered Trademark va (C) Copyright
+    - Ten xuat hoa don chuan: 'iNut Smartcity - Data Logger v1.1 - Rockchip'
+    - Khung huy hieu ★ MAKE IN VIETNAM (nen trang vien den)
+    - Khung SN / Ma thiet bi duy nhat (vd: inut_207_153) + QR Code ma thiet bi (co logo iNut o tam)
+    - Dong Pass Wi-Fi mac dinh: inut12345
+    - Ngay san xuat (NSX) mac dinh la ngay goi lenh in (DD/MM/YYYY) + dau QC PASS (nen trang vien den)
+    """
+    _, _, w_dots, h_dots = normalize_paper_size(width, height)
+    if not mfg_date:
+        mfg_date = datetime.now().strftime("%d/%m/%Y")
+    clean_id = (device_id or serial_number or "inut_200_177").strip()
+    qr_payload = (qr_data or clean_id).strip()
+    resolved_logo = Path(logo_path) if logo_path else get_settings().logo_path
+
+    canvas = Image.new("1", (w_dots, h_dots), 1)
+    draw = ImageDraw.Draw(canvas)
+
+    # Khung vien cong nghiep bo goc (320x240) - nen trang vien den
+    draw.rounded_rectangle([2, 2, w_dots - 3, h_dots - 3], radius=8, outline=0, width=2)
+
+    # Goc tren ben trai: Logo iNut (60x60) + icon (R)
+    logo_size = 60
+    logo_x, logo_y = 10, 11
+    logo_img = render_monochrome_image(
+        resolved_logo,
+        width=logo_size,
+        height=logo_size,
+        threshold=172,
+        preserve_outline=True,
+    )
+    canvas.paste(logo_img, (logo_x, logo_y))
+
+    font_r_badge = _load_font(10, bold=True)
+    draw.ellipse(
+        [logo_x + logo_size - 9, logo_y - 3, logo_x + logo_size + 5, logo_y + 11],
+        fill=1,
+        outline=0,
+        width=1,
+    )
+    draw.text((logo_x + logo_size - 5, logo_y - 2), "R", font=font_r_badge, fill=0)
+
+    # Cum tieu de ben phai logo (x = 78..310)
+    hx = 78
+    font_brand = _load_font(17, bold=True)
+    draw.text((hx, 9), "iNut® JSC", font=font_brand, fill=0)
+
+    # Huy hieu ★ MAKE IN VIETNAM (NỀN TRẮNG - VIỀN ĐEN 2PX - CHỮ ĐEN ĐẬM)
+    miv_x, miv_y, miv_w, miv_h = 182, 8, 128, 22
+    draw.rounded_rectangle([miv_x, miv_y, miv_x + miv_w, miv_y + miv_h], radius=4, fill=1, outline=0, width=2)
+    font_miv = _load_font(10, bold=True)
+    miv_text = "★ MAKE IN VIETNAM"
+    bbox_miv = draw.textbbox((0, 0), miv_text, font=font_miv)
+    tw_miv = bbox_miv[2] - bbox_miv[0]
+    draw.text((miv_x + (miv_w - tw_miv) // 2, miv_y + 5), miv_text, font=font_miv, fill=0)
+
+    # Tieu de ten xuat hoa don chuan: "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    font_inv1 = _load_font(12, bold=True)
+    font_inv2 = _load_font(11, bold=True)
+    if " - " in model_name and len(model_name) > 28:
+        parts = model_name.split(" - ")
+        line1 = f"{parts[0]} - {parts[1]}" if len(parts) >= 2 else model_name
+        line2 = f"{' - '.join(parts[2:])} · Xuất xưởng ©" if len(parts) >= 3 else product_line
+        draw.text((hx, 34), line1, font=font_inv1, fill=0)
+        draw.text((hx, 51), line2, font=font_inv2, fill=0)
+    else:
+        draw.text((hx, 34), model_name, font=font_inv1, fill=0)
+        draw.text((hx, 51), product_line, font=font_inv2, fill=0)
+
+    # Duong phan cach ngang y = 74
+    draw.line([(8, 74), (w_dots - 9, 74)], fill=0, width=2)
+
+    # Cột trái (x = 10..198, y = 80..195):
+    # 1. Khung SN / MÃ THIẾT BỊ (Nền trắng, viền đen 2px, vạch ngăn mảnh, chữ đen sắc nét)
+    draw.rounded_rectangle([10, 80, 198, 132], radius=5, fill=1, outline=0, width=2)
+    draw.line([(10, 98), (198, 98)], fill=0, width=1)
+    font_tag = _load_font(10, bold=True)
+    tag_txt = "SN / MÃ THIẾT BỊ (DEVICE ID)"
+    bbox_tag = draw.textbbox((0, 0), tag_txt, font=font_tag)
+    tw_tag = bbox_tag[2] - bbox_tag[0]
+    draw.text((10 + max(4, (188 - tw_tag) // 2), 83), tag_txt, font=font_tag, fill=0)
+
+    id_font_size = 17 if len(clean_id) <= 14 else (14 if len(clean_id) <= 18 else 12)
+    font_id = _load_font(id_font_size, bold=True, mono=True)
+    bbox_id = draw.textbbox((0, 0), clean_id, font=font_id)
+    tw_id = bbox_id[2] - bbox_id[0]
+    draw.text((10 + max(4, (188 - tw_id) // 2), 104), clean_id, font=font_id, fill=0)
+
+    # 2. Dòng Pass Wi-Fi mặc định: inut12345 (Nền trắng, viền đen, chữ đen)
+    draw.rounded_rectangle([10, 138, 198, 163], radius=4, fill=1, outline=0, width=1)
+    font_wifi_lbl = _load_font(11, bold=True)
+    font_wifi_val = _load_font(12, bold=True, mono=True)
+    draw.text((15, 144), "Pass Wi-Fi:", font=font_wifi_lbl, fill=0)
+    draw.text((94, 143), wifi_pass, font=font_wifi_val, fill=0)
+
+    # 3. Hộp Ngày sản xuất (NSX = ngày kêu in) + dấu QC PASS (Nền trắng, viền đen, chữ đen)
+    draw.rounded_rectangle([10, 169, 198, 195], radius=4, fill=1, outline=0, width=1)
+    font_date = _load_font(11, bold=True)
+    draw.text((15, 176), f"NSX: {mfg_date}", font=font_date, fill=0)
+    draw.rounded_rectangle([138, 172, 194, 192], radius=3, fill=1, outline=0, width=1)
+    font_qc = _load_font(9, bold=True, mono=True)
+    draw.text((144, 176), "QC PASS", font=font_qc, fill=0)
+
+    # Cột phải (x = 206..310, y = 80..200): QR Code mã thiết bị có logo iNut ở tâm (GIỮ NGUYÊN)
+    qr_size = 104
+    qr_x = w_dots - qr_size - 10
+    qr_y = 80
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=4,
+        border=1,
+    )
+    qr.add_data(qr_payload)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("1")
+    qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.NEAREST)
+    canvas.paste(qr_img, (qr_x, qr_y))
+
+    if qr_logo:
+        c_size = 22
+        cx = qr_x + (qr_size - c_size) // 2
+        cy = qr_y + (qr_size - c_size) // 2
+        draw.rounded_rectangle(
+            [cx - 2, cy - 2, cx + c_size + 1, cy + c_size + 1],
+            radius=3,
+            fill=1,
+            outline=0,
+            width=1,
+        )
+        mini_logo = render_monochrome_image(
+            resolved_logo,
+            width=c_size,
+            height=c_size,
+            threshold=172,
+            preserve_outline=True,
+        )
+        canvas.paste(mini_logo, (cx, cy))
+
+    font_qrcap = _load_font(9, bold=True, mono=True)
+    cap_txt = f"QR: {clean_id}" if len(clean_id) <= 13 else "SCAN DEVICE ID"
+    bbox_cap = draw.textbbox((0, 0), cap_txt, font=font_qrcap)
+    tw_cap = bbox_cap[2] - bbox_cap[0]
+    draw.text((qr_x + (qr_size - tw_cap) // 2, qr_y + qr_size + 2), cap_txt, font=font_qrcap, fill=0)
+
+    # Chân trang (y = 201..237): Copyright © & Registered ® (Nền trắng, chữ đen)
+    draw.line([(8, 201), (w_dots - 9, 201)], fill=0, width=2)
+    font_foot_b = _load_font(10, bold=True)
+    font_foot = _load_font(10, bold=False)
+    draw.text((12, 206), "© 2026 INUT® JSC · DN KH&CN", font=font_foot_b, fill=0)
+    draw.text((12, 220), "MST: 4401053694 · https://inut.vn", font=font_foot, fill=0)
+
+    stamp_x, stamp_y, stamp_w, stamp_h = 226, 206, 84, 25
+    draw.rounded_rectangle([stamp_x, stamp_y, stamp_x + stamp_w, stamp_y + stamp_h], radius=4, fill=1, outline=0, width=1)
+    font_stamp = _load_font(10, bold=True)
+    st_txt = "iNut® © v1.1"
+    bbox_st = draw.textbbox((0, 0), st_txt, font=font_stamp)
+    tw_st = bbox_st[2] - bbox_st[0]
+    draw.text((stamp_x + (stamp_w - tw_st) // 2, stamp_y + 6), st_txt, font=font_stamp, fill=0)
+
+    return canvas
+
+
 def build_label_tspl(
     image: Image.Image,
     *,
@@ -962,7 +1166,7 @@ print(json.dumps({{
         remote_script = f"""python3 -c '
 import os, re, select, subprocess, sys, time, json
 
-mac = {target_mac!r}
+mac = "{target_mac}"
 chunk_size = {int(chunk_size)}
 req_mtu = {int(mtu)}
 max_retries = {int(retries)}
@@ -1071,6 +1275,175 @@ sys.exit(1)
             f"Loi khi gui lenh in BLE qua {self.host} (exit={res.returncode}): stdout={stdout_text} stderr={stderr_text}"
         )
 
+    def send_tspl_batch(
+        self,
+        payloads: Sequence[bytes],
+        *,
+        labels: Sequence[str] | None = None,
+        mac: str | None = None,
+        chunk_size: int = DEFAULT_BLE_CHUNK_SIZE,
+        mtu: int = 512,
+        inter_label_pause: float = 1.6,
+    ) -> dict[str, Any]:
+        """In hang loat nhieu tem TSPL trong CUNG 1 phien BLE GATT (tranh connect/disconnect lap lai)."""
+        if not payloads:
+            return {"ok": True, "printed_count": 0, "items": []}
+        target_mac = (mac or get_settings().clabel_printer_mac or "03:22:32:84:D6:7F").strip().upper()
+        if not re.match(r"^[0-9A-F:]{17}$", target_mac):
+            raise ValueError(f"Dia chi MAC khong hop le: {target_mac}")
+
+        import json
+        batch_spec = json.dumps([
+            {
+                "label": (labels[i] if labels and i < len(labels) else f"item_{i+1}"),
+                "b64": base64.b64encode(p).decode("ascii"),
+            }
+            for i, p in enumerate(payloads)
+        ]).encode("utf-8")
+
+        remote_script = f"""python3 -c '
+import base64, json, os, re, select, subprocess, sys, time
+
+mac = "{target_mac}"
+chunk_size = {int(chunk_size)}
+req_mtu = {int(mtu)}
+pause_sec = {float(inter_label_pause)}
+items = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+
+def open_gatt(scan_first=False):
+    if scan_first:
+        subprocess.run(["bluetoothctl", "--timeout", "4", "scan", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    p = subprocess.Popen(
+        ["gatttool", "-b", mac, "-I"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
+    )
+    os.set_blocking(p.stdout.fileno(), False)
+
+    def read_until(pattern, timeout=5.0):
+        buf = ""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            r, _, _ = select.select([p.stdout], [], [], 0.04)
+            if r:
+                chunk = p.stdout.read(4096)
+                if chunk:
+                    buf += chunk.decode("utf-8", errors="ignore")
+                    if re.search(pattern, buf):
+                        return True, buf
+                    if "connect error" in buf.lower() or "connection refused" in buf.lower() or "disconnected" in buf.lower():
+                        return False, buf
+        return False, buf
+
+    def send_cmd(cmd, expect, timeout=5.0):
+        p.stdin.write((cmd + "\\n").encode("ascii"))
+        p.stdin.flush()
+        return read_until(expect, timeout)
+
+    ok, out = send_cmd("connect", r"Connection successful", timeout=8.0)
+    if not ok:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+        return None, None, None, out
+
+    ok_mtu, out_mtu = send_cmd(f"mtu {{req_mtu}}", r"MTU was exchanged successfully: \\d+", timeout=3.0)
+    m_mtu = re.search(r"MTU was exchanged successfully: (\\d+)", out_mtu)
+    neg_mtu = int(m_mtu.group(1)) if m_mtu else 23
+    send_cmd("char-write-req 0x000f 0100", r"Characteristic value was written successfully", timeout=2.0)
+    return p, send_cmd, read_until, neg_mtu
+
+p, send_cmd, read_until, neg_mtu = None, None, None, 240
+results = []
+t_start = time.time()
+
+try:
+    for idx, it in enumerate(items):
+        raw = base64.b64decode(it["b64"])
+        chunks = [raw[i:i+chunk_size] for i in range(0, len(raw), chunk_size)]
+        sent_ok = False
+        last_err = ""
+        for attempt in range(3):
+            if p is None:
+                p, send_cmd, read_until, neg_mtu = open_gatt(scan_first=(attempt > 0))
+                if p is None:
+                    last_err = str(neg_mtu)
+                    time.sleep(1.0)
+                    continue
+            t0 = time.time()
+            chunk_err = False
+            for c_idx, ch in enumerate(chunks):
+                ok_w, out_w = send_cmd(
+                    f"char-write-req 0x0011 {{ch.hex()}}",
+                    r"Characteristic value was written successfully",
+                    timeout=5.0,
+                )
+                if not ok_w:
+                    chunk_err = True
+                    last_err = f"chunk_{{c_idx}}: {{out_w}}"
+                    try:
+                        p.terminate()
+                    except Exception:
+                        pass
+                    p = None
+                    break
+            if not chunk_err:
+                el = round(time.time() - t0, 3)
+                results.append({{
+                    "index": idx + 1,
+                    "label": it["label"],
+                    "bytes_sent": len(raw),
+                    "chunks_sent": len(chunks),
+                    "elapsed_sec": el,
+                }})
+                sent_ok = True
+                if idx + 1 < len(items):
+                    read_until(r"__WAIT_INTER_LABEL__", timeout=pause_sec)
+                else:
+                    read_until(r"__WAIT_FLUSH__", timeout=1.2)
+                break
+            time.sleep(1.0)
+        if not sent_ok:
+            print(json.dumps({{"ok": False, "mac": mac, "failed_at": it["label"], "error": last_err, "completed": results}}))
+            sys.exit(1)
+finally:
+    if p is not None:
+        try:
+            send_cmd("disconnect", r".*", timeout=1.0)
+            p.stdin.write(b"exit\\n")
+            p.stdin.flush()
+        except Exception:
+            pass
+        p.terminate()
+
+print(json.dumps({{
+    "ok": True,
+    "mac": mac,
+    "printed_count": len(results),
+    "negotiated_mtu": neg_mtu,
+    "total_elapsed_sec": round(time.time() - t_start, 3),
+    "items": results,
+}}))
+'"""
+        total_timeout = max(60, int(len(payloads) * 15) + 30)
+        res = self.run_remote(remote_script, input_bytes=batch_spec, timeout=total_timeout)
+        stdout_text = res.stdout.decode("utf-8", errors="replace").strip()
+        stderr_text = res.stderr.decode("utf-8", errors="replace").strip()
+        for line in reversed(stdout_text.splitlines()):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                parsed = json.loads(line)
+                if not parsed.get("ok"):
+                    raise RuntimeError(f"In batch BLE that bai tren {target_mac}: {parsed}")
+                parsed["gateway_host"] = self.host
+                return parsed
+        raise RuntimeError(
+            f"Loi khi gui batch BLE qua {self.host} (exit={res.returncode}): stdout={stdout_text} stderr={stderr_text}"
+        )
+
 
 def print_inut_label(
     *,
@@ -1129,6 +1502,85 @@ def print_inut_label(
 
     w_mm, h_mm, w_dots, h_dots = normalize_paper_size(width, height)
     result: dict[str, Any] = {
+        "width_mm": w_mm,
+        "height_mm": h_mm,
+        "width_dots": w_dots,
+        "height_dots": h_dots,
+        "tspl_bytes_len": len(tspl_bytes),
+        "preview_png_base64": preview_b64,
+        "is_printed": False,
+    }
+
+    if print_remote:
+        gw = ClabelBLEGateway(host=gateway_host or get_settings().ble_gateway_host)
+        send_res = gw.send_tspl(tspl_bytes, mac=mac)
+        result.update(send_res)
+        result["is_printed"] = True
+
+    return result
+
+
+def print_sanxuat_v1_1_label(
+    device_id: str = "inut_200_177",
+    *,
+    mfg_date: str | None = None,
+    model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    product_line: str = "Rockchip · Xuất xưởng v1.1 ©",
+    wifi_pass: str = "inut12345",
+    serial_number: str | None = None,
+    qr_data: str | None = None,
+    qr_logo: bool = True,
+    logo_path: str | Path | None = None,
+    width: int = 400,
+    height: int = 300,
+    copies: int = 1,
+    density: int | None = None,
+    speed: int | None = None,
+    mac: str | None = None,
+    gateway_host: str | None = None,
+    print_remote: bool = True,
+    save_preview_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Render va in tem 'Mau Xuat Xuong v1.1 Rockchip' (400x300) qua BLE Gateway 77.88.207.23."""
+    resolved_date = mfg_date or datetime.now().strftime("%d/%m/%Y")
+    clean_id = (device_id or serial_number or "inut_200_177").strip()
+    img = render_sanxuat_v1_1_label(
+        device_id=clean_id,
+        mfg_date=resolved_date,
+        model_name=model_name,
+        product_line=product_line,
+        wifi_pass=wifi_pass,
+        serial_number=serial_number,
+        qr_data=qr_data,
+        qr_logo=qr_logo,
+        logo_path=logo_path,
+        width=width,
+        height=height,
+    )
+    if save_preview_path:
+        img.save(save_preview_path)
+
+    tspl_bytes = build_label_tspl(
+        img,
+        width=width,
+        height=height,
+        copies=copies,
+        density=density,
+        speed=speed,
+    )
+
+    png_buf = io.BytesIO()
+    img.save(png_buf, format="PNG")
+    preview_b64 = base64.b64encode(png_buf.getvalue()).decode("ascii")
+
+    w_mm, h_mm, w_dots, h_dots = normalize_paper_size(width, height)
+    result: dict[str, Any] = {
+        "template": "sanxuat_v1.1",
+        "device_id": clean_id,
+        "serial_number": clean_id,
+        "wifi_pass": wifi_pass,
+        "mfg_date": resolved_date,
+        "model_name": model_name,
         "width_mm": w_mm,
         "height_mm": h_mm,
         "width_dots": w_dots,
