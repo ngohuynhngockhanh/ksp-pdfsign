@@ -783,7 +783,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
     # Status badges
     if c.has_bank_proof:
         status_code = "completed"
-        status_label = "Đã thanh toán (Có UNC)"
+        status_label = "Đã chi tiền mặt" if is_cash else "Đã thanh toán (Có UNC)"
         status_color = "emerald"
     elif can_pay:
         status_code = "ready_to_pay"
@@ -1705,31 +1705,44 @@ def sign_piecework_contract_inut(
         except Exception as e:
             logger.warning("Could not sign Appendix 2 for contract %s: %s", c.id, e)
 
-    if c.has_bank_proof and c.bank_proof_doc_id:
+    is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+    if (c.has_bank_proof and c.bank_proof_doc_id) or (is_cash and c.has_acceptance):
         try:
+            if is_cash:
+                c.has_bank_proof = True
             b_pl3 = render_appendix3_pdf(c)
             b_pl3 = sign_piecework_pdf_pyhanko(
                 b_pl3,
                 app3_dt,
                 location=settings.default_location,
-                reason="Xác nhận chi trả thù lao & thanh lý hợp đồng",
+                reason="Xác nhận nhận tiền mặt tại chân công trình & thanh lý hợp đồng" if is_cash else "Xác nhận chi trả thù lao & thanh lý hợp đồng",
                 cert_id=cert_id,
                 pin=pin,
             )
             pl3_id = storage.save_upload(b_pl3, suffix=".pdf")
+            if is_cash and not c.bank_proof_doc_id:
+                c.bank_proof_doc_id = pl3_id
             doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
+            pl3_fn = f"Phu_luc_03_Thanh_toan_Tien_mat_{safe_code}.pdf" if is_cash else f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
+            pl3_note = (
+                f"Phụ lục III: Biên bản xác nhận nhận tiền mặt tại chân công trình & Thanh lý HĐ · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
+                if is_cash
+                else f"Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý HĐ (kèm UNC Techcombank) · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
+            )
             if doc3:
                 doc3.doc_id = pl3_id
+                doc3.filename = pl3_fn
+                doc3.note = pl3_note
                 doc3.signed = True
                 doc3.source_synced_at = datetime.now(timezone.utc)
             else:
                 doc3 = Document(
                     doc_id=pl3_id,
-                    filename=f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf",
+                    filename=pl3_fn,
                     signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
                     signed=True,
                     doc_type="thanh_ly",
-                    note=f"Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý HĐ (kèm UNC Techcombank) · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}",
+                    note=pl3_note,
                     source_system="piecework_appendix",
                     source_external_id=f"{c.id}_PL03",
                     source_synced_at=datetime.now(timezone.utc),
@@ -1815,7 +1828,8 @@ def sync_piecework_contract_to_drive(
             b_pl3 = storage.read_doc(doc3.doc_id)
         else:
             b_pl3 = render_appendix3_pdf(c)
-        fn_pl3 = f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
+        is_cash_sync = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+        fn_pl3 = f"Phu_luc_03_Thanh_toan_Tien_mat_{safe_code}.pdf" if is_cash_sync else f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
         (pkg_dir / fn_pl3).write_bytes(b_pl3)
         uploaded_files.append(fn_pl3)
 
