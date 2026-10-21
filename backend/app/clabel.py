@@ -1846,12 +1846,13 @@ def generate_sanxuat_batch_70x100_pdf(
     # =========================================================================
     # 3. BẢNG LIỆT KÊ TOÀN BỘ THIẾT BỊ INUT TỪNG DÒNG
     # =========================================================================
-    # Cụm QR ở đáy cao 21.0mm (từ m_bot = 51.0mm lên 72.0mm)
-    y_qr_section_top = m_bot + 21.0 * mm
-    avail_tbl_h = y_tbl_top - y_qr_section_top - 0.8 * mm
+    # Cụm QR ở đáy: tự động cân đối theo số dòng (10 dòng: 21.0mm, 12+ dòng: 19.5mm để bảng 12 dòng rộng thoáng)
     n_rows = max(1, len(items))
-    header_row_h = 2.9 * mm
-    row_h = min(3.2 * mm, max(2.2 * mm, (avail_tbl_h - header_row_h) / n_rows))
+    qr_sec_h = 21.0 * mm if n_rows <= 10 else 19.4 * mm
+    y_qr_section_top = m_bot + qr_sec_h
+    avail_tbl_h = y_tbl_top - y_qr_section_top - 0.7 * mm
+    header_row_h = 2.8 * mm if n_rows <= 10 else 2.55 * mm
+    row_h = min(3.2 * mm, max(2.0 * mm, (avail_tbl_h - header_row_h) / n_rows))
     total_tbl_h = header_row_h + n_rows * row_h
     y_tbl_bottom = y_tbl_top - total_tbl_h
 
@@ -1873,8 +1874,8 @@ def generate_sanxuat_batch_70x100_pdf(
     y_hdr_line = y_tbl_top - header_row_h
     c.setLineWidth(0.65)
     c.line(tbl_x, y_hdr_line, tbl_x + tbl_w, y_hdr_line)
-    c.setFont(font_bold, 4.4)
-    hdr_text_y = y_hdr_line + 0.85 * mm
+    c.setFont(font_bold, 4.3 if n_rows > 10 else 4.4)
+    hdr_text_y = y_hdr_line + (header_row_h - 1.4 * mm) / 2 + 0.15 * mm
     c.drawCentredString(tbl_x + col_stt_w / 2, hdr_text_y, "STT")
     c.drawCentredString(x_col1 + col_id_w / 2, hdr_text_y, "MÃ THIẾT BỊ (SN / ID)")
     c.drawCentredString(x_col2 + col_nsx_w / 2, hdr_text_y, "NGÀY SX")
@@ -1887,7 +1888,7 @@ def generate_sanxuat_batch_70x100_pdf(
     c.line(x_col3, y_tbl_bottom, x_col3, y_tbl_top)
 
     # Từng dòng thiết bị
-    row_font_size = 4.9 if n_rows <= 10 else (4.4 if n_rows <= 13 else 4.0)
+    row_font_size = 4.9 if n_rows <= 10 else (4.45 if n_rows <= 13 else 3.9)
     for idx, it in enumerate(items):
         ry_top = y_hdr_line - idx * row_h
         ry_bot = ry_top - row_h
@@ -1895,7 +1896,7 @@ def generate_sanxuat_batch_70x100_pdf(
             c.setLineWidth(0.3)
             c.line(tbl_x, ry_top, tbl_x + tbl_w, ry_top)
 
-        text_y = ry_bot + (row_h - 1.3 * mm) / 2 + 0.1 * mm
+        text_y = ry_bot + (row_h - 1.25 * mm) / 2 + 0.12 * mm
         stt_str = f"{idx + 1:02d}"
         dev_id = str(it.get("device_id", ""))
         mfg_date = str(it.get("mfg_date", ""))
@@ -1912,15 +1913,15 @@ def generate_sanxuat_batch_70x100_pdf(
         c.drawCentredString((x_col3 + tbl_x + tbl_w) / 2, text_y, st_str)
 
     # =========================================================================
-    # 4. CỤM MÃ QR DANH SÁCH CÁC MÃ INUT (CÁCH NHAU DẤU PHẨY) & KIỂM ĐẾM (Cao 21mm)
+    # 4. CỤM MÃ QR DANH SÁCH CÁC MÃ INUT (CÁCH NHAU DẤU PHẨY) & KIỂM ĐẾM
     # =========================================================================
     c.setLineWidth(0.7)
     c.line(m_x, y_qr_section_top, page_w - m_x, y_qr_section_top)
 
     csv_payload = ",".join(str(it.get("device_id", "")).strip() for it in items if it.get("device_id"))
-    qr_mm = 17.5 * mm
+    qr_mm = 17.5 * mm if n_rows <= 10 else 16.2 * mm
     qr_x = m_x + 1.0 * mm
-    qr_y = m_bot + 2.7 * mm
+    qr_y = m_bot + 2.5 * mm
 
     qr = qrcode.QRCode(
         version=None,
@@ -1939,24 +1940,25 @@ def generate_sanxuat_batch_70x100_pdf(
     c.rect(qr_x, qr_y, qr_mm, qr_mm, fill=0, stroke=1)
 
     c.setFont(font_bold, 3.6)
-    c.drawCentredString(qr_x + qr_mm / 2, m_bot + 0.9 * mm, f"QR LIST ({len(items)} MÃ)")
+    c.drawCentredString(qr_x + qr_mm / 2, m_bot + 0.85 * mm, f"QR LIST ({len(items)} MÃ)")
 
     # Cột phải cạnh QR: Hiển thị chuỗi CSV & Thống kê kiểm đếm
     rx = qr_x + qr_mm + 1.2 * mm
     rw = page_w - m_x - rx - 1.0 * mm
-    ry_top = y_qr_section_top - 2.0 * mm
+    ry_top = y_qr_section_top - 1.85 * mm
 
-    c.setFont(font_bold, 4.2)
+    c.setFont(font_bold, 4.1)
     c.drawString(rx, ry_top, "CHUỖI MÃ QR LÔ SẢN XUẤT (CSV):")
 
     # Box chứa chuỗi CSV
-    csv_box_h = 10.6 * mm
-    csv_box_y = ry_top - csv_box_h - 0.5 * mm
+    csv_box_h = 10.6 * mm if n_rows <= 10 else 9.6 * mm
+    csv_box_y = ry_top - csv_box_h - 0.45 * mm
     c.setLineWidth(0.45)
     c.roundRect(rx, csv_box_y, rw, csv_box_h, 0.6 * mm, fill=0, stroke=1)
 
-    c.setFont(font_mono, 3.9)
-    max_chars_per_line = 35
+    csv_font_sz = 3.9 if n_rows <= 10 else 3.45
+    max_chars_per_line = 35 if n_rows <= 10 else 41
+    c.setFont(font_mono, csv_font_sz)
     csv_lines: list[str] = []
     cur_line = ""
     for part in csv_payload.split(","):
@@ -1970,11 +1972,11 @@ def generate_sanxuat_batch_70x100_pdf(
     if cur_line:
         csv_lines.append(cur_line)
 
-    cy = csv_box_y + csv_box_h - 1.8 * mm
-    for ln in csv_lines[:5]:
+    line_step = 1.85 * mm if len(csv_lines) <= 5 else 1.5 * mm
+    cy = csv_box_y + csv_box_h - 1.65 * mm
+    for ln in csv_lines[:6]:
         c.drawString(rx + 0.9 * mm, cy, ln)
-        cy -= 1.85 * mm
-
+        cy -= line_step
     # Khung thống kê kiểm đếm dưới cùng bên phải
     already_cnt = sum(1 for it in items if it.get("clabel_action") == "already_printed")
     auto_cnt = len(items) - already_cnt
