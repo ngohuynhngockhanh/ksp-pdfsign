@@ -83,3 +83,22 @@ Dung cho don hang giao ngoai san, chanh xe, gui buu dien khong co ma SPX.
     --item "THI 058 601 1011" \
     --note "Cho xem hàng, không cho thử"
   ```
+
+---
+
+## 5. Quy Trình Gọi Subagent In SPX Express (`task` tool)
+Khi người dùng yêu cầu gọi subagent hoặc cần chạy ngầm không chặn luồng chính, ủy quyền in qua subagent `task`:
+
+### Cấu trúc lệnh gọi Subagent (`PrintSpxLabel`):
+```json
+{
+  "context": "# Goal\nIn tem vận đơn SPX Express chuẩn Tỉ Lệ Vàng 65% căn lệch phải ra máy in nhiệt TP732H tại trạm Windows 192.168.1.10.\n\n# Contract\nThực thi qua backend/.venv/bin/python gọi spx.quick_print_by_code(db, code=..., printer_name='TP732H', host='192.168.1.10', print_remote=True) và trả về đầy đủ JSON kết quả.",
+  "tasks": [
+    {
+      "name": "PrintSpxLabel",
+      "task": "# Target\nIn nhãn SPX Express '<TRACKING_NO>' trên máy in nhiệt 'TP732H' (Windows host '192.168.1.10').\n\n# Change\nChạy python script với sys.path.insert(0, 'backend'):\n- Mở session DB qua app.db.get_session\n- Gọi spx.quick_print_by_code(db, code='<TRACKING_NO>', printer_name='TP732H', host='192.168.1.10', print_remote=True)\n- In kết quả JSON ra stdout.\n\n# Acceptance\nJSON trả về có success=True, tracking_no, recipient_name, order_code, share_url.",
+      "solutionSpace": "one call: spx.quick_print_by_code from backend/app/spx.py and report result"
+    }
+  ]
+}
+```
