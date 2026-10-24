@@ -56,6 +56,25 @@ def main() -> int:
         help="In Mau Xuat Xuong v1.1 Rockchip (400x300) theo ma thiet bi (vd: inut_207_153)",
     )
     parser.add_argument(
+        "--usb-hub",
+        action="store_true",
+        help="In tem 2 dong USB HUB (400x300): USB HUB 0 => va USB HUB 1 =>",
+    )
+    parser.add_argument(
+        "--line1",
+        default="USB HUB 0 =>",
+        help="Dong 1 cho tem USB HUB (mac dinh: 'USB HUB 0 =>')",
+    )
+    parser.add_argument(
+        "--line2",
+        default="USB HUB 1 =>",
+        help="Dong 2 cho tem USB HUB (mac dinh: 'USB HUB 1 =>')",
+    )
+    parser.add_argument("--sub1", default=None, help="Dong phu duoi dong 1 (tem USB HUB)")
+    parser.add_argument("--sub2", default=None, help="Dong phu duoi dong 2 (tem USB HUB)")
+    parser.add_argument("--hub-header", default=None, help="Tieu de tren cung tem USB HUB")
+    parser.add_argument("--align", choices=["center", "left"], default="center", help="Can le chu tem USB HUB")
+    parser.add_argument(
         "--mfg-date",
         default=None,
         help="Ngay san xuat DD/MM/YYYY tren tem xuat xuong (mac dinh: ngay goi lenh in)",
@@ -139,6 +158,18 @@ def main() -> int:
             width=args.width,
             height=args.height,
             border=not args.no_border,
+        )
+    elif args.usb_hub:
+        img = clabel.render_usb_hub_label(
+            line1=args.line1,
+            line2=args.line2,
+            sub1=args.sub1,
+            sub2=args.sub2,
+            header=args.hub_header,
+            align=args.align,
+            border=not args.no_border,
+            width=args.width,
+            height=args.height,
         )
     elif args.device_id:
         dev_ids = [d.strip() for d in args.device_id.split(",") if d.strip()]

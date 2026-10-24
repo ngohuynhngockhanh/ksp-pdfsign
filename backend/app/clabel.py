@@ -1034,6 +1034,98 @@ def render_sanxuat_v1_1_label(
 
     return canvas
 
+def render_usb_hub_label(
+    line1: str = "USB HUB 0 =>",
+    line2: str = "USB HUB 1 =>",
+    *,
+    sub1: str | None = None,
+    sub2: str | None = None,
+    header: str | None = None,
+    align: Literal["center", "left"] = "center",
+    border: bool = True,
+    width: int = 400,
+    height: int = 300,
+) -> Image.Image:
+    """Render tem nhan 'USB HUB 0 => / USB HUB 1 =>' (400x300 / 40x30mm = 320x240 dots):
+    - 2 o hop vien cong nghiep (rounded rectangle 2px) to ro, tu dong co dan co chu tu 34pt xuong 14pt
+    - 100% nen trang vien den va chu den dam sac net, khong dung nen den de tranh nhoe nhiet
+    - Ho tro tuy chinh dong 1 va dong 2, can giua hoac can trai, phu hop dan danh dau cong USB HUB
+    """
+    _, _, w_dots, h_dots = normalize_paper_size(width, height)
+    im = Image.new("1", (w_dots, h_dots), 1)
+    draw = ImageDraw.Draw(im)
+
+    if border:
+        draw.rounded_rectangle([2, 2, w_dots - 3, h_dots - 3], radius=8, outline=0, width=2)
+
+    y_start = 8
+    if header:
+        f_hdr = _load_font(11, bold=True)
+        draw.text((12, 7), header, font=f_hdr, fill=0)
+        draw.line([(6, 22), (w_dots - 7, 22)], fill=0, width=1)
+        y_start = 26
+
+    available_h = (h_dots - 6) - y_start
+    card_gap = 10
+    card_h = (available_h - card_gap) // 2
+
+    c1_y1 = y_start + 2
+    c1_y2 = c1_y1 + card_h
+    c2_y1 = c1_y2 + card_gap
+    c2_y2 = c2_y1 + card_h
+
+    card_x1 = 8
+    card_x2 = w_dots - 9
+    card_w = card_x2 - card_x1
+
+    draw.rounded_rectangle([card_x1, c1_y1, card_x2, c1_y2], radius=6, fill=1, outline=0, width=2)
+    draw.rounded_rectangle([card_x1, c2_y1, card_x2, c2_y2], radius=6, fill=1, outline=0, width=2)
+
+    def draw_slot(line_text: str, sub_text: str | None, cy1: int, cy2: int) -> None:
+        inner_w = card_w - 24
+        inner_h = card_h - 16
+        sz = 34 if not sub_text else 26
+        f_main = None
+        bb_main = None
+        while sz >= 14:
+            f = _load_font(sz, bold=True)
+            bb = draw.textbbox((0, 0), line_text, font=f)
+            if (bb[2] - bb[0]) <= inner_w and (bb[3] - bb[1]) <= inner_h:
+                f_main = f
+                bb_main = bb
+                break
+            sz -= 1
+        if not f_main:
+            f_main = _load_font(14, bold=True)
+            bb_main = draw.textbbox((0, 0), line_text, font=f_main)
+
+        tw = bb_main[2] - bb_main[0]
+        th = bb_main[3] - bb_main[1]
+
+        if not sub_text:
+            tx = card_x1 + (card_w - tw) // 2 if align == "center" else card_x1 + 16
+            ty = cy1 + (card_h - th) // 2 - bb_main[1]
+            draw.text((tx, ty), line_text, font=f_main, fill=0)
+        else:
+            f_sub = _load_font(12, bold=False)
+            bb_sub = draw.textbbox((0, 0), sub_text, font=f_sub)
+            tw_s, th_s = bb_sub[2] - bb_sub[0], bb_sub[3] - bb_sub[1]
+
+            total_h = th + th_s + 6
+            start_y = cy1 + (card_h - total_h) // 2
+            tx1 = card_x1 + (card_w - tw) // 2 if align == "center" else card_x1 + 16
+            ty1 = start_y - bb_main[1]
+            draw.text((tx1, ty1), line_text, font=f_main, fill=0)
+
+            tx2 = card_x1 + (card_w - tw_s) // 2 if align == "center" else card_x1 + 16
+            ty2 = start_y + th + 6 - bb_sub[1]
+            draw.text((tx2, ty2), sub_text, font=f_sub, fill=0)
+
+    draw_slot(line1, sub1, c1_y1, c1_y2)
+    draw_slot(line2, sub2, c2_y1, c2_y2)
+
+    return im
+
 
 def build_label_tspl(
     image: Image.Image,
@@ -1625,6 +1717,76 @@ def print_sanxuat_v1_1_label(
                 )
         except Exception:
             pass
+
+    return result
+
+def print_usb_hub_label(
+    line1: str = "USB HUB 0 =>",
+    line2: str = "USB HUB 1 =>",
+    *,
+    sub1: str | None = None,
+    sub2: str | None = None,
+    header: str | None = None,
+    align: Literal["center", "left"] = "center",
+    border: bool = True,
+    width: int = 400,
+    height: int = 300,
+    copies: int = 1,
+    density: int | None = None,
+    speed: int | None = None,
+    mac: str | None = None,
+    gateway_host: str | None = None,
+    print_remote: bool = True,
+    save_preview_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Render va in tem 'USB HUB 0 => / USB HUB 1 =>' qua BLE Gateway 77.88.207.23."""
+    img = render_usb_hub_label(
+        line1=line1,
+        line2=line2,
+        sub1=sub1,
+        sub2=sub2,
+        header=header,
+        align=align,
+        border=border,
+        width=width,
+        height=height,
+    )
+    if save_preview_path:
+        img.save(save_preview_path)
+
+    tspl_bytes = build_label_tspl(
+        img,
+        width=width,
+        height=height,
+        copies=copies,
+        density=density,
+        speed=speed,
+    )
+
+    png_buf = io.BytesIO()
+    img.save(png_buf, format="PNG")
+    preview_b64 = base64.b64encode(png_buf.getvalue()).decode("ascii")
+
+    w_mm, h_mm, w_dots, h_dots = normalize_paper_size(width, height)
+    result: dict[str, Any] = {
+        "template": "usb_hub",
+        "line1": line1,
+        "line2": line2,
+        "align": align,
+        "width_mm": w_mm,
+        "height_mm": h_mm,
+        "width_dots": w_dots,
+        "height_dots": h_dots,
+        "tspl_bytes_len": len(tspl_bytes),
+        "preview_png_base64": preview_b64,
+        "is_printed": False,
+    }
+
+    if print_remote:
+        gw = ClabelBLEGateway(host=gateway_host or get_settings().ble_gateway_host)
+        send_res = gw.send_tspl(tspl_bytes, mac=mac)
+        result.update(send_res)
+        result["is_printed"] = True
 
     return result
 

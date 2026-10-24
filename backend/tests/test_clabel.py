@@ -215,3 +215,49 @@ def test_sanxuat_batch_printer_api(tmp_path, monkeypatch):
         monkeypatch.delenv("DATA_DIR", raising=False)
         config.get_settings.cache_clear()
         db.reset_engine_for_tests()
+
+
+def test_usb_hub_label_and_endpoints():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    img = clabel.render_usb_hub_label(line1="USB HUB 0 =>", line2="USB HUB 1 =>", align="center")
+    assert img.size == (320, 240)
+    assert img.mode == "1"
+    extrema = img.getextrema()
+    assert extrema[0] == 0
+    assert extrema[1] > 0
+
+    out = clabel.print_usb_hub_label(line1="USB HUB 0 =>", line2="USB HUB 1 =>", print_remote=False)
+    assert out["template"] == "usb_hub"
+    assert out["line1"] == "USB HUB 0 =>"
+    assert out["line2"] == "USB HUB 1 =>"
+    assert out["width_dots"] == 320
+    assert out["height_dots"] == 240
+    assert out["is_printed"] is False
+    assert len(out["preview_png_base64"]) > 100
+
+    client = TestClient(app)
+    # Preview endpoint
+    r_prev = client.get("/api/clabel/preview-usb-hub")
+    assert r_prev.status_code == 200
+    assert r_prev.headers["content-type"] == "image/png"
+    im_prev = Image.open(io.BytesIO(r_prev.content))
+    assert im_prev.size == (320, 240)
+
+    # Print shortcut endpoint
+    r_print = client.post("/api/clabel/print-usb-hub?print_remote=false")
+    assert r_print.status_code == 200
+    data = r_print.json()
+    assert data["template"] == "usb_hub"
+    assert data["line1"] == "USB HUB 0 =>"
+    assert data["line2"] == "USB HUB 1 =>"
+    assert data["is_printed"] is False
+
+    # General /api/clabel/print with template='usb_hub'
+    r_gen = client.post("/api/clabel/print", json={"template": "usb_hub", "print_remote": False})
+    assert r_gen.status_code == 200
+    data_gen = r_gen.json()
+    assert data_gen["width_dots"] == 320
+    assert data_gen["height_dots"] == 240
+    assert data_gen["is_printed"] is False

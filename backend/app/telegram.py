@@ -95,8 +95,11 @@ class TelegramClient:
         url = f"{self._base}/bot{self._token}/{method}"
         try:
             response = self._http.post(url, json=payload or {}, timeout=timeout or self._timeout)
-            response.raise_for_status()
-            body = response.json()
+            try:
+                body = response.json()
+            except ValueError:
+                response.raise_for_status()
+                raise
         except (httpx.HTTPError, ValueError) as exc:
             raise TelegramError("Khong ket noi duoc Telegram Bot API") from exc
         if not isinstance(body, dict) or body.get("ok") is not True:

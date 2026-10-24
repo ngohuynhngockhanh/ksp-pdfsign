@@ -81,6 +81,12 @@ class ClabelPrintRequest(BaseModel):
     footer_lines: list[str] | None = None
     qr_data: str | None = "https://inut.vn"
     barcode_data: str | None = None
+    line1: str = "USB HUB 0 =>"
+    line2: str = "USB HUB 1 =>"
+    sub1: str | None = None
+    sub2: str | None = None
+    header: str | None = None
+    align: Literal["center", "left"] = "center"
     show_logo: bool = True
     border: bool = True
     elements: list[dict[str, Any]] | None = Field(
@@ -121,6 +127,14 @@ SANXUAT_TEMPLATES = {
     "rockchip_v1.1",
 }
 
+USB_HUB_TEMPLATES = {
+    "usb_hub",
+    "usb-hub",
+    "usbhub",
+    "usb_hub_0_1",
+    "usb",
+}
+
 
 def _render_from_payload(payload: ClabelPrintRequest):
     _, _, w_dots, h_dots = clabel.normalize_paper_size(payload.width, payload.height)
@@ -145,6 +159,18 @@ def _render_from_payload(payload: ClabelPrintRequest):
             border=payload.border,
         )
     tpl = (payload.template or "").strip().lower()
+    if tpl in USB_HUB_TEMPLATES or (payload.template and "hub" in tpl):
+        return clabel.render_usb_hub_label(
+            line1=payload.line1,
+            line2=payload.line2,
+            sub1=payload.sub1,
+            sub2=payload.sub2,
+            header=payload.header,
+            align=payload.align,
+            border=payload.border,
+            width=payload.width,
+            height=payload.height,
+        )
     if tpl in SANXUAT_TEMPLATES or payload.device_id:
         dev_id = (payload.device_id or "inut_200_177").strip()
         qr_val = payload.qr_data if (payload.qr_data and payload.qr_data != "https://inut.vn") else dev_id
@@ -466,6 +492,66 @@ def clabel_print_sanxuat(
         )
     except Exception as exc:
         logger.exception("Loi khi in tem Mau Xuat Xuong v1.1 Rockchip")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/preview-usb-hub")
+def clabel_preview_usb_hub(
+    line1: str = Query(default="USB HUB 0 =>", description="Dong 1 (mac dinh: 'USB HUB 0 =>')"),
+    line2: str = Query(default="USB HUB 1 =>", description="Dong 2 (mac dinh: 'USB HUB 1 =>')"),
+    sub1: str | None = Query(default=None, description="Dong phu nho ben duoi dong 1"),
+    sub2: str | None = Query(default=None, description="Dong phu nho ben duoi dong 2"),
+    header: str | None = Query(default=None, description="Tieu de tren cung tem (tuy chon)"),
+    align: Literal["center", "left"] = Query(default="center", description="Can giua hoac can trai"),
+    border: bool = Query(default=True),
+    width: int = Query(default=400),
+    height: int = Query(default=300),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> Response:
+    """Xem truoc anh PNG 1-bit cua Tem USB HUB 0 => / USB HUB 1 => (400x300)."""
+    img = clabel.render_usb_hub_label(
+        line1=line1,
+        line2=line2,
+        sub1=sub1,
+        sub2=sub2,
+        header=header,
+        align=align,
+        border=border,
+        width=width,
+        height=height,
+    )
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.get("/print-usb-hub")
+@router.post("/print-usb-hub")
+def clabel_print_usb_hub(
+    line1: str = Query(default="USB HUB 0 =>", description="Dong 1 (mac dinh: 'USB HUB 0 =>')"),
+    line2: str = Query(default="USB HUB 1 =>", description="Dong 2 (mac dinh: 'USB HUB 1 =>')"),
+    sub1: str | None = Query(default=None),
+    sub2: str | None = Query(default=None),
+    header: str | None = Query(default=None),
+    align: Literal["center", "left"] = Query(default="center"),
+    copies: int = Query(default=1, ge=1, le=20),
+    print_remote: bool = Query(default=True),
+    user: CurrentUser = Depends(require_clabel_access),
+) -> dict[str, Any]:
+    """In nhanh tem 'USB HUB 0 => / USB HUB 1 =>' (400x300) qua BLE Gateway 77.88.207.23."""
+    try:
+        return clabel.print_usb_hub_label(
+            line1=line1,
+            line2=line2,
+            sub1=sub1,
+            sub2=sub2,
+            header=header,
+            align=align,
+            copies=copies,
+            print_remote=print_remote,
+        )
+    except Exception as exc:
+        logger.exception("Loi khi in tem USB HUB qua BLE Gateway")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

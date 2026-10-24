@@ -134,6 +134,19 @@ curl -sS "http://127.0.0.1:2032/api/clabel/print-sanxuat?device_id=inut_207_153"
   ```bash
   ./scripts/print_clabel.py --image /path/to/photo.png --dither
   ```
+### 3.3b. In Tem 2 Dòng USB HUB (`--usb-hub`): `USB HUB 0 =>` và `USB HUB 1 =>`
+Dùng dán định danh cổng USB HUB / Switch / Bộ chuyển đổi trên hộp phần cứng:
+```bash
+# In trực tiếp ra máy in Clabel qua BLE Gateway
+./scripts/print_clabel.py --usb-hub
+
+# Tùy chỉnh nội dung dòng 1 / dòng 2 hoặc căn lề:
+./scripts/print_clabel.py --usb-hub --line1 "USB HUB 0 =>" --line2 "USB HUB 1 =>" --align center
+
+# Xem trước ảnh PNG không gửi lệnh in:
+./scripts/print_clabel.py --usb-hub --dry-run --preview-out /tmp/preview_usb_hub.png
+```
+
 
 ### 3.4. Thiet ke bo cuc tuy chinh bang JSON DSL (`--elements-json`)
 Ho tro cac loai phan tu: `logo`, `image`, `text`, `qrcode`, `barcode`, `line`, `box`, `badge`, `circle`, `reverse`.
@@ -180,6 +193,20 @@ curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
     "copies": 1
   }'
 ```
+### 4.1b. In & Xem Trước Tem USB HUB (`GET/POST /api/clabel/preview-usb-hub` & `/print-usb-hub`)
+```bash
+# Xem trước ảnh PNG 1-bit tem USB HUB:
+curl -sS "http://127.0.0.1:2032/api/clabel/preview-usb-hub" -o /tmp/usb_hub.png
+
+# Gửi lệnh in trực tiếp:
+curl -sS -X POST "http://127.0.0.1:2032/api/clabel/print-usb-hub"
+
+# Hoặc truyền template="usb_hub" trong body POST /api/clabel/print:
+curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
+  -H "Content-Type: application/json" \
+  -d '{"template": "usb_hub", "line1": "USB HUB 0 =>", "line2": "USB HUB 1 =>"}'
+```
+
 
 ### 4.2. In nhanh 1 dong qua Query Params (`GET /api/clabel/print`)
 ```bash
