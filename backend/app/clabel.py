@@ -1285,6 +1285,9 @@ data = sys.stdin.buffer.read()
 def attempt_print(scan_first=False):
     subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if scan_first:
+        subprocess.run(["hciconfig", "hci0", "reset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.8)
+        subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "disconnect", mac], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "--timeout", "4", "scan", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     p = subprocess.Popen(
@@ -1425,6 +1428,9 @@ items = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 def open_gatt(scan_first=False):
     subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if scan_first:
+        subprocess.run(["hciconfig", "hci0", "reset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.8)
+        subprocess.run(["bluetoothctl", "disconnect", "C0:97:0C:E0:D9:79"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "disconnect", mac], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["bluetoothctl", "--timeout", "4", "scan", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     p = subprocess.Popen(
