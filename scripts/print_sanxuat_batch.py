@@ -55,6 +55,13 @@ def main() -> int:
         help="Mẫu xuất xưởng cho anh Thắng (Cty IoT): tên chuẩn hóa đơn 'iNut Smartcity - Data Logger v1.1'",
     )
     parser.add_argument(
+        "--rs485-wifi",
+        "--rs485",
+        dest="rs485_wifi",
+        action="store_true",
+        help="Mẫu xuất xưởng iNut Smartcity: RS485 WIFI (tên chuẩn hóa đơn Cty IoT)",
+    )
+    parser.add_argument(
         "--product-line",
         default="Rockchip · Xuất xưởng v1.1 ©",
         help="Dòng phụ trên tem lẻ Clabel 40x30",
@@ -84,6 +91,13 @@ def main() -> int:
         if product_line == "Rockchip · Xuất xưởng v1.1 ©":
             product_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
 
+    if args.rs485_wifi:
+        if args.title == "Quá trình sản xuất iNut Data Logger v1.1":
+            args.title = "Quá trình sản xuất iNut Smartcity: RS485 WIFI"
+        if model_name == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+            model_name = "iNut Smartcity: RS485 WIFI"
+        if product_line == "Rockchip · Xuất xưởng v1.1 ©":
+            product_line = "RS485 WIFI · Xuất xưởng ©"
     init_db()
 
     with closing(next(get_session())) as db:

@@ -92,6 +92,13 @@ def main() -> int:
         action="store_true",
         help="Mau xuat xuong cho anh Thang (Cty IoT): ten chuan hoa don 'iNut Smartcity - Data Logger v1.1'",
     )
+    parser.add_argument(
+        "--rs485-wifi",
+        "--rs485",
+        dest="rs485_wifi",
+        action="store_true",
+        help="Mau xuat xuong iNut Smartcity: RS485 WIFI (ten chuan hoa don Cty IoT)",
+    )
     parser.add_argument("--wifi-pass", default="inut12345", help="Mat khau Wi-Fi mac dinh (mac dinh: inut12345)")
     parser.add_argument("--serial-number", default=None, help="So serial / Ma thiet bi")
     parser.add_argument("--no-qr-logo", action="store_true", help="Tat logo iNut mini o tam ma QR")
@@ -138,6 +145,11 @@ def main() -> int:
         if args.product_line == "Rockchip · Xuất xưởng v1.1 ©":
             args.product_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
     gw = clabel.ClabelBLEGateway(host=args.gateway)
+    if args.rs485_wifi:
+        if args.model_name == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+            args.model_name = "iNut Smartcity: RS485 WIFI"
+        if args.product_line == "Rockchip · Xuất xưởng v1.1 ©":
+            args.product_line = "RS485 WIFI · Xuất xưởng ©"
 
     if args.status:
         st = gw.get_gateway_status()
