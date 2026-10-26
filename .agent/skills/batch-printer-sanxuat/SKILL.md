@@ -23,7 +23,7 @@ Khi truyen mot danh sach ma thiet bi (vi du `inut_207_153,inut_207_159,inut_207_
 2. **Tao & In Phieu Tong Hop Lo San Xuat (`70x80mm` tren trang `70x130mm`, `TP732H` @ `inut-dev`)**:
    - **Kich thuoc chuan**: Trang PDF `70mm x 130mm` (in full 100% khong nen 65%), toan bo khung noi dung duoc day len nam gon trong vung **`70mm x 80mm`** o phia tren (`y: 51.0mm -> 128.5mm`).
    - **Header**: Logo iNut + bieu tuong `®` & `©`, ten va thong tin **CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT ® (`MST: 4401053694`)** tu dong co co chu (`fit_font`) nam gon trong khung, huy hieu **`★ MAKE IN VIETNAM · v1.1 ®`**.
-   - **Tieu de & Thoi gian (2 dong rieng biet)**: **`QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1`**, ten xuat hoa don **`iNut Smartcity - Data Logger v1.1 - Rockchip`**, dong 1 **Mã lô sản xuất (`SX-V1.1-...`)**, dong 2 **Ngày giờ in phiếu (`DD/MM/YYYY HH:MM:SS`)**.
+   - **Tieu de & Thoi gian (2 dong rieng biet)**: **`QUÁ TRÌNH SẢN XUẤT INUT DATA LOGGER V1.1`**, ten xuat hoa don (mac dinh **`iNut Smartcity - Data Logger v1.1 - Rockchip`** cho Truyen thanh, hoac **`iNut Smartcity - Data Logger v1.1`** khi bat `--a-thang` / `--iot` cho Anh Thang Cty IoT), dong 1 **Mã lô sản xuất (`SX-V1.1-...`)**, dong 2 **Ngày giờ in phiếu (`DD/MM/YYYY HH:MM:SS`)**.
    - **Cum Ma QR Danh Sach (cach nhau dau phay)**:
      - Ma QR ma hoa chinh xac chuoi danh sach cac ma `inut_...` cach nhau bang dau phay:
        `inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183`
@@ -42,6 +42,11 @@ chmod +x scripts/print_sanxuat_batch.py
 ```
 - Neu muon ep in lai tem le Clabel cho toan bo danh sach: them `--force-reprint-clabel`.
 - Neu chi muon tao PDF + luu DB (khong gui lenh in): them `--dry-run`.
+- **Mẫu sản xuất cho Anh Thắng (Cty IoT — `iNut Smartcity - Data Logger v1.1`)**: thêm `--a-thang` (hoặc `--iot`):
+  ```bash
+  ./scripts/print_sanxuat_batch.py --a-thang \
+    --devices "inut_208_107,inut_208_108,inut_208_106,inut_208_105,inut_208_104,inut_207_154,inut_207_156,inut_207_157"
+  ```
 
 ### 2.2. REST API (`http://127.0.0.1:2032/api/clabel/*`)
 - **Chay Batch Printer San Xuat (`POST /api/clabel/sanxuat-batch` hoac `GET /api/clabel/sanxuat-batch`)**:

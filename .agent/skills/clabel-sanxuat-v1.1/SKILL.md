@@ -16,7 +16,9 @@ Skill nay dong goi mau tem nhan xuat xuong chuan cong nghiep **Mau Xuat Xuong v1
 2. **Cum Thuong hieu, Ten Xuat Hoa Don & Xuat xu (Header)**:
    - **Logo iNut sac net (`60x60 dots`)** o goc tren ben trai, kem bieu tuong **`(R)` (Registered Trademark)** o goc phai tren cua logo va ten thuong hieu **`iNut® JSC`**.
    - **Khung huy hieu `★ MAKE IN VIETNAM`** (nen trang vien den 2px, chu den in dam) o goc tren ben phai.
-   - Ten san pham chuan xuat hoa don GTGT: **`iNut Smartcity - Data Logger v1.1 - Rockchip`** (`iNut Smartcity - Data Logger v1.1` / `Rockchip · Xuất xưởng ©`).
+   - **2 Mau Ten San Pham Chuan Xuat Hoa Don GTGT**:
+     - **Mau 1 — Truyen Thanh (Tan Thanh Phuong / Merap - mac dinh)**: **`iNut Smartcity - Data Logger v1.1 - Rockchip`** (`iNut Smartcity - Data Logger v1.1` / `Rockchip · Xuất xưởng ©`).
+     - **Mau 2 — Anh Thang Cty IoT (MST `5500649200` - co `--a-thang` / `--iot`)**: **`iNut Smartcity - Data Logger v1.1`** (`iNut Smartcity` / `Data Logger v1.1 · Xuất xưởng ©`).
 3. **Cum SN / Ma Thiet bi, Pass Wi-Fi & Ngay san xuat (Cot trai)**:
    - Khung **`SN / MÃ THIẾT BỊ (DEVICE ID)`** duy nhat (khong lap lai SN trung lap): hien thi **`inut_207_153`** in dam canh giua.
    - Khung **`Pass Wi-Fi: inut12345`** (mat khau Wi-Fi AP mac dinh cua thiet bi).
@@ -40,6 +42,11 @@ Hoặc truyền kèm ngày sản xuất tùy chọn và xuất file ảnh xem tr
   --sanxuat-v1.1 inut_207_153 \
   --mfg-date "19/10/2026" \
   --preview-out /tmp/sanxuat_inut_207_153.png
+```
+
+In theo **Mẫu Anh Thắng (Cty IoT — `iNut Smartcity - Data Logger v1.1`)**:
+```bash
+./scripts/print_clabel.py --sanxuat-v1.1 "inut_208_107,inut_208_108,inut_208_106,inut_208_105,inut_208_104,inut_207_154,inut_207_156,inut_207_157" --a-thang
 ```
 
 ### 2.2. Python SDK (`backend/app/clabel.py`)

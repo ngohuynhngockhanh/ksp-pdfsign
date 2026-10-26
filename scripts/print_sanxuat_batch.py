@@ -47,6 +47,18 @@ def main() -> int:
         default="iNut Smartcity - Data Logger v1.1 - Rockchip",
         help="Tên sản phẩm chuẩn xuất hóa đơn",
     )
+    parser.add_argument(
+        "--a-thang",
+        "--iot",
+        dest="a_thang_iot",
+        action="store_true",
+        help="Mẫu xuất xưởng cho anh Thắng (Cty IoT): tên chuẩn hóa đơn 'iNut Smartcity - Data Logger v1.1'",
+    )
+    parser.add_argument(
+        "--product-line",
+        default="Rockchip · Xuất xưởng v1.1 ©",
+        help="Dòng phụ trên tem lẻ Clabel 40x30",
+    )
     parser.add_argument("--wifi-pass", default="inut12345", help="Mật khẩu Wi-Fi mặc định")
     parser.add_argument(
         "--no-auto-clabel",
@@ -64,6 +76,14 @@ def main() -> int:
     parser.add_argument("--pdf-out", default=None, help="Lưu bản sao file PDF 70x100 ra đường dẫn này")
 
     args = parser.parse_args()
+    model_name = args.model_name
+    product_line = args.product_line
+    if args.a_thang_iot:
+        if model_name == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+            model_name = "iNut Smartcity - Data Logger v1.1"
+        if product_line == "Rockchip · Xuất xưởng v1.1 ©":
+            product_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
+
     init_db()
 
     with closing(next(get_session())) as db:
@@ -72,7 +92,8 @@ def main() -> int:
             device_ids=args.devices,
             batch_code=args.batch_code,
             title=args.title,
-            model_name=args.model_name,
+            model_name=model_name,
+            product_line=product_line,
             wifi_pass=args.wifi_pass,
             auto_print_missing_clabel=not args.no_auto_clabel,
             force_reprint_clabel=args.force_reprint_clabel,

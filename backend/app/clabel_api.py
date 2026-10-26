@@ -127,6 +127,16 @@ SANXUAT_TEMPLATES = {
     "rockchip_v1.1",
 }
 
+A_THANG_IOT_TEMPLATES = {
+    "a_thang",
+    "a_thang_iot",
+    "a-thang",
+    "a-thang-iot",
+    "iot_v1.1",
+    "sanxuat_a_thang",
+    "sanxuat_iot",
+}
+
 USB_HUB_TEMPLATES = {
     "usb_hub",
     "usb-hub",
@@ -171,14 +181,21 @@ def _render_from_payload(payload: ClabelPrintRequest):
             width=payload.width,
             height=payload.height,
         )
-    if tpl in SANXUAT_TEMPLATES or payload.device_id:
+    if tpl in SANXUAT_TEMPLATES or tpl in A_THANG_IOT_TEMPLATES or payload.device_id:
         dev_id = (payload.device_id or "inut_200_177").strip()
         qr_val = payload.qr_data if (payload.qr_data and payload.qr_data != "https://inut.vn") else dev_id
+        eff_model = payload.model_name
+        eff_prod_line = payload.product_line
+        if tpl in A_THANG_IOT_TEMPLATES:
+            if eff_model == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+                eff_model = "iNut Smartcity - Data Logger v1.1"
+            if eff_prod_line == "Rockchip · Xuất xưởng v1.1 ©":
+                eff_prod_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
         return clabel.render_sanxuat_v1_1_label(
             device_id=dev_id,
             mfg_date=payload.mfg_date,
-            model_name=payload.model_name,
-            product_line=payload.product_line,
+            model_name=eff_model,
+            product_line=eff_prod_line,
             wifi_pass=payload.wifi_pass,
             serial_number=payload.serial_number,
             qr_data=qr_val,
@@ -563,6 +580,8 @@ class SanxuatBatchRequest(BaseModel):
     batch_code: str | None = None
     title: str = "Quá trình sản xuất iNut Data Logger v1.1"
     model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    product_line: str = "Rockchip · Xuất xưởng v1.1 ©"
+    a_thang_iot: bool = False
     wifi_pass: str = "inut12345"
     auto_print_missing_clabel: bool = True
     force_reprint_clabel: bool = False
@@ -676,12 +695,20 @@ def run_sanxuat_batch_post(
 ) -> dict[str, Any]:
     """Chay quy trinh Batch Printer San Xuat qua JSON POST."""
     try:
+        eff_model = payload.model_name
+        eff_prod_line = payload.product_line
+        if payload.a_thang_iot:
+            if eff_model == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+                eff_model = "iNut Smartcity - Data Logger v1.1"
+            if eff_prod_line == "Rockchip · Xuất xưởng v1.1 ©":
+                eff_prod_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
         return clabel.run_sanxuat_batch_printer(
             db,
             device_ids=payload.device_ids,
             batch_code=payload.batch_code,
             title=payload.title,
-            model_name=payload.model_name,
+            model_name=eff_model,
+            product_line=eff_prod_line,
             wifi_pass=payload.wifi_pass,
             auto_print_missing_clabel=payload.auto_print_missing_clabel,
             force_reprint_clabel=payload.force_reprint_clabel,

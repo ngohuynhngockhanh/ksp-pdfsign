@@ -918,19 +918,26 @@ def render_sanxuat_v1_1_label(
     tw_miv = bbox_miv[2] - bbox_miv[0]
     draw.text((miv_x + (miv_w - tw_miv) // 2, miv_y + 5), miv_text, font=font_miv, fill=0)
 
-    # Tieu de ten xuat hoa don chuan: "iNut Smartcity - Data Logger v1.1 - Rockchip"
+    # Tieu de ten xuat hoa don chuan: "iNut Smartcity - Data Logger v1.1 - Rockchip" hoac "iNut Smartcity - Data Logger v1.1"
+    eff_product_line = product_line
+    if "rockchip" not in model_name.lower() and product_line == "Rockchip · Xuất xưởng v1.1 ©":
+        eff_product_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
+
     font_inv1 = _load_font(12, bold=True)
     font_inv2 = _load_font(11, bold=True)
     if " - " in model_name and len(model_name) > 28:
         parts = model_name.split(" - ")
-        line1 = f"{parts[0]} - {parts[1]}" if len(parts) >= 2 else model_name
-        line2 = f"{' - '.join(parts[2:])} · Xuất xưởng ©" if len(parts) >= 3 else product_line
+        if len(parts) >= 3:
+            line1 = f"{parts[0]} - {parts[1]}"
+            line2 = f"{' - '.join(parts[2:])} · Xuất xưởng ©"
+        else:
+            line1 = parts[0]
+            line2 = f"{parts[1]} · Xuất xưởng ©"
         draw.text((hx, 34), line1, font=font_inv1, fill=0)
         draw.text((hx, 51), line2, font=font_inv2, fill=0)
     else:
         draw.text((hx, 34), model_name, font=font_inv1, fill=0)
-        draw.text((hx, 51), product_line, font=font_inv2, fill=0)
-
+        draw.text((hx, 51), eff_product_line, font=font_inv2, fill=0)
     # Duong phan cach ngang y = 74
     draw.line([(8, 74), (w_dots - 9, 74)], fill=0, width=2)
 
@@ -1817,6 +1824,7 @@ def record_clabel_device_print(
     model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
     wifi_pass: str = "inut12345",
     batch_code: str = "",
+    is_printed: bool = True,
 ) -> Any:
     """Ghi nhan hoac cap nhat trang thai da in tem le Clabel (400x300) cho 1 ma thiet bi trong CSDL."""
     from sqlalchemy import select
@@ -1829,9 +1837,11 @@ def record_clabel_device_print(
     if row:
         if not row.mfg_date:
             row.mfg_date = resolved_date
-        row.is_clabel_printed = True
-        row.clabel_print_count = int(row.clabel_print_count or 0) + 1
-        row.clabel_printed_at = now_utc
+        row.model_name = model_name
+        if is_printed:
+            row.is_clabel_printed = True
+            row.clabel_print_count = int(row.clabel_print_count or 0) + 1
+            row.clabel_printed_at = now_utc
         if batch_code:
             row.last_batch_code = batch_code
     else:
@@ -1840,9 +1850,9 @@ def record_clabel_device_print(
             model_name=model_name,
             wifi_pass=wifi_pass,
             mfg_date=resolved_date,
-            is_clabel_printed=True,
-            clabel_print_count=1,
-            clabel_printed_at=now_utc,
+            is_clabel_printed=bool(is_printed),
+            clabel_print_count=1 if is_printed else 0,
+            clabel_printed_at=now_utc if is_printed else None,
             last_batch_code=batch_code,
         )
         db.add(row)
@@ -2232,6 +2242,7 @@ def run_sanxuat_batch_printer(
     batch_code: str | None = None,
     title: str = "Quá trình sản xuất iNut Data Logger v1.1",
     model_name: str = "iNut Smartcity - Data Logger v1.1 - Rockchip",
+    product_line: str = "Rockchip · Xuất xưởng v1.1 ©",
     wifi_pass: str = "inut12345",
     auto_print_missing_clabel: bool = True,
     force_reprint_clabel: bool = False,
@@ -2295,6 +2306,7 @@ def run_sanxuat_batch_printer(
                 device_id=did,
                 mfg_date=today_str,
                 model_name=model_name,
+                product_line=product_line,
                 wifi_pass=wifi_pass,
                 qr_data=did,
                 qr_logo=True,
@@ -2331,6 +2343,7 @@ def run_sanxuat_batch_printer(
                     model_name=model_name,
                     wifi_pass=wifi_pass,
                     batch_code=batch_code,
+                    is_printed=auto_print_missing_clabel,
                 )
                 existing_rows[did] = rec
         items.append({

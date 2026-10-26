@@ -85,6 +85,13 @@ def main() -> int:
         help="Ten san pham xuat hoa don tren tem xuat xuong",
     )
     parser.add_argument("--product-line", default="Rockchip · Xuất xưởng v1.1 ©", help="Dong phu tren tem xuat xuong")
+    parser.add_argument(
+        "--a-thang",
+        "--iot",
+        dest="a_thang_iot",
+        action="store_true",
+        help="Mau xuat xuong cho anh Thang (Cty IoT): ten chuan hoa don 'iNut Smartcity - Data Logger v1.1'",
+    )
     parser.add_argument("--wifi-pass", default="inut12345", help="Mat khau Wi-Fi mac dinh (mac dinh: inut12345)")
     parser.add_argument("--serial-number", default=None, help="So serial / Ma thiet bi")
     parser.add_argument("--no-qr-logo", action="store_true", help="Tat logo iNut mini o tam ma QR")
@@ -125,6 +132,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Chi tao anh xem truoc va TSPL, khong gui lenh in BLE")
 
     args = parser.parse_args()
+    if args.a_thang_iot:
+        if args.model_name == "iNut Smartcity - Data Logger v1.1 - Rockchip":
+            args.model_name = "iNut Smartcity - Data Logger v1.1"
+        if args.product_line == "Rockchip · Xuất xưởng v1.1 ©":
+            args.product_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
     gw = clabel.ClabelBLEGateway(host=args.gateway)
 
     if args.status:
