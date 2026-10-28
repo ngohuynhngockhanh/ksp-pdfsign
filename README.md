@@ -121,6 +121,50 @@ thủ công trước khi tiếp tục đồng bộ.
 
 Test giả lập token bằng khóa RSA cục bộ (không cần token thật) và kiểm tra:
 ký → xác minh **hợp lệ**; sửa 1 byte → phát hiện **không toàn vẹn**; luồng HTTP đăng nhập → upload → ký → kiểm tra.
+## Theo dõi lượt xem hồ sơ (Doc Tracking)
+
+Gắn cờ theo dõi lên bất kỳ hồ sơ nào trong **Kho hồ sơ** để nhận **cảnh báo
+Telegram tức thì** khi đối tác/khách hàng mở xem, tải xuống hoặc thẩm định chữ
+ký số NEAC.
+
+### Cách hoạt động
+
+1. Admin bấm **⋯ → 👁 Theo dõi lượt xem** trên dòng hồ sơ cần theo dõi, nhập
+   ghi chú ngữ cảnh, ngày mốc và hạn báo Telegram (số ngày).
+2. Khi ai đó mở link chia sẻ `/s/{token}`, trình duyệt tự gọi GeoIP bên thứ 3
+   (`ipwho.is` → fallback `Cloudflare cdn-cgi/trace`) lấy **IP thật + tỉnh/thành
+   + nhà mạng** rồi gửi kèm **One-Time HMAC Nonce** (60 giây, dùng 1 lần) về
+   `POST /api/doc-telemetry`. Backend xác minh nonce, ghi lượt xem, và bắn
+   Telegram cho admin.
+3. Khi tải file trực tiếp (không qua JS), server fallback ghi nhận từ header
+   `X-Forwarded-For` / `X-Real-IP`.
+
+### Chống spam & bảo mật
+
+| Cơ chế | Chi tiết |
+|--------|----------|
+| HMAC-SHA256 Nonce | Ký bằng `jwt_secret` + `share_token` + `document_id` + `timestamp_60s` + `ua_hash`, hết hạn 60 giây, dùng 1 lần |
+| Browser fingerprint nhẹ | Hash `screen + language + timezone + platform` gắn kèm telemetry |
+| Cooldown view | Cùng IP + cùng hồ sơ: chỉ bắn Telegram 1 lần mỗi 10 phút |
+| Rate limit | Tối đa 3 tin Telegram / 10 phút / IP (chống phá rối) |
+| Download & NEAC | Luôn bắn Telegram (vẫn chịu rate limit 3/10min/IP) |
+| Hết hạn tự tắt | Quá ngày hạn → ngưng bắn Telegram, vẫn lưu thống kê 100% |
+
+### API
+
+| Endpoint | Mô tả |
+|----------|-------|
+| `POST /api/doc-telemetry` | Nhận telemetry từ browser (nonce + GeoIP + fingerprint) |
+| `GET /api/documents/{id}/tracking` | Xem cấu hình cờ theo dõi |
+| `PUT /api/documents/{id}/tracking` | Bật/tắt cờ, ghi chú, ngày mốc, hạn Telegram |
+| `GET /api/doc-views` | Dashboard tổng hợp các hồ sơ đang theo dõi |
+| `GET /api/doc-views/{id}` | Lịch sử lượt xem chi tiết (phân trang) |
+
+### Giao diện
+
+- **Kho hồ sơ** (`/ho-so`): bấm ⋯ → 👁 Theo dõi lượt xem trên từng dòng.
+- **Theo dõi lượt xem** (`/theo-doi-xem`): dashboard tổng hợp số lượt xem/tải/NEAC,
+  bấm **Chi tiết** để xem bảng lịch sử IP, vị trí, thiết bị, thời gian.
 
 ## Bảo mật — lưu ý
 
