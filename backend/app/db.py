@@ -201,6 +201,34 @@ class DocumentView(Base):
 
     document: Mapped["Document"] = relationship()
 
+
+class GovDocument(Base):
+    """Radar van ban Chinh phu, UBND Tinh Dak Lak, So Y te & Thue co so 7 (Tuy Hoa)."""
+
+    __tablename__ = "gov_documents"
+    __table_args__ = (
+        Index("ix_govdocs_portal_created", "source_portal", "created_at"),
+        Index("ix_govdocs_cat_rel", "category", "relevance_score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    source_portal: Mapped[str] = mapped_column(String(64), index=True)  # daklak_ubnd / daklak_tax_cs7 / daklak_syt / chinhphu / manual_verify
+    source_label: Mapped[str] = mapped_column(String(150), default="")
+    doc_number: Mapped[str] = mapped_column(String(120), default="", index=True)
+    doc_type: Mapped[str] = mapped_column(String(64), default="")
+    published_date: Mapped[str] = mapped_column(String(30), default="")
+    title: Mapped[str] = mapped_column(String(1000), default="")
+    detail_url: Mapped[str] = mapped_column(String(1000), default="")
+    pdf_url: Mapped[str] = mapped_column(String(1000), default="")
+    category: Mapped[str] = mapped_column(String(64), default="khac", index=True)
+    relevance_score: Mapped[int] = mapped_column(default=0)
+    applies_to_inut: Mapped[bool] = mapped_column(default=False)
+    impact_summary: Mapped[str] = mapped_column(Text, default="")
+    matched_keywords: Mapped[str] = mapped_column(String(500), default="")
+    notified: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
 class TrainingShare(Base):
     """Cau tra loi Training chia se cong khai bang token ngau nhien, co han."""
 

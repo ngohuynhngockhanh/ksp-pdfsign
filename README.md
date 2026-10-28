@@ -166,6 +166,27 @@ ký số NEAC.
 - **Theo dõi lượt xem** (`/theo-doi-xem`): dashboard tổng hợp số lượt xem/tải/NEAC,
   bấm **Chi tiết** để xem bảng lịch sử IP, vị trí, thiết bị, thời gian.
 
+## Radar Công văn Chính phủ & Thuế cơ sở 7 Đắk Lắk (`gov_radar`)
+
+Màn **Radar Công văn & Thuế CS7** (`/cong-van-chinh-phu`) chủ động quét văn bản từ các cổng chính thức (`.gov.vn`) và kênh **Thuế cơ sở 7 tỉnh Đắk Lắk** (trụ sở Phường Tuy Hòa — cơ quan thuế quản lý trực tiếp INUT `MST: 4401053694`), tự động chấm điểm mức độ liên quan và bắn cảnh báo Telegram.
+
+### Nguồn quét tự động
+
+| Nguồn | Cổng chính thức | Phạm vi |
+|---|---|---|
+| **Thuế tỉnh Đắk Lắk & Thuế cơ sở 7 (Tuy Hòa)** | `https://daklak.gdt.gov.vn/wps/portal` & Fanpage Thuế CS7 | Quản lý thuế trực tiếp địa bàn Phường Tuy Hòa, tỉnh Đắk Lắk |
+| **UBND Tỉnh Đắk Lắk** | `https://daklak.gov.vn/van-ban-chi-dao-dieu-hanh` | Quyết định, Kế hoạch, Công văn chỉ đạo điều hành toàn tỉnh (kèm PDF ký số) |
+| **Sở Y tế Tỉnh Đắk Lắk** | `https://yte.daklak.gov.vn` | Khám sức khỏe định kỳ, an toàn vệ sinh lao động tại Đắk Lắk |
+| **Chính phủ & Bộ ngành Trung ương** | `https://vanban.chinhphu.vn` | Nghị định, Thông tư mới của Bộ Tài chính, Bộ Y tế, Bộ Nội vụ, Bộ KH&CN |
+
+### API
+
+| Endpoint | Mô tả |
+|---|---|
+| `GET /api/gov-radar` | Danh sách công văn đã quét (lọc theo nguồn, lĩnh vực, từ khóa, mức độ áp dụng cho INUT) |
+| `POST /api/gov-radar/sync` | Chủ động quét văn bản mới từ các cổng `.gov.vn` và gửi bản tin Telegram |
+| `POST /api/gov-radar/verify` | Kiểm chứng nhanh số hiệu công văn / tin đồn MXH (VD: `16093/SYT-NVY`, `1858/QĐ-UBND`) xem có áp dụng cho INUT tại Đắk Lắk hay không |
+
 ## Bảo mật — lưu ý
 
 - **Đổi toàn bộ mật khẩu mặc định** trong `.env` trước khi dùng thật; UI cảnh báo khi còn mặc định.

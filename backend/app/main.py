@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 
 from . import (
     doc_tracking,
+    gov_radar,
     accounts,
     ai,
     audit,
@@ -100,6 +101,7 @@ from .db import (
     Share,
     DocumentTracking,
     DocumentView,
+    GovDocument,
     TaxReviewUpload,
     TaxReport,
     TrainingShare,
@@ -3100,6 +3102,103 @@ def doc_view_detail(
             for v in views
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Radar Cong van Chinh phu, UBND Tinh Dak Lak & Thue co so 7 (Tuy Hoa)
+# ---------------------------------------------------------------------------
+
+class GovVerifyIn(BaseModel):
+    query: str
+
+
+@app.get("/api/gov-radar")
+def list_gov_radar(
+    portal: str = "",
+    category: str = "",
+    q: str = "",
+    applies_only: bool = False,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Danh sach cong van Chinh phu / UBND Tinh Dak Lak / Thue CS7 (tu dong quet lan dau neu trong)."""
+    total_all = db.scalar(select(func.count(GovDocument.id))) or 0
+    if total_all == 0:
+        try:
+            gov_radar.sync_gov_documents(db, settings, notify_telegram=False)
+            total_all = db.scalar(select(func.count(GovDocument.id))) or 0
+        except Exception as exc:
+            logger.warning("Auto-sync gov_radar lan dau that bai: %s", exc)
+
+    stmt = select(GovDocument)
+    if portal:
+        stmt = stmt.where(GovDocument.source_portal == portal)
+    if category:
+        stmt = stmt.where(GovDocument.category == category)
+    if applies_only:
+        stmt = stmt.where(GovDocument.applies_to_inut.is_(True))
+    if q.strip():
+        kw = f"%{q.strip()}%"
+        stmt = stmt.where(
+            (GovDocument.doc_number.ilike(kw))
+            | (GovDocument.title.ilike(kw))
+            | (GovDocument.matched_keywords.ilike(kw))
+            | (GovDocument.source_label.ilike(kw))
+        )
+    rows = db.scalars(
+        stmt.order_by(GovDocument.relevance_score.desc(), GovDocument.id.desc()).limit(200)
+    ).all()
+
+    return {
+        "sources": gov_radar.PORTAL_SOURCES,
+        "total": total_all,
+        "items": [
+            {
+                "id": r.id,
+                "source_key": r.source_key,
+                "source_portal": r.source_portal,
+                "source_label": r.source_label,
+                "doc_number": r.doc_number,
+                "doc_type": r.doc_type,
+                "published_date": r.published_date,
+                "title": r.title,
+                "detail_url": r.detail_url,
+                "pdf_url": r.pdf_url,
+                "category": r.category,
+                "relevance_score": r.relevance_score,
+                "applies_to_inut": r.applies_to_inut,
+                "impact_summary": r.impact_summary,
+                "matched_keywords": r.matched_keywords,
+                "notified": r.notified,
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.post("/api/gov-radar/sync")
+def sync_gov_radar(
+    notify: bool = True,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Chu dong quet ngay cac cong van moi tu daklak.gov.vn, daklak.gdt.gov.vn, yte.daklak.gov.vn."""
+    res = gov_radar.sync_gov_documents(db, settings, notify_telegram=notify)
+    _audit(db, user, "gov_radar_sync", "gov_documents", f"added={res.get('added')}, total={res.get('total')}")
+    return res
+
+
+@app.post("/api/gov-radar/verify")
+def verify_gov_doc(
+    body: GovVerifyIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Kiem chung 1 so hieu cong van / tin don MXH xem co ap dung cho INUT (Dak Lak) khong."""
+    return gov_radar.verify_document_query(db, body.query)
 
 # ---------------------------------------------------------------------------
 # Doi mat khau

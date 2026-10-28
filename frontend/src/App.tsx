@@ -35,6 +35,7 @@ import { TaxDefense } from "./pages/TaxDefense";
 import { Trademarks } from "./pages/Trademarks";
 import { PieceworkContracts } from "./pages/PieceworkContracts";
 import { DocTracking } from "./pages/DocTracking";
+import { GovRadar } from "./pages/GovRadar";
 
 type Tab =
   | "home"
@@ -70,7 +71,8 @@ type Tab =
   | "bidding"
   | "standards"
   | "trademarks"
-  | "doctracking";
+  | "doctracking"
+  | "govradar";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -107,6 +109,7 @@ const ROUTES: Record<Tab, string> = {
   standards: "/standards",
   trademarks: "/trademarks",
   doctracking: "/theo-doi-xem",
+  govradar: "/cong-van-chinh-phu",
 };
 
 const PATH_TO_TAB: Record<string, Tab> = {
@@ -226,7 +229,7 @@ export function App() {
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "khoan", "verify", "training", "messenger", "telegram",
-              "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks",
+              "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks", "doctracking", "govradar",
             ] as Tab[])
           : isPymidStaff
             ? (["pymidcoop"] as Tab[])
@@ -313,6 +316,7 @@ export function App() {
         ["thuesync", "Đồng bộ thuế", "↻"],
         ["thuebct", "Review tờ khai", "▤"],
         ["taxdefense", "Giải trình thuế (2022-2025)", "⚖️"],
+        ["govradar", "Radar Công văn & Thuế CS7", "📡"],
         ["nhaphang", "Hóa đơn mua", "↓"],
         ["banra", "Hóa đơn bán", "↑"],
         ["hoadonnhap", "Tạo HĐ nháp", "+"],
@@ -491,6 +495,7 @@ export function App() {
         )}
         {tab === "khoan" && isAdmin && <PieceworkContracts />}
         {tab === "doctracking" && isAdmin && <DocTracking />}
+        {tab === "govradar" && isAdmin && <GovRadar />}
         </main>
       </div>
 

@@ -3625,6 +3625,87 @@ export const api = {
       }[];
     }>(`/api/doc-views/${docPk}?page=${page}&per_page=${perPage}`);
   },
+  async listGovRadar(params?: {
+    portal?: string;
+    category?: string;
+    q?: string;
+    applies_only?: boolean;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.portal) sp.set("portal", params.portal);
+    if (params?.category) sp.set("category", params.category);
+    if (params?.q) sp.set("q", params.q);
+    if (params?.applies_only) sp.set("applies_only", "true");
+    const qs = sp.toString();
+    return req<{
+      sources: {
+        id: string;
+        name: string;
+        jurisdiction: string;
+        portal_url: string;
+        fb_url: string;
+        badge: string;
+      }[];
+      total: number;
+      items: {
+        id: number;
+        source_key: string;
+        source_portal: string;
+        source_label: string;
+        doc_number: string;
+        doc_type: string;
+        published_date: string;
+        title: string;
+        detail_url: string;
+        pdf_url: string;
+        category: string;
+        relevance_score: number;
+        applies_to_inut: boolean;
+        impact_summary: string;
+        matched_keywords: string;
+        notified: boolean;
+        created_at: string;
+      }[];
+    }>(`/api/gov-radar${qs ? `?${qs}` : ""}`);
+  },
+  async syncGovRadar(notify = true) {
+    return req<{
+      ok: boolean;
+      added: number;
+      updated: number;
+      total: number;
+      notified_count: number;
+    }>(`/api/gov-radar/sync?notify=${notify ? "true" : "false"}`, {
+      method: "POST",
+    });
+  },
+  async verifyGovDoc(query: string) {
+    return req<{
+      ok: boolean;
+      query: string;
+      found_in_gov: boolean;
+      applies_to_inut: boolean;
+      verdict_badge: string;
+      verdict_color: string;
+      origin: string;
+      root_legal_basis: string;
+      daklak_equivalent: string;
+      inut_action: string;
+      matches: {
+        doc_number: string;
+        title: string;
+        source_label: string;
+        detail_url: string;
+        pdf_url?: string;
+        impact_summary: string;
+        applies_to_inut: boolean;
+      }[];
+    }>("/api/gov-radar/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+  },
 };
 
 // --- Kieu du lieu ton kho ---
