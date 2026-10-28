@@ -157,6 +157,49 @@ class Share(Base):
 
     document: Mapped["Document"] = relationship()
 
+class DocumentTracking(Base):
+    """Cau hinh theo doi luot xem ho so: bat/tat co, ghi chu, ngay moc, han bao Telegram."""
+
+    __tablename__ = "document_tracking"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    milestone_date: Mapped[str] = mapped_column(String(20), default="")  # YYYY-MM-DD
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    document: Mapped["Document"] = relationship()
+
+
+class DocumentView(Base):
+    """Lich su luot xem/tai/check NEAC ho so (luu 100%, khong xoa)."""
+
+    __tablename__ = "document_views"
+    __table_args__ = (
+        Index("ix_docviews_doc_created", "document_id", "created_at"),
+        Index("ix_docviews_ip_doc_created", "ip", "document_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    action: Mapped[str] = mapped_column(String(20))  # view / download / neac
+    ip: Mapped[str] = mapped_column(String(45), default="")
+    city: Mapped[str] = mapped_column(String(100), default="")
+    region: Mapped[str] = mapped_column(String(100), default="")
+    isp: Mapped[str] = mapped_column(String(200), default="")
+    country_code: Mapped[str] = mapped_column(String(5), default="")
+    device_type: Mapped[str] = mapped_column(String(20), default="")  # mobile / desktop
+    user_agent_hash: Mapped[str] = mapped_column(String(64), default="")
+    fingerprint_hash: Mapped[str] = mapped_column(String(64), default="")
+    source: Mapped[str] = mapped_column(String(100), default="")  # share_{token} / portal / direct
+    nonce: Mapped[str] = mapped_column(String(128), default="")
+    notified: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    document: Mapped["Document"] = relationship()
 
 class TrainingShare(Base):
     """Cau tra loi Training chia se cong khai bang token ngau nhien, co han."""

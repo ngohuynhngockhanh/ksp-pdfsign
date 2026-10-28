@@ -43,6 +43,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import (
+    doc_tracking,
     accounts,
     ai,
     audit,
@@ -97,6 +98,8 @@ from .db import (
     Order,
     Product,
     Share,
+    DocumentTracking,
+    DocumentView,
     TaxReviewUpload,
     TaxReport,
     TrainingShare,
@@ -2626,12 +2629,25 @@ def _share_file(token: str, db: Session, inline: bool):
 
 
 @app.get("/api/share/{token}/download")
-def share_download(token: str, db: Session = Depends(get_session)):
+def share_download(token: str, request: Request, db: Session = Depends(get_session), settings: Settings = Depends(get_settings)):
+    s = db.scalar(select(Share).where(Share.token == token))
+    if s and not (datetime.utcnow() > s.expires_at):
+        doc_tracking.record_server_side_view(
+            db, settings, document_id=s.document_id, action="download",
+            request_headers=dict(request.headers), source=f"share_{token}",
+        )
     return _share_file(token, db, inline=False)
 
 
 @app.get("/api/share/{token}/view")
-def share_view(token: str, db: Session = Depends(get_session)):
+def share_view(token: str, request: Request, db: Session = Depends(get_session), settings: Settings = Depends(get_settings)):
+    # Fallback server-side view (khi iframe load truc tiep, JS telemetry co the da ban roi)
+    s = db.scalar(select(Share).where(Share.token == token))
+    if s and not (datetime.utcnow() > s.expires_at):
+        doc_tracking.record_server_side_view(
+            db, settings, document_id=s.document_id, action="view",
+            request_headers=dict(request.headers), source=f"share_{token}",
+        )
     return _share_file(token, db, inline=True)
 
 
@@ -2682,7 +2698,7 @@ def share_verify_neac(
     }
 
 @app.get("/s/{token}", response_class=HTMLResponse)
-def share_page(token: str, db: Session = Depends(get_session)):
+def share_page(token: str, request: Request, db: Session = Depends(get_session), settings: Settings = Depends(get_settings)):
     s = db.scalar(select(Share).where(Share.token == token))
     if not s:
         return HTMLResponse(_share_html("Link không tồn tại", None, None), status_code=404)
@@ -2692,10 +2708,16 @@ def share_page(token: str, db: Session = Depends(get_session)):
         return HTMLResponse(
             _share_html(f"Link đã hết hạn (từ {exp})", s.document.filename, None), status_code=410
         )
-    return HTMLResponse(_share_html(None, s.document.filename, token, exp))
+    nonce = doc_tracking.generate_nonce(
+        settings,
+        share_token=token,
+        document_id=s.document_id,
+        user_agent=request.headers.get("user-agent", ""),
+    )
+    return HTMLResponse(_share_html(None, s.document.filename, token, exp, nonce=nonce, document_id=s.document_id))
 
 
-def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "") -> str:
+def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "", *, nonce: str = "", document_id: int = 0) -> str:
     error = html.escape(error or "", quote=True) if error else None
     filename = html.escape(filename or "", quote=True) if filename else None
     token = quote(token or "", safe="") if token else None
@@ -2800,10 +2822,284 @@ async function checkShareNeac() {{
   }}
 }}
 </script>
+{_telemetry_js(token, nonce, document_id) if token and nonce else ""}
 <footer class="thanks">💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của
 <a href="https://inut.vn" target="_blank">INUT</a></footer>
 </body></html>"""
+def _telemetry_js(token: str | None, nonce: str, document_id: int) -> str:
+    """Client-side telemetry: GeoIP via ipwho.is/Cloudflare + fingerprint + POST to /api/doc-telemetry."""
+    if not token or not nonce:
+        return ""
+    safe_token = html.escape(token, quote=True)
+    safe_nonce = html.escape(nonce, quote=True)
+    return f"""<script>
+(function(){{
+  var _sent = false;
+  function fp(){{
+    try{{
+      var s = screen.width+"x"+screen.height+"|"+navigator.language+"|"+Intl.DateTimeFormat().resolvedOptions().timeZone+"|"+navigator.platform;
+      var h = 0; for(var i=0;i<s.length;i++){{ h = ((h<<5)-h)+s.charCodeAt(i); h |= 0; }}
+      return (h>>>0).toString(16);
+    }}catch(e){{ return "0"; }}
+  }}
+  function device(){{
+    return /mobile|android|iphone|ipad/i.test(navigator.userAgent) ? "mobile" : "desktop";
+  }}
+  function send(action, geo){{
+    if(_sent && action==="view") return;
+    if(action==="view") _sent = true;
+    var body = {{
+      nonce: "{safe_nonce}",
+      share_token: "{safe_token}",
+      document_id: {document_id},
+      action: action,
+      fingerprint_hash: fp(),
+      device_type: device(),
+      ip: (geo && geo.ip) || "",
+      city: (geo && (geo.city || "")) || "",
+      region: (geo && (geo.region || "")) || "",
+      isp: (geo && (geo.org || geo.isp || "")) || "",
+      country_code: (geo && (geo.country_code || geo.country || "")) || ""
+    }};
+    fetch("/api/doc-telemetry", {{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify(body)}}).catch(function(){{}});
+  }}
+  function go(geo){{
+    send("view", geo);
+    // Hook download/NEAC clicks
+    document.addEventListener("click", function(e){{
+      var a = e.target.closest && e.target.closest("a[href],button");
+      if(!a) return;
+      var href = a.getAttribute("href") || "";
+      var txt = a.textContent || "";
+      if(href.indexOf("/download") > -1) send("download", geo);
+      else if(txt.indexOf("NEAC") > -1) send("neac", geo);
+    }});
+  }}
+  // GeoIP chain: ipwho.is -> Cloudflare trace -> fallback empty
+  fetch("https://ipwho.is/",{{mode:"cors"}}).then(function(r){{return r.json()}}).then(function(d){{
+    go({{ip:d.ip,city:d.city,region:d.region,isp:d.connection&&d.connection.isp||"",country_code:d.country_code}});
+  }}).catch(function(){{
+    fetch("https://1.1.1.1/cdn-cgi/trace").then(function(r){{return r.text()}}).then(function(t){{
+      var m={{}}; t.split("\\n").forEach(function(l){{ var p=l.split("="); if(p.length===2) m[p[0]]=p[1]; }});
+      go({{ip:m.ip||"",city:"",region:"",isp:"",country_code:m.loc||""}});
+    }}).catch(function(){{ go({{}}); }});
+  }});
+}})();
+</script>"""
 
+# ---------------------------------------------------------------------------
+# Theo doi luot xem ho so (Doc Tracking & Telemetry)
+# ---------------------------------------------------------------------------
+class _TelemetryPayload(BaseModel):
+    nonce: str
+    share_token: str = ""
+    document_id: int = 0
+    action: str = "view"
+    fingerprint_hash: str = ""
+    device_type: str = ""
+    ip: str = ""
+    city: str = ""
+    region: str = ""
+    isp: str = ""
+    country_code: str = ""
+
+
+@app.post("/api/doc-telemetry")
+def doc_telemetry(
+    body: _TelemetryPayload,
+    request: Request,
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Nhan telemetry tu browser (GeoIP + fingerprint + nonce)."""
+    if body.action not in ("view", "download", "neac"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Action khong hop le")
+    if not doc_tracking.verify_nonce(
+        settings,
+        body.nonce,
+        share_token=body.share_token,
+        document_id=body.document_id,
+        user_agent=request.headers.get("user-agent", ""),
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Nonce khong hop le hoac het han")
+
+    import hashlib as _hl
+    ua_hash = _hl.sha256(request.headers.get("user-agent", "").encode()).hexdigest()[:16]
+    ip = body.ip or (request.headers.get("x-forwarded-for", "").split(",")[0].strip()) or (request.headers.get("x-real-ip", "")) or (request.client.host if request.client else "")
+
+    view = doc_tracking.record_view(
+        db, settings,
+        document_id=body.document_id,
+        action=body.action,
+        ip=ip,
+        city=body.city,
+        region=body.region,
+        isp=body.isp,
+        country_code=body.country_code,
+        device_type=body.device_type,
+        user_agent_hash=ua_hash,
+        fingerprint_hash=body.fingerprint_hash,
+        source=f"share_{body.share_token}" if body.share_token else "direct",
+        nonce=body.nonce,
+    )
+    return {"ok": True, "view_id": view.id}
+
+
+class _TrackingUpdate(BaseModel):
+    enabled: bool = True
+    note: str = ""
+    milestone_date: str = ""
+    expires_days: int | None = None  # None = khong het han, so ngay tinh tu bay gio
+
+
+@app.get("/api/documents/{doc_pk}/tracking")
+def get_tracking(
+    doc_pk: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    t = db.scalar(select(DocumentTracking).where(DocumentTracking.document_id == doc_pk))
+    if not t:
+        return {"enabled": False, "note": "", "milestone_date": "", "expires_at": None, "document_id": doc_pk}
+    return {
+        "enabled": t.enabled,
+        "note": t.note,
+        "milestone_date": t.milestone_date,
+        "expires_at": t.expires_at.isoformat() if t.expires_at else None,
+        "document_id": t.document_id,
+    }
+
+
+@app.put("/api/documents/{doc_pk}/tracking")
+def set_tracking(
+    doc_pk: int,
+    body: _TrackingUpdate,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    t = db.scalar(select(DocumentTracking).where(DocumentTracking.document_id == doc_pk))
+    if not t:
+        t = DocumentTracking(document_id=doc_pk)
+        db.add(t)
+    t.enabled = body.enabled
+    t.note = body.note[:500]
+    t.milestone_date = body.milestone_date[:20]
+    if body.expires_days is not None and body.expires_days > 0:
+        t.expires_at = datetime.utcnow() + timedelta(days=body.expires_days)
+    elif body.expires_days == 0:
+        t.expires_at = None  # khong het han
+    t.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(t)
+    _audit(db, user, "doc_tracking", d.filename, f"{'bật' if t.enabled else 'tắt'} cờ theo dõi")
+    return {
+        "enabled": t.enabled,
+        "note": t.note,
+        "milestone_date": t.milestone_date,
+        "expires_at": t.expires_at.isoformat() if t.expires_at else None,
+        "document_id": t.document_id,
+    }
+
+
+@app.get("/api/doc-views")
+def list_tracked_docs(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Dashboard: danh sach ho so dang/da bat co theo doi + so lieu tong hop."""
+    rows = db.scalars(
+        select(DocumentTracking).order_by(DocumentTracking.updated_at.desc())
+    ).all()
+    result = []
+    for t in rows:
+        doc = t.document
+        total_views = db.scalar(
+            select(func.count(DocumentView.id)).where(DocumentView.document_id == t.document_id)
+        ) or 0
+        downloads = db.scalar(
+            select(func.count(DocumentView.id)).where(
+                DocumentView.document_id == t.document_id, DocumentView.action == "download"
+            )
+        ) or 0
+        neac_checks = db.scalar(
+            select(func.count(DocumentView.id)).where(
+                DocumentView.document_id == t.document_id, DocumentView.action == "neac"
+            )
+        ) or 0
+        last_view = db.scalar(
+            select(DocumentView.created_at).where(
+                DocumentView.document_id == t.document_id
+            ).order_by(DocumentView.created_at.desc())
+        )
+        result.append({
+            "document_id": t.document_id,
+            "filename": doc.filename if doc else "",
+            "customer_name": doc.customer.name if doc and doc.customer else "",
+            "enabled": t.enabled,
+            "note": t.note,
+            "milestone_date": t.milestone_date,
+            "expires_at": t.expires_at.isoformat() if t.expires_at else None,
+            "total_views": total_views,
+            "downloads": downloads,
+            "neac_checks": neac_checks,
+            "last_view_at": last_view.isoformat() if last_view else None,
+        })
+    return result
+
+
+@app.get("/api/doc-views/{doc_pk}")
+def doc_view_detail(
+    doc_pk: int,
+    page: int = 1,
+    per_page: int = 50,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Chi tiet lich su luot xem cua 1 ho so."""
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    page = max(1, page)
+    per_page = min(max(1, per_page), 200)
+    total = db.scalar(
+        select(func.count(DocumentView.id)).where(DocumentView.document_id == doc_pk)
+    ) or 0
+    views = db.scalars(
+        select(DocumentView)
+        .where(DocumentView.document_id == doc_pk)
+        .order_by(DocumentView.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    ).all()
+    return {
+        "document_id": doc_pk,
+        "filename": d.filename,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "views": [
+            {
+                "id": v.id,
+                "action": v.action,
+                "ip": v.ip,
+                "city": v.city,
+                "region": v.region,
+                "isp": v.isp,
+                "country_code": v.country_code,
+                "device_type": v.device_type,
+                "source": v.source,
+                "notified": v.notified,
+                "created_at": v.created_at.isoformat() if v.created_at else "",
+            }
+            for v in views
+        ],
+    }
 
 # ---------------------------------------------------------------------------
 # Doi mat khau

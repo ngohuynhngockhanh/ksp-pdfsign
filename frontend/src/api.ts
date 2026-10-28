@@ -3559,6 +3559,72 @@ export const api = {
       `/api/piecework/contractors/${cid}/tax-summary?year=${year}`
     );
   },
+
+  // --- Doc Tracking (Theo doi luot xem) ---
+  async getDocTracking(docPk: number) {
+    return req<{
+      enabled: boolean;
+      note: string;
+      milestone_date: string;
+      expires_at: string | null;
+      document_id: number;
+    }>(`/api/documents/${docPk}/tracking`);
+  },
+  async setDocTracking(
+    docPk: number,
+    body: { enabled: boolean; note: string; milestone_date: string; expires_days: number | null }
+  ) {
+    return req<{
+      enabled: boolean;
+      note: string;
+      milestone_date: string;
+      expires_at: string | null;
+      document_id: number;
+    }>(`/api/documents/${docPk}/tracking`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+  async listTrackedDocs() {
+    return req<
+      {
+        document_id: number;
+        filename: string;
+        customer_name: string;
+        enabled: boolean;
+        note: string;
+        milestone_date: string;
+        expires_at: string | null;
+        total_views: number;
+        downloads: number;
+        neac_checks: number;
+        last_view_at: string | null;
+      }[]
+    >("/api/doc-views");
+  },
+  async getDocViews(docPk: number, page = 1, perPage = 50) {
+    return req<{
+      document_id: number;
+      filename: string;
+      total: number;
+      page: number;
+      per_page: number;
+      views: {
+        id: number;
+        action: string;
+        ip: string;
+        city: string;
+        region: string;
+        isp: string;
+        country_code: string;
+        device_type: string;
+        source: string;
+        notified: boolean;
+        created_at: string;
+      }[];
+    }>(`/api/doc-views/${docPk}?page=${page}&per_page=${perPage}`);
+  },
 };
 
 // --- Kieu du lieu ton kho ---

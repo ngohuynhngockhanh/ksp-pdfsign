@@ -540,6 +540,29 @@ export function Documents({
                       >
                         ✏️ Đổi tên
                       </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const cur = await api.getDocTracking(d.id);
+                            const enabled = !cur.enabled;
+                            let note = cur.note;
+                            let milestone = cur.milestone_date;
+                            let days: number | null = 7;
+                            if (enabled) {
+                              note = prompt("Ghi chú ngữ cảnh (VD: Gửi ngày 28/10 · HĐ kế toán):", cur.note) ?? cur.note;
+                              milestone = prompt("Ngày mốc (YYYY-MM-DD, để trống nếu không cần):", cur.milestone_date) ?? cur.milestone_date;
+                              const daysStr = prompt("Hạn báo Telegram (số ngày, 0 = vô thời hạn):", "7");
+                              days = daysStr !== null ? parseInt(daysStr) || 0 : 7;
+                            }
+                            await api.setDocTracking(d.id, { enabled, note, milestone_date: milestone, expires_days: days });
+                            alert(enabled ? "✅ Đã bật theo dõi lượt xem" : "⚪ Đã tắt theo dõi lượt xem");
+                          } catch (e) {
+                            alert((e as Error).message);
+                          }
+                        }}
+                      >
+                        👁 Theo dõi lượt xem
+                      </button>
                       {d.signed_upload_name && (
                         <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">
                           📎 Xem bản đã ký

@@ -107,14 +107,17 @@ class TelegramClient:
             raise TelegramError(description[:240])
         return body.get("result")
 
-    def send_message(self, chat_id: str, text: str, *, speak_tts: bool = True) -> dict[str, Any]:
+    def send_message(self, chat_id: str, text: str, *, speak_tts: bool = True, parse_mode: str = "") -> dict[str, Any]:
         chat = str(chat_id or "").strip()
         if not _CHAT_ID_RE.fullmatch(chat):
             raise TelegramError("Telegram chat id khong hop le")
         message = str(text or "").strip()
         if not message:
             raise TelegramError("Noi dung Telegram dang trong")
-        result = self.call("sendMessage", {"chat_id": chat, "text": message[:4096], "disable_web_page_preview": True})
+        payload: dict[str, Any] = {"chat_id": chat, "text": message[:4096], "disable_web_page_preview": True}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        result = self.call("sendMessage", payload)
         if speak_tts and not self._has_custom_transport:
             try:
                 from . import tts

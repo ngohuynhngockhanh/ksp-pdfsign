@@ -34,7 +34,7 @@ import { StandardsConformity } from "./pages/StandardsConformity";
 import { TaxDefense } from "./pages/TaxDefense";
 import { Trademarks } from "./pages/Trademarks";
 import { PieceworkContracts } from "./pages/PieceworkContracts";
-
+import { DocTracking } from "./pages/DocTracking";
 
 type Tab =
   | "home"
@@ -69,7 +69,8 @@ type Tab =
   | "shippingspx"
   | "bidding"
   | "standards"
-  | "trademarks";
+  | "trademarks"
+  | "doctracking";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -105,6 +106,7 @@ const ROUTES: Record<Tab, string> = {
   bidding: "/bidding",
   standards: "/standards",
   trademarks: "/trademarks",
+  doctracking: "/theo-doi-xem",
 };
 
 const PATH_TO_TAB: Record<string, Tab> = {
@@ -333,6 +335,7 @@ export function App() {
         ["quote", "Báo giá", "₫"], ["contract", "Soạn hợp đồng", "§"],
         ["trademarks", "Nhãn hiệu (Sở hữu trí tuệ)", "®️"],
         ["documents", "Kho hồ sơ", "▱"],
+        ["doctracking", "Theo dõi lượt xem", "👁"],
         ["verify", "Kiểm tra chữ ký", "⌕"],
       ],
     ],
@@ -487,6 +490,7 @@ export function App() {
           <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
         )}
         {tab === "khoan" && isAdmin && <PieceworkContracts />}
+        {tab === "doctracking" && isAdmin && <DocTracking />}
         </main>
       </div>
 
