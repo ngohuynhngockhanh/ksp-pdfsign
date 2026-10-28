@@ -346,8 +346,23 @@ export function SalesInvoice() {
     )
       return;
     setBusy(true);
+    setErr("");
     try {
+      // Luon luu cac thay doi tren dong (vd vua doi Mat hang kho sang v1.1 Rockchip) truoc khi sinh chung tu
+      const saveBody = {
+        so_hd: cur.so_hd, ky_hieu: cur.ky_hieu, mst_mua: cur.mst_mua,
+        ten_mua: cur.ten_mua, ngay: cur.ngay,
+        lines: cur.lines.map((l) => ({
+          stt: l.stt, ten_raw: l.ten_raw, dvt: l.dvt, so_luong: l.so_luong,
+          don_gia_ban: l.don_gia_ban, thanh_tien: l.thanh_tien, thue_suat: l.thue_suat,
+          thue_kct: l.thue_kct, item_id: l.item_id, warehouse_id: l.warehouse_id,
+          match_kind: l.match_kind, line_class: l.line_class, fulfil_kind: l.fulfil_kind,
+        })),
+      };
+      await api.invSaleSave(cur.id, saveBody);
       const r = await api.invSaleGenerate(cur.id);
+      setCur(await api.invSale(cur.id));
+      load();
       const msg =
         `Đã tạo ${r.issues.length} phiếu xuất + ${r.productions.length} lệnh sản xuất (nháp).\n` +
         (r.warnings.length ? `\n⚠️ Cần lưu ý:\n- ${r.warnings.join("\n- ")}` : "\nKhông có cảnh báo.");
@@ -362,11 +377,16 @@ export function SalesInvoice() {
   async function openBom(l: InvSaleLine) {
     if (!cur) return;
     setErr("");
-    // Co ban nhap tu lan truoc (dong tab dot ngot...) -> khoi phuc thay vi mo moi.
+    // Co ban nhap tu lan truoc (dong tab dot ngot...) -> chi khoi phuc neu cung outputItemId
     let draft: BomDraft | null = null;
     try {
       const raw = localStorage.getItem(bomDraftKey(cur.id, l.id));
-      if (raw) draft = JSON.parse(raw) as BomDraft;
+      if (raw) {
+        const parsed = JSON.parse(raw) as BomDraft;
+        if (!l.item_id || parsed.outputItemId === l.item_id) {
+          draft = parsed;
+        }
+      }
     } catch {
       /* ban nhap loi/hong -> bo qua, mo moi binh thuong */
     }
@@ -445,14 +465,47 @@ export function SalesInvoice() {
     lineId: number,
     it: { id: number; ma_hang: string; ten: string },
   ) {
-    patchLine(lineId, {
-      item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual",
-    });
+    let whId: number | undefined;
     try {
       const c = await api.invItemCost(it.id, cur?.ngay ?? "");
-      if (c.warehouse_id != null) patchLine(lineId, { warehouse_id: c.warehouse_id });
+      if (c.warehouse_id != null) whId = c.warehouse_id;
     } catch {
       /* ignore — van sua tay duoc */
+    }
+    try {
+      if (cur) localStorage.removeItem(bomDraftKey(cur.id, lineId));
+    } catch {
+      /* ignore */
+    }
+    if (!cur) return;
+    const nextLines = cur.lines.map((l) =>
+      l.id === lineId
+        ? {
+            ...l,
+            item_id: it.id,
+            item_ma_hang: it.ma_hang,
+            item_ten: it.ten,
+            match_kind: "manual",
+            ...(whId != null ? { warehouse_id: whId } : {}),
+          }
+        : l,
+    );
+    setCur({ ...cur, lines: nextLines });
+    try {
+      const updated = await api.invSaleSave(cur.id, {
+        so_hd: cur.so_hd, ky_hieu: cur.ky_hieu, mst_mua: cur.mst_mua,
+        ten_mua: cur.ten_mua, ngay: cur.ngay,
+        lines: nextLines.map((l) => ({
+          stt: l.stt, ten_raw: l.ten_raw, dvt: l.dvt, so_luong: l.so_luong,
+          don_gia_ban: l.don_gia_ban, thanh_tien: l.thanh_tien, thue_suat: l.thue_suat,
+          thue_kct: l.thue_kct, item_id: l.item_id, warehouse_id: l.warehouse_id,
+          match_kind: l.match_kind, line_class: l.line_class, fulfil_kind: l.fulfil_kind,
+        })),
+      });
+      setCur(updated);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
     }
   }
   // Khop lai ma hang cho dong con draft, dung danh muc MOI NHAT — sua truong hop

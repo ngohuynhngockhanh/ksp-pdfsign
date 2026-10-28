@@ -684,6 +684,13 @@ def extract_purchase_ai(settings: Settings, pdf_bytes: bytes) -> dict:
 # ---------------------------------------------------------------------------
 # Match ten hang hoa don -> mat hang ton kho
 # ---------------------------------------------------------------------------
+_VERSION_TOKEN_RE = re.compile(r"\b(?:v|ver|version\s*)(\d+(?:\.\d+)*)\b")
+
+
+def _extract_version_tokens(norm_text: str) -> set[str]:
+    return set(_VERSION_TOKEN_RE.findall(norm_text or ""))
+
+
 def match_suggestions(
     all_items: list[InvItem],
     text: str,
@@ -714,14 +721,20 @@ def match_suggestions(
     for it in all_items:
         if it.ten_norm == norm or normalize_name(it.ma_hang) == norm:
             return it, "exact", [(it, 1.0)]
-    scored = sorted(
-        (
-            (difflib.SequenceMatcher(None, norm, it.ten_norm).ratio(), it)
-            for it in all_items
-            if it.ten_norm
-        ),
-        key=lambda x: -x[0],
-    )
+    q_vers = _extract_version_tokens(norm)
+    scored_list: list[tuple[float, InvItem]] = []
+    for it in all_items:
+        if not it.ten_norm:
+            continue
+        r = difflib.SequenceMatcher(None, norm, it.ten_norm).ratio()
+        it_vers = _extract_version_tokens(it.ten_norm)
+        if (q_vers or it_vers) and q_vers != it_vers:
+            # Khac phien ban (vd v1.1 vs v2/v3/v4) -> ha diem de khong tu khop nham
+            r *= 0.75
+        elif it.ten_norm.startswith(norm) or norm.startswith(it.ten_norm):
+            r = max(r, 0.92)
+        scored_list.append((r, it))
+    scored = sorted(scored_list, key=lambda x: -x[0])
     top = [(it, r) for r, it in scored[:limit] if r >= 0.6]
     if top and top[0][1] >= 0.85:
         return top[0][0], "fuzzy", top
@@ -1144,6 +1157,7 @@ def create_sale_draft(
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
     wh_tp = db.scalars(select(InvWarehouse).where(InvWarehouse.code == "TP")).first()
     wh_hh = db.scalars(select(InvWarehouse).where(InvWarehouse.code == "HH")).first()
+    aliases = load_purchase_aliases(db)
     # Kho dang giu ton nhieu nhat cua tung item — dong match duoc thi tro dung
     # kho co hang (tranh gan cung HH/TP trong khi hang nam kho khac, vd NVL).
     from .inventory import EPS as _EPS, stock_snapshot as _snap
@@ -1169,7 +1183,7 @@ def create_sale_draft(
             line_class, fulfil = classify_sale_line(ten_raw, kct)
         matched, kind = None, "none"
         if not is_dc and fulfil != "doanh_thu":
-            matched, kind, _sugg = match_suggestions(all_items, ten_raw)
+            matched, kind, _sugg = match_suggestions(all_items, ten_raw, aliases=aliases)
         wh = wh_tp if line_class == "inut" else wh_hh
         wh_id = (wh.id if wh else None)
         if matched and matched.id in best_wh:

@@ -198,3 +198,71 @@ def test_admin_can_manage_public_leads_and_reveal_phone_with_audit(client, monke
     deleted = client.delete(f"/api/training/public-leads/{session['sessionId']}")
     assert deleted.status_code == 200
     assert client.get(f"/api/training/public-leads/{session['sessionId']}").status_code == 404
+
+
+def test_public_training_job_injects_prior_conversation_history_and_resumes_session(client, monkeypatch):
+    _configure(monkeypatch)
+    session = _signed(client, "POST", "/internal/public-training/sessions", {
+        "phone": "0912345678", "locale": "vi", "consent": True,
+    }).json()
+    from app import public_training_jobs, training
+    from app.config import get_settings
+    from app.db import TrainingPublicQuery, get_session
+
+    gen = get_session()
+    db = next(gen)
+    db.add_all([
+        TrainingPublicQuery(
+            job_id="turn-1",
+            session_id=session["sessionId"],
+            question="Tôi cần kết nối 5 đồng hồ điện RS485",
+            answer_json=json.dumps({"answer": {"answer": "Bạn có thể dùng iNut RS485 đọc Modbus RTU. Đồng hồ của bạn hãng nào?"}}),
+            status="done",
+        ),
+        TrainingPublicQuery(
+            job_id="turn-2",
+            session_id=session["sessionId"],
+            question="Đồng hồ Selec, kéo dây khoảng 100m thì cấu hình sao?",
+            status="running",
+        ),
+    ])
+    db.commit()
+    gen.close()
+
+    captured: dict[str, str] = {}
+
+    def fake_ask(settings, question, session_id="", personal_context="", assistant_mode="technical"):
+        captured["question"] = question
+        captured["session_id"] = session_id
+        captured["personal_context"] = personal_context
+        captured["assistant_mode"] = assistant_mode
+        return {
+            "sessionId": session_id,
+            "answer": {
+                "answer": "Với đồng hồ Selec kéo dây 100m qua iNut RS485, bạn đấu A-B xoắn đôi chống nhiễu và cấu hình Baudrate 9600.",
+                "sourceBasis": "documentation-only",
+            },
+        }
+
+    monkeypatch.setattr(training, "ask", fake_ask)
+    public_training_jobs._run(
+        "turn-2",
+        public_training_jobs.public_training_token_hash(session["sessionToken"]),
+        session["sessionToken"],
+        get_settings(),
+        "Đồng hồ Selec, kéo dây khoảng 100m thì cấu hình sao?",
+        "",
+    )
+
+    assert captured["assistant_mode"] == "sales"
+    assert captured["session_id"].startswith("public-")
+    assert "Tôi cần kết nối 5 đồng hồ điện RS485" in captured["personal_context"]
+    assert "Bạn có thể dùng iNut RS485 đọc Modbus RTU" in captured["personal_context"]
+
+    history = _signed(
+        client,
+        "GET",
+        f"/internal/public-training/history?sessionToken={session['sessionToken']}&limit=200",
+    )
+    assert history.status_code == 200
+    assert len(history.json()["items"]) == 2

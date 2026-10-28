@@ -29,6 +29,7 @@ from .db import (
     InvIssueLine,
     IhoadonInvoice,
     InvItem,
+    InvItemAlias,
     InvMove,
     InvProduction,
     InvProductionLine,
@@ -1585,6 +1586,7 @@ def _sale_out(
     if with_lines:
         items = {i.id: i for i in db.scalars(select(InvItem))}
         all_items = [i for i in items.values() if i.active]
+        aliases = inv_import.load_purchase_aliases(db)
         avail: dict[tuple[int, int], float] = {}
         snap: dict[tuple[int, int], float] = {}
         if inv.ngay and not inv.is_dieu_chinh:
@@ -1604,8 +1606,8 @@ def _sale_out(
         for ln in sorted(inv.lines, key=lambda x: (x.stt, x.id)):
             it = items.get(ln.item_id) if ln.item_id else None
             sugg = []
-            if not ln.item_id and not inv.is_dieu_chinh and ln.fulfil_kind != "doanh_thu":
-                _m, _k, cands = inv_import.match_suggestions(all_items, ln.ten_raw)
+            if not inv.is_dieu_chinh and ln.fulfil_kind != "doanh_thu":
+                _m, _k, cands = inv_import.match_suggestions(all_items, ln.ten_raw, aliases=aliases)
                 sugg = [
                     {
                         "item_id": c.id, "ma_hang": c.ma_hang, "ten": c.ten, "dvt": c.dvt,
@@ -2036,18 +2038,90 @@ def sale_update(
                 )
         inv.status = body.status
     if body.lines is not None:
-        for ln in list(inv.lines):
-            db.delete(ln)
+        existing_lines = sorted(inv.lines, key=lambda x: (x.stt, x.id))
+        replaced_old_items: set[int] = set()
+        kept_line_ids: set[int] = set()
         for i, src in enumerate(body.lines, start=1):
-            db.add(InvSaleLine(
-                invoice=inv, stt=src.stt or i, ten_raw=src.ten_raw, dvt=src.dvt,
-                so_luong=src.so_luong, don_gia_ban=src.don_gia_ban,
-                thanh_tien=src.thanh_tien or round(src.so_luong * src.don_gia_ban),
-                thue_suat=src.thue_suat, thue_kct=src.thue_kct,
-                item_id=src.item_id, warehouse_id=src.warehouse_id,
-                match_kind=src.match_kind if src.item_id else "none",
-                line_class=src.line_class, fulfil_kind=src.fulfil_kind,
-            ))
+            target_ln = existing_lines[i - 1] if i - 1 < len(existing_lines) else None
+            if target_ln is not None:
+                if target_ln.item_id and target_ln.item_id != src.item_id:
+                    replaced_old_items.add(target_ln.item_id)
+                    # Xoa LSX nhap cu gan voi dong nay khi user doi mat hang kho
+                    for d_prod in list(db.scalars(
+                        select(InvProduction).where(
+                            InvProduction.sale_line_id == target_ln.id,
+                            InvProduction.status == "draft",
+                        )
+                    )):
+                        db.delete(d_prod)
+                target_ln.stt = src.stt or i
+                target_ln.ten_raw = src.ten_raw
+                target_ln.dvt = src.dvt
+                target_ln.so_luong = src.so_luong
+                target_ln.don_gia_ban = src.don_gia_ban
+                target_ln.thanh_tien = src.thanh_tien or round(src.so_luong * src.don_gia_ban)
+                target_ln.thue_suat = src.thue_suat
+                target_ln.thue_kct = src.thue_kct
+                target_ln.item_id = src.item_id
+                target_ln.warehouse_id = src.warehouse_id
+                target_ln.match_kind = src.match_kind if src.item_id else "none"
+                target_ln.line_class = src.line_class
+                target_ln.fulfil_kind = src.fulfil_kind
+                kept_line_ids.add(target_ln.id)
+                ln_obj = target_ln
+            else:
+                ln_obj = InvSaleLine(
+                    invoice=inv, stt=src.stt or i, ten_raw=src.ten_raw, dvt=src.dvt,
+                    so_luong=src.so_luong, don_gia_ban=src.don_gia_ban,
+                    thanh_tien=src.thanh_tien or round(src.so_luong * src.don_gia_ban),
+                    thue_suat=src.thue_suat, thue_kct=src.thue_kct,
+                    item_id=src.item_id, warehouse_id=src.warehouse_id,
+                    match_kind=src.match_kind if src.item_id else "none",
+                    line_class=src.line_class, fulfil_kind=src.fulfil_kind,
+                )
+                db.add(ln_obj)
+            # Ghi nho alias khi nguoi dung chon tay mat hang kho tren HD ban
+            if ln_obj.item_id and ln_obj.match_kind in ("manual", "learned"):
+                ten_norm = normalize_name(ln_obj.ten_raw)
+                if ten_norm:
+                    ex_al = db.scalars(
+                        select(InvItemAlias).where(
+                            InvItemAlias.ten_norm == ten_norm, InvItemAlias.mst_ban == ""
+                        )
+                    ).first()
+                    if ex_al is None:
+                        db.add(InvItemAlias(
+                            ten_norm=ten_norm, mst_ban="",
+                            item_id=ln_obj.item_id, warehouse_id=ln_obj.warehouse_id,
+                        ))
+                    else:
+                        ex_al.item_id = ln_obj.item_id
+                        ex_al.warehouse_id = ln_obj.warehouse_id
+        for extra_ln in existing_lines[len(body.lines):]:
+            if extra_ln.item_id:
+                replaced_old_items.add(extra_ln.item_id)
+            db.delete(extra_ln)
+        new_item_ids = {src.item_id for src in body.lines if src.item_id}
+        stale_items = replaced_old_items - new_item_ids
+        if stale_items:
+            for d_prod in list(db.scalars(
+                select(InvProduction).where(
+                    InvProduction.sale_id == inv.id, InvProduction.status == "draft"
+                )
+            )):
+                if any(pl.chieu == "ra" and pl.item_id in stale_items for pl in d_prod.lines):
+                    db.delete(d_prod)
+            for d_iss in list(db.scalars(
+                select(InvIssue).where(
+                    InvIssue.sale_id == inv.id, InvIssue.status == "draft"
+                )
+            )):
+                for il in list(d_iss.lines):
+                    if il.item_id in stale_items:
+                        db.delete(il)
+                db.flush()
+                if not d_iss.lines:
+                    db.delete(d_iss)
     db.commit()
     db.refresh(inv)
     return _sale_out(db, inv)
@@ -2130,10 +2204,11 @@ def sale_line_rematch(
     danh muc se tim thay exact match dung.
     """
     inv, ln = _sale_line(db, sid, line_id)
-    if inv.status != "draft":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ khớp lại được khi hóa đơn còn ở trạng thái Nháp")
+    if inv.status == "void":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Hóa đơn đã hủy")
     all_items = list(db.scalars(select(InvItem).where(InvItem.active.is_(True))))
-    matched, kind, sugg = inv_import.match_suggestions(all_items, ln.ten_raw)
+    aliases = inv_import.load_purchase_aliases(db)
+    matched, kind, sugg = inv_import.match_suggestions(all_items, ln.ten_raw, aliases=aliases)
     if not matched:
         return {
             "changed": False, "item_id": None, "match_kind": "none",

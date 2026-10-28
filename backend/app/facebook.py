@@ -70,7 +70,8 @@ _DEMO_REQUEST_RE = re.compile(
     r"th[uử]\s+nghi[eệ]m|trial)"
 )
 _INVENTORY_AVAILABILITY_RE = re.compile(
-    r"(?i)\b(?:con|co)\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b"
+    r"(?i)\b(?:con)\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b|"
+    r"\bco\s+san\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b"
 )
 _INVENTORY_ITEM_HINT_RE = re.compile(
     r"(?i)\b(?:module|thi[eế]t\s*bi|s[aả]n\s*ph[aẩ]m|b[oộ]|c[aá]i|"
@@ -109,7 +110,8 @@ _PRIVATE_DATA_RE = re.compile(
     r"(?i)\b(?:hoa\s+don|invoice|purchase(?:\s+invoice)?|sales?\s+invoice|"
     r"gia\s+(?:mua|von)|"
     r"gia\s+noi\s+bo|ton\s+kho|nhap\s+hang|xuat\s+kho|phieu\s+(?:nhap|xuat)|"
-    r"ihoadon|cong\s+no|doanh\s+thu|danh\s+sach\s+(?:hoa\s+don|khach\s+hang)|"
+    r"ho\s+so\s+ban\s+hang|bien\s+ban\s+ban\s+giao|bbbg|hop\s+dong\s+ban|"
+    r"ihoadon|cong\s+no|doanh\s+thu|danh\s+sach\s+(?:hoa\s+don|khach\s+hang|don\s+hang)|"
     r"thong\s+tin\s+(?:khach\s+hang|don\s+hang)|du\s+lieu\s+(?:khach\s+hang|don\s+hang)|"
     r"gia\s+(?:goc|nhap)|don\s+gia\s+(?:mua|nhap)|"
     r"so\s+luong\s+ton|lich\s+su\s+(?:mua|ban))\b"
@@ -134,6 +136,7 @@ _PRIVATE_DATA_COMPACT_TERMS = frozenset({
     "hoadon", "invoice", "purchaseinvoice", "salesinvoice",
     "giamua", "giavon", "gianoibo", "tonkho", "nhaphang",
     "xuatkho", "phieunhap", "phieuxuat", "ihoadon", "congno", "doanhthu",
+    "hosobanhang", "bienbanbangiao", "bbbg",
     "danhsachhoadon", "danhsachkhachhang", "thongtinkhachhang", "thongtindonhang",
     "dulieukhachhang", "dulieudonhang",
     "giagoc", "gianhap", "dongiamua", "dongianhap",
@@ -183,11 +186,14 @@ _SCOPE_REFUSAL = (
     "Mình vẫn có thể tư vấn bằng hội thoại về iNut và các câu hỏi thông thường của bạn."
 )
 _PRIVATE_DATA_REFUSAL = (
-    "Mình chỉ tra giá công khai trên website iNut cho 3 sản phẩm được phép. "
-    "Mình không thể truy cập hóa đơn mua/bán, dữ liệu mua vào, tồn kho, giá vốn hoặc giá nội bộ. "
-    "Nếu bạn đang cần mua, mình có thể tư vấn cấu hình và chuyển nhân viên xác nhận. "
-    "Bạn đang quan tâm sản phẩm nào và số lượng dự kiến?"
+    "Dạ trên kênh chat này mình chuyên tư vấn giải pháp kỹ thuật và mức giá niêm yết trên website iNut ạ. "
+    "Các thông tin chi tiết theo từng đơn hàng hoặc kiểm tra số lượng thiết bị thực tế sẽ có nhân viên phụ trách xác nhận trực tiếp. "
+    "Bạn đang quan tâm dòng thiết bị nào và dự kiến khoảng bao nhiêu điểm đo/số lượng để mình tư vấn cấu hình phù hợp nhé?"
 )
+
+
+def _dynamic_private_refusal(question: str = "") -> str:
+    return sales_assistant.private_refusal(question)
 _FACEBOOK_PUBLIC_POLICY = (
     "CHẾ ĐỘ FACEBOOK CÔNG KHAI (BẮT BUỘC): Chỉ dùng 3 mục giá lấy từ website iNut trong catalog. "
     "Không truy cập, không suy diễn và không tiết lộ hóa đơn, mua vào, bán ra, tồn kho, giá vốn, "
@@ -453,7 +459,7 @@ def _local_facebook_reply(
     if training.unsafe_question_reason(question) or _contains_abuse(question):
         return _SCOPE_REFUSAL
     if _contains_private_data(question) or _contains_inventory_request(question):
-        return _PRIVATE_DATA_REFUSAL
+        return _dynamic_private_refusal(question)
     value = question.casefold().strip()
     if _SALES_GREETING_RE.fullmatch(value):
         return (
@@ -514,7 +520,7 @@ def _local_facebook_reply(
         )
     if _COMMERCIAL_INFO_RE.search(question):
         return _commercial_handoff(entries[0] if entries else None)
-    if entries:
+    if entries and not sales_assistant._DEEP_TECHNICAL_RE.search(question):
         # A named public product should never fall through to a generic bot
         # answer just because the customer phrased the question informally.
         return facebook_catalog.format_product_consultation(
@@ -529,10 +535,14 @@ def _local_facebook_reply(
             "hay quản lý/livestream CLB bida?"
         )
     suggested = facebook_catalog.suggested_products(question)
-    if suggested and (
-        _SALES_INTENT_RE.search(question)
-        or _PRODUCT_INFO_RE.search(question)
-        or facebook_catalog.has_concrete_problem(question)
+    if (
+        suggested
+        and not sales_assistant._DEEP_TECHNICAL_RE.search(question)
+        and (
+            _SALES_INTENT_RE.search(question)
+            or _PRODUCT_INFO_RE.search(question)
+            or facebook_catalog.has_concrete_problem(question)
+        )
     ):
         return facebook_catalog.format_product_consultation(
             suggested[0], question=consult_question, skip_discovery=sticky_follow_up,
@@ -601,7 +611,7 @@ def _facebook_scope_rejection(db: Session, page_id: str, psid: str, question: st
     if _contains_abuse(question):
         return _SCOPE_REFUSAL
     if _contains_private_data(question) or _contains_inventory_request(question):
-        return _PRIVATE_DATA_REFUSAL
+        return _dynamic_private_refusal(question)
     return ""
 
 
@@ -645,28 +655,44 @@ def _answer_text(result: Any) -> str:
     return str(answer or "").strip()[:2000]
 
 
+def _hermes_has_unapproved_price(answer: str) -> bool:
+    catalog = facebook_catalog.fetch_public_catalog()
+    if sales_assistant._has_unapproved_price(answer, catalog):
+        return True
+    allowed = _catalog_price_digits(catalog)
+    for match in _HERMES_PRICE_RE.finditer(_policy_money_text(answer)):
+        chunk = match.group(0)
+        numbers = re.findall(r"(?:\d{1,3}(?:[.,]\d{3})+|\d{4,})", chunk)
+        for num in numbers:
+            digits = re.sub(r"\D", "", num)
+            if digits and digits not in allowed:
+                return True
+    return False
+
+
 def _safe_facebook_answer(result: Any) -> tuple[str, Any]:
     """Never relay an upstream answer with private or unapproved price data."""
     answer = _answer_text(result)
     normalized = _policy_text(answer)
     if _contains_abuse(answer):
         return _SCOPE_REFUSAL, {"answer": {"answer": _SCOPE_REFUSAL, "sourceBasis": "guardrail"}}
-    price_leak = (
-        _HERMES_PRICE_RE.search(_policy_money_text(answer))
-        or _HERMES_PRICE_RE.search(normalized)
+    price_leak = _hermes_has_unapproved_price(answer)
+    commercial_claim = bool(
+        re.search(r"(?i)\b(?:bao\s+gia\s+tuy|gia\s+(?:mua|von|noi\s+bo))\b", normalized)
     )
-    commercial_claim = _HERMES_COMMERCIAL_RE.search(normalized)
     safe_handoff = (
         "nhan vien" in normalized
         and any(term in normalized for term in ("xac nhan", "lien he", "de lai", "ho tro"))
     )
     if (
         _contains_private_data(answer)
-        or _contains_inventory_request(answer)
+        or _INVENTORY_REQUEST_RE.search(normalized)
+        or any(term in normalized.replace(" ", "") for term in _INVENTORY_COMPACT_TERMS)
         or price_leak
         or (commercial_claim and not safe_handoff)
     ):
-        return _PRIVATE_DATA_REFUSAL, {"answer": {"answer": _PRIVATE_DATA_REFUSAL, "sourceBasis": "guardrail"}}
+        refusal = _dynamic_private_refusal()
+        return refusal, {"answer": {"answer": refusal, "sourceBasis": "guardrail"}}
     return answer, result
 
 
@@ -682,7 +708,7 @@ def _should_handoff(result: Any) -> bool:
 
 
 def _catalog_price_digits(catalog: list[dict[str, Any]]) -> set[str]:
-    digits: set[str] = set()
+    digits: set[str] = set(sales_assistant._PUBLIC_DOCUMENTED_PRICE_DIGITS)
     for entry in catalog:
         raw = re.sub(r"\D", "", str(entry.get("price_text") or ""))
         if raw:

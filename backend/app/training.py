@@ -52,7 +52,7 @@ _COMPACT_PROMPT_INJECTION_REQUEST = re.compile(
     r"systemprompt|developermessage|promptinjection|jailbreak|"
     r"reveal(?:the)?prompt|tietlo(?:prompt|huongdan))")
 _PROGRAMMING_REQUEST = re.compile(
-    r"(?i)(?:\blập\s*trình\b|\bviết\s+(?:code|mã\s*nguồn|script)\b|"
+    r"(?i)(?:\bviết\s+(?:code|mã\s*nguồn|script)\b|"
     r"\b(?:python|javascript|typescript|java|c\+\+|c#|bash|powershell)\b|"
     r"\b(?:debug|compile|npm\s+install|pip\s+install|source\s+code|console|terminal|shell)\b)")
 _COMPACT_EXECUTION_REQUEST = re.compile(
@@ -339,11 +339,11 @@ def ask(
     if sales_assistant.contains_abuse(question):
         return sales_assistant.refusal_result(session_id=session_id)
     if mode == sales_assistant.SALES_MODE and sales_assistant.contains_private_request(question):
-        return sales_assistant.private_refusal_result(session_id=session_id)
+        return sales_assistant.private_refusal_result(session_id=session_id, question=question)
     unsafe_reason = unsafe_question_reason(question)
     if unsafe_reason:
         raise TrainingError(unsafe_reason)
-    if mode == sales_assistant.SALES_MODE:
+    if mode == sales_assistant.SALES_MODE and not personal_context.strip():
         local_reply = sales_assistant.local_reply(question)
         if local_reply:
             return sales_assistant.sanitize_result(
@@ -373,7 +373,7 @@ def ask(
             cache_key = _auth_cache_key(base, settings.training_password, transport)
             cookie = _login(client, base, origin, settings.training_password, cache_key)
             mode_context = sales_assistant.context(question) if mode == sales_assistant.SALES_MODE else ""
-            combined_context = "\n\n".join(part for part in (mode_context, personal_context.strip()) if part)
+            combined_context = "\n\n".join(part for part in (personal_context.strip(), mode_context) if part)
             safe_context = _truncate_utf8(combined_context, 24000)
             enriched_question = question
             if safe_context:

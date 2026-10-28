@@ -509,7 +509,7 @@ def test_facebook_customer_purchase_question_is_rejected_before_hermes(client, m
     )
 
     assert called is False
-    assert sent and "chỉ tra giá công khai" in sent[0].casefold()
+    assert sent and "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_context_drops_safe_looking_private_history(client, monkeypatch):
@@ -612,7 +612,7 @@ def test_facebook_rejects_invoice_and_purchase_questions_before_hermes(client, m
     )
 
     assert called is False
-    assert sent and "chỉ tra giá công khai" in sent[0].casefold()
+    assert sent and "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_rejects_inventory_question_before_hermes(client, monkeypatch):
@@ -651,7 +651,7 @@ def test_facebook_rejects_inventory_question_before_hermes(client, monkeypatch):
     )
 
     assert called is False
-    assert sent and "chỉ tra giá công khai" in sent[0].casefold()
+    assert sent and "cấu hình thực tế" in sent[0].casefold()
 
 
 def test_facebook_rejects_remaining_quantity_question_before_hermes(client, monkeypatch):
@@ -689,7 +689,7 @@ def test_facebook_rejects_remaining_quantity_question_before_hermes(client, monk
     )
 
     assert called is False
-    assert sent and "chỉ tra giá công khai" in sent[0].casefold()
+    assert sent and "cấu hình thực tế" in sent[0].casefold()
 
 
 def test_facebook_does_not_turn_quantity_question_into_public_price_reply(client, monkeypatch):
@@ -734,7 +734,7 @@ def test_facebook_does_not_turn_quantity_question_into_public_price_reply(client
     )
 
     assert sent and "2.250.000" not in sent[0]
-    assert "chỉ tra giá công khai" in sent[0].casefold()
+    assert "cấu hình thực tế" in sent[0].casefold()
 
 
 def test_facebook_does_not_turn_purchase_price_question_into_public_price_reply(client, monkeypatch):
@@ -779,7 +779,7 @@ def test_facebook_does_not_turn_purchase_price_question_into_public_price_reply(
     )
 
     assert sent and "2.250.000" not in sent[0]
-    assert "chỉ tra giá công khai" in sent[0].casefold()
+    assert "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_rejects_punctuated_private_terms_before_hermes(client, monkeypatch):
@@ -817,7 +817,7 @@ def test_facebook_rejects_punctuated_private_terms_before_hermes(client, monkeyp
     )
 
     assert called is False
-    assert sent and "chỉ tra giá công khai" in sent[0].casefold()
+    assert sent and "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_rejects_punctuated_unknown_price_request_before_hermes(client, monkeypatch):
@@ -889,7 +889,7 @@ def test_facebook_rejects_hermes_price_without_currency(client, monkeypatch):
     )
 
     assert sent and "6.000.000" not in sent[0]
-    assert "chỉ tra giá công khai" in sent[0].casefold()
+    assert "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_rejects_unpriced_hermes_commercial_answer(client, monkeypatch):
@@ -922,7 +922,7 @@ def test_facebook_rejects_unpriced_hermes_commercial_answer(client, monkeypatch)
     )
 
     assert sent and "báo giá tùy" not in sent[0].casefold()
-    assert "chỉ tra giá công khai" in sent[0].casefold()
+    assert "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_context_excludes_finance_history_and_inventory_sources(client, monkeypatch):
@@ -979,7 +979,7 @@ def test_facebook_sanitizes_hermes_finance_leak_before_reply(client, monkeypatch
     )
 
     assert sent and "123.456" not in sent[0]
-    assert "chỉ tra giá công khai" in sent[0].casefold()
+    assert "bộ phận phụ trách" in sent[0].casefold()
 
 
 def test_facebook_worker_rejects_abusive_messages_even_after_in_scope_history(client, monkeypatch):
@@ -1668,7 +1668,7 @@ def test_facebook_safe_answer_replaces_ungrouped_private_prices(amount):
     })
 
     assert amount.casefold() not in answer.casefold()
-    assert "chỉ tra giá công khai" in answer.casefold()
+    assert "bộ phận phụ trách" in answer.casefold()
     assert result["answer"]["sourceBasis"] == "guardrail"
 
 
@@ -1680,7 +1680,7 @@ def test_facebook_safe_answer_replaces_ungrouped_price_without_currency():
     })
 
     assert "6000000" not in answer
-    assert "chỉ tra giá công khai" in answer.casefold()
+    assert "bộ phận phụ trách" in answer.casefold()
     assert result["answer"]["sourceBasis"] == "guardrail"
 
 
@@ -1692,7 +1692,7 @@ def test_facebook_safe_answer_replaces_total_amount_without_currency():
     })
 
     assert "6000000" not in answer
-    assert "chỉ tra giá công khai" in answer.casefold()
+    assert "bộ phận phụ trách" in answer.casefold()
     assert result["answer"]["sourceBasis"] == "guardrail"
 
 

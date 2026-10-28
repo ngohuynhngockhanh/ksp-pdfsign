@@ -21,7 +21,9 @@ _RESOLVED_CACHE: dict[str, tuple[str, float]] = {}
 _CACHE_TTL = 3600.0  # 1 gio
 _SCAN_LOCK = threading.Lock()
 
-DEFAULT_WINDOWS_HOSTNAME = "DESKTOP-2022PHR"
+DEFAULT_WINDOWS_HOSTNAME = "DESKTOP-O3VN908"
+KNOWN_WINDOWS_HOSTNAMES = ("desktop-o3vn908", "desktop-2022phr")
+FALLBACK_WINDOWS_IPS = ("192.168.1.12", "192.168.1.11", "192.168.1.10")
 DEFAULT_WINDOWS_SUBNET = "192.168.1.0/24"
 
 
@@ -50,7 +52,9 @@ def scan_host_by_name(
             logger.warning("Nmap scan loi (code %d): %s", res.returncode, res.stderr[:200])
             return None
         root = ET.fromstring(res.stdout)
-        target_lower = target_name.lower()
+        accepted_names = {target_name.lower()}
+        if target_name.lower() in KNOWN_WINDOWS_HOSTNAMES:
+            accepted_names.update(KNOWN_WINDOWS_HOSTNAMES)
         for host in root.findall("host"):
             addr_elem = host.find("address[@addrtype='ipv4']")
             ip = addr_elem.get("addr") if addr_elem is not None else None
@@ -59,8 +63,8 @@ def scan_host_by_name(
             for elem in host.iter("elem"):
                 if elem.get("key") in ("fqdn", "server", "Computer name", "NetBIOS computer name"):
                     val = (elem.text or "").split(chr(92))[0].strip()
-                    if val.lower() == target_lower:
-                        logger.info("Da tim thay host '%s' tai IP moi: %s", target_name, ip)
+                    if val.lower() in accepted_names:
+                        logger.info("Da tim thay host '%s' tai IP moi: %s", val, ip)
                         return ip
     except subprocess.TimeoutExpired:
         logger.warning("Nmap scan qua thoi gian (%ds)", timeout)
@@ -98,10 +102,16 @@ def resolve_windows_host(
             if now - cached_time < _CACHE_TTL and is_tcp_port_open(cached_ip, probe_port, timeout=1.0):
                 return cached_ip
 
+        # Thu nhanh IP tinh quen thuoc (192.168.1.12) truoc khi quet toan mang Nmap
+        for candidate_ip in FALLBACK_WINDOWS_IPS:
+            if candidate_ip != current_host and is_tcp_port_open(candidate_ip, probe_port, timeout=1.0):
+                _RESOLVED_CACHE[target_name] = (candidate_ip, now)
+                return candidate_ip
+
         # Scan nmap
         found_ip = scan_host_by_name(target_name, subnet)
         if found_ip and is_tcp_port_open(found_ip, probe_port, timeout=2.0):
             _RESOLVED_CACHE[target_name] = (found_ip, now)
             return found_ip
 
-    return current_host or "192.168.1.10"
+    return current_host or "192.168.1.12"

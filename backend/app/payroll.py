@@ -356,6 +356,91 @@ def detect_month(*texts: str) -> str:
     return f"{int(match.group(2)):04d}-{int(match.group(1)):02d}"
 
 
+def _eval_ot_cell(formula_val: Any, base_salary: float, standard_days: float) -> float:
+    if isinstance(formula_val, (int, float)):
+        return float(formula_val)
+    if not isinstance(formula_val, str) or not formula_val.startswith("="):
+        return 0.0
+    grouped = re.search(
+        r"\*\s*([0-9]+(?:\.[0-9]+)?)\s*\*\s*\(\s*([0-9]+(?:\.[0-9]+)?)\s*\*\s*([0-9]+(?:\.[0-9]+)?)\s*\)\s*$",
+        formula_val,
+    )
+    if grouped and standard_days > 0:
+        rate = float(grouped.group(1))
+        hours = float(grouped.group(2)) * float(grouped.group(3))
+        return (base_salary / standard_days / 8.0) * rate * hours
+    match = re.search(
+        r"\*\s*([0-9]+(?:\.[0-9]+)?)\s*\*\s*([0-9]+(?:\.[0-9]+)?)\s*\)?\s*$",
+        formula_val,
+    )
+    if match and standard_days > 0:
+        rate = float(match.group(1))
+        hours = float(match.group(2))
+        return (base_salary / standard_days / 8.0) * rate * hours
+    return 0.0
+
+
+def _fill_missing_formula_values(sheet, grid: list[list[str]], employee_rows: list[int]) -> None:
+    """Dien gia tri tinh toan cho cac o cong thuc bi mat cached value khi luu bang openpyxl."""
+    for r in employee_rows:
+        if r - 1 >= len(grid):
+            continue
+        row = grid[r - 1]
+        while len(row) < 37:
+            row.append("")
+        if row[16] and row[35]:
+            continue
+
+        def num(col_1based: int) -> float:
+            txt = row[col_1based - 1].strip().replace(",", "")
+            if txt:
+                try:
+                    return float(txt)
+                except ValueError:
+                    pass
+            v = sheet.cell(r, col_1based).value
+            return float(v) if isinstance(v, (int, float)) else 0.0
+
+        D = num(4)
+        E = num(5) or 26.0
+        F = num(6)
+        G = round(D / E * F) if E else 0
+        H, I, J, K, L, M = num(8), num(9), num(10), num(11), num(12), num(13)
+        N = num(14) or _eval_ot_cell(sheet.cell(r, 14).value, D, E)
+        O = num(15) or _eval_ot_cell(sheet.cell(r, 15).value, D, E)
+        P = num(16)
+        Q = round(G + H + I + J + K + L + M + N + O + P)
+        R = num(18) or D
+        S = round(R * 0.02) if sheet.cell(r, 19).value not in (None, "") else 0
+        T = round(R * 0.175)
+        U = round(R * 0.03)
+        V = round(R * 0.01)
+        W = S + T + U + V
+        X = round(R * 0.08)
+        Y = round(R * 0.015)
+        Z = round(R * 0.01)
+        AA = X + Y + Z
+        AB = num(28) or SELF_DEDUCTION
+        AC = num(29)
+        AD = round(DEPENDENT_DEDUCTION * AC)
+        AE = round(Q - I - J - N - O)
+        AF = max(round(AE - AA - AB - AD), 0)
+        AG = int(calculate_pit(AF))
+        AH = num(34)
+        AI = num(35)
+        AJ = round(Q - AA - AG - AH + AI)
+        AK = round(Q + W)
+
+        computed_cols = {
+            7: G, 14: round(N), 15: round(O), 17: Q, 18: round(R),
+            19: S, 20: T, 21: U, 22: V, 23: W,
+            24: X, 25: Y, 26: Z, 27: AA, 30: AD,
+            31: AE, 32: AF, 33: AG, 36: AJ, 37: AK,
+        }
+        for col_idx, val in computed_cols.items():
+            if not row[col_idx - 1]:
+                row[col_idx - 1] = str(val)
+
 def review_workbook(path: Path) -> dict[str, Any]:
     """Doc bo cuc Excel cu va tra ve snapshot toi thieu, khong luu ten NV vao log."""
     workbook = load_workbook(path, data_only=False, read_only=True)
@@ -395,6 +480,7 @@ def review_workbook(path: Path) -> dict[str, Any]:
     col_limit = min(max(sheet.max_column or 1, 40), 40)
     for row in islice(value_sheet.iter_rows(min_row=1, max_col=col_limit), row_limit):
         grid.append(["" if cell.value is None else str(cell.value) for cell in row])
+    _fill_missing_formula_values(sheet, grid, employee_rows)
     return {"sheet": sheet.title, "month": month, "rows": rows,
             "grid": grid, "ncols": max((len(row) for row in grid), default=0),
             "findings": findings}

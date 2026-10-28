@@ -129,7 +129,7 @@ def sync_document(settings: Settings, db_session, doc) -> tuple[bool, str]:
     """Day 1 ho so len NAS. Tra ve (ok, path|error). Khong raise ra ngoai."""
     global _last_error
     try:
-        data = storage.read_doc(doc.doc_id)
+        data, _ = storage.read_doc_any(doc.doc_id)
     except Exception as e:  # noqa: BLE001
         _last_error = f"Ho so {doc.id}: khong doc duoc file ({e})"
         return False, _last_error

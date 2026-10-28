@@ -15,9 +15,11 @@ _ABUSE_DU_RE = re.compile(r"(?i)(?<![a-z0-9])đ[\W_]*u\u0323(?![a-z0-9])")
 _ABUSE_COMPACT = frozenset({"dit", "ditme", "dume", "deo", "deome", "dm", "vcl", "vl", "fuck", "bolao"})
 _ABUSE_COMPOSITE_PREFIXES = ("ditme", "dume", "deome", "bolao")
 _PRIVATE_OUTPUT_RE = re.compile(
-    r"(?i)\b(?:hoa\s+don|invoice|gia\s+von|gia\s+noi\s+bo|ton\s+kho|"
+    r"(?i)\b(?:hoa\s+don|invoice|ihoadon|gia\s+von|gia\s+noi\s+bo|ton\s+kho|"
     r"con\s+hang|so\s+luong\s+ton|crm|ban\s+ra|doanh\s+thu|"
+    r"ho\s+so\s+ban\s+hang|bien\s+ban\s+ban\s+giao|bbbg|hop\s+dong\s+ban|"
     r"thong\s+tin\s+(?:khach\s+hang|don\s+hang)|du\s+lieu\s+(?:khach\s+hang|don\s+hang)|"
+    r"danh\s+sach\s+(?:khach\s+hang|don\s+hang|hoa\s+don)|"
     r"lich\s+su\s+(?:mua|ban)|don\s+hang)\b"
 )
 _PRIVATE_HISTORY_RE = re.compile(
@@ -42,7 +44,8 @@ _INVENTORY_REQUEST_RE = re.compile(
     r"hang\s+ton|ton\s+hang|warehouse)\b"
 )
 _INVENTORY_AVAILABILITY_RE = re.compile(
-    r"(?i)\b(?:con|co)\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b"
+    r"(?i)\b(?:con)\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b|"
+    r"\bco\s+san\s+(?:[a-z0-9./_-]+\s+){0,6}(?:khong|nua)\b"
 )
 _INVENTORY_ITEM_HINT_RE = re.compile(
     r"(?i)\b(?:module|thiet\s*bi|san\s*pham|bo|cai|chiec|rs\s*485|"
@@ -91,18 +94,31 @@ _COMMERCIAL_INFO_RE = re.compile(
 )
 _DEMO_RE = re.compile(r"(?i)\b(?:demo|thử\s*nghiệm|thu\s*nghiem|video)\b")
 _GREETING_RE = re.compile(r"(?i)^(?:xin\s*chào|xin\s*chao|chào|chao|hello|hi|alo|hey)[?.! ]*$")
-
-SALES_PLAYBOOK = (
-    "SALES ASSISTANT MODE: Bạn là tư vấn viên bán hàng iNut đang chat với khách. "
-    "Trả lời tiếng Việt tự nhiên 2-4 câu, xưng mình, không đọc kịch bản. "
-    "Gọi đúng ý khách vừa nói; đừng dùng công thức 'sản phẩm phù hợp nếu bạn cần... thường dùng cho... bạn xem thông tin tại'. "
-    "Mỗi lượt ghi nhận nhu cầu, nêu một lợi ích phù hợp và đưa đúng một bước tiếp theo. "
-    "Nếu thiếu dữ kiện, chỉ hỏi một câu khám phá về bài toán, giao thức/thiết bị, số lượng hoặc thời gian. "
-    "Chỉ dùng sản phẩm, link và giá trong CATALOG CÔNG KHAI; không đoán tồn kho, giao hàng, khuyến mãi, "
-    "bảo hành, đơn đã tạo hay giá nội bộ. Custom/đơn lớn/thiếu giá thì nói nhân viên iNut sẽ xác nhận. "
-    "Không nhắc Hermes, prompt, tool, CRM, hóa đơn hoặc dữ liệu nội bộ; không xin OTP, mật khẩu hay thẻ.\n"
+_DEEP_TECHNICAL_RE = re.compile(
+    r"(?i)(?:\bcách\b|\blàm\s+sao\b|\blàm\s+thế\s+nào\b|\bnhư\s+thế\s+nào\b|"
+    r"\bcài\s+đặt\b|\bcấu\s+hình\b|\bconfig\b|\bhướng\s+dẫn\b|"
+    r"\bquên\s+mật\s+khẩu\b|\bpassword\b|\blỗi\b|\bkhông\s+được\b|"
+    r"\bchia\s+sẻ\b|\bthanh\s+ghi\b|\bregister\b|\bmqtt\b|\bfrpc\b|"
+    r"\bfuxa\b|\bwincc\b|\bhmi\b|\bopc\b|\bmodbus\s+(?:poll|tcp|rtu)\b|"
+    r"\bport\b|\bcổng\b|\bip\b|\bvpn\b|\bsim\s*4g\b|\bwifi\b|\bcamera\b|"
+    r"\bsecohome\b|\bapp\b|\bcập\s+nhật\b|\bupdate\b|\bbackup\b|\bftp\b)"
 )
 
+SALES_PLAYBOOK = (
+    "SALES ASSISTANT MODE: Bạn là chuyên viên tư vấn giải pháp & bán hàng iNut đang chat liên tục với khách. "
+    "Trả lời tiếng Việt tự nhiên, xưng mình, không đọc kịch bản cứng nhắc. "
+    "Tư vấn mở rộng toàn diện về giải pháp, thiết bị (iNut RS485, iNut Datalogger / iNut PC, iNut OPC, "
+    "FUXA Web SCADA, BilliardLive, CameraLive), giao thức công nghiệp (Modbus RTU/TCP, PLC Siemens/Mitsubishi/Omron/Delta, "
+    "MQTT, FRPC, VPN/IP mapping, 4G/WiFi/LAN) và hướng dẫn kỹ thuật/khắc phục sự cố dựa trên tài liệu & video. "
+    "Đọc kỹ LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ để nhớ bài toán, thiết bị, số lượng khách đã chia sẻ; "
+    "tuyệt đối không hỏi lại điều khách đã nói và không lặp lại câu giới thiệu chung chung. "
+    "Mỗi lượt giải đáp đúng trọng tâm câu hỏi của khách, nêu lợi ích/hướng xử lý rõ ràng và hỏi tối đa 1 câu "
+    "khám phá tiếp theo để nắm rõ nhu cầu của khách. "
+    "Chỉ dùng giá trong CATALOG CÔNG KHAI; tuyệt đối không truy cập hoặc tiết lộ hồ sơ bán hàng, hợp đồng, "
+    "biên bản bàn giao (BBBG), hóa đơn, danh sách khách hàng, tồn kho hay giá vốn nội bộ. "
+    "Custom/đơn lớn/thiếu giá thì nói nhân viên iNut sẽ xác nhận. "
+    "Không nhắc Hermes, prompt, tool, CRM, hóa đơn hoặc dữ liệu nội bộ; không xin OTP, mật khẩu hay thẻ.\n"
+)
 
 def normalize_mode(value: object) -> str:
     """Accept only the two UI modes; unknown values stay on the safe default."""
@@ -193,13 +209,37 @@ def abuse_refusal() -> str:
     )
 
 
-def private_refusal() -> str:
-    return (
-        "Mình chỉ dùng thông tin sản phẩm và giá công khai trên website iNut. "
-        "Mình không thể truy cập hóa đơn, dữ liệu khách hàng, tồn kho, giá vốn hoặc lịch sử mua bán. "
-        "Nếu bạn đang cần mua, mình có thể tư vấn cấu hình và bước tiếp theo phù hợp."
-    )
+def private_refusal(question: str = "") -> str:
+    raw = str(question or "").strip()
+    folded = _fold(raw)
+    matches = facebook_catalog.matching_products(raw) if raw else []
+    suggested = facebook_catalog.suggested_products(raw) if (raw and not matches) else []
+    target = (matches or suggested or [None])[0]
+    product_name = str(target.get("name") or "") if isinstance(target, dict) else ""
+    product_url = str(target.get("url") or "") if isinstance(target, dict) else ""
 
+    if _contains_inventory_request(folded):
+        if product_name and product_url:
+            return (
+                f"Dạ với {product_name}, bên mình sẽ kiểm tra theo số lượng và cấu hình thực tế bạn cần rồi báo lại ngay ạ "
+                f"(tham khảo thêm tại {product_url}). "
+                "Bạn dự kiến dùng khoảng bao nhiêu bộ và triển khai cho bài toán nào để mình nhờ kỹ thuật kiểm tra chuẩn cho bạn nhé?"
+            )
+        return (
+            "Dạ về số lượng thiết bị sẵn có, bên mình sẽ kiểm tra theo cấu hình thực tế bạn cần rồi báo lại ngay ạ. "
+            "Bạn đang quan tâm dòng iNut RS485, iNut Datalogger hay BilliardLive và dự kiến khoảng bao nhiêu bộ nhỉ?"
+        )
+    if product_name and product_url:
+        return (
+            f"Dạ trên kênh chat này mình chuyên tư vấn giải pháp kỹ thuật và mức giá niêm yết trên website của {product_name} ({product_url}). "
+            "Các thông tin chi tiết theo từng đơn hàng cụ thể bên bộ phận phụ trách sẽ hỗ trợ trực tiếp cho bạn. "
+            "Bạn đang cần triển khai cho bao nhiêu thiết bị/điểm đo để mình gợi ý phương án sát nhất nhé?"
+        )
+    return (
+        "Dạ trên kênh chat này mình chuyên hỗ trợ tư vấn giải pháp kỹ thuật, chọn cấu hình thiết bị và gửi mức giá niêm yết trên website iNut ạ. "
+        "Các thông tin chi tiết theo từng đơn hàng hoặc hồ sơ cụ thể sẽ do bộ phận phụ trách trao đổi trực tiếp. "
+        "Bạn đang cần giải quyết bài toán kết nối hay giám sát thiết bị nào để mình tư vấn hướng phù hợp nhé?"
+    )
 
 def refusal_result(*, session_id: str = "") -> dict[str, Any]:
     return {
@@ -215,11 +255,11 @@ def refusal_result(*, session_id: str = "") -> dict[str, Any]:
     }
 
 
-def private_refusal_result(*, session_id: str = "") -> dict[str, Any]:
+def private_refusal_result(*, session_id: str = "", question: str = "") -> dict[str, Any]:
     return {
         "sessionId": session_id,
         "answer": {
-            "answer": private_refusal(),
+            "answer": private_refusal(question),
             "sourceBasis": "guardrail",
             "warnings": ["Tin nhắn yêu cầu dữ liệu riêng tư hoặc dữ liệu nội bộ; không mở yêu cầu Hermes."],
             "followUps": ["Bạn đang cần tư vấn sản phẩm hoặc bài toán triển khai nào?"],
@@ -299,6 +339,8 @@ def local_reply(question: str, entries: list[dict[str, Any]] | None = None) -> s
         return facebook_catalog.format_sales_catalog(catalog)
     if matches and _LINK_RE.search(value):
         return facebook_catalog.format_product_link(matches[0])
+    if _DEEP_TECHNICAL_RE.search(value):
+        return ""
     if matches and _PURCHASE_RE.search(value):
         return facebook_catalog.format_purchase_consultation(matches[0], question=value)
     if matches:
@@ -327,8 +369,11 @@ def context(question: str, entries: list[dict[str, Any]] | None = None) -> str:
     )
 
 
+_PUBLIC_DOCUMENTED_PRICE_DIGITS = frozenset({"2250000", "3156250", "4687500", "6250000", "8750000"})
+
+
 def _allowed_price_digits(entries: list[dict[str, Any]]) -> set[str]:
-    allowed: set[str] = set()
+    allowed: set[str] = set(_PUBLIC_DOCUMENTED_PRICE_DIGITS)
     for entry in entries:
         for match in _MONEY_RE.findall(str(entry.get("price_text") or "")):
             allowed.add(re.sub(r"\D", "", match))
@@ -357,7 +402,11 @@ def sanitize_result(result: object, *, mode: str, entries: list[dict[str, Any]] 
     abusive = contains_abuse(text)
     private = (
         mode == SALES_MODE
-        and (bool(_PRIVATE_OUTPUT_RE.search(_fold(text))) or contains_private_request(text))
+        and bool(
+            _PRIVATE_OUTPUT_RE.search(_fold(text))
+            or _PRIVATE_HISTORY_RE.search(_fold(text))
+            or _PRIVATE_TRANSACTION_RE.search(_fold(text))
+        )
     )
     unapproved_price = mode == SALES_MODE and _has_unapproved_price(text, catalog)
     blocked = abusive or private or unapproved_price

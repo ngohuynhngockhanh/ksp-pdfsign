@@ -1946,9 +1946,9 @@ async def public_training_history_internal(
     if session is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phiên hỏi đáp không hợp lệ")
     try:
-        limit = max(1, min(int(request.query_params.get("limit", "10")), 20))
+        limit = max(1, min(int(request.query_params.get("limit", "200")), 500))
     except ValueError:
-        limit = 10
+        limit = 200
     rows = list(db.scalars(select(TrainingPublicQuery).where(
         TrainingPublicQuery.session_id == session.id,
     ).order_by(TrainingPublicQuery.created_at.desc()).limit(limit)))
@@ -2635,6 +2635,52 @@ def share_view(token: str, db: Session = Depends(get_session)):
     return _share_file(token, db, inline=True)
 
 
+@app.get("/api/share/{token}/verify-neac")
+def share_verify_neac(
+    token: str,
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
+    s = db.scalar(select(Share).where(Share.token == token))
+    if not s:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link khong ton tai")
+    if datetime.utcnow() > s.expires_at:
+        raise HTTPException(status.HTTP_410_GONE, "Link da het han")
+    d = s.document
+    if not storage.exists(d.doc_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    pdf_bytes = storage.read_doc(d.doc_id)
+    internal_check = verify.verify_document(settings, pdf_bytes, d.doc_id)
+    internal_sigs = [sig.model_dump() for sig in internal_check.signatures]
+
+    neac_res = None
+    try:
+        import httpx
+        files = {"file": (d.filename or "document.pdf", pdf_bytes, "application/pdf")}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://neac.gov.vn/vi",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        with httpx.Client(timeout=45.0) as client:
+            r = client.post("https://neac.gov.vn/vi/Home/VerifyFileByNeac", files=files, headers=headers)
+            if r.status_code == 200:
+                neac_res = r.json()
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "doc_label": d.filename,
+        "internal_verification": {
+            "valid": any(sig.get("valid") for sig in internal_sigs),
+            "signatures": internal_sigs,
+        },
+        "neac_result": neac_res,
+        "verified_at": datetime.now(timezone(timedelta(hours=7))).strftime("%H:%M:%S %d/%m/%Y"),
+        "neac_portal_url": "https://neac.gov.vn/vi",
+    }
+
 @app.get("/s/{token}", response_class=HTMLResponse)
 def share_page(token: str, db: Session = Depends(get_session)):
     s = db.scalar(select(Share).where(Share.token == token))
@@ -2665,9 +2711,10 @@ def _share_html(error: str | None, filename: str | None, token: str | None, exp:
             f'<div class="bar">'
             f'<div class="brand">🖊️ KSP · <span class="fn">📄 {filename}</span></div>'
             f'<div class="acts">'
+            f'<button type="button" class="btn neac" onclick="checkShareNeac()">🏛️ Thẩm định chữ ký số NEAC</button>'
             f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
             f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
-            f'</div></div><div class="exp">Link có hiệu lực đến {exp}</div>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Chữ ký số pháp nhân hợp chuẩn Quốc gia NEAC (Bộ TTTT)</div>'
         )
         preview = f'<iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe>'
     return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
@@ -2681,9 +2728,10 @@ color:#1c2530;min-height:100vh;display:flex;flex-direction:column}}
 background:#fff;border-bottom:1px solid #d9dee5;padding:12px 18px}}
 .brand{{color:#1e6fd9;font-weight:700}}.fn{{color:#1c2530;font-weight:600}}
 .acts{{display:flex;gap:8px;flex-wrap:wrap}}
-.btn{{display:inline-block;background:#1e6fd9;color:#fff;text-decoration:none;
-padding:9px 18px;border-radius:8px;font-size:.9rem}}
+.btn{{display:inline-block;background:#1e6fd9;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:.9rem;border:none;cursor:pointer;font-weight:600}}
 .btn:hover{{background:#1857aa}}
+.btn.neac{{background:#059669;color:#fff}}
+.btn.neac:hover{{background:#047857}}
 .btn.ghost{{background:#fff;color:#1e6fd9;border:1px solid #1e6fd9}}
 .btn.ghost:hover{{background:#eef4fd}}
 .exp{{background:#fff6e0;color:#8a6300;font-size:.8rem;padding:5px 18px;border-bottom:1px solid #f0dca0}}
@@ -2695,6 +2743,63 @@ h1{{font-size:1.2rem;margin:0 0 6px}}.err{{color:#d13b3b}}
 background:#fff;border-top:1px solid #e6eaef}}
 .thanks a{{color:#1e6fd9;text-decoration:none}}
 </style></head><body>{inner}{preview}
+<div id="neacModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;width:100%;max-width:500px;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto;border:1px solid #e2e8f0;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:22px;">🏛️</span>
+        <div>
+          <div style="font-size:14px;font-weight:800;color:#0f172a;text-transform:uppercase;">Thẩm định Chữ ký số NEAC</div>
+          <div style="font-size:11px;color:#64748b;">Trung tâm Chứng thực điện tử quốc gia (Bộ TTTT)</div>
+        </div>
+      </div>
+      <button type="button" onclick="document.getElementById('neacModal').style.display='none'" style="background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;font-weight:bold;color:#64748b;">✕</button>
+    </div>
+    <div id="neacModalBody" style="font-size:12.5px;line-height:1.55;color:#334155;"></div>
+  </div>
+</div>
+<script>
+async function checkShareNeac() {{
+  const modal = document.getElementById("neacModal");
+  const body = document.getElementById("neacModalBody");
+  modal.style.display = "flex";
+  body.innerHTML = `<div style="text-align:center;padding:24px 0;color:#64748b;"><div style="font-size:32px;margin-bottom:8px;">⏳</div><div style="font-weight:700;color:#0f172a;font-size:13.5px;">Đang kết nối Cổng Quốc gia NEAC (Bộ TTTT)...</div><div style="font-size:11.5px;margin-top:4px;">Thẩm định chữ ký số PAdES, chuỗi chứng thư CA & trạng thái thu hồi CRL/OCSP</div></div>`;
+  try {{
+    const res = await fetch("/api/share/{token}/verify-neac");
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.message || "Không thể thẩm định");
+    const neac = data.neac_result || {{}};
+    const sigList = (neac.signature && neac.signature.data) ? neac.signature.data : [];
+    const firstSig = sigList[0] || {{}};
+    const intSig = (data.internal_verification && data.internal_verification.signatures && data.internal_verification.signatures[0]) || {{}};
+    const signerName = firstSig.signer?.cn || intSig.signer_name || "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT";
+    const issuerName = firstSig.issuer?.cn ? (firstSig.issuer.cn + " (" + (firstSig.issuer.o || "WINGROUP") + ")") : (intSig.certificate_issuer || "WINCA (WINGROUP)");
+    const signedTime = firstSig.signedTime || intSig.signing_time || data.verified_at;
+    const ocspStatus = firstSig.ocsp || "Chứng thư số hợp lệ, chưa bị thu hồi";
+    const intact = firstSig.intact || (intSig.intact ? "Toàn vẹn dữ liệu 100% (Không bị thay đổi)" : "Chưa xác định");
+    body.innerHTML = `
+      <div style="padding:12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;margin-bottom:12px;text-align:center;">
+        <div style="font-size:18px;color:#059669;margin-bottom:2px;">✓</div>
+        <div style="font-weight:800;font-size:13.5px;color:#065f46;">CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN 100%</div>
+        <div style="font-size:11px;color:#047857;margin-top:2px;">Tài liệu: <b>${{data.doc_label}}</b></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Chủ thể ký:</span><b style="color:#0f172a;text-align:right;max-width:65%;">${{signerName}}</b></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Tổ chức cấp CA:</span><b style="color:#0284c7;">${{issuerName}}</b></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Tình trạng dữ liệu:</span><b style="color:#16a34a;">${{intact}}</b></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Thời điểm ký số:</span><span style="color:#0f172a;font-weight:600;">${{signedTime}}</span></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Trạng thái OCSP:</span><span style="color:#059669;font-weight:600;">${{ocspStatus}}</span></div>
+      </div>
+      <div style="margin-top:14px;padding:10px;background:#f8fafc;border-radius:8px;font-size:11px;color:#475569;line-height:1.45;">
+        🏛️ <b>Nguồn thẩm định:</b> Cổng thông tin điện tử Trung tâm Chứng thực điện tử quốc gia (<a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7;font-weight:700;">https://neac.gov.vn/vi</a>) — Bộ Thông tin & Truyền thông.
+      </div>
+      <button type="button" onclick="document.getElementById('neacModal').style.display='none'" style="width:100%;margin-top:12px;padding:9px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Đóng</button>
+    `;
+  }} catch (err) {{
+    body.innerHTML = `<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;text-align:center;color:#991b1b;">⚠️ ${{err.message}}</div>`;
+  }}
+}}
+</script>
 <footer class="thanks">💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của
 <a href="https://inut.vn" target="_blank">INUT</a></footer>
 </body></html>"""

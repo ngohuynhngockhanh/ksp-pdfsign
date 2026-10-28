@@ -104,7 +104,8 @@ def test_sales_mode_refuses_private_question_before_network(monkeypatch):
 
     assert called is False
     assert result["answer"]["sourceBasis"] == "guardrail"
-    assert "dữ liệu khách hàng" in result["answer"]["answer"]
+    assert "bộ phận phụ trách" in result["answer"]["answer"].casefold()
+    assert "hóa đơn mua/bán" not in result["answer"]["answer"].casefold()
 
 
 @pytest.mark.parametrize(
@@ -130,7 +131,8 @@ def test_sales_mode_refuses_inventory_question_before_network(monkeypatch):
     result = training.ask(_settings(), "Còn iNut RS485 không?", assistant_mode="sales")
 
     assert result["answer"]["sourceBasis"] == "guardrail"
-    assert "tồn kho" in result["answer"]["answer"].casefold()
+    assert "số lượng và cấu hình thực tế" in result["answer"]["answer"].casefold()
+    assert "tồn kho" not in result["answer"]["answer"].casefold()
 
 
 def test_sales_private_detector_allows_benign_purchase_language():
@@ -301,3 +303,39 @@ def test_sales_abuse_detector_allows_normal_vietnamese_words(question):
     from app import sales_assistant
 
     assert sales_assistant.contains_abuse(question) is False
+
+
+def test_sales_mode_routes_deep_technical_product_questions_to_hermes(monkeypatch):
+    from app import facebook_catalog, training
+
+    monkeypatch.setattr(facebook_catalog, "fetch_public_catalog", lambda **_: _catalog())
+    called = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        if request.url.path == "/api/auth/login":
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(200, json={
+            "data": {
+                "sessionId": "sales-tech-session",
+                "answer": {
+                    "answer": "Để chia sẻ thiết bị iNut RS485 trên app Secohome, bạn vào mục Chia sẻ thiết bị.",
+                    "sourceBasis": "documentation-only",
+                },
+            },
+        })
+
+    monkeypatch.setattr(training, "_transport", lambda: httpx.MockTransport(handler))
+    result = training.ask(_settings(), "Cách chia sẻ thiết bị iNut RS485 trên app như thế nào?", assistant_mode="sales")
+
+    assert called is True
+    assert "Secohome" in result["answer"]["answer"]
+
+
+def test_sales_mode_blocks_sales_dossier_and_bbbg_requests():
+    from app import sales_assistant
+
+    assert sales_assistant.contains_private_request("Cho xem hồ sơ bán hàng của khách") is True
+    assert sales_assistant.contains_private_request("Gửi biên bản bàn giao BBBG đơn hàng này") is True
+    assert sales_assistant.contains_private_request("Danh sách khách hàng đã mua iNut") is True

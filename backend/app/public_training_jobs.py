@@ -61,13 +61,68 @@ def public_training_token_hash(token: str) -> str:
     return public_training.public_training_token_hash(token)
 
 
+def _extract_answer_text(raw_json: str) -> str:
+    try:
+        parsed = json.loads(raw_json or "{}")
+    except ValueError:
+        return ""
+    current: Any = parsed
+    for _ in range(3):
+        if not isinstance(current, dict):
+            return ""
+        if isinstance(current.get("answer"), str):
+            return current["answer"].strip()
+        current = current.get("answer")
+    return ""
+
+
+def _build_session_history_context(job_id: str) -> str:
+    gen = get_session()
+    db = next(gen)
+    try:
+        current_row = db.query(TrainingPublicQuery).filter(TrainingPublicQuery.job_id == job_id).first()
+        if current_row is None:
+            return ""
+        past_rows = (
+            db.query(TrainingPublicQuery)
+            .filter(
+                TrainingPublicQuery.session_id == current_row.session_id,
+                TrainingPublicQuery.id != current_row.id,
+                TrainingPublicQuery.status == "done",
+            )
+            .order_by(TrainingPublicQuery.created_at.desc(), TrainingPublicQuery.id.desc())
+            .limit(8)
+            .all()
+        )
+        if not past_rows:
+            return ""
+        past_rows.reverse()
+        lines = [
+            "LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ CỦA KHÁCH (tiếp nối mạch tư vấn, nhớ kỹ thiết bị/bài toán khách đã nói, không hỏi lặp lại):",
+        ]
+        for item in past_rows:
+            q_text = " ".join(str(item.question or "").split())[:220]
+            a_text = " ".join(_extract_answer_text(item.answer_json).split())[:300]
+            if q_text:
+                lines.append(f"Khách: {q_text}")
+            if a_text:
+                lines.append(f"Tư vấn viên iNut: {a_text}")
+        return "\n".join(lines)[:900]
+    except Exception:  # noqa: BLE001
+        return ""
+    finally:
+        gen.close()
+
+
 def _run(job_id: str, owner_hash: str, owner_token: str, settings: Settings, question: str, hermes_session_id: str) -> None:
     started = time.monotonic()
     try:
+        history_context = _build_session_history_context(job_id)
         result = training.ask(
             settings,
             question,
-            hermes_session_id or f"public-{owner_hash[:16]}",
+            hermes_session_id or f"public-{owner_hash[:32]}",
+            personal_context=history_context,
             assistant_mode=sales_assistant.SALES_MODE,
         )
         result = public_training.sanitize_public_result(result, settings)

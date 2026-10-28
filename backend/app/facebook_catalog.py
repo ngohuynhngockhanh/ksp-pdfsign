@@ -265,9 +265,14 @@ _QTY_UNIT_DISPLAY = {
     "ban": "bàn",
     "bo": "bộ",
     "cai": "cái",
+    "dong ho": "đồng hồ",
+    "cam bien": "cảm biến",
+    "tu": "tủ",
+    "tram": "trạm",
 }
-_QTY_RE = re.compile(r"(?:khoang\s+)?(\d{1,4})\s*(may|diem|ban|bo|cai)")
-
+_QTY_RE = re.compile(
+    r"(?<![a-z0-9])(?:khoang\s+)?(\d{1,4})\s*(dong\s+ho|cam\s+bien|may|diem|ban|bo|cai|tu|tram)\b"
+)
 
 def _best_quantity(folded: str, *, near: str = "") -> re.Match[str] | None:
     """Prefer machine/point counts, then the quantity nearest a product cue."""
@@ -284,16 +289,20 @@ def _best_quantity(folded: str, *, near: str = "") -> re.Match[str] | None:
 
 def _quantity_label(match: re.Match[str]) -> str:
     approx = "khoảng " if match.group(0).startswith("khoang") else ""
-    unit = _QTY_UNIT_DISPLAY.get(match.group(2), match.group(2))
+    raw_unit = " ".join(match.group(2).split())
+    unit = _QTY_UNIT_DISPLAY.get(raw_unit, raw_unit)
     return f"{approx}{match.group(1)} {unit}"
 
 
+def _strip_model_numbers(folded: str) -> str:
+    return re.sub(r"\brs\s*485\b|\bs7\s*1200\b|\bs7\s*1500\b|\bs7\s*200\b", " ", folded)
 def _problem_hook(question: str) -> str:
     """Echo a concrete customer problem so the reply does not sound like a brochure."""
     raw = str(question or "").strip()
     if not raw:
         return ""
     folded = _fold(raw)
+    qty_text = _strip_model_numbers(folded)
     padded = f" {folded} "
     if re.search(r"(?i)\bplc\b", raw) or " plc " in padded:
         brand = ""
@@ -302,7 +311,7 @@ def _problem_hook(question: str) -> str:
                 brand = f" {name}"
                 break
         parts = [f"PLC{brand}".strip()]
-        quantity = _best_quantity(folded, near="plc")
+        quantity = _best_quantity(qty_text, near="plc")
         if quantity:
             parts.append(_quantity_label(quantity))
         return " ".join(parts)
@@ -312,7 +321,7 @@ def _problem_hook(question: str) -> str:
         return "CLB bida"
     if " nha may " in padded:
         return "Nhà máy"
-    quantity = _best_quantity(folded)
+    quantity = _best_quantity(qty_text)
     if quantity:
         return _quantity_label(quantity)
     return ""
@@ -321,21 +330,24 @@ def _problem_hook(question: str) -> str:
 def has_concrete_problem(question: str) -> bool:
     """True when the customer named a specific problem, not just a site or config."""
     hook = _problem_hook(question)
-    return hook.startswith("PLC") or hook in {"Trạm đo", "CLB bida"}
+    return (
+        hook.startswith("PLC")
+        or hook in {"Trạm đo", "CLB bida"}
+        or any(unit in hook for unit in ("đồng hồ", "cảm biến", "máy", "điểm", "tủ", "trạm"))
+    )
 
 
 def looks_like_follow_up_details(question: str) -> bool:
     """A later turn that adds device/quantity detail instead of naming a new product."""
-    return has_concrete_problem(question) or bool(_QTY_RE.search(_fold(question)))
-
+    return has_concrete_problem(question) or bool(_QTY_RE.search(_strip_model_numbers(_fold(question))))
 
 def discovery_already_answered(question: str, product_key: str) -> bool:
     """Skip the stock discovery question when the customer already answered it."""
     hook = _problem_hook(question)
-    has_qty = bool(_QTY_RE.search(_fold(question)))
+    has_qty = bool(_QTY_RE.search(_strip_model_numbers(_fold(question))))
     key = str(product_key or "")
     if key == "rs485":
-        return hook.startswith("PLC") and has_qty
+        return (hook.startswith("PLC") or any(u in hook for u in ("đồng hồ", "cảm biến", "máy", "điểm", "tủ"))) and has_qty
     if key == "datalogger":
         return bool(hook) and has_qty
     if key == "billiard":

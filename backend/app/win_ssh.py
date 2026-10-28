@@ -60,7 +60,7 @@ def _run(settings: Settings, host: str, admin_password: str, script: str) -> str
             "-o",
             "UserKnownHostsFile=/dev/null",
             "-o",
-            "ProxyCommand=nc -q 0 %h %p",
+            "ProxyCommand=none",
             "-o",
             f"ConnectTimeout={settings.ssh_connect_timeout}",
             f"{settings.ssh_user}@{resolved_host}",
@@ -126,7 +126,15 @@ def _out_json(stdout: str):
 # ---------------------------------------------------------------------------
 # Liet ke chung thu
 # ---------------------------------------------------------------------------
-_LIST_PS = r"""
+_SYNC_CERTS_PS = r"""
+$adminCertDir = "$env:APPDATA\Microsoft\SystemCertificates\My\Certificates"
+Get-ChildItem "C:\Users\*\AppData\Roaming\Microsoft\SystemCertificates\My\Certificates\*" -ErrorAction SilentlyContinue | ForEach-Object {
+  $dst = Join-Path $adminCertDir $_.Name
+  if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force -Path $adminCertDir | Out-Null; Copy-Item $_.FullName -Destination $dst -Force -ErrorAction SilentlyContinue }
+}
+"""
+
+_LIST_PS = _SYNC_CERTS_PS + r"""
 $ErrorActionPreference="Stop"; $ProgressPreference="SilentlyContinue"
 $items=@()
 Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey } | ForEach-Object {
@@ -156,7 +164,7 @@ def list_certs(settings: Settings, host: str, admin_password: str) -> list[CertI
 # ---------------------------------------------------------------------------
 # Lay chung thu + chuoi (DER base64)
 # ---------------------------------------------------------------------------
-_CHAIN_PS = r"""
+_CHAIN_PS = _SYNC_CERTS_PS + r"""
 $ErrorActionPreference="Stop"; $ProgressPreference="SilentlyContinue"
 $tp="__TP__"
 $cert=Get-Item ("Cert:\CurrentUser\My\" + $tp)
@@ -192,7 +200,7 @@ def get_cert_chain(
 # ---------------------------------------------------------------------------
 # Ky raw digest (PIN truyen tu dong, khong hoi tuong tac)
 # ---------------------------------------------------------------------------
-_SIGN_PS = r"""
+_SIGN_PS = _SYNC_CERTS_PS + r"""
 $ErrorActionPreference="Stop"; $ProgressPreference="SilentlyContinue"
 $tp="__TP__"; $pin="__PIN__"; $oid="__OID__"; $hashName="__HASH__"
 $data=[Convert]::FromBase64String("__DATA__")

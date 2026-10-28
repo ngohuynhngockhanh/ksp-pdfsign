@@ -267,10 +267,10 @@ def test_safety_matrix_routes_abuse_private_data_and_benign_sales(case: SafetyCa
         return
 
     assert rejection
-    assert "nhân viên" not in rejection.casefold() or "chỉ tra giá công khai" in rejection.casefold()
     if case.expected_route == "private":
-        assert "chỉ tra giá công khai" in rejection.casefold()
+        assert ("niêm yết" in rejection.casefold() or "kiểm tra theo số lượng" in rejection.casefold() or "cấu hình thực tế" in rejection.casefold())
         assert "prompt injection" not in rejection.casefold()
+        assert "hóa đơn mua/bán" not in rejection.casefold()
     else:
         assert "không thể" in rejection.casefold()
 
@@ -288,7 +288,8 @@ def test_upstream_answer_firewall_replaces_private_price_and_inventory_leaks():
 
     assert "12.000.000" not in answer
     assert "4 bộ" not in answer
-    assert "chỉ tra giá công khai" in answer.casefold()
+    assert "bộ phận phụ trách" in answer.casefold() or "niêm yết" in answer.casefold()
+    assert "hóa đơn mua/bán" not in answer.casefold()
     assert sanitized["answer"]["sourceBasis"] == "guardrail"
 
 
