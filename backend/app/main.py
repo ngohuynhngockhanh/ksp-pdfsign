@@ -288,6 +288,7 @@ def _startup():
         from . import customs_check_runner
         customs_check_runner.auto_seed_tasks_from_decls(db)
         customs_check_runner.start_customs_check_worker(settings)
+        gov_radar.start_gov_radar_worker(settings)
     finally:
         gen.close()
     resume_tqc_import_jobs()
@@ -3112,6 +3113,9 @@ class GovVerifyIn(BaseModel):
     query: str
 
 
+class GovAckIn(BaseModel):
+    acknowledged: bool = True
+
 @app.get("/api/gov-radar")
 def list_gov_radar(
     portal: str = "",
@@ -3152,6 +3156,7 @@ def list_gov_radar(
 
     return {
         "sources": gov_radar.PORTAL_SOURCES,
+        "schedule": gov_radar.get_scheduler_status(db),
         "total": total_all,
         "items": [
             {
@@ -3171,6 +3176,10 @@ def list_gov_radar(
                 "impact_summary": r.impact_summary,
                 "matched_keywords": r.matched_keywords,
                 "notified": r.notified,
+                "notify_count": r.notify_count,
+                "first_notified_at": r.first_notified_at.isoformat() if r.first_notified_at else "",
+                "last_notified_at": r.last_notified_at.isoformat() if r.last_notified_at else "",
+                "acknowledged": r.acknowledged,
                 "created_at": r.created_at.isoformat() if r.created_at else "",
             }
             for r in rows
@@ -3199,6 +3208,20 @@ def verify_gov_doc(
 ):
     """Kiem chung 1 so hieu cong van / tin don MXH xem co ap dung cho INUT (Dak Lak) khong."""
     return gov_radar.verify_document_query(db, body.query)
+
+
+@app.put("/api/gov-radar/{doc_id}/ack")
+def ack_gov_doc(
+    doc_id: int,
+    body: GovAckIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Danh dau da xem / tat nhac lai 3 ngay cho 1 cong van."""
+    res = gov_radar.acknowledge_gov_doc(db, doc_id, body.acknowledged)
+    if not res:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay cong van")
+    return res
 
 # ---------------------------------------------------------------------------
 # Doi mat khau

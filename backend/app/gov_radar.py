@@ -16,18 +16,28 @@ import re
 import ssl
 import urllib.parse
 import urllib.request
-from datetime import datetime
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, or_, desc
 from sqlalchemy.orm import Session
 
 from .config import Settings
-from .db import GovDocument
+from .db import GovDocument, get_session
 from .telegram import TelegramClient, admin_chat_ids
 
 logger = logging.getLogger(__name__)
 
+
+WEEKLY_SCAN_INTERVAL_SEC = 7 * 86400  # Chu ky quet: 1 tuan / 1 lan
+REMINDER_CHECK_INTERVAL_SEC = 6 * 3600  # Kiem tra nhac lai 3 ngay moi 6 tieng
+REMINDER_DELAY_DAYS = 3  # Sau 3 ngay trong tuan do nhac lai 1 lan neu chua acknowledge
+
+_worker_started = False
+_worker_lock = threading.Lock()
+_last_weekly_scan_at: datetime | None = None
 # Metadata cac nguon chinh thong
 PORTAL_SOURCES: list[dict[str, str]] = [
     {
@@ -607,6 +617,8 @@ def sync_gov_documents(
             impact_summary=impact,
             matched_keywords=matched_kw,
             notified=False,
+            notify_count=0,
+            acknowledged=False,
         )
         db.add(doc)
         db.flush()
@@ -614,25 +626,36 @@ def sync_gov_documents(
         if applies and score >= 60:
             new_high_rel.append(doc)
 
+    # Dong bo cac ban ghi cu da notified=True nhung notify_count=0 (tranh bao trung)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    legacy_notified = db.scalars(
+        select(GovDocument).where(
+            GovDocument.notified.is_(True),
+            GovDocument.notify_count == 0,
+        )
+    ).all()
+    for ld in legacy_notified:
+        ld.notify_count = 1
+        if not ld.first_notified_at:
+            ld.first_notified_at = ld.created_at or now_utc
+        if not ld.last_notified_at:
+            ld.last_notified_at = ld.first_notified_at
+
     db.commit()
 
+    global _last_weekly_scan_at
+    _last_weekly_scan_at = now_utc
+
     notified_count = 0
+    reminder_count = 0
     if notify_telegram:
-        if not new_high_rel:
-            new_high_rel = list(
-                db.scalars(
-                    select(GovDocument)
-                    .where(
-                        GovDocument.applies_to_inut.is_(True),
-                        GovDocument.relevance_score >= 60,
-                        GovDocument.notified.is_(False),
-                    )
-                    .order_by(desc(GovDocument.relevance_score), desc(GovDocument.id))
-                    .limit(5)
-                ).all()
-            )
+        # 1) Chi bao dong cho van ban MOI chua tung alarm trong DB (notify_count == 0 & notified == False)
         if new_high_rel:
-            notified_count = _send_radar_telegram_digest(db, settings, new_high_rel[:5])
+            notified_count = _send_radar_telegram_digest(
+                db, settings, new_high_rel[:5], is_reminder=False
+            )
+        # 2) Kiem tra xem co van ban nao da alarm cach day >= 3 ngay trong tuan ma chua acknowledge de nhac lai 1 lan
+        reminder_count = check_and_send_3day_reminders(db, settings)
 
     total = db.query(GovDocument).count()
     return {
@@ -641,6 +664,52 @@ def sync_gov_documents(
         "updated": updated,
         "total": total,
         "notified_count": notified_count,
+        "reminder_count": reminder_count,
+        "scan_interval_days": 7,
+        "reminder_delay_days": REMINDER_DELAY_DAYS,
+    }
+
+
+def check_and_send_3day_reminders(db: Session, settings: Settings) -> int:
+    """Nhac lai 1 lan duy nhat sau 3 ngay trong tuan do cho cac cong van da alarm nhung chua acknowledge."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    three_days_ago = now_utc - timedelta(days=REMINDER_DELAY_DAYS)
+    eight_days_ago = now_utc - timedelta(days=8)
+
+    due_docs = list(
+        db.scalars(
+            select(GovDocument)
+            .where(
+                GovDocument.applies_to_inut.is_(True),
+                GovDocument.relevance_score >= 60,
+                GovDocument.acknowledged.is_(False),
+                GovDocument.notify_count == 1,
+                GovDocument.first_notified_at.is_not(None),
+                GovDocument.first_notified_at <= three_days_ago,
+                GovDocument.first_notified_at >= eight_days_ago,
+            )
+            .order_by(desc(GovDocument.relevance_score), desc(GovDocument.id))
+            .limit(5)
+        ).all()
+    )
+    if not due_docs:
+        return 0
+    return _send_radar_telegram_digest(db, settings, due_docs, is_reminder=True)
+
+
+def acknowledge_gov_doc(db: Session, doc_id: int, acknowledged: bool = True) -> dict[str, Any] | None:
+    """Danh dau da xem / tat nhac lai 3 ngay cho 1 cong van."""
+    doc = db.get(GovDocument, doc_id)
+    if not doc:
+        return None
+    doc.acknowledged = acknowledged
+    db.commit()
+    db.refresh(doc)
+    return {
+        "id": doc.id,
+        "doc_number": doc.doc_number,
+        "acknowledged": doc.acknowledged,
+        "notify_count": doc.notify_count,
     }
 
 
@@ -648,19 +717,28 @@ def _send_radar_telegram_digest(
     db: Session,
     settings: Settings,
     docs: list[GovDocument],
+    is_reminder: bool = False,
 ) -> int:
-    """Gui thong bao Telegram khi co cong van moi quan trong cho INUT."""
+    """Gui thong bao Telegram (Lan 1: phat hien moi | Lan 2: nhac lai sau 3 ngay trong tuan)."""
     if not settings.telegram_enabled or not settings.telegram_bot_token:
         return 0
     chat_ids = admin_chat_ids(db)
     if not chat_ids:
         return 0
 
-    lines = [
-        "📡 <b>RADAR CÔNG VĂN CHÍNH PHỦ &amp; THUẾ CS7 ĐẮK LẮK</b>",
-        f"Phát hiện <b>{len(docs)}</b> văn bản quan trọng liên quan đến <b>INUT (P. Tuy Hòa, Đắk Lắk)</b>:",
-        "",
-    ]
+    if is_reminder:
+        lines = [
+            "⏰ <b>NHẮC LẠI SAU 3 NGÀY — RADAR CÔNG VĂN &amp; THUẾ CS7 ĐẮK LẮK</b>",
+            f"Có <b>{len(docs)}</b> công văn quan trọng trong tuần chưa đánh dấu hoàn tất (nhắc 1 lần duy nhất sau 3 ngày):",
+            "",
+        ]
+    else:
+        lines = [
+            "📡 <b>RADAR CÔNG VĂN CHÍNH PHỦ &amp; THUẾ CS7 ĐẮK LẮK (CHU KỲ 1 TUẦN/LẦN)</b>",
+            f"Phát hiện <b>{len(docs)}</b> văn bản mới liên quan đến <b>INUT (P. Tuy Hòa, Đắk Lắk)</b>:",
+            "",
+        ]
+
     for i, d in enumerate(docs, 1):
         num = html.escape(d.doc_number or d.doc_type)
         title = html.escape(d.title[:160])
@@ -677,7 +755,9 @@ def _send_radar_telegram_digest(
 
     base = (settings.public_base_url or "").rstrip("/")
     if base:
-        lines.append(f'👉 <a href="{base}/cong-van-chinh-phu">Mở Radar Công văn trên KSP</a>')
+        lines.append(
+            f'👉 <a href="{base}/cong-van-chinh-phu">Mở Radar Công văn trên KSP (Bấm Đã nắm để tắt nhắc)</a>'
+        )
 
     msg = "\n".join(lines)
     client = TelegramClient(settings)
@@ -690,11 +770,84 @@ def _send_radar_telegram_digest(
             logger.warning("Gui Telegram Radar that bai (chat_id=%s): %s", cid, exc)
 
     if sent > 0:
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         for d in docs:
             d.notified = True
+            if is_reminder:
+                d.notify_count = max(2, (d.notify_count or 1) + 1)
+                d.last_notified_at = now_utc
+            else:
+                d.notify_count = 1
+                d.first_notified_at = d.first_notified_at or now_utc
+                d.last_notified_at = now_utc
         db.commit()
     return sent
 
+
+def get_scheduler_status(db: Session) -> dict[str, Any]:
+    """Tra ve trang thai chu ky quet 1 tuan/lan va so luong cong van cho nhac lai 3 ngay."""
+    latest_doc = db.scalar(select(GovDocument).order_by(desc(GovDocument.created_at)).limit(1))
+    last_scan = _last_weekly_scan_at or (latest_doc.created_at if latest_doc else None)
+    next_scan = (last_scan + timedelta(days=7)) if last_scan else None
+    pending_reminders = (
+        db.query(GovDocument)
+        .filter(
+            GovDocument.applies_to_inut.is_(True),
+            GovDocument.relevance_score >= 60,
+            GovDocument.acknowledged.is_(False),
+            GovDocument.notify_count == 1,
+        )
+        .count()
+    )
+    return {
+        "scan_interval_days": 7,
+        "reminder_delay_days": REMINDER_DELAY_DAYS,
+        "last_scan_at": last_scan.isoformat() if last_scan else None,
+        "next_scan_at": next_scan.isoformat() if next_scan else None,
+        "pending_3day_reminders": pending_reminders,
+    }
+
+
+def start_gov_radar_worker(settings: Settings) -> None:
+    """Khoi dong background thread:
+    - Quet cong van moi: 1 tuan / 1 lan (neu DB chua quet trong 7 ngay qua thi quet).
+    - Kiem tra nhac lai sau 3 ngay: moi 6 tieng (chi nhac 1 lan cho van ban notify_count==1 & chua acknowledge).
+    """
+    global _worker_started
+    with _worker_lock:
+        if _worker_started:
+            return
+        _worker_started = True
+
+    def _loop() -> None:
+        global _last_weekly_scan_at
+        time.sleep(15)
+        while True:
+            gen = get_session()
+            db = next(gen)
+            try:
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                if _last_weekly_scan_at is None:
+                    latest = db.scalar(
+                        select(GovDocument).order_by(desc(GovDocument.created_at)).limit(1)
+                    )
+                    _last_weekly_scan_at = latest.created_at if latest else None
+
+                # Neu chua quet lan nao hoac da qua 7 ngay -> quet chu ky 1 tuan/lan
+                if _last_weekly_scan_at is None or (now_utc - _last_weekly_scan_at).total_seconds() >= WEEKLY_SCAN_INTERVAL_SEC:
+                    logger.info("GovRadar: bat dau quet chu ky 1 tuan/lan...")
+                    sync_gov_documents(db, settings, notify_telegram=True)
+                else:
+                    # Giua tuan: chi kiem tra nhac lai sau 3 ngay trong DB (khong quet lai mang)
+                    check_and_send_3day_reminders(db, settings)
+            except Exception as exc:
+                logger.warning("GovRadar background worker loi: %s", exc)
+            finally:
+                gen.close()
+            time.sleep(REMINDER_CHECK_INTERVAL_SEC)
+
+    t = threading.Thread(target=_loop, name="gov-radar-weekly-worker", daemon=True)
+    t.start()
 
 def verify_document_query(db: Session, query: str) -> dict[str, Any]:
     """Kiem chung 1 so hieu cong van / tu khoa bat ky (VD: '16093/SYT-NVY', '7006/SYT-NVY', '1858/QĐ-UBND')."""

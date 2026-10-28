@@ -227,6 +227,10 @@ class GovDocument(Base):
     impact_summary: Mapped[str] = mapped_column(Text, default="")
     matched_keywords: Mapped[str] = mapped_column(String(500), default="")
     notified: Mapped[bool] = mapped_column(default=False)
+    notify_count: Mapped[int] = mapped_column(default=0)
+    first_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    acknowledged: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 class TrainingShare(Base):
@@ -2655,6 +2659,12 @@ def _migrate_add_columns() -> None:
             "drive_folder": "VARCHAR(255) DEFAULT ''",
             "drive_link": "VARCHAR(500) DEFAULT ''",
             "payment_method": "VARCHAR(30) DEFAULT 'bank_transfer'",
+        },
+        "gov_documents": {
+            "notify_count": "INTEGER DEFAULT 0",
+            "first_notified_at": "DATETIME DEFAULT NULL",
+            "last_notified_at": "DATETIME DEFAULT NULL",
+            "acknowledged": "BOOLEAN DEFAULT 0",
         },
     }
     with _engine.begin() as conn:

@@ -3646,6 +3646,13 @@ export const api = {
         fb_url: string;
         badge: string;
       }[];
+      schedule?: {
+        scan_interval_days: number;
+        reminder_delay_days: number;
+        last_scan_at: string | null;
+        next_scan_at: string | null;
+        pending_3day_reminders: number;
+      };
       total: number;
       items: {
         id: number;
@@ -3664,6 +3671,10 @@ export const api = {
         impact_summary: string;
         matched_keywords: string;
         notified: boolean;
+        notify_count: number;
+        first_notified_at: string;
+        last_notified_at: string;
+        acknowledged: boolean;
         created_at: string;
       }[];
     }>(`/api/gov-radar${qs ? `?${qs}` : ""}`);
@@ -3675,6 +3686,7 @@ export const api = {
       updated: number;
       total: number;
       notified_count: number;
+      reminder_count?: number;
     }>(`/api/gov-radar/sync?notify=${notify ? "true" : "false"}`, {
       method: "POST",
     });
@@ -3704,6 +3716,18 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
+    });
+  },
+  async ackGovDoc(docId: number, acknowledged: boolean) {
+    return req<{
+      id: number;
+      doc_number: string;
+      acknowledged: boolean;
+      notify_count: number;
+    }>(`/api/gov-radar/${docId}/ack`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acknowledged }),
     });
   },
 };

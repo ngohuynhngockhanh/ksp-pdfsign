@@ -27,6 +27,10 @@ interface GovDocItem {
   impact_summary: string;
   matched_keywords: string;
   notified: boolean;
+  notify_count: number;
+  first_notified_at: string;
+  last_notified_at: string;
+  acknowledged: boolean;
   created_at: string;
 }
 
@@ -109,7 +113,8 @@ export function GovRadar() {
       const res = await api.syncGovRadar(true);
       setSyncMsg(
         `Đã quét cổng Chính phủ & Thuế CS7 Đắk Lắk: +${res.added} văn bản mới, cập nhật ${res.updated} văn bản (Tổng: ${res.total})` +
-          (res.notified_count > 0 ? ` · Đã gửi ${res.notified_count} cảnh báo Telegram` : "")
+          (res.notified_count > 0 ? ` · Đã gửi ${res.notified_count} cảnh báo Telegram` : "") +
+          (res.reminder_count ? ` · Đã nhắc lại (sau 3 ngày): ${res.reminder_count}` : "")
       );
       await loadData();
     } catch (e: unknown) {
@@ -131,6 +136,17 @@ export function GovRadar() {
       console.error(e);
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const toggleAck = async (doc: GovDocItem) => {
+    try {
+      const res = await api.ackGovDoc(doc.id, !doc.acknowledged);
+      setItems((prev) =>
+        prev.map((x) => (x.id === doc.id ? { ...x, acknowledged: res.acknowledged } : x))
+      );
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -156,6 +172,25 @@ export function GovRadar() {
             <strong>Thuế cơ sở 7 tỉnh Đắk Lắk (Phường Tuy Hòa)</strong> — tự động phân tích mức độ áp dụng cho{" "}
             <strong>INUT (MST 4401053694 · 2 nhân sự Khánh &amp; Nhâm)</strong>.
           </p>
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              color: "#1e40af",
+              padding: "4px 10px",
+              borderRadius: 6,
+              fontWeight: 500,
+            }}
+          >
+            <span>⏱️ Chu kỳ tự động: <strong>1 tuần / lần</strong></span>
+            <span>·</span>
+            <span>Công văn đã báo trong DB không báo trùng — chỉ <strong>nhắc lại 1 lần sau 3 ngày</strong> trong tuần nếu chưa bấm &ldquo;Đã nắm&rdquo;</span>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
@@ -561,6 +596,21 @@ export function GovRadar() {
                       >
                         {item.relevance_score}%
                       </span>
+                      <div style={{ marginTop: 6 }}>
+                        {item.acknowledged ? (
+                          <span style={{ fontSize: 11, color: "#15803d", fontWeight: 600 }}>
+                            ✓ Đã nắm (Tắt nhắc)
+                          </span>
+                        ) : item.notify_count >= 2 ? (
+                          <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                            🔕 Đã nhắc đủ 2 lần
+                          </span>
+                        ) : item.notify_count === 1 || item.notified ? (
+                          <span style={{ fontSize: 11, color: "#b45309", fontWeight: 600 }}>
+                            🔔 Đã báo L1 (+3 ngày nhắc)
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td style={{ padding: "10px 12px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -588,6 +638,24 @@ export function GovRadar() {
                           >
                             {item.pdf_url.includes("facebook.com") ? "📘 Fanpage Thuế CS7 ↗" : "📄 Tải PDF ký số ↗"}
                           </a>
+                        )}
+                        {item.applies_to_inut && (
+                          <button
+                            className="ghost"
+                            onClick={() => toggleAck(item)}
+                            style={{
+                              fontSize: 11,
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #cbd5e1",
+                              background: item.acknowledged ? "#dcfce7" : "#fff",
+                              color: item.acknowledged ? "#166534" : "#334155",
+                              fontWeight: 600,
+                              textAlign: "left",
+                            }}
+                          >
+                            {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
+                          </button>
                         )}
                       </div>
                     </td>
