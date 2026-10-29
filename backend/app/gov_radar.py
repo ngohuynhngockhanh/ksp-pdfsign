@@ -547,6 +547,21 @@ def crawl_central_gov_highlights() -> list[dict[str, Any]]:
             "detail_url": "https://daklak.gdt.gov.vn/wps/portal",
             "pdf_url": "",
         },
+        {
+            "source_key": "chinhphu:68_2026_ND_CP_18_2026_TT_BTC",
+            "source_portal": "chinhphu",
+            "source_label": "Chính phủ & Bộ Tài chính (Cục Thuế)",
+            "doc_number": "68/2026/NĐ-CP · 18/2026/TT-BTC · 1410/CT-CS",
+            "doc_type": "Nghị định / Thông tư",
+            "published_date": "05/03/2026",
+            "title": (
+                "Nghị định 68/2026/NĐ-CP & Thông tư 18/2026/TT-BTC (thay thế TT 40/2021): "
+                "Nâng ngưỡng miễn thuế cho thuê tài sản (ô tô, mặt bằng) lên 500 triệu đồng/năm — "
+                "Hướng dẫn Công ty thuê xe ô tô của Giám đốc (≤ 500 tr/năm đóng 0đ thuế, khai mẫu 01/TKL)"
+            ),
+            "detail_url": "https://lamdong.gdt.gov.vn/wps/wcm/connect/3239052e-4001-4c10-ae4d-d2974c94ebb8/thong-tu-18-2026-tt-btc.pdf?CACHEID=ROOTWORKSPACE3239052e-4001-4c10-ae4d-d2974c94ebb8&MOD=AJPERES",
+            "pdf_url": "https://lamdong.gdt.gov.vn/wps/wcm/connect/3239052e-4001-4c10-ae4d-d2974c94ebb8/thong-tu-18-2026-tt-btc.pdf?CACHEID=ROOTWORKSPACE3239052e-4001-4c10-ae4d-d2974c94ebb8&MOD=AJPERES",
+        },
     ]
 
 
@@ -882,6 +897,33 @@ def verify_document_query(db: Session, query: str) -> dict[str, Any]:
             "inut_action": (
                 "INUT (MST 4401053694 - Phường Tuy Hòa, Đắk Lắk) đã khám sức khỏe định kỳ đủ 02/02 nhân sự "
                 "(Khánh & Nhâm). Chỉ cần lưu Giấy khám sức khỏe + Hóa đơn tại Kho hồ sơ KSP, hoàn toàn yên tâm!"
+            ),
+            "matches": [],
+        }
+
+    if any(k in q_low for k in ["68/2026", "18/2026", "01/tkl", "01/cnkd", "thuê xe", "thue xe", "ô tô", "o to"]):
+        return {
+            "ok": True,
+            "query": q,
+            "found_in_gov": True,
+            "applies_to_inut": True,
+            "verdict_badge": "ÁP DỤNG TOÀN QUỐC TỪ 05/03/2026 (MIỄN THUẾ ≤ 500 TR/NĂM)",
+            "verdict_color": "success",
+            "origin": "Chính phủ & Bộ Tài chính (Nghị định 68/2026/NĐ-CP, Thông tư 18/2026/TT-BTC, Công văn 1410/CT-CS)",
+            "root_legal_basis": (
+                "Nghị định 68/2026/NĐ-CP và Thông tư 18/2026/TT-BTC (ban hành 05/03/2026, thay thế TT 40/2021/TT-BTC): "
+                "Nâng ngưỡng doanh thu miễn thuế GTGT & TNCN từ 100 triệu lên 500 triệu đồng/năm."
+            ),
+            "daklak_equivalent": (
+                "Áp dụng trực tiếp tại Thuế cơ sở 7 tỉnh Đắk Lắk (Phường Tuy Hòa). Cho thuê ô tô tách riêng khỏi BĐS: "
+                "nếu ≤ 500 triệu/năm cá nhân nộp tờ khai Mẫu 01/TKL (1 năm/lần) → Thuế = 0 đồng; nếu > 500 triệu/năm "
+                "khai Mẫu 01/CNKD theo quý và chỉ đóng 10% (5% GTGT + 5% TNCN) trên phần vượt 500 triệu."
+            ),
+            "inut_action": (
+                "Khuyến nghị tối ưu cho INUT: (1) Ký Hợp đồng Công ty thuê xe của Giám đốc ≤ 40 triệu/tháng (≤ 480 tr/năm) "
+                "+ nộp Mẫu 01/TKL → Giám đốc đóng 0đ thuế, INUT được trừ ~480 tr/năm tiền thuê + 100% xăng dầu, cầu đường, "
+                "bảo dưỡng (tiết kiệm ~100 tr/năm thuế TNDN), giữ nguyên cà vẹt tên cá nhân. (2) Hoặc ký Hợp đồng mượn xe 0đ "
+                "để lấy hợp lệ 100% chi phí xăng dầu, VETC/ePass, bảo dưỡng mà không cần khai Mẫu 01/TKL."
             ),
             "matches": [],
         }
