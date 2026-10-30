@@ -2617,16 +2617,26 @@ def _share_file(token: str, db: Session, inline: bool):
     if datetime.utcnow() > s.expires_at:
         raise HTTPException(status.HTTP_410_GONE, "Link da het han")
     d = s.document
-    if not storage.exists(d.doc_id):
+    found = storage.find_doc_path(d.doc_id)
+    if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
-    if inline:
+    fpath, suffix = found
+    media_map = {
+        ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".xml": "application/xml",
+        ".zip": "application/zip",
+    }
+    media_type = media_map.get(suffix, "application/octet-stream")
+    if inline and suffix == ".pdf":
         # Xem truc tiep trong trinh duyet
         disp = f"inline; filename*=UTF-8''{quote(d.filename)}"
     else:
         disp = _content_disposition(d.filename)
     return StreamingResponse(
-        iter([storage.read_doc(d.doc_id)]),
-        media_type="application/pdf",
+        iter([fpath.read_bytes()]),
+        media_type=media_type,
         headers={"Content-Disposition": disp},
     )
 
