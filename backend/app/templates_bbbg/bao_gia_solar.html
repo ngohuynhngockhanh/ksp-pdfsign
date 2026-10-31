@@ -430,9 +430,10 @@
     font-size: 7.4px;
     font-style: italic;
     color: #64748b;
+    min-height: 19px;
   }
   .sig-space {
-    height: 44px;
+    height: 64px;
   }
   .sig-name {
     font-weight: bold;
@@ -473,7 +474,8 @@
     <div class="party-card">
       <div class="party-head">BÊN NHẬN BÁO GIÁ (BÊN B — ĐỐI TÁC ĐỘC QUYỀN MẢNG NMS VNPT)</div>
       <div class="party-name">{{ ben_b.name }}</div>
-      <div><b>Mã số thuế:</b> {{ ben_b.mst }}</div>
+      <div><b>Đại diện:</b> {{ ben_b.rep or "Ông Hoàng Anh Tuấn" }} &nbsp;·&nbsp; <b>Chức vụ:</b> {{ ben_b.title or "Giám đốc" }} &nbsp;|&nbsp; <b>Điện thoại:</b> {{ ben_b.phone or "0903.293.935" }}</div>
+      <div><b>Mã số thuế:</b> {{ ben_b.mst }} &nbsp;|&nbsp; <b>Số tài khoản:</b> {{ ben_b.bank_account or "5020562517 tại Ngân hàng BIDV – Chi nhánh Lam Sơn" }}</div>
       <div><b>Địa chỉ:</b> {{ ben_b.address }}</div>
       <div><b>Phạm vi hợp tác:</b> Triển khai 16 thiết bị biên <code>inut-solar</code> tự động bắn bù &amp; setup hết VNPT NMS (Gói I); đưa cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code> vào hồ sơ thầu gói sau (Gói II).</div>
     </div>
@@ -763,9 +765,9 @@
     <div class="sig-wrap">
       <div class="sig-col">
         <div class="sig-role">XÁC NHẬN CỦA BÊN MUA</div>
-        <div class="sig-sub">CÔNG TY CỔ PHẦN VIỆT HÙNG POWER</div>
+        <div class="sig-sub">{{ ben_b.title or "Giám đốc" }} — {{ ben_b.name or "CÔNG TY CỔ PHẦN VIỆT HÙNG POWER" }}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">Đại diện có thẩm quyền</div>
+        <div class="sig-name">{{ ben_b.rep_sign or "HOÀNG ANH TUẤN" }}</div>
       </div>
       <div class="sig-col">
         <div class="sig-role">ĐẠI DIỆN ĐƠN VỊ BÁO GIÁ</div>

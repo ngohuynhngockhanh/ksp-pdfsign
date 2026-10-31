@@ -2497,8 +2497,8 @@ def ihoadon_drafts(
 
 def _vat_value(name: str) -> str:
     low = (name or "").strip().lower()
-    if "không chịu" in low or "khong chiu" in low:
-        return "KCT"
+    if "không chịu" in low or "khong chiu" in low or low in ("kct", "-1"):
+        return "-1"
     m = re.match(r"(\d+(?:[.,]\d+)?)", low)
     return m.group(1).replace(",", ".") if m else "0"
 
