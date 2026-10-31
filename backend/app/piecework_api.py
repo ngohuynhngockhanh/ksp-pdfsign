@@ -687,6 +687,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         })
     
     # 3. Nghiem thu & Anh hien truong
+    is_viethung = "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6
     photos = []
     try:
         photos = json.loads(c.site_photos_json or "[]")
@@ -695,7 +696,10 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
     acc_val = inspect_document_file(c.acceptance_doc_id) if c.acceptance_doc_id else None
     has_acc = bool(c.has_acceptance or len(photos) > 0)
     acc_detail = f"Đã có {len(photos)} ảnh hiện trường" if len(photos) > 0 else (
-        "Đã xác nhận biên bản nghiệm thu" if c.has_acceptance else "Chưa có biên bản nghiệm thu hoặc ảnh Kiosk/thiết bị"
+        "Đã xác nhận biên bản nghiệm thu" if c.has_acceptance else (
+            "Hợp đồng thanh toán trước - nghiệm thu sau (Cập nhật hồ sơ nghiệm thu công trình 16 trạm sau)"
+            if is_viethung else "Chưa có biên bản nghiệm thu hoặc ảnh Kiosk/thiết bị"
+        )
     )
     checklist.append({
         "key": "acceptance",
@@ -772,14 +776,16 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
             "key": "bank_unc",
             "label": "Ủy nhiệm chi Techcombank 79713",
             "ok": c.has_bank_proof,
-            "detail": "Đã kẹp chứng từ UNC thanh toán không dùng tiền mặt" if c.has_bank_proof else "Chưa thanh toán hoặc chưa kẹp UNC",
+            "detail": "Đã kẹp chứng từ UNC thanh toán không dùng tiền mặt" if c.has_bank_proof else (
+                "Chờ kẹp chứng từ UNC thanh toán trước 100% thù lao (4.999.999đ)"
+                if is_viethung else "Chưa thanh toán hoặc chưa kẹp UNC"
+            ),
             "validation": unc_val,
             "doc_id": c.bank_proof_doc_id,
         })
     
     missing_keys = [item["key"] for item in checklist if not item["ok"] and item["key"] not in ("bank_unc",)]
-    can_pay = (has_id and has_bank and has_acc and tax_ok and c.is_signed_by_worker)
-    
+    can_pay = (has_id and has_bank and (has_acc or is_viethung) and tax_ok and c.is_signed_by_worker)
     # Status badges
     if c.has_bank_proof:
         status_code = "completed"
@@ -973,6 +979,7 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "contract_type": c.contract_type or "thi_cong",
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
         "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
+        "is_viethung": "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6,
         "payment_method": "cash" if is_cash else "bank_transfer",
         "is_cash": is_cash,
     }
@@ -1065,6 +1072,7 @@ def render_appendix2_pdf(c: PieceworkContract) -> bytes:
         "contract_type": c.contract_type or "thi_cong",
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
         "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
+        "is_viethung": "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6,
         "payment_method": "cash" if (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash" else "bank_transfer",
         "is_cash": (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash",
     }

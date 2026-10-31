@@ -113,6 +113,8 @@
   <p>- <b>Vật tư / Tài nguyên đầu vào do Bên A cung cấp:</b> Phôi bo mạch phần cứng đầu vào <b>Linh kiện máy tính: Mạch điện tử PCBA đã gia công linh kiện, chưa hoàn chỉnh, không có firmware. Model: RK3518 EMCP, Hiệu: Haoyu. Hàng mới 100%</b> (Mã kho: <code>HH9019</code>, nhập khẩu chính ngạch theo Tờ khai Hải quan số <code>108286660050</code> & <code>108557300610</code> để sản xuất thành phẩm nội bộ <b>iNut Smartcity - Data Logger v1.1 - Rockchip</b> - Mã kho: <code>INUT_RK3518</code>) cùng gói <b>Bootloader (MiniLoaderAll.bin, u-boot.itb, trust.img)</b> và <b>Firmware Image gốc (.img)</b> của Công ty iNut.</p>
   {% elif is_pickleball %}
   <p>- <b>Căn cứ triển khai & Thiết bị áp dụng:</b> Thực hiện nghĩa vụ lắp đặt hoàn thiện, hướng dẫn sử dụng, bảo hành (01 năm lỗi 1 đổi 1) và bảo trì kỹ thuật theo <b>Hợp đồng kinh tế số 20072026-INUT-KN PICKLEBALL</b> ký ngày 20/07/2026 giữa <b>CÔNG TY TNHH KN PICKLEBALL CLUB</b> (MST: <code>0319378237</code>) và Bên A đối với tổ hợp thiết bị: <b>02 Bộ Camera Dahua DH-H3AE (3MP xoay 360 độ)</b>, <b>06 Bộ Camera Dahua DH-F4C-LED (4MP ngoài trời)</b>, <b>01 Bộ thiết bị vật tư giám sát lắp đặt tại sân</b>, <b>01 Bộ iNut Smartcity: Thiết bị Cắt cam và CheckVar – Model iNut4C</b> (số hóa 04 luồng Camera Full HD 1080p, xem/tải clip không cần cài App, Livestream Facebook/OBS) cùng <b>04 Bảng mã QR</b> tại sân.</p>
+  {% elif is_viethung %}
+  <p>- <b>Mục tiêu & Phạm vi dự án áp dụng:</b> Thực hiện gói dịch vụ kỹ thuật thuê ngoài (Outsource) hỗ trợ dự án triển khai, thiết lập cấu hình từ xa (Remote Setup) và duy trì vận hành, bảo trì kỹ thuật (Maintain) cho <b>16 (mười sáu) trạm Điện mặt trời Mái nhà</b> thuộc dự án <b>CÔNG TY CỔ PHẦN VIỆT HÙNG POWER</b> (MST: <code>2802975029</code>, Địa chỉ: Số 177 đường Trịnh Khả, Phường Hạc Thành, tỉnh Thanh Hóa), sử dụng tổ hợp <b>16 Bộ Thiết bị Cổng Truyền thông & Thu thập Dữ liệu Biên iNut Smartcity - Data Logger v1.1 - Rockchip</b> (Mã kho: <code>INUT_RK3518</code>) kèm <b>Phần mềm Nghiên cứu & Phát triển (R&D) inut-solar</b> tự động đồng bộ và bắn bù dữ liệu thời gian thực về Hệ thống Quản lý Năng lượng <b>VNPT NMS</b>.</p>
   {% endif %}
   <p>1.2. Chi tiết các hạng mục và khối lượng công việc giao khoán:</p>
 
@@ -171,7 +173,27 @@
   </div>
   {% endif %}
 
-  <div class="article-title">ĐIỀU 2. PHƯƠNG THỨC NGHIỆM THU VÀ THANH TOÁN</div>
+  <div class="article-title">ĐIỀU 2. PHƯƠNG THỨC {% if is_viethung %}THANH TOÁN TRƯỚC VÀ NGHIỆM THU SAU{% else %}NGHIỆM THU VÀ THANH TOÁN{% endif %}</div>
+  {% if is_viethung %}
+  <p>2.1. <b>Thanh toán trước 100% thù lao khoán:</b> Do đặc thù công việc đòi hỏi Bên B chủ động bố trí máy móc, hạ tầng kết nối từ xa và trực kỹ thuật liên tục để thiết lập cấu hình (Remote Setup), tích hợp đồng bộ dữ liệu lên Hệ thống VNPT NMS và duy trì bảo trì kỹ thuật (Maintain) cho toàn bộ <b>16 trạm Điện mặt trời Mái nhà</b> của dự án <b>Công ty Cổ phần Việt Hùng Power</b>, hai Bên thống nhất áp dụng cơ chế <b>Thanh toán trước — Nghiệm thu sau</b>: Sau khi Hợp đồng này được ký kết hợp lệ, Bên A thực hiện chuyển khoản thanh toán trước <b>100% giá trị thù lao nhận khoán ({{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ)</b> bằng hình thức chuyển khoản ngân hàng không dùng tiền mặt từ tài khoản Bên A (<b>79713 tại Techcombank</b>) vào tài khoản ngân hàng chính chủ của Bên B.</p>
+  <p>2.2. <b>Nghiệm thu hoàn thành công việc sau thanh toán:</b> Sau khi nhận thanh toán trước và hoàn tất việc thiết lập cấu hình từ xa (Remote Setup), kiểm thử cơ chế tự động bắn bù dữ liệu thời gian thực lên Hệ thống <b>VNPT NMS</b> và bàn giao vận hành ổn định (Maintain) cho đủ <b>16 trạm Điện mặt trời Mái nhà</b>, hai Bên tiến hành lập <b>Biên bản nghiệm thu hoàn thành công việc (Phụ lục II)</b> kèm hình ảnh/nhật ký vận hành thực tế công trình để hoàn tất hồ sơ quyết toán hợp đồng. Trường hợp Bên B không hoàn thành đúng khối lượng và chất lượng công việc cam kết, Bên B có trách nhiệm khắc phục triệt để hoặc hoàn trả lại toàn bộ khoản tiền thù lao đã nhận trước cho Bên A.</p>
+  <div class="bank-box" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; page-break-inside: avoid;">
+    <div style="flex: 1;">
+      <b>Thông tin tài khoản thụ hưởng thanh toán trước của Bên B:</b><br>
+      - Chủ tài khoản: <b>{{ worker_name|upper }}</b><br>
+      - Số tài khoản: <b>{{ worker_bank_account }}</b> tại <b>{{ worker_bank_name }}</b><br>
+      - Phương thức thanh toán: <b style="color: #15803d;">Chuyển khoản thanh toán trước 100% — Nghiệm thu hoàn thành công trình sau</b><br>
+      - Số tiền thù lao nhận khoán: <b style="color: #b91c1c;">{{ "{:,.0f}".format(net_amount or total_amount) }} VNĐ</b><br>
+      {% if transfer_memo %}- Nội dung chuyển khoản: <b style="color: #0284c7;">{{ transfer_memo }}</b>{% endif %}
+    </div>
+    {% if vietqr_data_uri %}
+    <div style="text-align: center; width: 105px; flex-shrink: 0;">
+      <img src="{{ vietqr_data_uri }}" style="width: 95px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;" alt="VietQR Bên B">
+      <div style="font-size: 8px; color: #64748b; margin-top: 2px;">Quét mã VietQR</div>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
   {% if is_software %}
   <p>2.1. <b>Nghiệm thu & Bàn giao:</b> Sau khi Bên B hoàn thành toàn bộ các phân hệ công việc trong vòng 07 ngày, hai Bên tiến hành kiểm thử thực tế trên lô bo mạch <b>RK3518 EMCP (Haoyu)</b> và lập Biên bản nghiệm thu bàn giao toàn bộ <b>Mã nguồn (Source code), kịch bản tự động hóa (Scripts), gói công cụ iNut RK3528 Image Creator</b> và tài liệu hướng dẫn vận hành cho Bên A.</p>
   {% else %}
@@ -206,19 +228,27 @@
     {% endif %}
   </div>
   {% endif %}
+  {% endif %}
 
   <div class="article-title">ĐIỀU 3. CAM KẾT KHÔNG PHÁT SINH QUAN HỆ LAO ĐỘNG</div>
   <p>3.1. Hai Bên khẳng định quan hệ hợp tác theo Hợp đồng này là <b>quan hệ giao khoán công việc theo sản phẩm/kết quả đầu ra thuần túy dân sự</b>, không cấu thành Hợp đồng lao động theo Bộ luật Lao động 2019 và không thuộc diện tham gia Bảo hiểm xã hội bắt buộc theo Luật BHXH 2024.</p>
   {% if is_software %}
   <p>3.2. Bên B hoàn toàn tự chủ về máy móc, máy tính cá nhân, môi trường máy chủ Linux (Ubuntu/Debian Server), thiết bị nạp thử nghiệm và thời gian làm việc; không chịu sự quản lý giờ giấc hành chính, không chấm công, không xếp loại nhân viên và không hưởng các chế độ tiền lương/phụ cấp nội bộ của Bên A.</p>
   <p>3.3. Toàn bộ mã nguồn (source code), kịch bản nạp tự động, các phân hệ phần mềm và kết quả kiểm thử sau khi nghiệm thu thuộc quyền sở hữu trí tuệ duy nhất của Bên A phục vụ sản xuất nội bộ kho Công ty iNut.</p>
+  {% elif is_viethung %}
+  <p>3.2. Bên B hoàn toàn tự chủ về máy tính cá nhân, thiết bị mạng, công cụ kết nối điều khiển từ xa (SSH/VPN/Remote Tunnel) và thời gian làm việc để hỗ trợ thiết lập cấu hình từ xa (Remote Setup) & duy trì vận hành (Maintain) cho 16 trạm; không chịu sự quản lý giờ giấc hành chính, không chấm công, không xếp loại nhân viên và không hưởng các chế độ tiền lương/phụ cấp nội bộ của Bên A.</p>
+  <p>3.3. Bên B cam kết bảo mật tuyệt đối thông tin kết nối, khóa xác thực API/MQTT và dữ liệu vận hành của 16 trạm Điện mặt trời Mái nhà thuộc dự án Công ty Cổ phần Việt Hùng Power.</p>
   {% else %}
   <p>3.2. Bên B hoàn toàn tự chủ về nhân lực, phương tiện, biện pháp thi công và thời gian thực hiện; không chịu sự quản lý giờ giấc hành chính, không chấm công, không xếp loại nhân viên và không hưởng các chế độ tiền lương/phụ cấp nội bộ của Bên A.</p>
   <p>3.3. Bên B tự chịu trách nhiệm về an toàn lao động trong suốt quá trình thi công tại hiện trường.</p>
   {% endif %}
 
   <div class="article-title">ĐIỀU 4. ĐIỀU KHOẢN CHUNG</div>
+  {% if is_viethung %}
+  <p>4.1. Hợp đồng có hiệu lực kể từ ngày ký và tự động thanh lý sau khi Bên A hoàn tất nghĩa vụ thanh toán trước 100% thù lao và hai Bên ký Biên bản nghiệm thu hoàn thành toàn bộ khối lượng công việc của 16 trạm.</p>
+  {% else %}
   <p>4.1. Hợp đồng có hiệu lực kể từ ngày ký và tự động thanh lý khi Bên B hoàn thành công việc được nghiệm thu và Bên A hoàn tất nghĩa vụ thanh toán.</p>
+  {% endif %}
   <p>4.2. Hợp đồng này được lập thành văn bản điện tử có giá trị pháp lý tương đương bản giấy theo Luật Giao dịch điện tử. Chữ ký số của Bên A và chữ ký điện tử trực tuyến của Bên B trên nền tảng lưu trữ hợp đồng của Bên A có giá trị chứng cứ đầy đủ trước pháp luật.</p>
 
   <div class="signs">
