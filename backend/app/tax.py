@@ -113,6 +113,30 @@ def authenticate(mst: str, password: str, ckey: str, cvalue: str) -> str:
     except Exception:  # noqa: BLE001
         msg = r.text[:120]
     raise TaxError(msg or f"Đăng nhập thất bại ({r.status_code})")
+def _solve_captcha_pair() -> tuple[str, str]:
+    """Lấy và giải tự động 1 captcha SVG cho các endpoint /sco-query/ yêu cầu ckey/cvalue."""
+    try:
+        from bs4 import BeautifulSoup
+        import cairosvg
+        import ddddocr
+
+        cap = get_captcha()
+        ckey = cap.get("key", "")
+        svg_str = cap.get("svg", "")
+        if not ckey or not svg_str:
+            return "", ""
+        soup = BeautifulSoup(svg_str, "html.parser")
+        for p in soup.find_all("path"):
+            if p.get("fill") == "none" or p.get("stroke"):
+                p.decompose()
+        png_bytes = cairosvg.svg2png(bytestring=str(soup).encode("utf-8"), scale=2.5)
+        ocr = ddddocr.DdddOcr(show_ad=False)
+        cvalue = str(ocr.classification(png_bytes)).strip()
+        return ckey, cvalue
+    except Exception:
+        return "", ""
+
+
 def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -> list[dict]:
     """Query 1 endpoint theo khoang [tu, den] (ISO yyyy-mm-dd).
 
@@ -127,6 +151,7 @@ def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -
     d1 = date(int(den[:4]), int(den[5:7]), int(den[8:10]))
     seen: set = set()
     out: list[dict] = []
+    needs_captcha = "/sco-query/" in url
     with _client() as c:
         c.headers["Authorization"] = f"Bearer {token}"
         cur = d0
@@ -142,8 +167,21 @@ def _query_range(token: str, url: str, tu: str, den: str, chunk_days: int = 7) -
                 r = None
                 for _try in range(5):  # retry moi request
                     try:
+                        req_params = dict(params)
+                        if needs_captcha:
+                            ckey, cvalue = _solve_captcha_pair()
+                            if not ckey or not cvalue:
+                                _t.sleep(0.5)
+                                continue
+                            req_params["ckey"] = ckey
+                            req_params["cvalue"] = cvalue
                         c.headers["request-id"] = str(uuid.uuid4())
-                        r = c.get(url, params=params)
+                        r = c.get(url, params=req_params)
+                        if r.status_code == 200:
+                            break
+                        if needs_captcha and r.status_code in (400, 500):
+                            _t.sleep(0.5)
+                            continue
                         break
                     except Exception:  # noqa: BLE001
                         _t.sleep(2)
