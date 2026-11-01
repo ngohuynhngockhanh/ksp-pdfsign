@@ -51,10 +51,12 @@ def test_evaluate_q3_alarm_trigger_live():
     data = res.json()
     assert "breakdown" in data
     assert "thresholds" in data
-    assert data["breakdown"]["sales_count"] >= 25
-    assert data["breakdown"]["regular_purchases_count"] >= 29
+    assert data["breakdown"]["sales_count"] == 29
+    assert data["breakdown"]["regular_purchases_count"] == 28
     assert data["breakdown"]["bank_purchases_billed"] == 0
-    assert data["breakdown"]["customs_billed"] >= 5
-    assert data["breakdown"]["total_billed_documents"] >= 59
+    assert data["breakdown"]["flight_purchases_raw"] == 2
+    assert data["breakdown"]["flight_purchases_billed"] == 0
+    assert data["breakdown"]["customs_billed"] == 6
+    assert data["breakdown"]["total_billed_documents"] == 63
     assert "current_tier" in data
     assert "alarm_gap" in data["thresholds"]

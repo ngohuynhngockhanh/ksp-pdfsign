@@ -146,6 +146,7 @@ def sync_gdt_purchases(
 def get_accounting_fee_monitor(
     ky: str | None = Query(default=None, description="Mã quý YYYY-Qx, ví dụ 2026-Q3. Mặc định là quý hiện tại."),
     count_bank: bool = Query(default=False, description="Đếm hóa đơn ngân hàng (mặc định False vì là chi phí tờ khai)"),
+    count_flight: bool = Query(default=False, description="Đếm hóa đơn vé máy bay (mặc định False theo chuẩn kế toán)"),
     customs_mode: str = Query(default="each", description="Cách tính tờ khai hải quan (each | one_per_quarter | none)"),
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
@@ -153,5 +154,5 @@ def get_accounting_fee_monitor(
     """Giám sát biểu phí dịch vụ kế toán và cảnh báo sớm khi còn <= 5 hóa đơn trước khi nhảy mốc."""
     from . import accounting_tier
     return accounting_tier.evaluate_accounting_fee_status(
-        db, ky=ky, count_bank=count_bank, customs_mode=customs_mode
+        db, ky=ky, count_bank=count_bank, count_flight=count_flight, customs_mode=customs_mode
     )

@@ -14,12 +14,12 @@ Biểu phí trọn gói theo quý:
 - 201 - 300 HĐ/quý (3 tháng): 18.000.000 đ (6.000.000 đ/tháng)
 - > 300 HĐ/tháng: Thu phí theo từng tháng
 
-QUY ƯỚC CHUẨN THỰC TẾ:
-1. Hóa đơn bán ra: Đếm từng hóa đơn.
-2. Hóa đơn mua vào thông thường: Đếm từng hóa đơn.
-3. Hóa đơn ngân hàng (Techcombank...): KHÔNG TÍNH (0 HĐ) vì là chi phí phát sinh kèm theo tờ khai hải quan.
-4. Tờ khai hải quan nhập khẩu: MỖI TỜ KHAI TÍNH RIÊNG (1 tờ khai = 1 chứng từ tính phí).
-
+QUY ƯỚC CHUẨN THỰC TẾ (KHỚP KẾ TOÁN DỊCH VỤ - VD Q3/2026 = 63 HĐ):
+1. Hóa đơn bán ra: Đếm từng hóa đơn (Q3: 29 HĐ).
+2. Hóa đơn mua vào thông thường: Đếm từng hóa đơn thương mại/dịch vụ SXKD (Q3: 28 HĐ).
+3. Hóa đơn ngân hàng (Techcombank...): KHÔNG TÍNH (0 HĐ) vì là chi phí phát sinh kèm theo tờ khai hải quan (Q3: loại 11 HĐ).
+4. Hóa đơn vé máy bay (VNPAY / Hàng không): KHÔNG TÍNH (0 HĐ) vào định mức hóa đơn kế toán (Q3: loại 2 HĐ 49325 & 49331).
+5. Tờ khai hải quan nhập khẩu: MỖI TỜ KHAI TÍNH RIÊNG 1 ĐƠN VỊ (Q3: +6 tờ khai -> 29 + 28 + 6 = 63 HĐ).
 QUY TẮC BÁO ĐỘNG (ALARM):
 Khi số lượng chứng từ còn <= 5 cái trước khi chạm mốc trên của bậc hiện tại (đặc biệt khi còn 1-2 cái),
 hệ thống phát tín hiệu ALARM KHẨN CẤP để ngăn chặn việc xuất/nhận hóa đơn làm nhảy mốc.
@@ -133,19 +133,42 @@ def get_quarter_dates(ky: str) -> tuple[str, str]:
 def is_bank_partner(name: str | None, tax_code: str | None = None) -> bool:
     """Nhận diện hóa đơn ngân hàng (Techcombank, Vietcombank...)."""
     n = (name or "").lower()
+    mst = (tax_code or "").strip()
+    if mst in {"0100230800"}:
+        return True
     return any(k in n for k in ["ngân hàng", "techcombank", "vietcombank", "vpbank", "mbbank", "vietinbank", "bidv"])
+
+
+def is_flight_ticket_purchase(purchase: InvPurchase) -> bool:
+    """Nhận diện hóa đơn vé máy bay / đại lý vé máy bay (VNPAY, Vietnam Airlines, Vietjet...)."""
+    name = (purchase.ten_ban or "").lower()
+    mst = (purchase.mst_ban or "").strip()
+    flight_keywords = ("vé máy bay", "hàng không", "vietjet", "vietnam airlines", "bamboo airways")
+    if any(k in name for k in flight_keywords):
+        return True
+    lines = getattr(purchase, "lines", None) or []
+    for line in lines:
+        raw_name = (getattr(line, "ten_raw", "") or "").lower()
+        if any(k in raw_name for k in flight_keywords):
+            return True
+    # VNPAY (0102182292) xuất hóa đơn vé máy bay
+    if mst == "0102182292":
+        return True
+    return False
 
 
 def evaluate_accounting_fee_status(
     db: Session,
     ky: str | None = None,
     count_bank: bool = False,
+    count_flight: bool = False,
     customs_mode: str = "each",  # Mặc định: "each" (mỗi tờ khai tính riêng 1 đơn vị)
 ) -> dict[str, Any]:
     """Đánh giá chi tiết số lượng hóa đơn theo chuẩn kế toán dịch vụ và cảnh báo nhảy mốc.
 
-    Quy ước mặc định:
+    Quy ước mặc định (khớp chuẩn kế toán tính phí thực tế, VD Q3/2026 = 29 + 28 + 6 = 63 HĐ):
     - count_bank = False: Hóa đơn ngân hàng KO TÍNH (vì là chi phí kèm theo tờ khai).
+    - count_flight = False: Hóa đơn vé máy bay KO TÍNH vào định mức chứng từ kế toán.
     - customs_mode = "each": Mỗi tờ khai hải quan tính riêng 1 đơn vị chứng từ.
     """
     if ky:
@@ -168,11 +191,14 @@ def evaluate_accounting_fee_status(
     ).all()
 
     bank_purchases = [p for p in purchases if is_bank_partner(p.ten_ban, p.mst_ban)]
-    regular_purchases = [p for p in purchases if p not in bank_purchases]
+    flight_purchases = [p for p in purchases if p not in bank_purchases and is_flight_ticket_purchase(p)]
+    regular_purchases = [p for p in purchases if p not in bank_purchases and p not in flight_purchases]
 
     count_regular_purchases = len(regular_purchases)
     count_bank_purchases_raw = len(bank_purchases)
     count_bank_billed = count_bank_purchases_raw if count_bank else 0
+    count_flight_purchases_raw = len(flight_purchases)
+    count_flight_billed = count_flight_purchases_raw if count_flight else 0
 
     # 3. Tờ khai hải quan
     customs = db.scalars(
@@ -188,9 +214,14 @@ def evaluate_accounting_fee_status(
         count_customs_billed = 0
 
     # Tổng số chứng từ tính phí theo quy ước
-    total_billed = count_sales + count_regular_purchases + count_bank_billed + count_customs_billed
+    total_billed = (
+        count_sales
+        + count_regular_purchases
+        + count_bank_billed
+        + count_flight_billed
+        + count_customs_billed
+    )
     total_raw = count_sales + len(purchases) + count_customs_raw
-
     tiers = get_accounting_tiers(db)
     alarm_gap = get_alarm_gap(db)
 
@@ -205,12 +236,18 @@ def evaluate_accounting_fee_status(
     alarm_message = ""
     if is_alarm:
         urgency = "🔴 KHẨN CẤP" if remaining_to_next_tier <= 2 else "⚠️ CẢNH BÁO"
+        flight_note = (
+            f"   • {count_flight_billed} HĐ vé máy bay (loại trừ {count_flight_purchases_raw} HĐ vé máy bay)\n"
+            if count_flight_purchases_raw > 0 and not count_flight
+            else ""
+        )
         alarm_message = (
             f"🚨 [{urgency} - ALARM BIỂU PHÍ KẾ TOÁN {active_ky}]\n"
             f"⚡ Số lượng hóa đơn/chứng từ tính phí hiện tại: {total_billed} HĐ\n"
             f"   • {count_sales} HĐ bán ra\n"
             f"   • {count_regular_purchases} HĐ mua vào thông thường\n"
-            f"   • 0 HĐ ngân hàng (loại trừ {count_bank_purchases_raw} HĐ phí Techcombank vì là chi phí tờ khai)\n"
+            f"   • {count_bank_billed} HĐ ngân hàng (loại trừ {count_bank_purchases_raw} HĐ phí Techcombank vì là chi phí tờ khai)\n"
+            f"{flight_note}"
             f"   • {count_customs_billed} tờ khai hải quan (tính riêng từng tờ khai)\n\n"
             f"🎯 CHỈ CÒN ĐÚNG {remaining_to_next_tier} HÓA ĐƠN NỮA là CHẠM TRẦN mốc {current_tier['max']} HĐ ({current_tier['label']})!\n"
             f"💸 NẾU PHÁT SINH THÊM VƯỢT MỐC {current_tier['max']}, PHÍ KẾ TOÁN SẼ NHẢY BẬC LÊN: {next_tier['label'] if next_tier else ''}\n"
@@ -226,6 +263,8 @@ def evaluate_accounting_fee_status(
             "regular_purchases_count": count_regular_purchases,
             "bank_purchases_raw": count_bank_purchases_raw,
             "bank_purchases_billed": count_bank_billed,
+            "flight_purchases_raw": count_flight_purchases_raw,
+            "flight_purchases_billed": count_flight_billed,
             "customs_raw": count_customs_raw,
             "customs_billed": count_customs_billed,
             "total_billed_documents": total_billed,
@@ -233,6 +272,7 @@ def evaluate_accounting_fee_status(
         },
         "rules": {
             "count_bank": count_bank,
+            "count_flight": count_flight,
             "customs_mode": customs_mode,
             "alarm_gap": alarm_gap,
         },
