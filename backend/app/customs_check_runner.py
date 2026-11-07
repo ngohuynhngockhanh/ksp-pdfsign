@@ -119,6 +119,8 @@ def format_customs_telegram_message(
         da_nop_str = f"{da_nop:,.0f}".replace(",", ".")
         lines.append(f"💵 Thuế GTGT đã nộp: {da_nop_str} VNĐ")
 
+    if res.get("barcode_status"):
+        lines.append(f"📄 Mã vạch KVGS: {res['barcode_status']}")
     if is_completed:
         lines.append("🛑 Tự động đóng task kiểm tra định kỳ (Clear task check).")
     else:
@@ -181,6 +183,30 @@ def run_task_check(
         task.status = "completed"
         task.completed_at = _now()
         task.next_check_at = None
+        try:
+            from . import customs_barcode
+
+            decl = db.scalar(
+                select(InvCustomsDecl).where(InvCustomsDecl.so_to_khai == task.so_to_khai)
+            )
+            if decl:
+                bc_res = customs_barcode.fetch_and_sync_customs_barcode(db, decl_id=decl.id)
+                res["barcode_status"] = f"Đã tải & đồng bộ Drive ({bc_res.get('filename')})"
+            else:
+                ma_hq = str(res.get("ma_hai_quan") or "06DS").strip() or "06DS"
+                ngay_dk = str(res.get("ngay_dang_ky") or "").strip().replace("-", "/")
+                if ngay_dk:
+                    _, fn, _ = customs_barcode.fetch_customs_barcode_pdf(
+                        mst=task.ma_doanh_nghiep or DEFAULT_MST,
+                        so_to_khai=task.so_to_khai,
+                        ma_hq=ma_hq[:4],
+                        ngay_to_khai=ngay_dk,
+                        max_retries=5,
+                    )
+                    res["barcode_status"] = f"Đã cấp mã vạch hợp lệ ({fn})"
+        except Exception as bc_exc:
+            logger.warning(f"Chưa tải được mã vạch tự động cho {task.so_to_khai}: {bc_exc}")
+            res["barcode_status"] = f"Chưa lấy được ({bc_exc})"
     elif task.status == "active":
         task.next_check_at = _now() + timedelta(minutes=task.interval_minutes)
 

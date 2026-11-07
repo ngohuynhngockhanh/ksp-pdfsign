@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Phương Án Chiến Lược Hợp Quy QCVN VNMAP AI ONE - Tân Thanh Phương</title>
+<style>
+@page {
+    size: A4 portrait;
+    margin: 13mm 14mm 14.5mm 14.5mm;
+    @bottom-left {
+        content: string(doc_footer_left);
+        font-family: 'DejaVu Sans', 'Liberation Sans', sans-serif;
+        font-size: 7.5pt;
+        color: #64748b;
+    }
+    @bottom-right {
+        content: "Trang " counter(page) " / " counter(pages);
+        font-family: 'DejaVu Sans', 'Liberation Sans', sans-serif;
+        font-size: 7.5pt;
+        color: #475569;
+        font-weight: bold;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'DejaVu Sans', 'Liberation Sans', sans-serif;
+    font-size: 8.9pt;
+    line-height: 1.38;
+    color: #0f172a;
+    margin: 0;
+    padding: 0;
+}
+
+.footer-str {
+    string-set: doc_footer_left content();
+    display: none;
+}
+
+h1, h2, h3, h4 {
+    color: #0f294a;
+    margin-top: 0;
+    page-break-after: avoid;
+    break-after: avoid;
+}
+
+.doc-banner {
+    border: 1.5px solid #0f294a;
+    border-radius: 6px;
+    padding: 12px 15px;
+    background: #f8fafc;
+    margin-bottom: 14px;
+}
+
+.doc-banner-top {
+    display: table;
+    width: 100%;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+}
+
+.doc-banner-logo {
+    display: table-cell;
+    width: 28%;
+    vertical-align: middle;
+}
+
+.doc-banner-logo img {
+    max-height: 36px;
+    max-width: 150px;
+}
+
+.doc-banner-org {
+    display: table-cell;
+    width: 72%;
+    vertical-align: middle;
+    text-align: right;
+    font-size: 8.3pt;
+    color: #334155;
+}
+
+.doc-banner-title {
+    font-size: 13.5pt;
+    font-weight: 700;
+    color: #0f294a;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    margin: 4px 0 3px 0;
+}
+
+.doc-banner-sub {
+    font-size: 9.2pt;
+    color: #334155;
+    margin: 0;
+}
+
+.meta-grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 8.5pt;
+}
+
+.meta-grid td {
+    padding: 3px 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+}
+
+.meta-grid td.lbl {
+    background: #f1f5f9;
+    font-weight: 700;
+    color: #1e293b;
+    width: 22%;
+}
+
+.sec-title {
+    font-size: 10.8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #ffffff;
+    background: #0f294a;
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin: 14px 0 8px 0;
+    page-break-after: avoid;
+    break-after: avoid;
+}
+
+.sub-title {
+    font-size: 9.8pt;
+    font-weight: 700;
+    color: #0f294a;
+    border-left: 3.5px solid #0284c7;
+    padding-left: 8px;
+    margin: 10px 0 6px 0;
+    page-break-after: avoid;
+    break-after: avoid;
+}
+
+table.data-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0 10px 0;
+    font-size: 8.5pt;
+}
+
+table.data-tbl th {
+    background: #e2e8f0;
+    color: #0f172a;
+    font-weight: 700;
+    text-align: left;
+    padding: 5px 7px;
+    border: 1px solid #94a3b8;
+}
+
+table.data-tbl td {
+    padding: 5px 7px;
+    border: 1px solid #cbd5e1;
+    vertical-align: top;
+}
+
+table.data-tbl tr:nth-child(even) td {
+    background: #f8fafc;
+}
+
+table.data-tbl tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.callout {
+    border-radius: 5px;
+    padding: 8px 11px;
+    margin: 8px 0;
+    font-size: 8.8pt;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.callout-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #dc2626;
+}
+
+.callout-warn {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 4px solid #d97706;
+}
+
+.callout-ok {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 4px solid #16a34a;
+}
+
+.callout-info {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-left: 4px solid #0284c7;
+}
+
+.badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 7.6pt;
+    font-weight: 700;
+}
+
+.badge-red { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.badge-amber { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.badge-green { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.badge-blue { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+
+ul, ol {
+    margin: 4px 0 8px 0;
+    padding-left: 18px;
+}
+
+li {
+    margin-bottom: 3px;
+}
+
+.page-break {
+    page-break-before: always;
+    break-before: page;
+}
+
+/* Statutory Legal Forms (Times New Roman) */
+.legal-form {
+    font-family: 'Times New Roman', 'Liberation Serif', serif;
+    font-size: 9.8pt;
+    line-height: 1.32;
+    color: #000000;
+    border: 1px solid #475569;
+    padding: 10px 14px;
+    background: #ffffff;
+}
+
+.legal-header-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6px;
+}
+
+.legal-header-tbl td {
+    vertical-align: top;
+    text-align: center;
+    font-size: 9.8pt;
+}
+
+.legal-title {
+    text-align: center;
+    font-size: 12pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 6px 0 3px 0;
+    color: #000000;
+}
+
+.legal-sub {
+    text-align: center;
+    font-size: 9.2pt;
+    font-style: italic;
+    margin: 0 0 7px 0;
+}
+
+.legal-p {
+    margin: 3.5px 0;
+    text-align: justify;
+}
+
+.sig-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 9px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.sig-tbl td {
+    vertical-align: top;
+    text-align: center;
+    font-size: 9.8pt;
+}
+
+.sig-space {
+    height: 54px;
+}
+
+.mono {
+    font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-size: 8.3pt;
+    background: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.label-card {
+    border: 1.8px solid #0f172a;
+    border-radius: 6px;
+    padding: 10px 14px;
+    width: 88%;
+    margin: 8px auto;
+    background: #ffffff;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+</style>
+</head>
+<body>
+<div class="footer-str">PA-QCVN-TTP-2026-V1 | Phương án Chứng nhận &amp; Công bố Hợp quy VNMAP® AI ONE — Công ty CP Đầu tư Phát triển Công nghệ Tân Thanh Phương</div>
+
+<div class="doc-banner">
+  <div class="doc-banner-top">
+    <div class="doc-banner-logo">
+      <img src="data:image/png;base64,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" alt="VNMAP"/>
+    </div>
+    <div class="doc-banner-org">
+      <strong>ĐƠN VỊ ĐỨNG TÊN HỢP QUY: CÔNG TY CP ĐẦU TƯ PHÁT TRIỂN CÔNG NGHỆ TÂN THANH PHƯƠNG</strong><br/>
+      MST: <strong>2800817718</strong> | Trụ sở: Số 28 Cao Thắng, P. Hạc Thành, Tỉnh Thanh Hóa<br/>
+      Cơ sở sản xuất: Số 472 Nguyễn Trãi, P. Phú Sơn, TP. Thanh Hóa, Tỉnh Thanh Hóa
+    </div>
+  </div>
+  <div class="doc-banner-title">PHƯƠNG ÁN CHIẾN LƯỢC, TỐI ƯU CHI PHÍ &amp; LỘ TRÌNH CHỨNG NHẬN / CÔNG BỐ HỢP QUY QCVN</div>
+  <p class="doc-banner-sub">Áp dụng cho sản phẩm <strong>Thiết bị đầu cuối AI hỗ trợ hành chính công VNMAP® AI ONE</strong> theo khung pháp lý mới nhất năm 2026 (<strong>Thông tư 14/2026/TT-BKHCN</strong> &amp; <strong>Thông tư 36/2026/TT-BKHCN</strong>)</p>
+  <table class="meta-grid">
+    <tr>
+      <td class="lbl">Mã phương án</td>
+      <td><strong>PA-QCVN-TTP-2026-V1</strong></td>
+      <td class="lbl">Ngày lập</td>
+      <td><strong>03/11/2026</strong></td>
+    </tr>
+    <tr>
+      <td class="lbl">Sản phẩm / Nhãn hiệu</td>
+      <td><strong>VNMAP AI ONE</strong> (Nhãn hiệu: <strong>VNMAP®</strong>)</td>
+      <td class="lbl">Xuất xứ hàng hóa</td>
+      <td><strong>Sản xuất tại Việt Nam (Tân Thanh Phương)</strong></td>
+    </tr>
+    <tr>
+      <td class="lbl">Căn cứ pháp lý 2026</td>
+      <td colspan="3">Luật số <strong>78/2025/QH15</strong>; Nghị định <strong>22/2026/NĐ-CP</strong> &amp; <strong>37/2026/NĐ-CP</strong>; Thông tư <strong>14/2026/TT-BKHCN</strong> (hiệu lực 25/05/2026) &amp; Thông tư <strong>36/2026/TT-BKHCN</strong> (hiệu lực 01/06/2026)</td>
+    </tr>
+  </table>
+</div>
+
+<div class="sec-title">1. THẨM ĐỊNH 02 CHỨNG CHỈ ISO CỦA TÂN THANH PHƯƠNG &amp; ĐIỂM NÓNG PHÁP LÝ CẦN XỬ LÝ NGAY</div>
+
+<p>Theo <strong>Thông tư số 36/2026/TT-BKHCN</strong> (hiệu lực từ 01/06/2026, thay thế Thông tư 29/2025/TT-BKHCN và bãi bỏ cơ chế cấp mới Phương thức 1 cũ của TT 30/2011/TT-BTTTT), thiết bị CNTT &amp; thu phát vô tuyến sản xuất trong nước áp dụng <strong>Phương thức 3</strong> (<em>Thử nghiệm mẫu điển hình kết hợp đánh giá quá trình sản xuất; Giấy chứng nhận có giá trị tới 05 năm</em>). Theo <strong>Chú thích (13) Thông tư 36/2026/TT-BKHCN</strong> và <strong>Khoản 8 Điều 6 Thông tư 14/2026/TT-BKHCN</strong>, doanh nghiệp được <strong>miễn đánh giá quá trình sản xuất tại xưởng</strong> nếu có chứng chỉ <strong>ISO 9001</strong> còn hiệu lực <strong>ít nhất 06 tháng</strong> và đúng phạm vi, địa điểm sản xuất.</p>
+
+<table class="data-tbl">
+  <thead>
+    <tr>
+      <th style="width:23%">Chứng chỉ hiện có</th>
+      <th style="width:25%">Tổ chức cấp &amp; Thời hạn</th>
+      <th style="width:28%">Phạm vi &amp; Địa điểm ghi trên GCN</th>
+      <th style="width:24%">Kết luận thẩm định Hợp quy (03/11/2026)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>TCVN ISO 9001:2015</strong><br/>Số: <span class="mono">HT 4620/1.23.18</span></td>
+      <td><strong>QUACERT</strong> (JAS-ANZ)<br/>Cấp: 04/07/2023<br/>Hết hạn: <strong>03/07/2026</strong></td>
+      <td>- Đ/c: Số 28 Cao Thắng, P. Điện Biên, TP. Thanh Hóa<br/>- Phạm vi: <em>Sản xuất máy tính bảng; Cung cấp lắp đặt thiết bị điện tử</em></td>
+      <td><span class="badge badge-red">KHÔNG ĐỦ ĐIỀU KIỆN MIỄN</span><br/>1) <strong>Đã hết hạn 04 tháng</strong> (từ 03/07/2026).<br/>2) Chưa ghi xưởng <strong>472 Nguyễn Trãi</strong> và thiếu cụm <em>ki ốt thông minh / thiết bị đọc định danh</em>.</td>
+    </tr>
+    <tr>
+      <td><strong>ISO/IEC 27001:2022</strong><br/>Số: <span class="mono">17232257/TQC.25.2916</span></td>
+      <td><strong>TQC CGLOBAL</strong> (BOA / IAF)<br/>Cấp: 16/04/2025<br/>Hết hạn: <strong>15/04/2028</strong></td>
+      <td>- VP: Số 28 Cao Thắng, TP. Thanh Hóa<br/>- <strong>Xưởng SX: Số 472 Nguyễn Trãi, P. Phú Sơn, TP. Thanh Hóa</strong><br/>- Phạm vi: <em>Sản xuất phần cứng &amp; phần mềm máy tính, ki ốt thông minh, thiết bị đọc định danh, máy tính để bàn...</em></td>
+      <td><span class="badge badge-amber">HỖ TRỢ MẠNH NHƯNG CHƯA ĐỦ</span><br/>Còn hạn dài, đúng y hệt xưởng 472 Nguyễn Trãi &amp; phạm vi Kiosk/AI Box, <strong>nhưng là ISO 27001 (ATTT)</strong>, không thay thế được <strong>ISO 9001 (QLCL)</strong> theo Chú thích (13).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-ok">
+  <strong>GIẢI PHÁP XỬ LÝ CỰC GỌN CHO TÂN THANH PHƯƠNG (03 LỰA CHỌN THỰC CHIẾN):</strong>
+  <ol style="margin-bottom:0">
+    <li><strong>Kiểm tra ngay bản gia hạn ISO 9001 sau tháng 07/2026:</strong> Ảnh ISO 9001 vừa gửi trùng với file <span class="mono">giay_1.png</span> cũ trên website <span class="mono">vnmap.ai</span>. Cần hỏi ngay bộ phận Hành chính/ISO của Tân Thanh Phương xem đã có bản tái chứng nhận <strong>ISO 9001:2015 chu kỳ 2026–2029</strong> (có ghi xưởng 472 Nguyễn Trãi) chưa. Nếu có sẵn &rarr; <strong>Miễn đánh giá xưởng 100% ngay lập tức!</strong></li>
+    <li><strong>Nếu chưa gia hạn ISO 9001 — Phương án Tối ưu nhất (Combo tại TQC CGLOBAL):</strong> Chính <strong>TQC CGLOBAL</strong> (đơn vị đang cấp tờ ISO 27001 số <span class="mono">17232257/TQC.25.2916</span> cho Tân Thanh Phương) đồng thời là <strong>Tổ chức chứng nhận hợp quy ICT được Bộ KH&amp;CN chỉ định (QĐ 1562/QĐ-BKHCN)</strong>! Tân Thanh Phương nộp hồ sơ tại TQC CGLOBAL để cấp bổ sung <strong>ISO 9001:2015</strong> bê nguyên địa chỉ xưởng <span class="mono">472 Nguyễn Trãi</span> &amp; nguyên văn Scope của tờ ISO 27001 (hồ sơ mặt bằng có sẵn tại TQC nên ra giấy cực nhanh, chi phí ghép ưu đãi ~12–15 triệu cho 3 năm), đồng thời hưởng quyền <strong>miễn đánh giá xưởng Phương thức 3 (hiệu lực 5 năm)</strong> cho cả dải sản phẩm Kiosk, AI Box, VeriBOX, Tablet về sau.</li>
+    <li><strong>Nếu cần lấy CNHQ gấp mà không muốn làm lại ISO 9001:</strong> Vẫn nộp <strong>Phương thức 3</strong> bình thường — chuyên gia TQC CGLOBAL / VNTA thực hiện <strong>Đánh giá quá trình sản xuất (Factory Audit 01 ngày)</strong> trực tiếp tại xưởng <span class="mono">472 Nguyễn Trãi, Thanh Hóa</span> (phí đánh giá QTSX chỉ ~5–8 triệu VNĐ, không bắt buộc phải có chứng chỉ ISO 9001).</li>
+  </ol>
+</div>
+
+<div class="sec-title">2. BÓC TÁCH 05 "BẪY ĐỘI CHI PHÍ" TRONG BROCHURE THƯƠNG MẠI VNMAP_ONE_AI.PDF</div>
+
+<p>Đối chiếu cuốn Brochure giới thiệu sản phẩm <span class="mono">VNMAP_ONE_AI.pdf</span> (trang 7–8) với báo giá dịch vụ hợp quy cũ ngày 13/10/2026 (<strong>123.886.800 VNĐ</strong>), có <strong>05 chi tiết câu chữ thương mại</strong> nếu bê nguyên vào Hồ sơ kỹ thuật nộp Phòng Lab sẽ làm đội thêm <strong>45 – 75 triệu VNĐ</strong> và kéo dài thời gian thử nghiệm:</p>
+
+<table class="data-tbl">
+  <thead>
+    <tr>
+      <th style="width:4%">#</th>
+      <th style="width:27%">Chi tiết trong Brochure / Báo giá cũ</th>
+      <th style="width:34%">Hệ quả pháp lý &amp; Chi phí phát sinh</th>
+      <th style="width:35%">Cách chuẩn hóa trong Hồ sơ Kỹ thuật Hợp quy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1</strong></td>
+      <td>Trang 8 Brochure ghi: <em>"Pin Lithium dự phòng tích hợp dung lượng cao"</em></td>
+      <td>Bị bắt buộc đo <strong>QCVN 101:2020/BTTTT</strong> (Điều 2.6 An toàn Pin Lithium): tốn thêm <strong>6 – 10 triệu đ</strong>, phải nộp thêm nhiều cell/pack pin rời để thử phá hủy (đoản mạch, ép, rơi) mất 2–3 tuần.</td>
+      <td><span class="badge badge-green">LOẠI BỎ TRIỆT ĐỂ</span> Khai đúng cấu hình thương mại để bàn/kiosk dùng <strong>Adapter nguồn rời DC 12V (không tích hợp pin Lithium bên trong)</strong>; lưu điện dùng UPS ngoài &rarr; <strong>Miễn 100% QCVN 101</strong>.</td>
+    </tr>
+    <tr>
+      <td><strong>2</strong></td>
+      <td>Báo giá 123,88tr tính gộp cả <strong>3G WCDMA + 4G LTE</strong> (<span class="mono">74,5tr</span> phần RF) và nguy cơ bị áp VoLTE</td>
+      <td>Mạng 2G đã tắt sóng, 3G đang dừng thương mại; nếu khai chung chung "4G LTE" không ghi rõ Data-Only dễ bị áp thêm bài đo thoại VoLTE hoặc 3G thừa, đội <strong>20 – 30 triệu đ</strong>.</td>
+      <td><span class="badge badge-green">TỐI ƯU KÉP</span> <strong>PA1:</strong> Để 4G là USB Dongle phụ kiện cắm ngoài &rarr; <strong>cắt hẳn QCVN 117 &amp; 86 (giảm ~38tr)</strong>. <strong>PA2 (nếu cần ghi 4G lên giấy CNHQ):</strong> Khai rõ <strong>LTE Cat.1bis Data-Only (B1/B3/B5/B8), không hỗ trợ 2G/3G/VoLTE</strong>, miễn TRP/TRS theo Chú thích (4) TT 36/2026.</td>
+    </tr>
+    <tr>
+      <td><strong>3</strong></td>
+      <td>Báo giá 123,88tr vẽ thêm mục <em>"Đo thêm cho Bluetooth (RF &amp; EMC): 13.500.000 đ"</em></td>
+      <td>Thu trùng lặp! BLE 2.4GHz nằm chung trong <strong>QCVN 54:2020/BTTTT</strong> với Wi-Fi 2.4GHz và chung EMC <strong>QCVN 112:2017/BTTTT</strong>. Đặc biệt theo <strong>Chú thích (3) TT 36/2026</strong>, Bluetooth EIRP &lt; 60mW (17,78 dBm) không bắt buộc CNHQ riêng.</td>
+      <td><span class="badge badge-green">CẮT GIẢM ~10 TRIỆU</span> Chip <span class="mono">SWT6621S</span> phát BLE &le; 8 dBm (~6,3 mW &ll; 60 mW): miễn đo riêng theo Chú thích (3), hoặc nếu đo gộp chung báo cáo QCVN 54 chỉ chấp nhận phụ phí giờ máy <strong>3 – 3,5 triệu đ</strong>.</td>
+    </tr>
+    <tr>
+      <td><strong>4</strong></td>
+      <td>Trang 8 Brochure ghi tích hợp sẵn <em>"Đầu đọc thẻ gắn chip ISO/IEC 14443A/B (NFC 13.56MHz)"</em></td>
+      <td>Nếu hàn/gắn cố định module NFC 13.56MHz trong vỏ máy: phải đo thêm <strong>QCVN 55:2023/BTTTT</strong> (đã bỏ điều kiện khắc nghiệt từ 01/07/2025) + <strong>QCVN 96:2015/BTTTT</strong> (~8 – 11 triệu đ).</td>
+      <td><span class="badge badge-blue">LINH HOẠT THEO MẪU ĐO</span> Nếu nộp mẫu khối xử lý trung tâm AI Box (đầu đọc CCCD rời cổng USB) &rarr; <strong>không phải đo QCVN 55/96</strong>. Nếu nộp nguyên cụm All-in-One gắn sẵn NFC trong thân máy để đi thầu Đề án 06 &rarr; đo luôn QCVN 55 (đk thường) + QCVN 96.</td>
+    </tr>
+    <tr>
+      <td><strong>5</strong></td>
+      <td>Báo giá cũ bỏ sót quy chuẩn Máy tính / Thiết bị xử lý dữ liệu để bàn (<strong>Mã HS 8471.41.90</strong>)</td>
+      <td>Nếu chỉ làm theo mã thu phát vô tuyến mà thiếu <strong>QCVN 118:2018/BTTTT</strong> (EMC thiết bị CNTT) &amp; <strong>QCVN 132:2022/BTTTT</strong> (An toàn điện IEC 62368-1), khi nghiệm thu thầu Kiosk/Máy tính Hành chính công sẽ bị hỏi thiếu quy chuẩn máy tính!</td>
+      <td><span class="badge badge-green">BỔ SUNG ĐÚNG LUẬT</span> Định danh chuẩn là <strong>Thiết bị đầu cuối AI / Máy tính xử lý dữ liệu tích hợp vô tuyến (HS 8471.41.90 — Rủi ro trung bình theo Chú thích 12 TT 36/2026)</strong>, đo bổ sung QCVN 118 + QCVN 132 (đo kèm Adapter 12V theo Chú thích 10, chỉ ~8–9tr cả cặp).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sec-title">3. SO SÁNH 03 GÓI PHƯƠNG ÁN CẤU HÌNH &amp; DỰ TOÁN NGÂN SÁCH HỢP QUY</div>
+
+<p>Tùy theo mục tiêu hồ sơ thầu của <strong>Tân Thanh Phương</strong> (cần tối ưu chi phí nhanh gọn hay cần ghi đầy đủ cả chữ <em>4G LTE + NFC 13.56MHz</em> lên Giấy Chứng nhận Hợp quy để tạo lợi thế tuyệt đối khi đấu thầu Trung tâm Phục vụ Hành chính công), dưới đây là <strong>03 phương án cấu hình chuẩn</strong>:</p>
+
+<table class="data-tbl">
+  <thead>
+    <tr>
+      <th style="width:20%">Tiêu chí đối sánh</th>
+      <th style="width:27%">PHƯƠNG ÁN 1 (KHUYẾN NGHỊ TỐI ƯU CHI PHÍ)<br/><em>Bản LAN + Wi-Fi 2.4G/5G + BLE (4G/CCCD cắm USB rời)</em></th>
+      <th style="width:28%">PHƯƠNG ÁN 2 (FULL VŨ KHÍ ĐẤU THẦU)<br/><em>Bản All-in-One: LAN + Wi-Fi 2.4G/5G + BLE + 4G LTE Cat.1 + NFC 13.56MHz</em></th>
+      <th style="width:25%">BÁO GIÁ DỊCH VỤ CŨ (13/10/2026)<br/><em>Chưa tối ưu cấu hình &amp; bị tính trùng phí</em></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Cấu hình phần cứng mẫu đem đi đo (EUT)</strong></td>
+      <td>Khối xử lý trung tâm <strong>VNMAP AI ONE</strong> (<span class="mono">RK3528/RK3518 + SWT6621S</span>), LAN RJ45, Wi-Fi 2.4G/5G, BLE &lt;60mW, Adapter DC 12V (<strong>Không Pin, không gắn SIM 4G trong vỏ</strong>).</td>
+      <td>Trọn cụm để bàn <strong>VNMAP AI ONE</strong> tích hợp sẵn 2 màn hình cảm ứng, Wi-Fi 2.4G/5G, BLE, <strong>Module 4G LTE Cat.1bis Data-Only</strong> (<span class="mono">A7680C</span>) &amp; <strong>Đầu đọc NFC 13.56MHz</strong>, Adapter DC 12V (<strong>Không Pin</strong>).</td>
+      <td>Bị gộp cả 3G + 4G + thu riêng phí Bluetooth 13,5tr; chưa có QCVN 118/132 cho máy tính Kiosk; nếu nộp kèm Brochure có Pin sẽ đội thêm QCVN 101.</td>
+    </tr>
+    <tr>
+      <td><strong>Danh mục QCVN đo kiểm &amp; đánh giá bắt buộc</strong></td>
+      <td>
+        1. <strong>QCVN 54:2020/BTTTT</strong> (Wi-Fi 2.4G / BLE)<br/>
+        2. <strong>QCVN 65:2021/BTTTT</strong> (Wi-Fi 5G)<br/>
+        3. <strong>QCVN 112:2017/BTTTT</strong> (EMC vô tuyến)<br/>
+        4. <strong>QCVN 118:2018/BTTTT</strong> (EMC CNTT)<br/>
+        5. <strong>QCVN 132:2022/BTTTT</strong> (An toàn điện IEC 62368-1 kèm Adapter 12V)
+      </td>
+      <td>
+        Gồm đủ 05 QCVN của Phương án 1, <strong>cộng thêm</strong>:<br/>
+        6. <strong>QCVN 117:2023/BTTTT</strong> (chỉ đo 4G LTE Data-only B1/B3/B5/B8, bỏ 2G/3G/VoLTE)<br/>
+        7. <strong>QCVN 86:2019/BTTTT</strong> (hoặc 86:2025 - EMC LTE)<br/>
+        8. <strong>QCVN 55:2023/BTTTT</strong> (NFC 13.56MHz đk thường) + <strong>QCVN 96:2015/BTTTT</strong>
+      </td>
+      <td>
+        - QCVN 54/65/112/117/86 (kèm 3G thừa)<br/>
+        - Phụ thu Bluetooth vô lý 13,5tr<br/>
+        - Thiếu QCVN 118, 132, 55, 96
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Số lượng mẫu cần chuẩn bị</strong></td>
+      <td><strong>02 mẫu</strong> hoàn chỉnh (01 mẫu dẫn sóng RF SMA hàn sẵn hoặc đo bức xạ + 01 mẫu thương mại nguyên chiếc đo EMC &amp; An toàn điện QCVN 132) + 02 Adapter 12V.</td>
+      <td><strong>02 mẫu</strong> hoàn chỉnh (01 mẫu hàn sẵn pigtail SMA cho Wi-Fi &amp; 4G LTE + 01 mẫu thương mại nguyên chiếc kèm 2 Adapter 12V).</td>
+      <td>02 – 03 mẫu (+ 05–08 mẫu pin rời nếu vướng QCVN 101).</td>
+    </tr>
+    <tr>
+      <td><strong>Phí đo kiểm Lab dự kiến (VNTA / Quatest 1)</strong></td>
+      <td><strong>~28.000.000 – 34.000.000 đ</strong><br/><em>(Nếu gắn thêm NFC 13.56MHz trong vỏ: cộng ~8–10tr cho QCVN 55 + 96)</em></td>
+      <td><strong>~58.000.000 – 68.000.000 đ</strong><br/><em>(Làm việc trực tiếp phòng Lab chỉ định, không qua cò trung gian kê giá)</em></td>
+      <td>94.500.000 đ (chưa VAT)</td>
+    </tr>
+    <tr>
+      <td><strong>Phí CNHQ Phương thức 3 (TQC / VNTA) + Hồ sơ CBHQ</strong></td>
+      <td><strong>~10.000.000 – 15.000.000 đ</strong><br/><em>(Chưa gồm phí cấp mới ISO 9001 nếu Tân Thanh Phương chưa gia hạn)</em></td>
+      <td><strong>~12.000.000 – 16.000.000 đ</strong><br/><em>(Hiệu lực Giấy CNHQ kiểu loại tới 03–05 năm)</em></td>
+      <td>20.210.000 đ (chưa VAT)</td>
+    </tr>
+    <tr>
+      <td><strong>TỔNG NGÂN SÁCH DỰ KIẾN (GỒM VAT)</strong></td>
+      <td><strong style="color:#15803d;font-size:10pt">~41.000.000 – 53.000.000 VNĐ</strong><br/><span class="badge badge-green">Tiết kiệm ~70 – 82 triệu VNĐ</span></td>
+      <td><strong style="color:#0369a1;font-size:10pt">~75.600.000 – 90.000.000 VNĐ</strong><br/><span class="badge badge-blue">Đủ cả 4G + NFC, vẫn rẻ hơn ~35–48tr</span></td>
+      <td><strong style="color:#b91c1c;font-size:10pt">123.886.800 VNĐ</strong><br/><span class="badge badge-red">Đắt &amp; thiếu QCVN máy tính</span></td>
+    </tr>
+    <tr>
+      <td><strong>Thời gian hoàn thành</strong></td>
+      <td><strong>15 – 20 ngày làm việc</strong></td>
+      <td><strong>20 – 25 ngày làm việc</strong></td>
+      <td>25 – 35 ngày làm việc</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-info">
+  <strong>MẸO PHÁP LÝ QUAN TRỌNG KHI SOẠN HỒ SƠ (ĐIỂM a KHOẢN 5 ĐIỀU 86 NĐ 37/2026 &amp; KHOẢN 7 ĐIỀU 14 TT 14/2026):</strong><br/>
+  Trên <strong>Bản đăng ký công bố hợp quy (Mẫu Phụ lục IV)</strong>, phần mô tả đặc tính kỹ thuật chỉ kê khai <strong>cấu hình vi xử lý, dải tần/công suất thu phát vô tuyến và thông số nguồn điện DC 12V</strong>; <strong>KHÔNG ghi cứng kích thước vỏ cơ khí (mm) và khối lượng tịnh (kg)</strong> vào Bản công bố. Theo hướng dẫn chính thức của Bộ KH&amp;CN ngày 14/10/2026, cách ghi này giúp Tân Thanh Phương thay đổi quy cách đóng gói cơ khí bên ngoài (mẫu để bàn gọn hoặc mẫu tích hợp chân quầy) mà không bị coi là thay đổi nội dung Bản công bố phải đi công bố lại, miễn giữ nguyên bo mạch, module vô tuyến và nguồn cấp!
+</div>
+
+<div class="sec-title">4. LỘ TRÌNH 05 BƯỚC TRIỂN KHAI THỰC TẾ CHO TÂN THANH PHƯƠNG &amp; INUT</div>
+
+<table class="data-tbl">
+  <thead>
+    <tr>
+      <th style="width:11%">Bước / Mốc</th>
+      <th style="width:24%">Đầu việc cụ thể</th>
+      <th style="width:22%">Đơn vị phụ trách</th>
+      <th style="width:43%">Đầu ra &amp; Hồ sơ sử dụng ngay</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Bước 1</strong><br/><em>Ngày 1–2</em></td>
+      <td>Chốt Cấu hình Mẫu đo (PA1 hoặc PA2) &amp; Xác nhận tình trạng tờ <strong>ISO 9001:2015</strong></td>
+      <td>BGĐ Tân Thanh Phương &amp; Kỹ thuật iNut</td>
+      <td>- Xác nhận xem Tân Thanh Phương đã có ISO 9001 chu kỳ 2026–2029 chưa; nếu chưa thì đăng ký ghép cấp ISO 9001 tại <strong>TQC CGLOBAL</strong> (dựa trên hồ sơ ISO 27001 số <span class="mono">17232257/TQC.25.2916</span> tại xưởng <span class="mono">472 Nguyễn Trãi</span>).<br/>- Chốt PA1 (không 4G trong vỏ, ~45tr) hay PA2 (Full 4G + NFC trong vỏ, ~80tr).</td>
+    </tr>
+    <tr>
+      <td><strong>Bước 2</strong><br/><em>Ngày 2–4</em></td>
+      <td>Chuẩn bị <strong>02 mẫu phần cứng EUT</strong> + Nạp sẵn cổng điều khiển đo kiểm <span class="mono">:85</span></td>
+      <td>Đội R&amp;D Phần cứng iNut</td>
+      <td>- <strong>Mẫu #01 (Conducted RF):</strong> Đấu sẵn đầu SMA ra từ chân anten Wi-Fi/BLE (<span class="mono">SWT6621S</span>) và LTE (<span class="mono">A7680C</span> nếu chọn PA2), nạp sẵn Web UI đo kiểm <span class="mono">http://192.168.10.1:85</span>.<br/>- <strong>Mẫu #02 (Radiated EMC &amp; Safety):</strong> Nguyên chiếc thương mại dán sẵn <strong>Nhãn gốc VNMAP® AI ONE</strong> của Tân Thanh Phương + Adapter DC 12V đạt chuẩn IEC 62368-1.</td>
+    </tr>
+    <tr>
+      <td><strong>Bước 3</strong><br/><em>Ngày 5–16</em></td>
+      <td>Gửi mẫu thử nghiệm trực tiếp tại <strong>Phòng Lab chỉ định</strong> (VNTA Lab / Quatest 1)</td>
+      <td>Tân Thanh Phương đứng tên Hợp đồng đo; Kỹ thuật iNut hỗ trợ Lab</td>
+      <td>- Gửi kèm cuốn <strong>Hồ sơ Kỹ thuật &amp; Hướng dẫn Đo kiểm Phòng Lab</strong> (Tài liệu số 2 đính kèm, đã soạn sẵn 100% đứng tên Tân Thanh Phương).<br/>- Nhận bộ <strong>Phiếu kết quả thử nghiệm (Test Reports)</strong> chính thức mang tên <em>Công ty CP Đầu tư Phát triển Công nghệ Tân Thanh Phương</em>.</td>
+    </tr>
+    <tr>
+      <td><strong>Bước 4</strong><br/><em>Ngày 17–21</em></td>
+      <td>Chứng nhận Hợp quy <strong>Phương thức 3</strong> &amp; Miễn/Kết hợp đánh giá xưởng 472 Nguyễn Trãi</td>
+      <td><strong>TQC CGLOBAL</strong> hoặc <strong>TT KĐ&amp;CN Cục Viễn thông</strong></td>
+      <td>- Nộp Đơn đề nghị CNHQ Phương thức 3 + Phiếu đo Lab + Chứng chỉ ISO 9001 (hoặc biên bản đánh giá QTSX tại xưởng 472 Nguyễn Trãi).<br/>- Nhận <strong>Giấy Chứng nhận Hợp quy</strong> cho kiểu loại <strong>VNMAP AI ONE</strong>.</td>
+    </tr>
+    <tr>
+      <td><strong>Bước 5</strong><br/><em>Ngày 22–25</em></td>
+      <td>Đăng ký <strong>Công bố Hợp quy</strong> (Phụ lục IV &amp; V TT 14/2026) &amp; Dán dấu <strong>CR</strong> lưu thông</td>
+      <td>Tân Thanh Phương ký số nộp trên Cổng CSDL Quốc gia TCĐLCL</td>
+      <td>- Ký số <strong>Bản đăng ký công bố hợp quy (Phụ lục IV)</strong> + <strong>Báo cáo tự đánh giá (Phụ lục V)</strong> đã soạn sẵn ở Tài liệu số 2.<br/>- Nhận Thông báo tiếp nhận CBHQ, in chính thức <strong>Dấu hợp quy CR</strong> lên tem máy <strong>VNMAP® AI ONE</strong> để bàn giao &amp; nghiệm thu dự án!</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warn">
+  <strong>KỊCH BẢN ĐÀM PHÁN ÉP GIÁ PHÒNG LAB / ĐƠN VỊ DỊCH VỤ (NẾU DÙNG ĐỐI TÁC DỊCH VỤ):</strong><br/>
+  <em>"Bên anh (Công ty CP Đầu tư Phát triển Công nghệ Tân Thanh Phương — Nhà sản xuất trong nước tại xưởng 472 Nguyễn Trãi, Thanh Hóa) đã chuẩn bị sẵn đầy đủ 02 mẫu Conducted/Radiated kèm giao diện Web phát test mode cố định từng kênh Wi-Fi 2.4G/5G/BLE và hồ sơ kỹ thuật theo Thông tư 14/2026 &amp; 36/2026/TT-BKHCN. Máy dùng nguồn Adapter DC 12V không pin Lithium nên miễn QCVN 101; phần BLE công suất &lt; 8 dBm (&lt; 60 mW) nằm trong Chú thích (3) TT 36/2026 và chung băng 2.4GHz QCVN 54 nên không tính tách riêng 13,5 triệu; phần 4G (nếu đo) chỉ khóa đúng 4 băng LTE Cat.1 Data-Only B1/B3/B5/B8 không 2G/3G/VoLTE. Đề nghị báo giá sát phí niêm yết phòng Lab theo đúng danh mục QCVN đã chốt."</em>
+</div>
+
+</body>
+</html>

@@ -165,6 +165,13 @@ def fetch_customs_barcode_pdf(
                 time.sleep(0.5)
                 continue
 
+            status_el = ketqua.find("span", {"id": "lbl_TrangThaiToKhai"})
+            trang_thai_tk = status_el.text.strip() if status_el else ""
+            grid_el = ketqua.find("table", {"class": "GridView"})
+            if not trang_thai_tk and not grid_el:
+                raise CustomsBarcodeError(
+                    f"Tờ khai {so_to_khai} chưa được cấp phép thông quan / qua KVGS trên pus1.customs.gov.vn (Trạng thái tờ khai đang trống, chưa có bảng kê kiện hàng)."
+                )
             # Xoa nut "Trang de in" khoi noi dung in
             lbl_banin = ketqua.find("label", {"id": "lbl_BanIn"})
             if lbl_banin:
@@ -238,6 +245,7 @@ img {{
                 "so_to_khai": so_to_khai,
                 "ma_hq": ma_hq,
                 "ngay_to_khai": ngay_to_khai,
+                "trang_thai_to_khai": trang_thai_tk,
                 "status": "success",
                 "attempt": attempt,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
