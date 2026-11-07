@@ -1242,11 +1242,26 @@ def main() -> None:
     (BASE_DIR / "04-bao-cao-usage.html").write_text(html_usage, encoding="utf-8")
     pdf_file_02 = BASE_DIR / "File-02-Ky-Ngay-30-11-2026-Bao-Cao-Usage-Va-Bien-Ban-Nghiem-Thu-Thang-11-2026-LIO-INUT.pdf"
     weasyprint.HTML(string=html_usage, base_url=str(BASE_DIR)).write_pdf(str(pdf_file_02))
+    # 6. Gom Phụ lục 01 + Báo cáo Usage thành file 03 (02 trang) & Gom trọn bộ 06 trang vào file 00
+    pdf_03_pair = BASE_DIR / "03-Phu-Luc-01-Thang-11-2026-Va-Mau-Bao-Cao-Usage-API-LIO-INUT.pdf"
+    w03 = pypdf.PdfWriter()
+    for src_pdf in (pdf_appendix, pdf_file_02):
+        for page in pypdf.PdfReader(str(src_pdf)).pages:
+            w03.add_page(page)
+    with open(pdf_03_pair, "wb") as f_out:
+        w03.write(f_out)
 
-    for p in (pdf_file_01, pdf_file_02, pdf_quote, pdf_contract, pdf_appendix):
+    pdf_combined = BASE_DIR / "00-Tron-Bo-Ho-So-Hop-Dong-Bao-Gia-Phu-Luc-Usage-API-AI-9Router-LIO-INUT-2026.pdf"
+    w00 = pypdf.PdfWriter()
+    for src_pdf in (pdf_quote, pdf_contract, pdf_appendix, pdf_file_02):
+        for page in pypdf.PdfReader(str(src_pdf)).pages:
+            w00.add_page(page)
+    with open(pdf_combined, "wb") as f_out:
+        w00.write(f_out)
+
+    for p in (pdf_combined, pdf_file_01, pdf_file_02, pdf_quote, pdf_contract, pdf_appendix, pdf_03_pair):
         r = pypdf.PdfReader(str(p))
         print(f"Generated: {p.name} ({p.stat().st_size:,} bytes | {len(r.pages)} pages)")
-
 
 if __name__ == "__main__":
     main()
