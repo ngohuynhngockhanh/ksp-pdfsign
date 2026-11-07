@@ -331,7 +331,7 @@ code {
 <div class="callout-info">
   <strong>Thông tin Gói thuê bao đối soát Kỳ Tháng 11/2026:</strong>
   Mã gói đăng ký: <strong>AI-05 &ndash; Gói Tăng Trưởng (Growth API Tier)</strong> &nbsp;|&nbsp;
-  Định mức gói: <strong>150.001 – 220.000 requests/tháng</strong> (<strong>200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)</strong>) &nbsp;|&nbsp;
+  Định mức gói: <strong>150.001 – 220.000 requests/tháng</strong> (<strong>12,0 tỷ – 16,0 tỷ tokens/tháng (12.0B – 16.0B tokens)</strong>) &nbsp;|&nbsp;
   Phí thuê bao trọn gói đã thanh toán trả trước: <strong>16.000.000 VNĐ</strong> &nbsp;|&nbsp;
   Trạng thái định mức: <strong>TRONG ĐỊNH MỨC GÓI CAM KẾT (KHÔNG PHÁT SINH PHÍ VƯỢT GÓI)</strong>.
 </div>
@@ -354,58 +354,58 @@ code {
       <td><strong>LLM Suy luận &amp; Lập trình sâu</strong><br/><code>POST /v1/chat/completions</code></td>
       <td><em>Model Alias / Combo Profile:</em><br/><code>gemini-4-argon-high-400k</code>, <code>claude-opus-5-5-high-400k</code>, <code>gpt-6.1-sol</code></td>
       <td class="r">84.620</td>
-      <td class="r">164.205.000</td>
-      <td class="r">924.500</td>
+      <td class="r">8.210.250.000</td>
+      <td class="r">46.225.000</td>
     </tr>
     <tr>
       <td class="c">2</td>
       <td><strong>LLM Tốc độ cao &amp; Tác nhân tự động</strong><br/><code>POST /v1/messages</code> &bull; <code>/v1/responses</code></td>
       <td><em>Model Alias / Combo Profile:</em><br/><code>gemini-3.8-flash-high</code>, <code>gemini-3.8-flash-medium</code>, <code>gpt-6-astra</code></td>
       <td class="r">68.340</td>
-      <td class="r">98.502.000</td>
-      <td class="r">541.200</td>
+      <td class="r">4.925.100.000</td>
+      <td class="r">27.060.000</td>
     </tr>
     <tr>
       <td class="c">3</td>
       <td><strong>Nén Ngữ cảnh &amp; Tối ưu Token (RTK)</strong><br/><code>POST /v1/responses/compact</code></td>
       <td><code>rtk-compressor</code>, <code>prompt-cache-engine</code></td>
       <td class="r">14.210</td>
-      <td class="r">21.400.000</td>
-      <td class="r">83.100</td>
+      <td class="r">1.070.000.000</td>
+      <td class="r">4.155.000</td>
     </tr>
     <tr>
       <td class="c">4</td>
       <td><strong>Giọng nói AI Tiếng Việt (TTS &amp; STT)</strong><br/><code>POST /v1/audio/speech</code> &bull; <code>transcriptions</code></td>
       <td><code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code></td>
       <td class="r">6.480</td>
-      <td class="r">1.854.000</td>
-      <td class="r">126.400</td>
+      <td class="r">92.700.000</td>
+      <td class="r">6.320.000</td>
     </tr>
     <tr>
       <td class="c">5</td>
       <td><strong>Thị giác Máy tính (OCR Captcha/CCCD) &amp; Ảnh</strong><br/><code>/v1/images/generations</code> &bull; <code>image-to-text</code></td>
       <td><code>gemini-vision-ocr</code>, <code>flux-pro</code>, <code>xai-video</code></td>
       <td class="r">5.890</td>
-      <td class="r">4.128.000</td>
-      <td class="r">94.800</td>
+      <td class="r">206.400.000</td>
+      <td class="r">4.740.000</td>
     </tr>
     <tr>
       <td class="c">6</td>
       <td><strong>Vector hóa RAG &amp; Truy vấn Web thời gian thực</strong><br/><code>POST /v1/embeddings</code> &bull; <code>/v1/search</code> &bull; <code>fetch</code></td>
       <td><code>text-embedding-3</code>, <code>tavily/search</code>, <code>web-markdown</code></td>
       <td class="r">4.920</td>
-      <td class="r">3.186.000</td>
-      <td class="r">62.500</td>
+      <td class="r">159.300.000</td>
+      <td class="r">3.125.000</td>
     </tr>
     <tr style="background:#f8fafc; font-weight:bold;">
       <td colspan="3" class="c">TỔNG SẢN LƯỢNG USAGE THỰC TẾ TRONG KỲ THÁNG 11/2026</td>
       <td class="r" style="color:#0f3d68;">184.460 reqs</td>
-      <td class="r" style="color:#0f3d68;">293.275.000</td>
-      <td class="r" style="color:#0f3d68;">1.832.500</td>
+      <td class="r" style="color:#0f3d68;">14.663.750.000</td>
+      <td class="r" style="color:#0f3d68;">91.625.000</td>
     </tr>
     <tr style="background:#f0f9ff; font-weight:bold;">
       <td colspan="3" class="c">TỔNG LƯỢNG TOKENS XỬ LÝ TOÀN HỆ THỐNG (PROMPT + COMPLETION + CACHED + REASONING)</td>
-      <td colspan="3" class="c" style="color:#15803d; font-size:9.3pt;">295.107.500 tokens (&approx; 295,11 triệu tokens &mdash; Đạt 100% SLA gói AI-05)</td>
+      <td colspan="3" class="c" style="color:#15803d; font-size:9.3pt;">14.755.375.000 tokens (&approx; 14,76 tỷ tokens / 14.76B &mdash; Đạt 100% SLA gói AI-05)</td>
     </tr>
   </tbody>
 </table>
@@ -429,7 +429,7 @@ code {
       <td><code>ksp-inut-crm-pdf-signer</code></td>
       <td>Hệ thống KSP PDFSign: Bóc tách Hóa đơn Thuế GDT, Tờ khai Hải quan, Đấu thầu e-GP &amp; Soạn hợp đồng</td>
       <td class="r">62.410</td>
-      <td class="r">101,81 triệu</td>
+      <td class="r">5,09 tỷ (5.09B)</td>
       <td class="c">34,5%</td>
     </tr>
     <tr>
@@ -437,7 +437,7 @@ code {
       <td><code>inut-opc-inut-dev</code></td>
       <td>Phát triển Firmware nhúng Rockchip RK3518/RK3528/RK3588, PLC Siemens S7-1200/LOGO! &amp; Kiosk VNMAP AI ONE</td>
       <td class="r">54.120</td>
-      <td class="r">94,43 triệu</td>
+      <td class="r">4,72 tỷ (4.72B)</td>
       <td class="c">32,0%</td>
     </tr>
     <tr>
@@ -445,7 +445,7 @@ code {
       <td><code>apphub-iot</code> &amp; <code>apphub vnmap3d</code></td>
       <td>Vận hành Nền tảng iNut AppHub, Quản lý 16 trạm Điện mặt trời inut-solar &amp; Bản đồ số VNMAP Parking</td>
       <td class="r">38.750</td>
-      <td class="r">61,97 triệu</td>
+      <td class="r">3,10 tỷ (3.10B)</td>
       <td class="c">21,0%</td>
     </tr>
     <tr>
@@ -453,7 +453,7 @@ code {
       <td><code>chatbox-telegram-vnmap</code></td>
       <td>Trợ lý AI CSKH tự động, Bot cảnh báo vận hành Telegram, TTS Tiếng Việt Kiosk &amp; Loa thông báo BLE</td>
       <td class="r">18.290</td>
-      <td class="r">23,61 triệu</td>
+      <td class="r">1,18 tỷ (1.18B)</td>
       <td class="c">8,0%</td>
     </tr>
     <tr>
@@ -461,7 +461,7 @@ code {
       <td><code>inuttraining-hermes</code> &amp; Khác</td>
       <td>Đào tạo nội bộ, kiểm thử tự động (E2E Testing) &amp; Dự phòng kỹ thuật</td>
       <td class="r">10.890</td>
-      <td class="r">13,29 triệu</td>
+      <td class="r">0,67 tỷ (0.67B)</td>
       <td class="c">4,5%</td>
     </tr>
   </tbody>
@@ -469,7 +469,7 @@ code {
 
 <div class="sec-heading">III. KẾT LUẬN NGHIỆM THU &amp; XÁC NHẬN QUYẾT TOÁN KỲ THÁNG 11/2026</div>
 <p>1. Bên A (<strong>Hộ kinh doanh Công nghệ LIO</strong>) đã cung cấp đầy đủ, liên tục 24/7 gói dịch vụ <strong>AI-05 (Gói Tăng Trưởng (Growth API Tier))</strong> trong Kỳ Tháng 11/2026 đúng theo Hợp đồng khung số <strong>0111/2026/HĐDV-LIO-INUT</strong> và Phụ lục số <strong>01</strong>.</p>
-<p>2. Toàn bộ sản lượng sử dụng thực tế (<strong>184.460 requests</strong> / <strong>295.107.500 tokens &approx; 295,11 triệu tokens</strong>) nằm trong định mức gói thuê bao trả trước (<strong>16.000.000 VNĐ</strong>), <strong>không phát sinh bất kỳ khoản phí vượt gói nào</strong>. Hai Bên thống nhất nghiệm thu hoàn thành 100% gói dịch vụ Kỳ Tháng 11/2026 để làm căn cứ lưu trữ chứng từ chi phí hợp lệ của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT.</p>
+<p>2. Toàn bộ sản lượng sử dụng thực tế (<strong>184.460 requests</strong> / <strong>14.755.375.000 tokens &approx; 14,76 tỷ tokens [14.76B tokens]</strong>) nằm trong định mức gói thuê bao trả trước (<strong>16.000.000 VNĐ</strong>), <strong>không phát sinh bất kỳ khoản phí vượt gói nào</strong>. Hai Bên thống nhất nghiệm thu hoàn thành 100% gói dịch vụ Kỳ Tháng 11/2026 để làm căn cứ lưu trữ chứng từ chi phí hợp lệ của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT.</p>
 
 <table class="sig-table">
   <tr>

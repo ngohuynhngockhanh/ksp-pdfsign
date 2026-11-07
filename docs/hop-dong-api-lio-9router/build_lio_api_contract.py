@@ -473,7 +473,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-01</strong><br/><em>(Bậc 1)</em></td>
       <td><strong>Gói Cơ Bản</strong><br/><em>(Starter API Tier)</em></td>
       <td class="c">Đến <strong>30.000</strong><br/>requests/tháng</td>
-      <td class="c">Đến <strong>30 triệu</strong> tokens<br/>(<code>&le; 30M tokens</code>)</td>
+      <td class="c">Đến <strong>3,0 tỷ</strong> tokens<br/>(<code>&le; 3.0B tokens</code>)</td>
       <td>Tối đa 05 API Keys &bull; LLM Chat/Code cơ bản, Embeddings, TTS/STT tiêu chuẩn</td>
       <td class="r"><strong>3.000.000 đ</strong></td>
     </tr>
@@ -481,7 +481,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-02</strong><br/><em>(Bậc 2)</em></td>
       <td><strong>Gói Tiêu Chuẩn</strong><br/><em>(Standard API Tier)</em></td>
       <td class="c"><strong>30.001 &ndash; 60.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>30 triệu &ndash; 60 triệu</strong> tokens<br/>(<code>30M &ndash; 60M tokens</code>)</td>
+      <td class="c"><strong>3,0 tỷ &ndash; 5,0 tỷ</strong> tokens<br/>(<code>3.0B &ndash; 5.0B tokens</code>)</td>
       <td>Tối đa 10 API Keys &bull; Mở khóa Vision OCR, Web Search/Fetch, RTK Token Saver</td>
       <td class="r"><strong>5.000.000 đ</strong></td>
     </tr>
@@ -489,7 +489,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-03</strong><br/><em>(Bậc 3)</em></td>
       <td><strong>Gói Nghiệp Vụ</strong><br/><em>(Business API Tier)</em></td>
       <td class="c"><strong>60.001 &ndash; 100.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>60 triệu &ndash; 120 triệu</strong> tokens<br/>(<code>60M &ndash; 120M tokens</code>)</td>
+      <td class="c"><strong>5,0 tỷ &ndash; 8,0 tỷ</strong> tokens<br/>(<code>5.0B &ndash; 8.0B tokens</code>)</td>
       <td>Tối đa 15 API Keys &bull; Mở khóa Fusion Combo Auto-Fallback &amp; Reasoning <code>high</code></td>
       <td class="r"><strong>8.000.000 đ</strong></td>
     </tr>
@@ -497,7 +497,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-04</strong><br/><em>(Bậc 4)</em></td>
       <td><strong>Gói Chuyên Nghiệp</strong><br/><em>(Pro API Tier)</em></td>
       <td class="c"><strong>100.001 &ndash; 150.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>120 triệu &ndash; 200 triệu</strong> tokens<br/>(<code>120M &ndash; 200M tokens</code>)</td>
+      <td class="c"><strong>8,0 tỷ &ndash; 12,0 tỷ</strong> tokens<br/>(<code>8.0B &ndash; 12.0B tokens</code>)</td>
       <td>Tối đa 20 API Keys &bull; Reasoning <code>xhigh</code>, Image Gen, Smart Proxy Pools dự phòng</td>
       <td class="r"><strong>12.000.000 đ</strong></td>
     </tr>
@@ -505,7 +505,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-05</strong><br/><em>(Bậc 5)</em></td>
       <td><strong>Gói Tăng Trưởng</strong><br/><em>(Growth API Tier)</em></td>
       <td class="c"><strong>150.001 &ndash; 220.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>200 triệu &ndash; 350 triệu</strong> tokens<br/>(<code>200M &ndash; 350M tokens</code>)</td>
+      <td class="c"><strong>12,0 tỷ &ndash; 16,0 tỷ</strong> tokens<br/>(<code>12.0B &ndash; 16.0B tokens</code>)</td>
       <td>Tối đa 25 API Keys &bull; Ưu tiên tốc độ <code>Fast Priority 1.5x</code>, Đa tác nhân Multi-Agent</td>
       <td class="r"><strong>16.000.000 đ</strong></td>
     </tr>
@@ -513,7 +513,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-06</strong><br/><em>(Bậc 6)</em></td>
       <td><strong>Gói Doanh Nghiệp I</strong><br/><em>(Enterprise I Tier)</em></td>
       <td class="c"><strong>220.001 &ndash; 300.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>350 triệu &ndash; 500 triệu</strong> tokens<br/>(<code>350M &ndash; 500M tokens</code>)</td>
+      <td class="c"><strong>16,0 tỷ &ndash; 20,0 tỷ</strong> tokens<br/>(<code>16.0B &ndash; 20.0B tokens</code>)</td>
       <td>Tối đa 35 API Keys &bull; Trọn bộ 07 hạng mục + Video Gen + Ngữ cảnh <code>400K-1M</code></td>
       <td class="r"><strong>20.000.000 đ</strong></td>
     </tr>
@@ -521,7 +521,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-07</strong><br/><em>(Bậc 7)</em></td>
       <td><strong>Gói Doanh Nghiệp II</strong><br/><em>(Enterprise II Tier)</em></td>
       <td class="c"><strong>300.001 &ndash; 380.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>500 triệu &ndash; 650 triệu</strong> tokens<br/>(<code>500M &ndash; 650M tokens</code>)</td>
+      <td class="c"><strong>20,0 tỷ &ndash; 25,0 tỷ</strong> tokens<br/>(<code>20.0B &ndash; 25.0B tokens</code>)</td>
       <td>Tối đa 50 API Keys &bull; Luồng định tuyến ưu tiên riêng (Dedicated Combo &amp; Proxy)</td>
       <td class="r"><strong>25.000.000 đ</strong></td>
     </tr>
@@ -529,7 +529,7 @@ def build_quotation_brief_html() -> str:
       <td class="c"><strong>AI-08</strong><br/><em>(Bậc 8)</em></td>
       <td><strong>Gói Hạ Tầng Toàn Diện</strong><br/><em>(Unlimited Scale Tier)</em></td>
       <td class="c"><strong>380.001 &ndash; 500.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>650 triệu &ndash; 900 triệu</strong> tokens<br/>(<code>650M &ndash; 900M tokens</code>)</td>
+      <td class="c"><strong>25,0 tỷ &ndash; 30,0 tỷ</strong> tokens<br/>(<code>25.0B &ndash; 30.0B tokens</code>)</td>
       <td>Không giới hạn API Keys &bull; Toàn bộ cụm <code>9Router</code> (<code>max/ultra</code> reasoning)</td>
       <td class="r"><strong>30.000.000 đ</strong></td>
     </tr>
@@ -669,7 +669,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-01</strong></td>
       <td><strong>Gói Cơ Bản (Starter)</strong></td>
       <td class="c"><code>0 &ndash; 30.000</code> reqs</td>
-      <td class="c">Đến <code>30 triệu</code> tokens (<code>30M</code>)</td>
+      <td class="c">Đến <code>3,0 tỷ</code> tokens (<code>3.0B</code>)</td>
       <td class="c">Đến 05 keys</td>
       <td class="r"><strong>3.000.000 đ</strong></td>
     </tr>
@@ -677,7 +677,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-02</strong></td>
       <td><strong>Gói Tiêu Chuẩn (Standard)</strong></td>
       <td class="c"><code>30.001 &ndash; 60.000</code> reqs</td>
-      <td class="c"><code>30 triệu &ndash; 60 triệu</code> tokens (<code>30M &ndash; 60M</code>)</td>
+      <td class="c"><code>3,0 tỷ &ndash; 5,0 tỷ</code> tokens (<code>3.0B &ndash; 5.0B</code>)</td>
       <td class="c">Đến 10 keys</td>
       <td class="r"><strong>5.000.000 đ</strong></td>
     </tr>
@@ -685,7 +685,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-03</strong></td>
       <td><strong>Gói Nghiệp Vụ (Business)</strong></td>
       <td class="c"><code>60.001 &ndash; 100.000</code> reqs</td>
-      <td class="c"><code>60 triệu &ndash; 120 triệu</code> tokens (<code>60M &ndash; 120M</code>)</td>
+      <td class="c"><code>5,0 tỷ &ndash; 8,0 tỷ</code> tokens (<code>5.0B &ndash; 8.0B</code>)</td>
       <td class="c">Đến 15 keys</td>
       <td class="r"><strong>8.000.000 đ</strong></td>
     </tr>
@@ -693,7 +693,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-04</strong></td>
       <td><strong>Gói Chuyên Nghiệp (Pro)</strong></td>
       <td class="c"><code>100.001 &ndash; 150.000</code> reqs</td>
-      <td class="c"><code>120 triệu &ndash; 200 triệu</code> tokens (<code>120M &ndash; 200M</code>)</td>
+      <td class="c"><code>8,0 tỷ &ndash; 12,0 tỷ</code> tokens (<code>8.0B &ndash; 12.0B</code>)</td>
       <td class="c">Đến 20 keys</td>
       <td class="r"><strong>12.000.000 đ</strong></td>
     </tr>
@@ -701,7 +701,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-05</strong></td>
       <td><strong>Gói Tăng Trưởng (Growth)</strong></td>
       <td class="c"><code>150.001 &ndash; 220.000</code> reqs</td>
-      <td class="c"><code>200 triệu &ndash; 350 triệu</code> tokens (<code>200M &ndash; 350M</code>)</td>
+      <td class="c"><code>12,0 tỷ &ndash; 16,0 tỷ</code> tokens (<code>12.0B &ndash; 16.0B</code>)</td>
       <td class="c">Đến 25 keys</td>
       <td class="r"><strong>16.000.000 đ</strong></td>
     </tr>
@@ -709,7 +709,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-06</strong></td>
       <td><strong>Gói Doanh Nghiệp I</strong></td>
       <td class="c"><code>220.001 &ndash; 300.000</code> reqs</td>
-      <td class="c"><code>350 triệu &ndash; 500 triệu</code> tokens (<code>350M &ndash; 500M</code>)</td>
+      <td class="c"><code>16,0 tỷ &ndash; 20,0 tỷ</code> tokens (<code>16.0B &ndash; 20.0B</code>)</td>
       <td class="c">Đến 35 keys</td>
       <td class="r"><strong>20.000.000 đ</strong></td>
     </tr>
@@ -717,7 +717,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-07</strong></td>
       <td><strong>Gói Doanh Nghiệp II</strong></td>
       <td class="c"><code>300.001 &ndash; 380.000</code> reqs</td>
-      <td class="c"><code>500 triệu &ndash; 650 triệu</code> tokens (<code>500M &ndash; 650M</code>)</td>
+      <td class="c"><code>20,0 tỷ &ndash; 25,0 tỷ</code> tokens (<code>20.0B &ndash; 25.0B</code>)</td>
       <td class="c">Đến 50 keys</td>
       <td class="r"><strong>25.000.000 đ</strong></td>
     </tr>
@@ -725,7 +725,7 @@ def build_framework_contract_html() -> str:
       <td class="c"><strong>AI-08</strong></td>
       <td><strong>Gói Hạ Tầng Toàn Diện</strong></td>
       <td class="c"><code>380.001 &ndash; 500.000</code> reqs</td>
-      <td class="c"><code>650 triệu &ndash; 900 triệu</code> tokens (<code>650M &ndash; 900M</code>)</td>
+      <td class="c"><code>25,0 tỷ &ndash; 30,0 tỷ</code> tokens (<code>25.0B &ndash; 30.0B</code>)</td>
       <td class="c">Không giới hạn</td>
       <td class="r"><strong>30.000.000 đ</strong></td>
     </tr>
@@ -813,7 +813,7 @@ def build_monthly_appendix_html(
     selected_tier_code: str = "AI-05",
     selected_tier_name: str = "Gói Tăng Trưởng (Growth API Tier)",
     selected_req_quota: str = "150.001 – 220.000 requests/tháng",
-    selected_token_quota: str = "200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)",
+    selected_token_quota: str = "12,0 tỷ – 16,0 tỷ tokens/tháng (12.0B – 16.0B tokens)",
     selected_amount: int = 16_000_000,
     selected_amount_words: str = "Mười sáu triệu đồng chẵn",
 ) -> str:
@@ -928,14 +928,14 @@ def build_monthly_appendix_html(
     </tr>
   </thead>
   <tbody>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-01' else '[  ]'}</td><td class="c"><strong>AI-01</strong></td><td>Gói Cơ Bản (Starter)</td><td class="c">Đến 30.000 requests</td><td class="c">Đến 30 triệu tokens (<code>30M</code>)</td><td class="r">3.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-02' else '[  ]'}</td><td class="c"><strong>AI-02</strong></td><td>Gói Tiêu Chuẩn (Standard)</td><td class="c">30.001 &ndash; 60.000 requests</td><td class="c">30 triệu &ndash; 60 triệu tokens (<code>30M &ndash; 60M</code>)</td><td class="r">5.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-03' else '[  ]'}</td><td class="c"><strong>AI-03</strong></td><td>Gói Nghiệp Vụ (Business)</td><td class="c">60.001 &ndash; 100.000 requests</td><td class="c">60 triệu &ndash; 120 triệu tokens (<code>60M &ndash; 120M</code>)</td><td class="r">8.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-04' else '[  ]'}</td><td class="c"><strong>AI-04</strong></td><td>Gói Chuyên Nghiệp (Pro)</td><td class="c">100.001 &ndash; 150.000 requests</td><td class="c">120 triệu &ndash; 200 triệu tokens (<code>120M &ndash; 200M</code>)</td><td class="r">12.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-05' else '[  ]'}</td><td class="c"><strong>AI-05</strong></td><td>Gói Tăng Trưởng (Growth)</td><td class="c">150.001 &ndash; 220.000 requests</td><td class="c">200 triệu &ndash; 350 triệu tokens (<code>200M &ndash; 350M</code>)</td><td class="r">16.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-06' else '[  ]'}</td><td class="c"><strong>AI-06</strong></td><td>Gói Doanh Nghiệp I</td><td class="c">220.001 &ndash; 300.000 requests</td><td class="c">350 triệu &ndash; 500 triệu tokens (<code>350M &ndash; 500M</code>)</td><td class="r">20.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-07' else '[  ]'}</td><td class="c"><strong>AI-07</strong></td><td>Gói Doanh Nghiệp II</td><td class="c">300.001 &ndash; 380.000 requests</td><td class="c">500 triệu &ndash; 650 triệu tokens (<code>500M &ndash; 650M</code>)</td><td class="r">25.000.000 đ</td></tr>
-    <tr><td class="c">{'[X]' if selected_tier_code=='AI-08' else '[  ]'}</td><td class="c"><strong>AI-08</strong></td><td>Gói Hạ Tầng Toàn Diện</td><td class="c">380.001 &ndash; 500.000 requests</td><td class="c">650 triệu &ndash; 900 triệu tokens (<code>650M &ndash; 900M</code>)</td><td class="r">30.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-01' else '[  ]'}</td><td class="c"><strong>AI-01</strong></td><td>Gói Cơ Bản (Starter)</td><td class="c">Đến 30.000 requests</td><td class="c">Đến 3,0 tỷ tokens (<code>3.0B</code>)</td><td class="r">3.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-02' else '[  ]'}</td><td class="c"><strong>AI-02</strong></td><td>Gói Tiêu Chuẩn (Standard)</td><td class="c">30.001 &ndash; 60.000 requests</td><td class="c">3,0 tỷ &ndash; 5,0 tỷ tokens (<code>3.0B &ndash; 5.0B</code>)</td><td class="r">5.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-03' else '[  ]'}</td><td class="c"><strong>AI-03</strong></td><td>Gói Nghiệp Vụ (Business)</td><td class="c">60.001 &ndash; 100.000 requests</td><td class="c">5,0 tỷ &ndash; 8,0 tỷ tokens (<code>5.0B &ndash; 8.0B</code>)</td><td class="r">8.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-04' else '[  ]'}</td><td class="c"><strong>AI-04</strong></td><td>Gói Chuyên Nghiệp (Pro)</td><td class="c">100.001 &ndash; 150.000 requests</td><td class="c">8,0 tỷ &ndash; 12,0 tỷ tokens (<code>8.0B &ndash; 12.0B</code>)</td><td class="r">12.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-05' else '[  ]'}</td><td class="c"><strong>AI-05</strong></td><td>Gói Tăng Trưởng (Growth)</td><td class="c">150.001 &ndash; 220.000 requests</td><td class="c">12,0 tỷ &ndash; 16,0 tỷ tokens (<code>12.0B &ndash; 16.0B</code>)</td><td class="r">16.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-06' else '[  ]'}</td><td class="c"><strong>AI-06</strong></td><td>Gói Doanh Nghiệp I</td><td class="c">220.001 &ndash; 300.000 requests</td><td class="c">16,0 tỷ &ndash; 20,0 tỷ tokens (<code>16.0B &ndash; 20.0B</code>)</td><td class="r">20.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-07' else '[  ]'}</td><td class="c"><strong>AI-07</strong></td><td>Gói Doanh Nghiệp II</td><td class="c">300.001 &ndash; 380.000 requests</td><td class="c">20,0 tỷ &ndash; 25,0 tỷ tokens (<code>20.0B &ndash; 25.0B</code>)</td><td class="r">25.000.000 đ</td></tr>
+    <tr><td class="c">{'[X]' if selected_tier_code=='AI-08' else '[  ]'}</td><td class="c"><strong>AI-08</strong></td><td>Gói Hạ Tầng Toàn Diện</td><td class="c">380.001 &ndash; 500.000 requests</td><td class="c">25,0 tỷ &ndash; 30,0 tỷ tokens (<code>25.0B &ndash; 30.0B</code>)</td><td class="r">30.000.000 đ</td></tr>
     <tr><td class="c">{'[X]' if selected_tier_code=='AI-FLEX' else '[  ]'}</td><td class="c"><strong>AI-FLEX</strong></td><td>Gói Thỏa Thuận Tháng</td><td colspan="2">Theo hạn mức thỏa thuận riêng tại Mục 1 Phụ lục này</td><td class="r">Theo Mục 1</td></tr>
   </tbody>
 </table>
@@ -977,7 +977,7 @@ def build_monthly_usage_report_html(
     selected_tier_code: str = "AI-05",
     selected_tier_name: str = "Gói Tăng Trưởng (Growth API Tier)",
     selected_req_quota: str = "150.001 – 220.000 requests/tháng",
-    selected_token_quota: str = "200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)",
+    selected_token_quota: str = "12,0 tỷ – 16,0 tỷ tokens/tháng (12.0B – 16.0B tokens)",
     selected_amount: int = 16_000_000,
 ) -> str:
     amount_fmt = f"{selected_amount:,.0f}".replace(",", ".")
@@ -1035,58 +1035,58 @@ def build_monthly_usage_report_html(
       <td><strong>LLM Suy luận &amp; Lập trình sâu</strong><br/><code>POST /v1/chat/completions</code></td>
       <td><em>Model Alias / Combo Profile:</em><br/><code>gemini-4-argon-high-400k</code>, <code>claude-opus-5-5-high-400k</code>, <code>gpt-6.1-sol</code></td>
       <td class="r">84.620</td>
-      <td class="r">164.205.000</td>
-      <td class="r">924.500</td>
+      <td class="r">8.210.250.000</td>
+      <td class="r">46.225.000</td>
     </tr>
     <tr>
       <td class="c">2</td>
       <td><strong>LLM Tốc độ cao &amp; Tác nhân tự động</strong><br/><code>POST /v1/messages</code> &bull; <code>/v1/responses</code></td>
       <td><em>Model Alias / Combo Profile:</em><br/><code>gemini-3.8-flash-high</code>, <code>gemini-3.8-flash-medium</code>, <code>gpt-6-astra</code></td>
       <td class="r">68.340</td>
-      <td class="r">98.502.000</td>
-      <td class="r">541.200</td>
+      <td class="r">4.925.100.000</td>
+      <td class="r">27.060.000</td>
     </tr>
     <tr>
       <td class="c">3</td>
       <td><strong>Nén Ngữ cảnh &amp; Tối ưu Token (RTK)</strong><br/><code>POST /v1/responses/compact</code></td>
       <td><code>rtk-compressor</code>, <code>prompt-cache-engine</code></td>
       <td class="r">14.210</td>
-      <td class="r">21.400.000</td>
-      <td class="r">83.100</td>
+      <td class="r">1.070.000.000</td>
+      <td class="r">4.155.000</td>
     </tr>
     <tr>
       <td class="c">4</td>
       <td><strong>Giọng nói AI Tiếng Việt (TTS &amp; STT)</strong><br/><code>POST /v1/audio/speech</code> &bull; <code>transcriptions</code></td>
       <td><code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code></td>
       <td class="r">6.480</td>
-      <td class="r">1.854.000</td>
-      <td class="r">126.400</td>
+      <td class="r">92.700.000</td>
+      <td class="r">6.320.000</td>
     </tr>
     <tr>
       <td class="c">5</td>
       <td><strong>Thị giác Máy tính (OCR Captcha/CCCD) &amp; Ảnh</strong><br/><code>/v1/images/generations</code> &bull; <code>image-to-text</code></td>
       <td><code>gemini-vision-ocr</code>, <code>flux-pro</code>, <code>xai-video</code></td>
       <td class="r">5.890</td>
-      <td class="r">4.128.000</td>
-      <td class="r">94.800</td>
+      <td class="r">206.400.000</td>
+      <td class="r">4.740.000</td>
     </tr>
     <tr>
       <td class="c">6</td>
       <td><strong>Vector hóa RAG &amp; Truy vấn Web thời gian thực</strong><br/><code>POST /v1/embeddings</code> &bull; <code>/v1/search</code> &bull; <code>fetch</code></td>
       <td><code>text-embedding-3</code>, <code>tavily/search</code>, <code>web-markdown</code></td>
       <td class="r">4.920</td>
-      <td class="r">3.186.000</td>
-      <td class="r">62.500</td>
+      <td class="r">159.300.000</td>
+      <td class="r">3.125.000</td>
     </tr>
     <tr style="background:#f8fafc; font-weight:bold;">
       <td colspan="3" class="c">TỔNG SẢN LƯỢNG USAGE THỰC TẾ TRONG KỲ THÁNG {month_str}</td>
       <td class="r" style="color:#0f3d68;">184.460 reqs</td>
-      <td class="r" style="color:#0f3d68;">293.275.000</td>
-      <td class="r" style="color:#0f3d68;">1.832.500</td>
+      <td class="r" style="color:#0f3d68;">14.663.750.000</td>
+      <td class="r" style="color:#0f3d68;">91.625.000</td>
     </tr>
     <tr style="background:#f0f9ff; font-weight:bold;">
       <td colspan="3" class="c">TỔNG LƯỢNG TOKENS XỬ LÝ TOÀN HỆ THỐNG (PROMPT + COMPLETION + CACHED + REASONING)</td>
-      <td colspan="3" class="c" style="color:#15803d; font-size:9.3pt;">295.107.500 tokens (&approx; 295,11 triệu tokens &mdash; Đạt 100% SLA gói {selected_tier_code})</td>
+      <td colspan="3" class="c" style="color:#15803d; font-size:9.3pt;">14.755.375.000 tokens (&approx; 14,76 tỷ tokens / 14.76B &mdash; Đạt 100% SLA gói {selected_tier_code})</td>
     </tr>
   </tbody>
 </table>
@@ -1110,7 +1110,7 @@ def build_monthly_usage_report_html(
       <td><code>ksp-inut-crm-pdf-signer</code></td>
       <td>Hệ thống KSP PDFSign: Bóc tách Hóa đơn Thuế GDT, Tờ khai Hải quan, Đấu thầu e-GP &amp; Soạn hợp đồng</td>
       <td class="r">62.410</td>
-      <td class="r">101,81 triệu</td>
+      <td class="r">5,09 tỷ (5.09B)</td>
       <td class="c">34,5%</td>
     </tr>
     <tr>
@@ -1118,7 +1118,7 @@ def build_monthly_usage_report_html(
       <td><code>inut-opc-inut-dev</code></td>
       <td>Phát triển Firmware nhúng Rockchip RK3518/RK3528/RK3588, PLC Siemens S7-1200/LOGO! &amp; Kiosk VNMAP AI ONE</td>
       <td class="r">54.120</td>
-      <td class="r">94,43 triệu</td>
+      <td class="r">4,72 tỷ (4.72B)</td>
       <td class="c">32,0%</td>
     </tr>
     <tr>
@@ -1126,7 +1126,7 @@ def build_monthly_usage_report_html(
       <td><code>apphub-iot</code> &amp; <code>apphub vnmap3d</code></td>
       <td>Vận hành Nền tảng iNut AppHub, Quản lý 16 trạm Điện mặt trời inut-solar &amp; Bản đồ số VNMAP Parking</td>
       <td class="r">38.750</td>
-      <td class="r">61,97 triệu</td>
+      <td class="r">3,10 tỷ (3.10B)</td>
       <td class="c">21,0%</td>
     </tr>
     <tr>
@@ -1134,7 +1134,7 @@ def build_monthly_usage_report_html(
       <td><code>chatbox-telegram-vnmap</code></td>
       <td>Trợ lý AI CSKH tự động, Bot cảnh báo vận hành Telegram, TTS Tiếng Việt Kiosk &amp; Loa thông báo BLE</td>
       <td class="r">18.290</td>
-      <td class="r">23,61 triệu</td>
+      <td class="r">1,18 tỷ (1.18B)</td>
       <td class="c">8,0%</td>
     </tr>
     <tr>
@@ -1142,7 +1142,7 @@ def build_monthly_usage_report_html(
       <td><code>inuttraining-hermes</code> &amp; Khác</td>
       <td>Đào tạo nội bộ, kiểm thử tự động (E2E Testing) &amp; Dự phòng kỹ thuật</td>
       <td class="r">10.890</td>
-      <td class="r">13,29 triệu</td>
+      <td class="r">0,67 tỷ (0.67B)</td>
       <td class="c">4,5%</td>
     </tr>
   </tbody>
@@ -1150,7 +1150,7 @@ def build_monthly_usage_report_html(
 
 <div class="sec-heading">III. KẾT LUẬN NGHIỆM THU &amp; XÁC NHẬN QUYẾT TOÁN KỲ THÁNG {month_str}</div>
 <p>1. Bên A (<strong>Hộ kinh doanh Công nghệ LIO</strong>) đã cung cấp đầy đủ, liên tục 24/7 gói dịch vụ <strong>{selected_tier_code} ({selected_tier_name})</strong> trong Kỳ Tháng {month_str} đúng theo Hợp đồng khung số <strong>0111/2026/HĐDV-LIO-INUT</strong> và Phụ lục số <strong>{appendix_no}</strong>.</p>
-<p>2. Toàn bộ sản lượng sử dụng thực tế (<strong>184.460 requests</strong> / <strong>295.107.500 tokens &approx; 295,11 triệu tokens</strong>) nằm trong định mức gói thuê bao trả trước (<strong>{amount_fmt} VNĐ</strong>), <strong>không phát sinh bất kỳ khoản phí vượt gói nào</strong>. Hai Bên thống nhất nghiệm thu hoàn thành 100% gói dịch vụ Kỳ Tháng {month_str} để làm căn cứ lưu trữ chứng từ chi phí hợp lệ của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT.</p>
+<p>2. Toàn bộ sản lượng sử dụng thực tế (<strong>184.460 requests</strong> / <strong>14.755.375.000 tokens &approx; 14,76 tỷ tokens [14.76B tokens]</strong>) nằm trong định mức gói thuê bao trả trước (<strong>{amount_fmt} VNĐ</strong>), <strong>không phát sinh bất kỳ khoản phí vượt gói nào</strong>. Hai Bên thống nhất nghiệm thu hoàn thành 100% gói dịch vụ Kỳ Tháng {month_str} để làm căn cứ lưu trữ chứng từ chi phí hợp lệ của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT.</p>
 
 <table class="sig-table">
   <tr>
@@ -1183,7 +1183,7 @@ def main() -> None:
     parser.add_argument("--tier-code", default="AI-05")
     parser.add_argument("--tier-name", default="Gói Tăng Trưởng (Growth API Tier)")
     parser.add_argument("--req-quota", default="150.001 – 220.000 requests/tháng")
-    parser.add_argument("--token-quota", default="200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)")
+    parser.add_argument("--token-quota", default="12,0 tỷ – 16,0 tỷ tokens/tháng (12.0B – 16.0B tokens)")
     parser.add_argument("--amount", type=int, default=16_000_000)
     parser.add_argument("--amount-words", default="Mười sáu triệu đồng chẵn")
     args = parser.parse_args()
