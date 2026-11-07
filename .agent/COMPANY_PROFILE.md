@@ -22,7 +22,7 @@
 * **Cơ quan quản lý thuế**: `Thuế cơ sở 7 tỉnh Đắk Lắk`
 * **Số điện thoại duy nhất trên hợp đồng / hồ sơ**: `0972768491` (`0972 768 491`)
 * **Email liên hệ**: `khanhnhn@inut.vn`
-* **Website**: `https://inut.vn` | `https://p2p.inut.io.vn`
+* **Website**: `https://inut.vn` | **Cổng Ký số & Hồ sơ KSP (`public_base_url`)**: `https://ksp-pdf-signer.p2p.inut.io.vn` *(tuyệt đối không bịa `ksp.inut.vn`)*
 * **Tài khoản ngân hàng công ty**: **`79713`** tại **Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)** — Chủ TK: `CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT`
 
 ---
