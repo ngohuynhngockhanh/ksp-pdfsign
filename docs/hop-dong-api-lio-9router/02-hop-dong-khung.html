@@ -6,7 +6,7 @@
 <style>
 @page {
   size: A4 portrait;
-  margin: 7.5mm 11mm 8.5mm 11mm;
+  margin: 7mm 10.5mm 8mm 10.5mm;
   @bottom-left {
     content: string(doc_footer_left);
     font-family: 'DejaVu Serif', 'Times New Roman', serif;
@@ -29,8 +29,8 @@
 
 body {
   font-family: 'DejaVu Serif', 'Times New Roman', serif;
-  font-size: 8.15pt;
-  line-height: 1.18;
+  font-size: 7.9pt;
+  line-height: 1.15;
   color: #111827;
   margin: 0;
   padding: 0;
@@ -285,7 +285,7 @@ table.tbl td.r {
 }
 
 .sig-space {
-  height: 38px;
+  height: 32px;
 }
 
 .sig-name {
@@ -367,13 +367,14 @@ code {
 <p><strong>1.2. Các hạng mục kỹ thuật thuộc phạm vi dịch vụ (7 Hạng mục 9Router AI Gateway):</strong></p>
 <ul class="tight-list">
   <li><strong>Hạng mục 1 – Cổng định tuyến AI hợp nhất (Unified AI Gateway &amp; Fusion Combo):</strong> Cung cấp điểm cuối kết nối chuẩn <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/responses</code> kèm cơ chế chuyển đổi giao thức tự động, cân bằng tải đa tài khoản và chuyển mạch dự phòng (<em>Auto-Fallback Combos</em>: <code>pymid</code>, <code>gpt</code>, <code>hermes</code>, <code>opus-inut</code>, <code>sonnet</code>, <code>argon</code>, <code>for-plan</code>, <code>inut</code>).</li>
-  <li><strong>Hạng mục 2 – API Xử lý Ngôn ngữ Lớn &amp; Suy luận chuyên sâu (LLM Chat, Code-Gen &amp; Deep Reasoning):</strong> Truy cập các mô hình ngôn ngữ và suy luận đa cấp (<code>gemini-4-argon-high-400k</code>, <code>gemini-3.8-flash-high/medium</code>, <code>claude-opus-5-5-high-400k</code>, <code>claude-sonnet</code>, <code>gpt-6.1-sol</code>, <code>gpt-6-astra</code>, <code>gpt-5.6-sol/terra/luna</code>) phục vụ lập trình phần mềm/firmware, phân tích hồ sơ thầu e-GP, soạn thảo hồ sơ kỹ thuật và bóc tách dữ liệu hóa đơn – hải quan.</li>
+  <li><strong>Hạng mục 2 – API Xử lý Ngôn ngữ Lớn &amp; Suy luận chuyên sâu (LLM Chat, Code-Gen &amp; Deep Reasoning):</strong> Truy cập các mô hình ngôn ngữ và suy luận đa cấp thông qua <strong>Mã định tuyến nội bộ 9Router (Model Alias / Combo Profile)</strong> trên hệ thống của Bên A (bao gồm: <code>gemini-4-argon-high-400k</code>, <code>gemini-3.8-flash-high/medium</code>, <code>claude-opus-5-5-high-400k</code>, <code>claude-sonnet</code>, <code>gpt-6.1-sol</code>, <code>gpt-6-astra</code>, <code>gpt-5.6-sol/terra/luna</code>) phục vụ lập trình phần mềm/firmware, phân tích hồ sơ thầu e-GP, soạn thảo hồ sơ kỹ thuật và bóc tách dữ liệu hóa đơn – hải quan.</li>
   <li><strong>Hạng mục 3 – Nén ngữ cảnh &amp; Bộ nhớ đệm Token (RTK Token Saver &amp; Context Caching):</strong> Nén tự động kết quả công cụ (<code>RTK Hook</code>) và quản lý bộ nhớ đệm ngữ cảnh (<code>Cached Tokens</code> / <code>/v1/responses/compact</code>).</li>
   <li><strong>Hạng mục 4 – API Giọng nói AI (TTS &amp; STT):</strong> Tổng hợp giọng đọc Tiếng Việt (<code>/v1/audio/speech</code>: <code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code>) và nhận diện giọng nói thành văn bản (<code>/v1/audio/transcriptions</code>) phục vụ Kiosk Hành chính công <strong>VNMAP AI ONE</strong> và hệ thống loa thông báo thông minh của Bên B.</li>
   <li><strong>Hạng mục 5 – API Thị giác máy tính, Khởi tạo Ảnh &amp; Video AI (Vision OCR, Image &amp; Video Gen):</strong> Nhận diện hình ảnh/OCR (giải mã Captcha Cổng Thuế/Hải quan, bóc tách CCCD, nhận diện biển số xe <strong>VNMAP Parking</strong> / <strong>iNut4C</strong>), tạo ảnh kỹ thuật (<code>/v1/images/generations</code>) và tạo video mô phỏng (<code>/v1/videos/generations</code>).</li>
   <li><strong>Hạng mục 6 – API Vector hóa (Embeddings) &amp; Truy xuất Web (Web Search &amp; Web Fetch):</strong> Tạo vector dữ liệu (<code>/v1/embeddings</code>) cho hệ thống tra cứu RAG nội bộ và tìm kiếm/trích xuất dữ liệu web (<code>/v1/search</code>, <code>/v1/web/fetch</code>).</li>
   <li><strong>Hạng mục 7 – Quản trị Khóa API (Bearer Keys), Cụm Proxy &amp; Báo cáo Usage định kỳ:</strong> Cấp phát và duy trì các khóa <code>Bearer API Key</code> riêng cho từng phân hệ của Bên B, duy trì cụm <code>Smart Proxy Pools</code> và kết xuất <strong>Báo cáo Usage hằng tháng</strong> theo từng khóa, từng endpoint và từng mô hình.</li>
 </ul>
+<p><strong>1.3. Tính độc lập về hạ tầng và quyền sở hữu:</strong> Hai Bên xác nhận Hệ thống Cổng định tuyến 9Router AI Gateway, mã nguồn điều phối, cơ chế nén ngữ cảnh RTK, cụm Proxy Pools và hạ tầng kết nối là tài sản công nghệ và hạ tầng kinh doanh độc lập thuộc quyền sở hữu, quản lý riêng của Bên A (được Bên A tự đầu tư thiết bị, chi phí điện năng, viễn thông và phát triển độc lập ngoài phạm vi bất kỳ quan hệ lao động nào khác). Bên B chỉ thuê quyền truy cập dịch vụ theo gói định mức hằng tháng và không nắm giữ quyền sở hữu đối với hạ tầng lõi của Bên A.</p>
 
 <div class="sec-heading">ĐIỀU 2. CƠ CHẾ MUA GÓI THUÊ BAO THÁNG &amp; BIỂU PHÍ KHUNG THEO MỨC SỬ DỤNG</div>
 <p><strong>2.1. Nguyên tắc mua theo Gói thuê bao tháng (Không áp dụng Pay-as-you-go):</strong> Hai Bên thống nhất dịch vụ được cung cấp theo hình thức <strong>Mua gói thuê bao định mức trả trước theo từng tháng</strong>, không tính cước lẻ biến động theo từng truy vấn (<em>không phải Pay-as-you-go</em>). Tương tự cơ chế phân bậc dịch vụ kế toán, mức phí hằng tháng được xác định theo <strong>Bậc gói cước sử dụng (Usage Tier)</strong> dao động từ <strong>3.000.000 đồng/tháng đến 30.000.000 đồng/tháng</strong> như sau:</p>
@@ -394,7 +395,7 @@ code {
       <td class="c"><strong>AI-01</strong></td>
       <td><strong>Gói Cơ Bản (Starter)</strong></td>
       <td class="c"><code>0 &ndash; 30.000</code> reqs</td>
-      <td class="c">Đến <code>3,0 tỷ</code> tokens (<code>3.0B</code>)</td>
+      <td class="c">Đến <code>30 triệu</code> tokens (<code>30M</code>)</td>
       <td class="c">Đến 05 keys</td>
       <td class="r"><strong>3.000.000 đ</strong></td>
     </tr>
@@ -402,7 +403,7 @@ code {
       <td class="c"><strong>AI-02</strong></td>
       <td><strong>Gói Tiêu Chuẩn (Standard)</strong></td>
       <td class="c"><code>30.001 &ndash; 60.000</code> reqs</td>
-      <td class="c"><code>3,0 tỷ &ndash; 6,0 tỷ</code> tokens (<code>6.0B</code>)</td>
+      <td class="c"><code>30 triệu &ndash; 60 triệu</code> tokens (<code>30M &ndash; 60M</code>)</td>
       <td class="c">Đến 10 keys</td>
       <td class="r"><strong>5.000.000 đ</strong></td>
     </tr>
@@ -410,7 +411,7 @@ code {
       <td class="c"><strong>AI-03</strong></td>
       <td><strong>Gói Nghiệp Vụ (Business)</strong></td>
       <td class="c"><code>60.001 &ndash; 100.000</code> reqs</td>
-      <td class="c"><code>6,0 tỷ &ndash; 12,0 tỷ</code> tokens (<code>12.0B</code>)</td>
+      <td class="c"><code>60 triệu &ndash; 120 triệu</code> tokens (<code>60M &ndash; 120M</code>)</td>
       <td class="c">Đến 15 keys</td>
       <td class="r"><strong>8.000.000 đ</strong></td>
     </tr>
@@ -418,7 +419,7 @@ code {
       <td class="c"><strong>AI-04</strong></td>
       <td><strong>Gói Chuyên Nghiệp (Pro)</strong></td>
       <td class="c"><code>100.001 &ndash; 150.000</code> reqs</td>
-      <td class="c"><code>12,0 tỷ &ndash; 20,0 tỷ</code> tokens (<code>20.0B</code>)</td>
+      <td class="c"><code>120 triệu &ndash; 200 triệu</code> tokens (<code>120M &ndash; 200M</code>)</td>
       <td class="c">Đến 20 keys</td>
       <td class="r"><strong>12.000.000 đ</strong></td>
     </tr>
@@ -426,7 +427,7 @@ code {
       <td class="c"><strong>AI-05</strong></td>
       <td><strong>Gói Tăng Trưởng (Growth)</strong></td>
       <td class="c"><code>150.001 &ndash; 220.000</code> reqs</td>
-      <td class="c"><code>20,0 tỷ &ndash; 35,0 tỷ</code> tokens (<code>35.0B</code>)</td>
+      <td class="c"><code>200 triệu &ndash; 350 triệu</code> tokens (<code>200M &ndash; 350M</code>)</td>
       <td class="c">Đến 25 keys</td>
       <td class="r"><strong>16.000.000 đ</strong></td>
     </tr>
@@ -434,7 +435,7 @@ code {
       <td class="c"><strong>AI-06</strong></td>
       <td><strong>Gói Doanh Nghiệp I</strong></td>
       <td class="c"><code>220.001 &ndash; 300.000</code> reqs</td>
-      <td class="c"><code>35,0 tỷ &ndash; 50,0 tỷ</code> tokens (<code>50.0B</code>)</td>
+      <td class="c"><code>350 triệu &ndash; 500 triệu</code> tokens (<code>350M &ndash; 500M</code>)</td>
       <td class="c">Đến 35 keys</td>
       <td class="r"><strong>20.000.000 đ</strong></td>
     </tr>
@@ -442,7 +443,7 @@ code {
       <td class="c"><strong>AI-07</strong></td>
       <td><strong>Gói Doanh Nghiệp II</strong></td>
       <td class="c"><code>300.001 &ndash; 380.000</code> reqs</td>
-      <td class="c"><code>50,0 tỷ &ndash; 65,0 tỷ</code> tokens (<code>65.0B</code>)</td>
+      <td class="c"><code>500 triệu &ndash; 650 triệu</code> tokens (<code>500M &ndash; 650M</code>)</td>
       <td class="c">Đến 50 keys</td>
       <td class="r"><strong>25.000.000 đ</strong></td>
     </tr>
@@ -450,7 +451,7 @@ code {
       <td class="c"><strong>AI-08</strong></td>
       <td><strong>Gói Hạ Tầng Toàn Diện</strong></td>
       <td class="c"><code>380.001 &ndash; 500.000</code> reqs</td>
-      <td class="c"><code>65,0 tỷ &ndash; 90,0 tỷ</code> tokens (<code>90.0B</code>)</td>
+      <td class="c"><code>650 triệu &ndash; 900 triệu</code> tokens (<code>650M &ndash; 900M</code>)</td>
       <td class="c">Không giới hạn</td>
       <td class="r"><strong>30.000.000 đ</strong></td>
     </tr>
@@ -470,7 +471,7 @@ code {
 <p><strong>3.1. Thời hạn thanh toán trả trước hằng tháng (Từ ngày 05 đến ngày 15 hằng tháng):</strong></p>
 <ul class="tight-list">
   <li>Căn cứ Phụ lục gói dịch vụ của từng tháng được hai Bên ký kết, Bên B thực hiện <strong>thanh toán trả trước 100% giá trị gói dịch vụ của tháng đó trong khoảng thời gian từ ngày 05 đến ngày 15 hằng tháng</strong>.</li>
-  <li>Việc thanh toán trả trước đầu kỳ giúp Bên A chủ động nạp hạn mức tài khoản nhà cung cấp thượng nguồn (<em>Upstream Providers</em>), duy trì cụm máy chủ định tuyến và phân bổ băng thông cố định cho các khóa API của Bên B trong suốt tháng.</li>
+  <li>Việc thanh toán trả trước đầu kỳ giúp Bên A chủ động cấp phát tài nguyên tính toán, vận hành cụm máy chủ định tuyến (Routing Server), duy trì hệ thống bộ nhớ đệm (Context Caching), dải Proxy tĩnh và phân bổ băng thông cố định cho các khóa API của Bên B trong suốt tháng.</li>
 </ul>
 <p><strong>3.2. Phương thức thanh toán:</strong> Chuyển khoản ngân hàng 100% (không dùng tiền mặt) từ tài khoản công ty của Bên B sang tài khoản ngân hàng của Bên A theo thông tin:</p>
 <div class="callout-info">
@@ -489,7 +490,7 @@ code {
 <p><strong>4.2.</strong> Việc chấm dứt Hợp đồng khung chỉ có hiệu lực sau khi hai Bên đã hoàn tất đối soát Usage và thanh quyết toán xong gói dịch vụ của tháng hiện hành.</p>
 
 <div class="sec-heading">ĐIỀU 5. QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (HỘ KINH DOANH CÔNG NGHỆ LIO)</div>
-<p><strong>5.1.</strong> Duy trì hoạt động ổn định, thông suốt 24/7 cho hệ thống Cổng định tuyến AI (<code>9Router AI Gateway</code>), đảm bảo cơ chế tự động chuyển mạch dự phòng (<em>Auto-Fallback</em>) khi bất kỳ nhà cung cấp thượng nguồn nào bảo trì hoặc giới hạn băng thông.</p>
+<p><strong>5.1.</strong> Duy trì hoạt động ổn định, thông suốt 24/7 cho hệ thống Cổng định tuyến AI (<code>9Router AI Gateway</code>), đảm bảo cơ chế tự động chuyển mạch dự phòng (<em>Auto-Fallback</em>) khi bất kỳ nút xử lý hoặc tuyến kết nối nào bảo trì, giới hạn băng thông.</p>
 <p><strong>5.2.</strong> Cấp phát đầy đủ các khóa truy cập (<code>Bearer API Keys</code>) theo yêu cầu của Bên B, cấu hình đúng hạn mức gói thuê bao tháng đã ký tại Phụ lục và hỗ trợ kỹ thuật kịp thời khi Bên B tích hợp vào phần mềm/thiết bị mới.</p>
 <p><strong>5.3.</strong> Bảo mật tuyệt đối toàn bộ nội dung truy vấn (<em>Prompts</em>), mã nguồn, tài liệu kỹ thuật, dữ liệu khách hàng và thông tin kinh doanh của Bên B truyền qua cổng API; không lưu trữ trái phép hoặc tiết lộ cho bất kỳ bên thứ ba nào.</p>
 <p><strong>5.4.</strong> Lập và ký Phụ lục gói cước hằng tháng, cung cấp đầy đủ <strong>Báo cáo Usage hằng tháng</strong> và xuất hóa đơn hợp lệ cho Bên B để phục vụ công tác kê khai, quyết toán thuế của Bên B.</p>

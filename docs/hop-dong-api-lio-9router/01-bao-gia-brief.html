@@ -6,7 +6,7 @@
 <style>
 @page {
   size: A4 portrait;
-  margin: 7.5mm 11mm 8.5mm 11mm;
+  margin: 7mm 10.5mm 8mm 10.5mm;
   @bottom-left {
     content: string(doc_footer_left);
     font-family: 'DejaVu Serif', 'Times New Roman', serif;
@@ -29,8 +29,8 @@
 
 body {
   font-family: 'DejaVu Serif', 'Times New Roman', serif;
-  font-size: 8.15pt;
-  line-height: 1.18;
+  font-size: 7.9pt;
+  line-height: 1.15;
   color: #111827;
   margin: 0;
   padding: 0;
@@ -285,7 +285,7 @@ table.tbl td.r {
 }
 
 .sig-space {
-  height: 38px;
+  height: 32px;
 }
 
 .sig-name {
@@ -347,7 +347,7 @@ code {
     <tr>
       <th style="width:5%;">TT</th>
       <th style="width:25%;">Hạng mục Dịch vụ API</th>
-      <th style="width:26%;">Chuẩn Giao thức / Endpoint &amp; Model</th>
+      <th style="width:26%;">Chuẩn Giao thức / Endpoint &amp;<br/>Mã định tuyến nội bộ 9Router<br/><em>(Model Alias / Combo Profile)</em></th>
       <th style="width:44%;">Mô tả Chức năng Kỹ thuật &amp; Ứng dụng đầu vào tại Công ty INUT</th>
     </tr>
   </thead>
@@ -367,10 +367,8 @@ code {
       <td class="c"><strong>02</strong></td>
       <td><strong>API Mô hình Ngôn ngữ Lớn &amp; Suy luận Chuyên sâu</strong><br/><em>(LLM Chat, Code-Gen &amp; Deep Reasoning)</em></td>
       <td>
-        <code>gemini-4-argon-high-400k</code><br/>
-        <code>gemini-3.8-flash-high</code><br/>
-        <code>claude-opus-5-5-high-400k</code><br/>
-        <code>gpt-6.1-sol</code> / <code>gpt-6-astra</code>
+        <em>Mã định tuyến nội bộ 9Router (Model Alias / Combo Profile):</em><br/>
+        <code>gemini-4-argon-high-400k</code>, <code>gemini-3.8-flash-high</code>, <code>claude-opus-5-5-high-400k</code>, <code>gpt-6.1-sol</code> / <code>gpt-6-astra</code>
       </td>
       <td>Xử lý ngôn ngữ tự nhiên cửa sổ ngữ cảnh lớn (<code>200K &ndash; 1M tokens</code>) với 06 cấp độ suy luận (<code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, <code>ultra</code>). Phục vụ sinh thuyết minh kỹ thuật, phân tích hồ sơ mời thầu e-GP, rà soát hợp đồng, đối soát hóa đơn thuế – tờ khai hải quan và lập trình tự động Firmware/SCADA.</td>
     </tr>
@@ -446,7 +444,7 @@ code {
       <td class="c"><strong>AI-01</strong><br/><em>(Bậc 1)</em></td>
       <td><strong>Gói Cơ Bản</strong><br/><em>(Starter API Tier)</em></td>
       <td class="c">Đến <strong>30.000</strong><br/>requests/tháng</td>
-      <td class="c">Đến <strong>3,0 tỷ</strong> tokens<br/>(<code>&le; 3.0B tokens</code>)</td>
+      <td class="c">Đến <strong>30 triệu</strong> tokens<br/>(<code>&le; 30M tokens</code>)</td>
       <td>Tối đa 05 API Keys &bull; LLM Chat/Code cơ bản, Embeddings, TTS/STT tiêu chuẩn</td>
       <td class="r"><strong>3.000.000 đ</strong></td>
     </tr>
@@ -454,7 +452,7 @@ code {
       <td class="c"><strong>AI-02</strong><br/><em>(Bậc 2)</em></td>
       <td><strong>Gói Tiêu Chuẩn</strong><br/><em>(Standard API Tier)</em></td>
       <td class="c"><strong>30.001 &ndash; 60.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>3,0 tỷ &ndash; 6,0 tỷ</strong> tokens<br/>(<code>3.0B &ndash; 6.0B tokens</code>)</td>
+      <td class="c"><strong>30 triệu &ndash; 60 triệu</strong> tokens<br/>(<code>30M &ndash; 60M tokens</code>)</td>
       <td>Tối đa 10 API Keys &bull; Mở khóa Vision OCR, Web Search/Fetch, RTK Token Saver</td>
       <td class="r"><strong>5.000.000 đ</strong></td>
     </tr>
@@ -462,7 +460,7 @@ code {
       <td class="c"><strong>AI-03</strong><br/><em>(Bậc 3)</em></td>
       <td><strong>Gói Nghiệp Vụ</strong><br/><em>(Business API Tier)</em></td>
       <td class="c"><strong>60.001 &ndash; 100.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>6,0 tỷ &ndash; 12,0 tỷ</strong> tokens<br/>(<code>6.0B &ndash; 12.0B tokens</code>)</td>
+      <td class="c"><strong>60 triệu &ndash; 120 triệu</strong> tokens<br/>(<code>60M &ndash; 120M tokens</code>)</td>
       <td>Tối đa 15 API Keys &bull; Mở khóa Fusion Combo Auto-Fallback &amp; Reasoning <code>high</code></td>
       <td class="r"><strong>8.000.000 đ</strong></td>
     </tr>
@@ -470,7 +468,7 @@ code {
       <td class="c"><strong>AI-04</strong><br/><em>(Bậc 4)</em></td>
       <td><strong>Gói Chuyên Nghiệp</strong><br/><em>(Pro API Tier)</em></td>
       <td class="c"><strong>100.001 &ndash; 150.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>12,0 tỷ &ndash; 20,0 tỷ</strong> tokens<br/>(<code>12.0B &ndash; 20.0B tokens</code>)</td>
+      <td class="c"><strong>120 triệu &ndash; 200 triệu</strong> tokens<br/>(<code>120M &ndash; 200M tokens</code>)</td>
       <td>Tối đa 20 API Keys &bull; Reasoning <code>xhigh</code>, Image Gen, Smart Proxy Pools dự phòng</td>
       <td class="r"><strong>12.000.000 đ</strong></td>
     </tr>
@@ -478,7 +476,7 @@ code {
       <td class="c"><strong>AI-05</strong><br/><em>(Bậc 5)</em></td>
       <td><strong>Gói Tăng Trưởng</strong><br/><em>(Growth API Tier)</em></td>
       <td class="c"><strong>150.001 &ndash; 220.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>20,0 tỷ &ndash; 35,0 tỷ</strong> tokens<br/>(<code>20.0B &ndash; 35.0B tokens</code>)</td>
+      <td class="c"><strong>200 triệu &ndash; 350 triệu</strong> tokens<br/>(<code>200M &ndash; 350M tokens</code>)</td>
       <td>Tối đa 25 API Keys &bull; Ưu tiên tốc độ <code>Fast Priority 1.5x</code>, Đa tác nhân Multi-Agent</td>
       <td class="r"><strong>16.000.000 đ</strong></td>
     </tr>
@@ -486,7 +484,7 @@ code {
       <td class="c"><strong>AI-06</strong><br/><em>(Bậc 6)</em></td>
       <td><strong>Gói Doanh Nghiệp I</strong><br/><em>(Enterprise I Tier)</em></td>
       <td class="c"><strong>220.001 &ndash; 300.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>35,0 tỷ &ndash; 50,0 tỷ</strong> tokens<br/>(<code>35.0B &ndash; 50.0B tokens</code>)</td>
+      <td class="c"><strong>350 triệu &ndash; 500 triệu</strong> tokens<br/>(<code>350M &ndash; 500M tokens</code>)</td>
       <td>Tối đa 35 API Keys &bull; Trọn bộ 07 hạng mục + Video Gen + Ngữ cảnh <code>400K-1M</code></td>
       <td class="r"><strong>20.000.000 đ</strong></td>
     </tr>
@@ -494,7 +492,7 @@ code {
       <td class="c"><strong>AI-07</strong><br/><em>(Bậc 7)</em></td>
       <td><strong>Gói Doanh Nghiệp II</strong><br/><em>(Enterprise II Tier)</em></td>
       <td class="c"><strong>300.001 &ndash; 380.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>50,0 tỷ &ndash; 65,0 tỷ</strong> tokens<br/>(<code>50.0B &ndash; 65.0B tokens</code>)</td>
+      <td class="c"><strong>500 triệu &ndash; 650 triệu</strong> tokens<br/>(<code>500M &ndash; 650M tokens</code>)</td>
       <td>Tối đa 50 API Keys &bull; Luồng định tuyến ưu tiên riêng (Dedicated Combo &amp; Proxy)</td>
       <td class="r"><strong>25.000.000 đ</strong></td>
     </tr>
@@ -502,7 +500,7 @@ code {
       <td class="c"><strong>AI-08</strong><br/><em>(Bậc 8)</em></td>
       <td><strong>Gói Hạ Tầng Toàn Diện</strong><br/><em>(Unlimited Scale Tier)</em></td>
       <td class="c"><strong>380.001 &ndash; 500.000</strong><br/>requests/tháng</td>
-      <td class="c"><strong>65,0 tỷ &ndash; 90,0 tỷ</strong> tokens<br/>(<code>65.0B &ndash; 90.0B tokens</code>)</td>
+      <td class="c"><strong>650 triệu &ndash; 900 triệu</strong> tokens<br/>(<code>650M &ndash; 900M tokens</code>)</td>
       <td>Không giới hạn API Keys &bull; Toàn bộ cụm <code>9Router</code> (<code>max/ultra</code> reasoning)</td>
       <td class="r"><strong>30.000.000 đ</strong></td>
     </tr>

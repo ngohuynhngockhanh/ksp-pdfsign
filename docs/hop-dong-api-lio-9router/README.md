@@ -15,57 +15,39 @@ Thư mục này chứa trọn bộ hồ sơ pháp lý – kế toán – kỹ th
 
 ---
 
-## 1. Danh mục 03 văn bản PDF chuẩn in 2 mặt (1 tờ A4 / văn bản)
+## 1. Danh mục 02 File PDF Chính theo Thời điểm Ký số (Chuẩn Timestamp Chữ ký số)
 
-1. **`01-Bao-Gia-Va-Brief-Dich-Vu-API-AI-9Router-LIO-2026.pdf`** *(02 trang A4)*
-   - **Báo giá & Hồ sơ Năng lực Kỹ thuật (Service Brief)** của Hộ kinh doanh Công nghệ LIO gửi Công ty CP Đầu tư và Phát triển Công nghệ INUT.
-   - Mô tả chi tiết **07 nhóm hạng mục kỹ thuật** của nền tảng `inut-9router`:
-     1. Cổng định tuyến đa mô hình chuẩn OpenAI / Anthropic / Gemini / Ollama (`AI Gateway & Multi-Provider Routing`, auto-fallback, load-balancing).
-     2. Dịch vụ Mô hình Ngôn ngữ Lớn (LLM Chat, Code-Gen, Deep Reasoning, hoàn thiện văn bản/hồ sơ thầu, agent đa tác vụ).
-     3. Hệ thống Tối ưu & Nén Ngữ cảnh **RTK (Token Saver & Context Caching)**, endpoint `/v1/compact`.
-     4. Dịch vụ Xử lý Giọng nói Đa phương thức (**TTS** thuyết minh tự động đa giọng đọc & **STT** chuyển giọng nói thành văn bản).
-     5. Dịch vụ Thị giác Máy tính (**Vision OCR** giải mã hồ sơ/chứng từ/biển số/captcha, **Image Generation** & **Video Generation**).
-     6. Dịch vụ Vector hóa (**Embeddings**), Tìm kiếm Web thời gian thực (**Web Search**) & Trích xuất nội dung trang (**Web Fetch**).
-     7. Quản trị Định danh **API Keys**, phân tách môi trường (`apphub-iot`, `vnmap`, `ksp-50,212`, `inut-crm-pdf-signer`, `inut-opc-dev`...) & **Báo cáo Usage Telemetry**.
-   - Bảng biểu phí **08 bậc gói thuê bao định mức hàng tháng** từ **3.000.000 VNĐ/tháng** đến **30.000.000 VNĐ/tháng** + Cơ chế đơn giá thỏa thuận linh hoạt theo Phụ lục.
+1. **`File-01-Ky-Ngay-01-11-2026-Bao-Gia-Hop-Dong-Khung-Va-Phu-Luc-01-API-9Router-LIO-INUT.pdf`** *(05 trang A4 — Ký số ngay đầu kỳ ngày 01/11/2026)*
+   - **Trang 1 – 2 (`01-Bao-Gia-Va-Brief-Dich-Vu-API-AI-9Router-LIO-2026.pdf`):** Báo giá & Hồ sơ Năng lực Kỹ thuật (Service Brief) số `0111/2026/BG-LIO-INUT` gồm 07 nhóm hạng mục kỹ thuật, làm rõ **Mã định tuyến nội bộ 9Router (`Model Alias / Combo Profile`)** và Biểu phí **08 bậc gói thuê bao định mức hàng tháng** từ **3.000.000 VNĐ/tháng** (`≤ 30M tokens`) đến **30.000.000 VNĐ/tháng** (`650M – 900M tokens`).
+   - **Trang 3 – 4 (`02-Hop-Dong-Khung-Dich-Vu-API-AI-01-11-2026-INUT-LIO.pdf`):** Hợp đồng nguyên tắc (Hợp đồng khung) số `0111/2026/HĐDV-LIO-INUT` ký ngày `01/11/2026`, gồm 07 Điều khoản chặt chẽ về pháp lý Thuế TNDN & Thuế HKD:
+     - **Khoản 1.3 Điều 1 (Tính độc lập về hạ tầng và quyền sở hữu):** Khẳng định Hệ thống Cổng định tuyến 9Router AI Gateway, mã nguồn điều phối, cơ chế nén ngữ cảnh RTK, cụm Proxy Pools và hạ tầng kết nối là tài sản công nghệ và hạ tầng kinh doanh độc lập thuộc quyền sở hữu, quản lý riêng của Bên A (tự đầu tư thiết bị, điện năng, viễn thông ngoài phạm vi bất kỳ quan hệ lao động nào khác); Bên B chỉ thuê quyền truy cập dịch vụ theo gói định mức hàng tháng.
+     - **Khoản 3.1 Điều 3:** Thanh toán trả trước 100% đầu kỳ từ ngày 05 đến ngày 15 hàng tháng giúp Bên A chủ động cấp phát tài nguyên tính toán, vận hành cụm máy chủ định tuyến (`Routing Server`), duy trì hệ thống bộ nhớ đệm (`Context Caching`), dải Proxy tĩnh và phân bổ băng thông cố định cho các khóa API của Bên B.
+   - **Trang 5 (`03-Phu-Luc-01-Thang-11-2026-API-AI-LIO-INUT.pdf`):** Phụ lục Hợp đồng số 01 (`01-PLHĐ/2026-11/LIO-INUT`) ký ngày `01/11/2026` xác nhận gói dịch vụ Kỳ Tháng 11/2026 (**Gói AI-05 — 16.000.000 VNĐ/tháng**, định mức `150.001 – 220.000 requests/tháng` và `200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)`).
 
-2. **`02-Hop-Dong-Khung-Dich-Vu-API-AI-01-11-2026-INUT-LIO.pdf`** *(02 trang A4)*
-   - **Hợp đồng nguyên tắc (Hợp đồng khung) số `0111/2026/HĐDV-LIO-INUT`** ký ngày **01/11/2026**, hiệu lực từ **01/11/2026** (thời hạn 12 tháng, tự động gia hạn).
-   - Thiết kế theo mô hình **thuê bao trọn gói định mức trả trước hàng tháng** (tương tự cơ chế phân bậc của Hợp đồng dịch vụ kế toán `49/2026/HĐDV-NEXTSTEP`), **không tính cước lẻ biến động theo từng truy vấn (không phải Pay-as-you-go)**.
-   - Quy định đầy đủ **07 Điều khoản**:
-     - **Điều 1:** Nội dung và phạm vi công việc của Bên A (7 nhóm dịch vụ AI Gateway + SLA 99,5% + an toàn thông tin).
-     - **Điều 2:** Biểu phí các gói thuê bao định mức hàng tháng (từ 3.000.000 đ đến 30.000.000 đ/tháng) và cơ chế đặt gói linh hoạt theo Phụ lục hàng tháng.
-     - **Điều 3:** Thời hạn & phương thức thanh toán (**trả trước 100% từ ngày 05 đến ngày 15 hàng tháng** qua chuyển khoản ngân hàng) và nghĩa vụ bàn giao **Báo cáo Sản lượng Sử dụng API (Usage Report) + Hóa đơn điện tử hợp lệ** cuối tháng để Bên B hạch toán chi phí hợp lý tính thuế TNDN.
-     - **Điều 4 & Điều 5:** Quyền và nghĩa vụ của Bên A và Bên B.
-     - **Điều 6 & Điều 7:** Thời hạn hợp đồng, chế tài vi phạm (hoàn trả 100% phí tháng nếu Bên A không thực hiện đúng cam kết) và điều khoản chung.
-
-3. **`03-Phu-Luc-01-Thang-11-2026-Va-Mau-Bao-Cao-Usage-API-LIO-INUT.pdf`** *(02 trang A4)*
-   - **Trang 1 — Phụ lục Hợp đồng số 01 (`01-PLHĐ/2026-11/LIO-INUT`):** Phiếu xác nhận gói dịch vụ API Trí tuệ Nhân tạo kỳ **Tháng 11/2026** (mặc định đang điền gói **AI-03 — 8.000.000 VNĐ/tháng** hoặc có thể tùy biến bất kỳ bậc nào từ 3 triệu – 30 triệu VNĐ qua tham số CLI).
-   - **Trang 2 — Biên bản Nghiệm thu & Báo cáo Sản lượng Sử dụng API (Monthly Usage & Acceptance Statement):**
-     - Tự động trích xuất số liệu thực tế từ cơ sở dữ liệu Telemetry của `inut-9router` (`/home/ksp/.9router/db/data.sqlite`) để làm căn cứ nghiệm thu kỹ thuật & chứng từ kế toán kèm theo Hóa đơn điện tử.
+2. **`File-02-Ky-Ngay-30-11-2026-Bao-Cao-Usage-Va-Bien-Ban-Nghiem-Thu-Thang-11-2026-LIO-INUT.pdf`** *(01 trang A4 độc lập — Để dành đến cuối kỳ ngày 30/11/2026 mới ký số)*
+   - **Báo cáo Sản lượng Sử dụng API (Monthly Usage Report) & Biên bản Nghiệm thu Dịch vụ Kỳ Tháng 11/2026** (Mã báo cáo: `USAGE-11-2026-PL01`, đề ngày `30/11/2026`).
+   - Thống kê chi tiết theo **Mã định tuyến nội bộ 9Router (`Model Alias / Combo Profile`)** và theo từng khóa API định danh (`ksp-50,212`, `apphub`, `vnmap`, `inut-crm-pdf-signer`, `inut-opc-dev`...): tổng cộng **184.460 requests** và **295.107.500 tokens (~295,11 triệu tokens = 295.11M tokens)** kèm ghi chú kỹ thuật *>85% là Cached Tokens được tái sử dụng qua bộ nhớ đệm nội bộ RTK Token Saver & Context Caching của hệ thống 9Router*.
 
 ---
 
 ## 2. Cách kết xuất lại PDF cho các tháng tiếp theo (CLI Generator)
 
-Script `build_lio_api_contract.py` cho phép tạo nhanh Phụ lục đặt gói và Báo cáo Usage cho bất kỳ tháng nào chỉ với 1 lệnh:
-
 ```bash
-# Mặc định (Kỳ Tháng 11/2026 - Gói AI-03: 8.000.000 VNĐ)
+# Mặc định (Xuất File 01 ký 01/11/2026 [05 trang] + File 02 ký 30/11/2026 [01 trang] - Gói AI-05: 16.000.000 VNĐ)
 /home/ksp/ksp-pdfsign/backend/.venv/bin/python \
   /home/ksp/ksp-pdfsign/docs/hop-dong-api-lio-9router/build_lio_api_contract.py
 
-# Ví dụ đổi sang Gói AI-02 (5.000.000 VNĐ) hoặc Gói AI-05 (15.000.000 VNĐ):
+# Ví dụ đổi sang kỳ Tháng 12/2026:
 /home/ksp/ksp-pdfsign/backend/.venv/bin/python \
   /home/ksp/ksp-pdfsign/docs/hop-dong-api-lio-9router/build_lio_api_contract.py \
   --month "12/2026" \
-  --appendix-no "02-PLHĐ/2026-12/LIO-INUT" \
+  --appendix-no "02" \
   --sign-date "ngày 01 tháng 12 năm 2026" \
-  --payment-window "từ ngày 05/12/2026 đến hết ngày 15/12/2026" \
+  --payment-window "Từ ngày 05/12/2026 đến ngày 15/12/2026" \
   --tier-code "AI-05" \
-  --tier-name "Gói Doanh Nghiệp (Business)" \
-  --req-quota "Đến 180.000 requests" \
-  --token-quota "Đến 18,0 tỷ tokens" \
-  --amount 15000000 \
-  --amount-words "Mười lăm triệu đồng chẵn"
+  --tier-name "Gói Tăng Trưởng (Growth API Tier)" \
+  --req-quota "150.001 – 220.000 requests/tháng" \
+  --token-quota "200 triệu – 350 triệu tokens/tháng (200M – 350M tokens)" \
+  --amount 16000000 \
+  --amount-words "Mười sáu triệu đồng chẵn"
 ```
