@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import weasyprint
+import pypdf
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -1193,7 +1194,17 @@ def main() -> None:
     pdf_appendix = BASE_DIR / "03-Phu-Luc-01-Thang-11-2026-Va-Mau-Bao-Cao-Usage-API-LIO-INUT.pdf"
     weasyprint.HTML(string=html_appendix, base_url=str(BASE_DIR)).write_pdf(str(pdf_appendix))
 
-    for p in (pdf_quote, pdf_contract, pdf_appendix):
+    # 4. Gom trọn bộ 03 văn bản vào 01 file PDF duy nhất (06 trang A4 = 03 tờ in 2 mặt)
+    pdf_combined = BASE_DIR / "00-Tron-Bo-Ho-So-Hop-Dong-Bao-Gia-Phu-Luc-Usage-API-AI-9Router-LIO-INUT-2026.pdf"
+    writer = pypdf.PdfWriter()
+    for src_pdf in (pdf_quote, pdf_contract, pdf_appendix):
+        reader = pypdf.PdfReader(str(src_pdf))
+        for page in reader.pages:
+            writer.add_page(page)
+    with open(pdf_combined, "wb") as f_out:
+        writer.write(f_out)
+
+    for p in (pdf_combined, pdf_quote, pdf_contract, pdf_appendix):
         print(f"Generated: {p.name} ({p.stat().st_size:,} bytes)")
 
 
