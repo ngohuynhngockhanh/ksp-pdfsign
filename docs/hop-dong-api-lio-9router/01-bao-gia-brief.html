@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Báo Giá & Brief Kỹ Thuật Dịch Vụ Cổng API Trí Tuệ Nhân Tạo (9Router) - Hộ Kinh Doanh Công Nghệ LIO</title>
+<style>
+@page {
+  size: A4 portrait;
+  margin: 7.5mm 11mm 8.5mm 11mm;
+  @bottom-left {
+    content: string(doc_footer_left);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 7.5pt;
+    font-style: italic;
+    color: #475569;
+  }
+  @bottom-right {
+    content: "Trang " counter(page) " / " counter(pages);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 8pt;
+    font-weight: bold;
+    color: #1e293b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DejaVu Serif', 'Times New Roman', serif;
+  font-size: 8.15pt;
+  line-height: 1.18;
+  color: #111827;
+  margin: 0;
+  padding: 0;
+}
+
+.footer-str {
+  string-set: doc_footer_left content();
+  display: none;
+}
+
+.nat-header {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 5px;
+}
+
+.nat-header td {
+  vertical-align: top;
+  text-align: center;
+  padding: 0;
+}
+
+.org-name {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.22;
+}
+
+.org-sub {
+  font-size: 8.4pt;
+  margin-top: 1px;
+  color: #334155;
+}
+
+.nat-title {
+  font-size: 9.6pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.nat-motto {
+  font-size: 9.3pt;
+  font-weight: bold;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.nat-line {
+  display: inline-block;
+  border-bottom: 1px solid #0f172a;
+  padding-bottom: 1px;
+}
+
+.doc-date {
+  font-size: 8.5pt;
+  font-style: italic;
+  margin-top: 2px;
+  color: #334155;
+}
+
+h1.main-title {
+  text-align: center;
+  font-size: 11pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin: 2px 0 1px 0;
+  line-height: 1.15;
+}
+
+.sub-title-center {
+  text-align: center;
+  font-size: 8.3pt;
+  font-style: italic;
+  color: #334155;
+  margin-bottom: 3px;
+}
+
+.basis-box {
+  font-size: 8.1pt;
+  font-style: italic;
+  text-align: justify;
+  margin-bottom: 3px;
+  color: #1e293b;
+}
+
+.party-box {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  page-break-inside: avoid;
+}
+
+.party-head {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.party-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.2pt;
+}
+
+.party-tbl td {
+  padding: 1px 2px;
+  vertical-align: top;
+}
+
+.party-tbl td.k {
+  width: 22%;
+  font-weight: bold;
+  color: #1e293b;
+}
+
+.party-tbl td.s {
+  width: 2%;
+  text-align: center;
+}
+
+.sec-heading {
+  font-size: 8.9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  margin-top: 3.5px;
+  margin-bottom: 1.5px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1px;
+  page-break-after: avoid;
+}
+
+.sub-heading {
+  font-size: 9pt;
+  font-weight: bold;
+  color: #1e293b;
+  margin-top: 3px;
+  margin-bottom: 1px;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 1.5px 0;
+  text-align: justify;
+}
+
+ul.tight-list {
+  margin: 1px 0 2px 0;
+  padding-left: 14px;
+}
+
+ul.tight-list li {
+  margin-bottom: 1px;
+  text-align: justify;
+}
+
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0 3px 0;
+  font-size: 7.5pt;
+}
+
+table.tbl tr {
+  page-break-inside: avoid;
+}
+
+table.tbl th, table.tbl td {
+  border: 1px solid #475569;
+  padding: 1.5px 3px;
+  vertical-align: top;
+}
+
+table.tbl th {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  font-weight: bold;
+  text-align: center;
+}
+
+table.tbl td.c {
+  text-align: center;
+}
+
+table.tbl td.r {
+  text-align: right;
+}
+
+.callout-info {
+  background: #f0f9ff;
+  border-left: 3px solid #0284c7;
+  padding: 3px 6px;
+  margin: 2.5px 0;
+  font-size: 8pt;
+  page-break-inside: avoid;
+}
+
+.callout-warn {
+  background: #fffbeb;
+  border-left: 3px solid #d97706;
+  padding: 4px 7px;
+  margin: 3.5px 0;
+  font-size: 8.4pt;
+  page-break-inside: avoid;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.5px 4px;
+  border-radius: 3px;
+  font-size: 7.5pt;
+  font-weight: bold;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.sig-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  page-break-inside: avoid;
+}
+
+.sig-table td {
+  width: 50%;
+  text-align: center;
+  vertical-align: top;
+}
+
+.sig-role {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.sig-note {
+  font-size: 8pt;
+  font-style: italic;
+  color: #475569;
+  margin-top: 1px;
+}
+
+.sig-space {
+  height: 38px;
+}
+
+.sig-name {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+code {
+  font-family: 'DejaVu Sans Mono', monospace;
+  font-size: 7.7pt;
+  background: #f1f5f9;
+  padding: 0.5px 2.5px;
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+<div class="footer-str">HỘ KINH DOANH CÔNG NGHỆ LIO (MST: 054202003668) — Hồ sơ Báo giá &amp; Brief Kỹ thuật Cổng API AI (9Router)</div>
+
+<table class="nat-header">
+  <tr>
+    <td style="width:48%;">
+      <div class="org-name">HỘ KINH DOANH CÔNG NGHỆ LIO</div>
+      <div class="org-sub">MST: <strong>054202003668</strong></div>
+      <div class="org-sub">Số: <strong>0111/2026/BG-LIO-INUT</strong></div>
+    </td>
+    <td style="width:52%;">
+      <div class="nat-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="nat-motto"><span class="nat-line">Độc lập – Tự do – Hạnh phúc</span></div>
+      <div class="doc-date">Đắk Lắk, ngày 01 tháng 11 năm 2026</div>
+    </td>
+  </tr>
+</table>
+
+<h1 class="main-title">BẢNG BÁO GIÁ &amp; ĐỀ XUẤT KỸ THUẬT (SERVICE BRIEF)<br/>GÓI DỊCH VỤ CỔNG KẾT NỐI API TRÍ TUỆ NHÂN TẠO ĐA MÔ HÌNH (AI ROUTING GATEWAY)</h1>
+<div class="sub-title-center">(Áp dụng mô hình Thuê bao trọn gói trả trước hằng tháng kèm Báo cáo đối soát Usage định kỳ từ ngày 01/11/2026)</div>
+
+<div class="party-box">
+  <div class="party-head">KÍNH GỬI (KHÁCH HÀNG DOANH NGHIỆP): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <table class="party-tbl">
+    <tr><td class="k">Mã số thuế</td><td class="s">:</td><td><strong>4401053694</strong></td></tr>
+    <tr><td class="k">Địa chỉ trụ sở</td><td class="s">:</td><td>161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam</td></tr>
+    <tr><td class="k">Người đại diện</td><td class="s">:</td><td>Ông <strong>NGÔ HUỲNH NGỌC KHÁNH</strong> &nbsp;&mdash;&nbsp; Chức vụ: <strong>Giám đốc</strong> (ĐT: 0972 768 491)</td></tr>
+    <tr><td class="k">Đơn vị chào giá</td><td class="s">:</td><td><strong>HỘ KINH DOANH CÔNG NGHỆ LIO</strong> (MST: <strong>054202003668</strong> &bull; Đại diện: Ông <strong>HUỲNH ĐỨC NHÂM</strong> – Chủ hộ kinh doanh &bull; Đ/c: 22 đường 3/2, KP Phú Thạnh 2, P. Phú Yên, tỉnh Đắk Lắk)</td></tr>
+  </table>
+</div>
+
+<div class="sec-heading">PHẦN I. TỔNG QUAN GIẢI PHÁP &amp; DANH MỤC HẠNG MỤC KỸ THUẬT CUNG CẤP (AI GATEWAY BRIEF)</div>
+<p>Nhằm đáp ứng nhu cầu sử dụng năng lực tính toán Trí tuệ Nhân tạo (AI/LLM) tần suất cao phục vụ hoạt động Nghiên cứu &amp; Phát triển (R&amp;D), tự động hóa xử lý chứng từ – hải quan – đấu thầu (<strong>KSP PDFSign</strong>), vận hành Kiosk Hành chính công thông minh (<strong>VNMAP AI ONE</strong>), Hệ thống Bãi đỗ xe AI (<strong>VNMAP Parking</strong>), Nền tảng IoT/SCADA (<strong>iNut AppHub / iNut Smartcity</strong>) và trợ lý tác nhân AI nội bộ, <strong>Hộ kinh doanh Công nghệ LIO</strong> trân trọng đề xuất gói dịch vụ <strong>Cổng định tuyến và kết nối API Trí tuệ Nhân tạo hợp nhất (9Router AI Gateway)</strong> gồm <strong>07 hạng mục kỹ thuật cốt lõi</strong> sau:</p>
+
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:5%;">TT</th>
+      <th style="width:25%;">Hạng mục Dịch vụ API</th>
+      <th style="width:26%;">Chuẩn Giao thức / Endpoint &amp; Model</th>
+      <th style="width:44%;">Mô tả Chức năng Kỹ thuật &amp; Ứng dụng đầu vào tại Công ty INUT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c"><strong>01</strong></td>
+      <td><strong>Cổng định tuyến AI hợp nhất &amp; Chuyển mạch tự động</strong><br/><em>(Unified AI Routing &amp; Fusion Combo)</em></td>
+      <td>
+        <code>POST /v1/chat/completions</code><br/>
+        <code>POST /v1/messages</code><br/>
+        <code>POST /v1/responses</code><br/>
+        <code>GET /v1/models</code>
+      </td>
+      <td>Cung cấp 01 chuẩn giao tiếp REST/SSE tương thích OpenAI &amp; Anthropic duy nhất; tự động biên dịch chéo giao thức (<em>Format Translator</em>), cân bằng tải đa tài khoản và chuyển mạch dự phòng tức thời (<em>Auto-Fallback Combos</em>: <code>pymid</code>, <code>gpt</code>, <code>hermes</code>, <code>opus-inut</code>, <code>sonnet</code>, <code>argon</code>, <code>for-plan</code>, <code>inut</code>) đảm bảo uptime dịch vụ liên tục 24/7.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>02</strong></td>
+      <td><strong>API Mô hình Ngôn ngữ Lớn &amp; Suy luận Chuyên sâu</strong><br/><em>(LLM Chat, Code-Gen &amp; Deep Reasoning)</em></td>
+      <td>
+        <code>gemini-4-argon-high-400k</code><br/>
+        <code>gemini-3.8-flash-high</code><br/>
+        <code>claude-opus-5-5-high-400k</code><br/>
+        <code>gpt-6.1-sol</code> / <code>gpt-6-astra</code>
+      </td>
+      <td>Xử lý ngôn ngữ tự nhiên cửa sổ ngữ cảnh lớn (<code>200K &ndash; 1M tokens</code>) với 06 cấp độ suy luận (<code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, <code>ultra</code>). Phục vụ sinh thuyết minh kỹ thuật, phân tích hồ sơ mời thầu e-GP, rà soát hợp đồng, đối soát hóa đơn thuế – tờ khai hải quan và lập trình tự động Firmware/SCADA.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>03</strong></td>
+      <td><strong>Nén Ngữ cảnh &amp; Bộ nhớ đệm Token thông minh</strong><br/><em>(RTK Token Saver &amp; Context Caching)</em></td>
+      <td>
+        <code>POST /v1/responses/compact</code><br/>
+        <code>POST /v1/messages/count_tokens</code><br/>
+        <code>RTK Pre-Translate Hook</code>
+      </td>
+      <td>Cơ chế tiền xử lý nén kết quả công cụ (<em>RTK Token Compression</em>) và lưu trữ ngữ cảnh đệm (<em>Prompt Cache Read/Creation</em>) giúp giảm từ 35% &ndash; 60% lượng token tiêu thụ lặp lại trong các phiên làm việc dài của kỹ sư và hệ thống Agent tự động.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>04</strong></td>
+      <td><strong>API Giọng nói AI Đa ngôn ngữ (TTS &amp; STT)</strong><br/><em>(Speech Synthesis &amp; Transcription)</em></td>
+      <td>
+        <code>POST /v1/audio/speech</code><br/>
+        <code>POST /v1/audio/transcriptions</code><br/>
+        <code>GET /v1/audio/voices</code>
+      </td>
+      <td>Tổng hợp giọng đọc Tiếng Việt tự nhiên (<code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code>) phát loa thông báo Kiosk hành chính công <strong>VNMAP AI ONE</strong>, loa cảnh báo BLE và chuyển đổi giọng nói sang văn bản (STT) tại quầy giao dịch.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>05</strong></td>
+      <td><strong>API Thị giác Máy tính, Ảnh &amp; Video AI</strong><br/><em>(Vision OCR, Image &amp; Video Gen)</em></td>
+      <td>
+        <code>GET /v1/models/image-to-text</code><br/>
+        <code>POST /v1/images/generations</code><br/>
+        <code>POST /v1/videos/generations</code>
+      </td>
+      <td>Nhận diện hình ảnh đa phương thức (<em>Vision</em>): tự động đọc Captcha Cổng Thuế GDT / Hải quan, trích xuất thông tin CCCD, nhận diện biển số &amp; phương tiện, sinh hình ảnh minh họa giao diện/tài liệu kỹ thuật và dựng video mô phỏng sản phẩm.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>06</strong></td>
+      <td><strong>API Vector hóa (Embeddings) &amp; Truy vấn Web</strong><br/><em>(RAG Embeddings, Web Search &amp; Fetch)</em></td>
+      <td>
+        <code>POST /v1/embeddings</code><br/>
+        <code>POST /v1/search</code><br/>
+        <code>POST /v1/web/fetch</code>
+      </td>
+      <td>Tạo vector nhúng (<em>Embeddings</em>) phục vụ cơ sở dữ liệu tri thức nội bộ (tra cứu văn bản pháp luật, QCVN, datasheet thiết bị); tìm kiếm thông tin web thời gian thực và trích xuất nội dung URL chuẩn Markdown sạch cho AI Agent.</td>
+    </tr>
+    <tr>
+      <td class="c"><strong>07</strong></td>
+      <td><strong>Quản trị Khóa API, Cụm Proxy &amp; Báo cáo Usage</strong><br/><em>(API Keys, Proxy Pools &amp; Monthly Usage Report)</em></td>
+      <td>
+        <code>Bearer sk-...</code> (Multi-Key)<br/>
+        <code>Smart Proxy Pools</code><br/>
+        <code>Monthly Usage Telemetry</code>
+      </td>
+      <td>Phân quyền khóa API độc lập cho từng dự án/phòng ban của INUT (<code>ksp-inut-crm-pdf-signer</code>, <code>apphub-iot</code>, <code>apphub vnmap3d</code>, <code>inut-opc-inut-dev</code>, <code>chatbox-telegram-vnmap</code>...); định tuyến qua dải Proxy tĩnh chống nghẽn IP và xuất <strong>Báo cáo Usage chi tiết hằng tháng</strong>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sec-heading">PHẦN II. BIỂU PHÍ CÁC GÓI THUÊ BAO THÁNG TRẢ TRƯỚC (PREPAID MONTHLY SUBSCRIPTION TIERS)</div>
+<p>Tương tự cơ chế tính phí theo bậc định mức của dịch vụ kế toán doanh nghiệp, dịch vụ API Trí tuệ Nhân tạo được cung cấp theo <strong>Gói thuê bao trọn gói trả trước hằng tháng</strong> (<strong>không áp dụng hình thức Pay-as-you-go trả sau phức tạp</strong>). Đầu mỗi tháng, hai Bên căn cứ nhu cầu vận hành thực tế để ký <strong>Phụ lục xác nhận gói dịch vụ và mức phí áp dụng của tháng đó</strong> theo biểu khung từ <strong>3.000.000 đồng/tháng đến 30.000.000 đồng/tháng</strong> như sau:</p>
+
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:9%;">Mã Gói<br/>(Bậc)</th>
+      <th style="width:21%;">Tên Gói Thuê Bao Tháng</th>
+      <th style="width:16%;">Định mức Requests / Tháng</th>
+      <th style="width:19%;">Định mức Tổng Tokens / Tháng<br/><em>(Input + Output + Cache + Reasoning)</em></th>
+      <th style="width:18%;">Quyền hạn Kỹ thuật &amp; Số lượng API Keys</th>
+      <th style="width:17%;">Mức Phí Trọn Gói / Tháng (VNĐ)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c"><strong>AI-01</strong><br/><em>(Bậc 1)</em></td>
+      <td><strong>Gói Cơ Bản</strong><br/><em>(Starter API Tier)</em></td>
+      <td class="c">Đến <strong>30.000</strong><br/>requests/tháng</td>
+      <td class="c">Đến <strong>3,0 tỷ</strong> tokens<br/>(<code>&le; 3.0B tokens</code>)</td>
+      <td>Tối đa 05 API Keys &bull; LLM Chat/Code cơ bản, Embeddings, TTS/STT tiêu chuẩn</td>
+      <td class="r"><strong>3.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-02</strong><br/><em>(Bậc 2)</em></td>
+      <td><strong>Gói Tiêu Chuẩn</strong><br/><em>(Standard API Tier)</em></td>
+      <td class="c"><strong>30.001 &ndash; 60.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>3,0 tỷ &ndash; 6,0 tỷ</strong> tokens<br/>(<code>3.0B &ndash; 6.0B tokens</code>)</td>
+      <td>Tối đa 10 API Keys &bull; Mở khóa Vision OCR, Web Search/Fetch, RTK Token Saver</td>
+      <td class="r"><strong>5.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-03</strong><br/><em>(Bậc 3)</em></td>
+      <td><strong>Gói Nghiệp Vụ</strong><br/><em>(Business API Tier)</em></td>
+      <td class="c"><strong>60.001 &ndash; 100.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>6,0 tỷ &ndash; 12,0 tỷ</strong> tokens<br/>(<code>6.0B &ndash; 12.0B tokens</code>)</td>
+      <td>Tối đa 15 API Keys &bull; Mở khóa Fusion Combo Auto-Fallback &amp; Reasoning <code>high</code></td>
+      <td class="r"><strong>8.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-04</strong><br/><em>(Bậc 4)</em></td>
+      <td><strong>Gói Chuyên Nghiệp</strong><br/><em>(Pro API Tier)</em></td>
+      <td class="c"><strong>100.001 &ndash; 150.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>12,0 tỷ &ndash; 20,0 tỷ</strong> tokens<br/>(<code>12.0B &ndash; 20.0B tokens</code>)</td>
+      <td>Tối đa 20 API Keys &bull; Reasoning <code>xhigh</code>, Image Gen, Smart Proxy Pools dự phòng</td>
+      <td class="r"><strong>12.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-05</strong><br/><em>(Bậc 5)</em></td>
+      <td><strong>Gói Tăng Trưởng</strong><br/><em>(Growth API Tier)</em></td>
+      <td class="c"><strong>150.001 &ndash; 220.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>20,0 tỷ &ndash; 35,0 tỷ</strong> tokens<br/>(<code>20.0B &ndash; 35.0B tokens</code>)</td>
+      <td>Tối đa 25 API Keys &bull; Ưu tiên tốc độ <code>Fast Priority 1.5x</code>, Đa tác nhân Multi-Agent</td>
+      <td class="r"><strong>16.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-06</strong><br/><em>(Bậc 6)</em></td>
+      <td><strong>Gói Doanh Nghiệp I</strong><br/><em>(Enterprise I Tier)</em></td>
+      <td class="c"><strong>220.001 &ndash; 300.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>35,0 tỷ &ndash; 50,0 tỷ</strong> tokens<br/>(<code>35.0B &ndash; 50.0B tokens</code>)</td>
+      <td>Tối đa 35 API Keys &bull; Trọn bộ 07 hạng mục + Video Gen + Ngữ cảnh <code>400K-1M</code></td>
+      <td class="r"><strong>20.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-07</strong><br/><em>(Bậc 7)</em></td>
+      <td><strong>Gói Doanh Nghiệp II</strong><br/><em>(Enterprise II Tier)</em></td>
+      <td class="c"><strong>300.001 &ndash; 380.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>50,0 tỷ &ndash; 65,0 tỷ</strong> tokens<br/>(<code>50.0B &ndash; 65.0B tokens</code>)</td>
+      <td>Tối đa 50 API Keys &bull; Luồng định tuyến ưu tiên riêng (Dedicated Combo &amp; Proxy)</td>
+      <td class="r"><strong>25.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-08</strong><br/><em>(Bậc 8)</em></td>
+      <td><strong>Gói Hạ Tầng Toàn Diện</strong><br/><em>(Unlimited Scale Tier)</em></td>
+      <td class="c"><strong>380.001 &ndash; 500.000</strong><br/>requests/tháng</td>
+      <td class="c"><strong>65,0 tỷ &ndash; 90,0 tỷ</strong> tokens<br/>(<code>65.0B &ndash; 90.0B tokens</code>)</td>
+      <td>Không giới hạn API Keys &bull; Toàn bộ cụm <code>9Router</code> (<code>max/ultra</code> reasoning)</td>
+      <td class="r"><strong>30.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-FLEX</strong></td>
+      <td><strong>Gói Thỏa Thuận Tháng</strong><br/><em>(Custom Monthly Package)</em></td>
+      <td colspan="3">Theo cấu hình mô hình chuyên biệt hoặc sản lượng Usage dự kiến thỏa thuận trực tiếp giữa hai Bên tại Phụ lục của từng tháng cụ thể.</td>
+      <td class="r"><strong>Thỏa thuận theo<br/>Phụ lục tháng<br/>(3tr &ndash; 30tr đ)</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout-info">
+  <strong>Nguyên tắc áp dụng Gói thuê bao &amp; Thanh toán trả trước:</strong><br/>
+  1. <strong>Mô hình mua theo Gói cố định (Prepaid Subscription), KHÔNG phải Pay-as-you-go:</strong> Mỗi tháng hai Bên ký <strong>01 Phụ lục Hợp đồng</strong> để chốt gói dịch vụ và mức phí trọn gói của tháng đó (từ <code>3.000.000 đ</code> đến <code>30.000.000 đ</code>). Không phát sinh cước vượt trần tự động ngoài Phụ lục đã ký.<br/>
+  2. <strong>Thời hạn thanh toán trả trước:</strong> Thanh toán <strong>100% giá trị gói của tháng từ ngày 05 đến ngày 15 hằng tháng</strong> bằng chuyển khoản ngân hàng vào tài khoản <strong>00344714490 – Ngân hàng Quân đội (MB Bank)</strong> của Hộ kinh doanh Công nghệ LIO.<br/>
+  3. <strong>Báo cáo đối soát Usage hằng tháng:</strong> Cuối mỗi tháng, Hộ kinh doanh Công nghệ LIO kết xuất <strong>Báo cáo Usage chi tiết của tháng</strong> (thống kê Requests &amp; Tokens theo từng API Key, Endpoint và Model) kèm Hóa đơn hợp lệ để Công ty INUT nghiệm thu và hạch toán chi phí đầu vào.
+</div>
+
+<table class="sig-table">
+  <tr>
+    <td>
+      <div class="sig-role">XÁC NHẬN CỦA KHÁCH HÀNG (CÔNG TY INUT)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">NGÔ HUỲNH NGỌC KHÁNH</div>
+    </td>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN HỘ KINH DOANH CÔNG NGHỆ LIO</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu hộ kinh doanh)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">HUỲNH ĐỨC NHÂM</div>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

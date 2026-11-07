@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Hợp Đồng Khung Dịch Vụ API Trí Tuệ Nhân Tạo - Số 0111/2026/HĐDV-LIO-INUT</title>
+<style>
+@page {
+  size: A4 portrait;
+  margin: 7.5mm 11mm 8.5mm 11mm;
+  @bottom-left {
+    content: string(doc_footer_left);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 7.5pt;
+    font-style: italic;
+    color: #475569;
+  }
+  @bottom-right {
+    content: "Trang " counter(page) " / " counter(pages);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 8pt;
+    font-weight: bold;
+    color: #1e293b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DejaVu Serif', 'Times New Roman', serif;
+  font-size: 8.15pt;
+  line-height: 1.18;
+  color: #111827;
+  margin: 0;
+  padding: 0;
+}
+
+.footer-str {
+  string-set: doc_footer_left content();
+  display: none;
+}
+
+.nat-header {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 5px;
+}
+
+.nat-header td {
+  vertical-align: top;
+  text-align: center;
+  padding: 0;
+}
+
+.org-name {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.22;
+}
+
+.org-sub {
+  font-size: 8.4pt;
+  margin-top: 1px;
+  color: #334155;
+}
+
+.nat-title {
+  font-size: 9.6pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.nat-motto {
+  font-size: 9.3pt;
+  font-weight: bold;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.nat-line {
+  display: inline-block;
+  border-bottom: 1px solid #0f172a;
+  padding-bottom: 1px;
+}
+
+.doc-date {
+  font-size: 8.5pt;
+  font-style: italic;
+  margin-top: 2px;
+  color: #334155;
+}
+
+h1.main-title {
+  text-align: center;
+  font-size: 11pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin: 2px 0 1px 0;
+  line-height: 1.15;
+}
+
+.sub-title-center {
+  text-align: center;
+  font-size: 8.3pt;
+  font-style: italic;
+  color: #334155;
+  margin-bottom: 3px;
+}
+
+.basis-box {
+  font-size: 8.1pt;
+  font-style: italic;
+  text-align: justify;
+  margin-bottom: 3px;
+  color: #1e293b;
+}
+
+.party-box {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  page-break-inside: avoid;
+}
+
+.party-head {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.party-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.2pt;
+}
+
+.party-tbl td {
+  padding: 1px 2px;
+  vertical-align: top;
+}
+
+.party-tbl td.k {
+  width: 22%;
+  font-weight: bold;
+  color: #1e293b;
+}
+
+.party-tbl td.s {
+  width: 2%;
+  text-align: center;
+}
+
+.sec-heading {
+  font-size: 8.9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  margin-top: 3.5px;
+  margin-bottom: 1.5px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1px;
+  page-break-after: avoid;
+}
+
+.sub-heading {
+  font-size: 9pt;
+  font-weight: bold;
+  color: #1e293b;
+  margin-top: 3px;
+  margin-bottom: 1px;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 1.5px 0;
+  text-align: justify;
+}
+
+ul.tight-list {
+  margin: 1px 0 2px 0;
+  padding-left: 14px;
+}
+
+ul.tight-list li {
+  margin-bottom: 1px;
+  text-align: justify;
+}
+
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0 3px 0;
+  font-size: 7.5pt;
+}
+
+table.tbl tr {
+  page-break-inside: avoid;
+}
+
+table.tbl th, table.tbl td {
+  border: 1px solid #475569;
+  padding: 1.5px 3px;
+  vertical-align: top;
+}
+
+table.tbl th {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  font-weight: bold;
+  text-align: center;
+}
+
+table.tbl td.c {
+  text-align: center;
+}
+
+table.tbl td.r {
+  text-align: right;
+}
+
+.callout-info {
+  background: #f0f9ff;
+  border-left: 3px solid #0284c7;
+  padding: 3px 6px;
+  margin: 2.5px 0;
+  font-size: 8pt;
+  page-break-inside: avoid;
+}
+
+.callout-warn {
+  background: #fffbeb;
+  border-left: 3px solid #d97706;
+  padding: 4px 7px;
+  margin: 3.5px 0;
+  font-size: 8.4pt;
+  page-break-inside: avoid;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.5px 4px;
+  border-radius: 3px;
+  font-size: 7.5pt;
+  font-weight: bold;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.sig-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  page-break-inside: avoid;
+}
+
+.sig-table td {
+  width: 50%;
+  text-align: center;
+  vertical-align: top;
+}
+
+.sig-role {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.sig-note {
+  font-size: 8pt;
+  font-style: italic;
+  color: #475569;
+  margin-top: 1px;
+}
+
+.sig-space {
+  height: 38px;
+}
+
+.sig-name {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+code {
+  font-family: 'DejaVu Sans Mono', monospace;
+  font-size: 7.7pt;
+  background: #f1f5f9;
+  padding: 0.5px 2.5px;
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+<div class="footer-str">Hợp đồng Khung Dịch vụ API Trí tuệ Nhân tạo số 0111/2026/HĐDV-LIO-INUT — Ký ngày 01/11/2026</div>
+
+<table class="nat-header">
+  <tr>
+    <td style="width:48%;">
+      <div class="org-name">CÔNG TY CP ĐẦU TƯ VÀ PHÁT TRIỂN<br/>CÔNG NGHỆ INUT &ndash; HKD CÔNG NGHỆ LIO</div>
+      <div class="org-sub">Số: <strong>0111/2026/HĐDV-LIO-INUT</strong></div>
+    </td>
+    <td style="width:52%;">
+      <div class="nat-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="nat-motto"><span class="nat-line">Độc lập – Tự do – Hạnh phúc</span></div>
+      <div class="doc-date">Đắk Lắk, ngày 01 tháng 11 năm 2026</div>
+    </td>
+  </tr>
+</table>
+
+<h1 class="main-title">HỢP ĐỒNG NGUYÊN TẮC (HỢP ĐỒNG KHUNG)<br/>CUNG CẤP GÓI DỊCH VỤ CỔNG KẾT NỐI API TRÍ TUỆ NHÂN TẠO</h1>
+<div class="sub-title-center">(V/v: Thuê bao gói dịch vụ Cổng định tuyến AI Đa mô hình 9Router phục vụ sản xuất kinh doanh &amp; phát triển phần mềm)</div>
+
+<div class="basis-box">
+  - Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015 của Quốc hội nước CHXHCN Việt Nam;<br/>
+  - Căn cứ Luật Thương mại số 36/2005/QH11 và Luật Giao dịch điện tử số 20/2023/QH15;<br/>
+  - Căn cứ Luật Thuế thu nhập doanh nghiệp, Luật Quản lý thuế và các văn bản hướng dẫn hạch toán chi phí dịch vụ công nghệ thông tin phục vụ hoạt động sản xuất kinh doanh;<br/>
+  - Căn cứ nhu cầu sử dụng hạ tầng API Trí tuệ Nhân tạo (AI/LLM) của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT và năng lực cung ứng hạ tầng của Hộ kinh doanh Công nghệ LIO.
+</div>
+
+<p>Hôm nay, ngày <strong>01 tháng 11 năm 2026</strong>, tại tỉnh Đắk Lắk, chúng tôi gồm có:</p>
+
+<div class="party-box">
+  <table class="party-tbl">
+    <tr>
+      <td style="width:50%; padding-right:8px; border-right:1px solid #cbd5e1;">
+        <div class="party-head">BÊN A (BÊN CUNG CẤP DỊCH VỤ): HỘ KINH DOANH CÔNG NGHỆ LIO</div>
+        - <strong>Tên đơn vị:</strong> <strong>HỘ KINH DOANH CÔNG NGHỆ LIO</strong><br/>
+        - <strong>Mã số thuế:</strong> <strong>054202003668</strong><br/>
+        - <strong>Địa chỉ:</strong> 22 đường 3/2, khu phố Phú Thạnh 2, phường Phú Yên, tỉnh Đắk Lắk<br/>
+        - <strong>Người đại diện:</strong> Ông <strong>HUỲNH ĐỨC NHÂM</strong> &ndash; Chức vụ: <strong>Chủ hộ kinh doanh</strong><br/>
+        - <strong>Số tài khoản:</strong> <strong>00344714490</strong> tại <strong>Ngân hàng TMCP Quân đội (MB Bank)</strong>
+      </td>
+      <td style="width:50%; padding-left:8px;">
+        <div class="party-head">BÊN B (BÊN SỬ DỤNG DỊCH VỤ): CÔNG TY CP ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+        - <strong>Tên doanh nghiệp:</strong> <strong>CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</strong><br/>
+        - <strong>Mã số thuế:</strong> <strong>4401053694</strong><br/>
+        - <strong>Địa chỉ trụ sở:</strong> 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam<br/>
+        - <strong>Người đại diện:</strong> Ông <strong>NGÔ HUỲNH NGỌC KHÁNH</strong> &ndash; Chức vụ: <strong>Giám đốc</strong> (ĐT: 0972 768 491)<br/>
+        - <strong>Số tài khoản:</strong> <strong>79713</strong> tại <strong>Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)</strong>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>Sau khi bàn bạc và thống nhất, hai Bên đồng ý ký kết <strong>Hợp đồng nguyên tắc (Hợp đồng khung) cung cấp gói dịch vụ Cổng kết nối API Trí tuệ Nhân tạo</strong> với các điều khoản và điều kiện chi tiết sau đây:</p>
+
+<div class="sec-heading">ĐIỀU 1. NỘI DUNG DỊCH VỤ VÀ MỤC ĐÍCH SỬ DỤNG</div>
+<p><strong>1.1. Bản chất Hợp đồng khung:</strong> Hợp đồng này là Hợp đồng nguyên tắc quy định các điều kiện kỹ thuật, biểu phí khung và quy trình thanh quyết toán cho việc Bên A cung cấp cho Bên B <strong>Gói dịch vụ Cổng kết nối và định tuyến API Trí tuệ Nhân tạo đa mô hình (Hệ thống 9Router AI Gateway)</strong> để Bên B sử dụng làm chi phí đầu vào trực tiếp phục vụ hoạt động sản xuất, phát triển phần mềm, vận hành thiết bị IoT/Kiosk AI và tự động hóa quản trị doanh nghiệp của Bên B.</p>
+<p><strong>1.2. Các hạng mục kỹ thuật thuộc phạm vi dịch vụ (7 Hạng mục 9Router AI Gateway):</strong></p>
+<ul class="tight-list">
+  <li><strong>Hạng mục 1 – Cổng định tuyến AI hợp nhất (Unified AI Gateway &amp; Fusion Combo):</strong> Cung cấp điểm cuối kết nối chuẩn <code>/v1/chat/completions</code>, <code>/v1/messages</code>, <code>/v1/responses</code> kèm cơ chế chuyển đổi giao thức tự động, cân bằng tải đa tài khoản và chuyển mạch dự phòng (<em>Auto-Fallback Combos</em>: <code>pymid</code>, <code>gpt</code>, <code>hermes</code>, <code>opus-inut</code>, <code>sonnet</code>, <code>argon</code>, <code>for-plan</code>, <code>inut</code>).</li>
+  <li><strong>Hạng mục 2 – API Xử lý Ngôn ngữ Lớn &amp; Suy luận chuyên sâu (LLM Chat, Code-Gen &amp; Deep Reasoning):</strong> Truy cập các mô hình ngôn ngữ và suy luận đa cấp (<code>gemini-4-argon-high-400k</code>, <code>gemini-3.8-flash-high/medium</code>, <code>claude-opus-5-5-high-400k</code>, <code>claude-sonnet</code>, <code>gpt-6.1-sol</code>, <code>gpt-6-astra</code>, <code>gpt-5.6-sol/terra/luna</code>) phục vụ lập trình phần mềm/firmware, phân tích hồ sơ thầu e-GP, soạn thảo hồ sơ kỹ thuật và bóc tách dữ liệu hóa đơn – hải quan.</li>
+  <li><strong>Hạng mục 3 – Nén ngữ cảnh &amp; Bộ nhớ đệm Token (RTK Token Saver &amp; Context Caching):</strong> Nén tự động kết quả công cụ (<code>RTK Hook</code>) và quản lý bộ nhớ đệm ngữ cảnh (<code>Cached Tokens</code> / <code>/v1/responses/compact</code>).</li>
+  <li><strong>Hạng mục 4 – API Giọng nói AI (TTS &amp; STT):</strong> Tổng hợp giọng đọc Tiếng Việt (<code>/v1/audio/speech</code>: <code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code>) và nhận diện giọng nói thành văn bản (<code>/v1/audio/transcriptions</code>) phục vụ Kiosk Hành chính công <strong>VNMAP AI ONE</strong> và hệ thống loa thông báo thông minh của Bên B.</li>
+  <li><strong>Hạng mục 5 – API Thị giác máy tính, Khởi tạo Ảnh &amp; Video AI (Vision OCR, Image &amp; Video Gen):</strong> Nhận diện hình ảnh/OCR (giải mã Captcha Cổng Thuế/Hải quan, bóc tách CCCD, nhận diện biển số xe <strong>VNMAP Parking</strong> / <strong>iNut4C</strong>), tạo ảnh kỹ thuật (<code>/v1/images/generations</code>) và tạo video mô phỏng (<code>/v1/videos/generations</code>).</li>
+  <li><strong>Hạng mục 6 – API Vector hóa (Embeddings) &amp; Truy xuất Web (Web Search &amp; Web Fetch):</strong> Tạo vector dữ liệu (<code>/v1/embeddings</code>) cho hệ thống tra cứu RAG nội bộ và tìm kiếm/trích xuất dữ liệu web (<code>/v1/search</code>, <code>/v1/web/fetch</code>).</li>
+  <li><strong>Hạng mục 7 – Quản trị Khóa API (Bearer Keys), Cụm Proxy &amp; Báo cáo Usage định kỳ:</strong> Cấp phát và duy trì các khóa <code>Bearer API Key</code> riêng cho từng phân hệ của Bên B, duy trì cụm <code>Smart Proxy Pools</code> và kết xuất <strong>Báo cáo Usage hằng tháng</strong> theo từng khóa, từng endpoint và từng mô hình.</li>
+</ul>
+
+<div class="sec-heading">ĐIỀU 2. CƠ CHẾ MUA GÓI THUÊ BAO THÁNG &amp; BIỂU PHÍ KHUNG THEO MỨC SỬ DỤNG</div>
+<p><strong>2.1. Nguyên tắc mua theo Gói thuê bao tháng (Không áp dụng Pay-as-you-go):</strong> Hai Bên thống nhất dịch vụ được cung cấp theo hình thức <strong>Mua gói thuê bao định mức trả trước theo từng tháng</strong>, không tính cước lẻ biến động theo từng truy vấn (<em>không phải Pay-as-you-go</em>). Tương tự cơ chế phân bậc dịch vụ kế toán, mức phí hằng tháng được xác định theo <strong>Bậc gói cước sử dụng (Usage Tier)</strong> dao động từ <strong>3.000.000 đồng/tháng đến 30.000.000 đồng/tháng</strong> như sau:</p>
+
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:10%;">Mã Gói</th>
+      <th style="width:22%;">Tên Gói Dịch Vụ</th>
+      <th style="width:18%;">Định mức Requests / Tháng</th>
+      <th style="width:22%;">Định mức Tổng Tokens / Tháng<br/><em>(Input + Output + Cache + Reasoning)</em></th>
+      <th style="width:12%;">Số lượng<br/>API Keys</th>
+      <th style="width:16%;">Mức Phí Trọn Gói / Tháng (VNĐ)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c"><strong>AI-01</strong></td>
+      <td><strong>Gói Cơ Bản (Starter)</strong></td>
+      <td class="c"><code>0 &ndash; 30.000</code> reqs</td>
+      <td class="c">Đến <code>3,0 tỷ</code> tokens (<code>3.0B</code>)</td>
+      <td class="c">Đến 05 keys</td>
+      <td class="r"><strong>3.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-02</strong></td>
+      <td><strong>Gói Tiêu Chuẩn (Standard)</strong></td>
+      <td class="c"><code>30.001 &ndash; 60.000</code> reqs</td>
+      <td class="c"><code>3,0 tỷ &ndash; 6,0 tỷ</code> tokens (<code>6.0B</code>)</td>
+      <td class="c">Đến 10 keys</td>
+      <td class="r"><strong>5.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-03</strong></td>
+      <td><strong>Gói Nghiệp Vụ (Business)</strong></td>
+      <td class="c"><code>60.001 &ndash; 100.000</code> reqs</td>
+      <td class="c"><code>6,0 tỷ &ndash; 12,0 tỷ</code> tokens (<code>12.0B</code>)</td>
+      <td class="c">Đến 15 keys</td>
+      <td class="r"><strong>8.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-04</strong></td>
+      <td><strong>Gói Chuyên Nghiệp (Pro)</strong></td>
+      <td class="c"><code>100.001 &ndash; 150.000</code> reqs</td>
+      <td class="c"><code>12,0 tỷ &ndash; 20,0 tỷ</code> tokens (<code>20.0B</code>)</td>
+      <td class="c">Đến 20 keys</td>
+      <td class="r"><strong>12.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-05</strong></td>
+      <td><strong>Gói Tăng Trưởng (Growth)</strong></td>
+      <td class="c"><code>150.001 &ndash; 220.000</code> reqs</td>
+      <td class="c"><code>20,0 tỷ &ndash; 35,0 tỷ</code> tokens (<code>35.0B</code>)</td>
+      <td class="c">Đến 25 keys</td>
+      <td class="r"><strong>16.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-06</strong></td>
+      <td><strong>Gói Doanh Nghiệp I</strong></td>
+      <td class="c"><code>220.001 &ndash; 300.000</code> reqs</td>
+      <td class="c"><code>35,0 tỷ &ndash; 50,0 tỷ</code> tokens (<code>50.0B</code>)</td>
+      <td class="c">Đến 35 keys</td>
+      <td class="r"><strong>20.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-07</strong></td>
+      <td><strong>Gói Doanh Nghiệp II</strong></td>
+      <td class="c"><code>300.001 &ndash; 380.000</code> reqs</td>
+      <td class="c"><code>50,0 tỷ &ndash; 65,0 tỷ</code> tokens (<code>65.0B</code>)</td>
+      <td class="c">Đến 50 keys</td>
+      <td class="r"><strong>25.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-08</strong></td>
+      <td><strong>Gói Hạ Tầng Toàn Diện</strong></td>
+      <td class="c"><code>380.001 &ndash; 500.000</code> reqs</td>
+      <td class="c"><code>65,0 tỷ &ndash; 90,0 tỷ</code> tokens (<code>90.0B</code>)</td>
+      <td class="c">Không giới hạn</td>
+      <td class="r"><strong>30.000.000 đ</strong></td>
+    </tr>
+    <tr>
+      <td class="c"><strong>AI-FLEX</strong></td>
+      <td><strong>Gói Thỏa Thuận Theo Tháng</strong></td>
+      <td colspan="3">Trường hợp Bên B có nhu cầu cấu hình mô hình riêng hoặc điều chỉnh bậc định mức theo dự án từng tháng, hai Bên thỏa thuận mức phí trọn gói cụ thể tại Phụ lục của tháng đó.</td>
+      <td class="r"><strong>Theo Phụ lục<br/>từng tháng</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>2.2. Ký Phụ lục chốt gói hằng tháng:</strong> Vào đầu mỗi tháng (hoặc trước kỳ thanh toán của tháng đó), hai Bên tiến hành lập và ký <strong>01 Phụ lục Hợp đồng theo tháng</strong> ghi nhận cụ thể Mã gói cước đăng ký, định mức Usage cam kết và <strong>Mức phí trọn gói thỏa thuận của tháng đó</strong> (nằm trong khung từ 3.000.000 đồng đến 30.000.000 đồng hoặc mức phí thỏa thuận khác tùy khối lượng dự án). Phụ lục mỗi tháng là căn cứ pháp lý trực tiếp để thanh toán và xuất hóa đơn cho kỳ tháng đó.</p>
+<p><strong>2.3. Chính sách thuế:</strong> Mức phí trọn gói ghi tại Biểu phí trên và tại Phụ lục từng tháng là tổng số tiền thanh toán trọn gói đã bao gồm các khoản thuế, phí theo quy định hiện hành áp dụng đối với Hộ kinh doanh. Trường hợp chạm ngưỡng định mức gói trong tháng, hệ thống tự động điều tiết tốc độ (<em>Soft Rate-Limit</em> / chuyển sang mô hình tiết kiệm token) mà không tự ý tính thêm phí vượt gói nếu chưa có thỏa thuận bằng văn bản của hai Bên.</p>
+
+<div class="sec-heading">ĐIỀU 3. PHƯƠNG THỨC THANH TOÁN TRẢ TRƯỚC &amp; BÁO CÁO ĐỐI SOÁT USAGE HẰNG THÁNG</div>
+<p><strong>3.1. Thời hạn thanh toán trả trước hằng tháng (Từ ngày 05 đến ngày 15 hằng tháng):</strong></p>
+<ul class="tight-list">
+  <li>Căn cứ Phụ lục gói dịch vụ của từng tháng được hai Bên ký kết, Bên B thực hiện <strong>thanh toán trả trước 100% giá trị gói dịch vụ của tháng đó trong khoảng thời gian từ ngày 05 đến ngày 15 hằng tháng</strong>.</li>
+  <li>Việc thanh toán trả trước đầu kỳ giúp Bên A chủ động nạp hạn mức tài khoản nhà cung cấp thượng nguồn (<em>Upstream Providers</em>), duy trì cụm máy chủ định tuyến và phân bổ băng thông cố định cho các khóa API của Bên B trong suốt tháng.</li>
+</ul>
+<p><strong>3.2. Phương thức thanh toán:</strong> Chuyển khoản ngân hàng 100% (không dùng tiền mặt) từ tài khoản công ty của Bên B sang tài khoản ngân hàng của Bên A theo thông tin:</p>
+<div class="callout-info">
+  - Đơn vị thụ hưởng / Chủ tài khoản: <strong>HUỲNH ĐỨC NHÂM</strong> (Chủ <strong>HỘ KINH DOANH CÔNG NGHỆ LIO</strong> &ndash; MST: <code>054202003668</code>)<br/>
+  - Số tài khoản: <strong>00344714490</strong> &nbsp;&nbsp;&mdash;&nbsp;&nbsp; Tại ngân hàng: <strong>Ngân hàng TMCP Quân đội (MB Bank)</strong><br/>
+  - Nội dung chuyển khoản chuẩn: <code>INUT thanh toan goi dich vu API AI thang [MM/YYYY] theo HD 0111/2026/HDDV-LIO-INUT</code>
+</div>
+<p><strong>3.3. Báo cáo Usage hằng tháng &amp; Hồ sơ chứng từ kế toán:</strong></p>
+<ul class="tight-list">
+  <li>Định kỳ vào cuối mỗi tháng (từ ngày 28 đến ngày 05 của tháng kế tiếp), Bên A có trách nhiệm kết xuất và bàn giao cho Bên B <strong>01 Bản Báo cáo Sản lượng Sử dụng API (Monthly Usage Report)</strong> của tháng đó, thể hiện rõ: Tổng số lượt truy vấn (<em>Requests</em>), Tổng lượng <em>Prompt Tokens</em>, <em>Completion Tokens</em>, <em>Cached Tokens</em>, <em>Reasoning Tokens</em> phân bổ theo từng <code>API Key</code> và từng nhóm mô hình/endpoint.</li>
+  <li>Bộ chứng từ hạch toán chi phí đầu vào hằng tháng của Bên B gồm: (1) <strong>Hợp đồng nguyên tắc (Hợp đồng khung) này</strong>; (2) <strong>Phụ lục xác nhận gói dịch vụ &amp; Báo cáo Usage của tháng</strong> có chữ ký xác nhận của hai Bên; (3) <strong>Hóa đơn điện tử hợp pháp</strong> do Bên A xuất và (4) <strong>Ủy nhiệm chi / Chứng từ chuyển khoản ngân hàng</strong> từ ngày 05 &ndash; 15 của tháng.</li>
+</ul>
+
+<div class="sec-heading">ĐIỀU 4. THỜI HẠN HỢP ĐỒNG</div>
+<p><strong>4.1.</strong> Hợp đồng khung này có hiệu lực kể từ ngày <strong>01 tháng 11 năm 2026</strong> và được áp dụng <strong>không xác định thời hạn</strong> (hoặc cho đến khi một trong hai Bên có văn bản thông báo chấm dứt Hợp đồng gửi cho Bên kia trước ít nhất <strong>30 ngày</strong>, tương tự quy chuẩn hợp đồng dịch vụ kế toán định kỳ).</p>
+<p><strong>4.2.</strong> Việc chấm dứt Hợp đồng khung chỉ có hiệu lực sau khi hai Bên đã hoàn tất đối soát Usage và thanh quyết toán xong gói dịch vụ của tháng hiện hành.</p>
+
+<div class="sec-heading">ĐIỀU 5. QUYỀN VÀ NGHĨA VỤ CỦA BÊN A (HỘ KINH DOANH CÔNG NGHỆ LIO)</div>
+<p><strong>5.1.</strong> Duy trì hoạt động ổn định, thông suốt 24/7 cho hệ thống Cổng định tuyến AI (<code>9Router AI Gateway</code>), đảm bảo cơ chế tự động chuyển mạch dự phòng (<em>Auto-Fallback</em>) khi bất kỳ nhà cung cấp thượng nguồn nào bảo trì hoặc giới hạn băng thông.</p>
+<p><strong>5.2.</strong> Cấp phát đầy đủ các khóa truy cập (<code>Bearer API Keys</code>) theo yêu cầu của Bên B, cấu hình đúng hạn mức gói thuê bao tháng đã ký tại Phụ lục và hỗ trợ kỹ thuật kịp thời khi Bên B tích hợp vào phần mềm/thiết bị mới.</p>
+<p><strong>5.3.</strong> Bảo mật tuyệt đối toàn bộ nội dung truy vấn (<em>Prompts</em>), mã nguồn, tài liệu kỹ thuật, dữ liệu khách hàng và thông tin kinh doanh của Bên B truyền qua cổng API; không lưu trữ trái phép hoặc tiết lộ cho bất kỳ bên thứ ba nào.</p>
+<p><strong>5.4.</strong> Lập và ký Phụ lục gói cước hằng tháng, cung cấp đầy đủ <strong>Báo cáo Usage hằng tháng</strong> và xuất hóa đơn hợp lệ cho Bên B để phục vụ công tác kê khai, quyết toán thuế của Bên B.</p>
+
+<div class="sec-heading">ĐIỀU 6. QUYỀN VÀ NGHĨA VỤ CỦA BÊN B (CÔNG TY CP ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT)</div>
+<p><strong>6.1.</strong> Quản lý bảo mật các khóa <code>Bearer API Key</code> được cấp, sử dụng dịch vụ API đúng mục đích phục vụ hoạt động sản xuất kinh doanh, nghiên cứu phát triển phần mềm – phần cứng hợp pháp của Công ty.</p>
+<p><strong>6.2.</strong> Phối hợp với Bên A ký Phụ lục xác nhận gói dịch vụ đầu mỗi tháng và <strong>thanh toán trả trước đầy đủ, đúng hạn từ ngày 05 đến ngày 15 hằng tháng</strong> theo quy định tại Điều 2 và Điều 3 của Hợp đồng này.</p>
+<p><strong>6.3.</strong> Kiểm tra, xác nhận số liệu trên <strong>Báo cáo Usage hằng tháng</strong> do Bên A gửi để lưu trữ vào hồ sơ kế toán của doanh nghiệp.</p>
+
+<div class="sec-heading">ĐIỀU 7. ĐIỀU KHOẢN CHUNG</div>
+<p><strong>7.1.</strong> Trường hợp Bên A không cung cấp được dịch vụ API theo đúng gói cước đã cam kết tại Phụ lục tháng (ngừng dịch vụ quá 48 giờ liên tục không có phương án dự phòng), Bên A có trách nhiệm bù trừ hạn mức sang tháng kế tiếp hoặc hoàn trả phần phí tương ứng cho Bên B.</p>
+<p><strong>7.2.</strong> Trường hợp Bên B đơn phương ngừng sử dụng giữa chừng trong tháng sau khi Bên A đã cấp phát hạn mức gói thuê bao trả trước của tháng đó thì khoản phí thuê bao trả trước của tháng đó không được hoàn lại, trừ trường hợp hai Bên có thỏa thuận khác.</p>
+<p><strong>7.3.</strong> Mọi Phụ lục gói cước hằng tháng, Báo cáo đối soát Usage, Biên bản nghiệm thu và Hóa đơn phát sinh theo Hợp đồng này là bộ phận cấu thành không tách rời của Hợp đồng.</p>
+<p><strong>7.4.</strong> Hợp đồng này có hiệu lực từ ngày <strong>01/11/2026</strong>, được lập thành <strong>02 (hai) bản</strong> có giá trị pháp lý như nhau, mỗi Bên giữ <strong>01 (một) bản</strong> để làm căn cứ thực hiện./.</p>
+
+<table class="sig-table">
+  <tr>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN B (CÔNG TY INUT)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">NGÔ HUỲNH NGỌC KHÁNH</div>
+    </td>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN A (HKD CÔNG NGHỆ LIO)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu hộ kinh doanh)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">HUỲNH ĐỨC NHÂM</div>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

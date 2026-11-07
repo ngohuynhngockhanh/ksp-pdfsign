@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Phụ Lục Số 01 (Kỳ Tháng 11/2026) &amp; Báo Cáo Usage API - Hợp Đồng 0111/2026/HĐDV-LIO-INUT</title>
+<style>
+@page {
+  size: A4 portrait;
+  margin: 7.5mm 11mm 8.5mm 11mm;
+  @bottom-left {
+    content: string(doc_footer_left);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 7.5pt;
+    font-style: italic;
+    color: #475569;
+  }
+  @bottom-right {
+    content: "Trang " counter(page) " / " counter(pages);
+    font-family: 'DejaVu Serif', 'Times New Roman', serif;
+    font-size: 8pt;
+    font-weight: bold;
+    color: #1e293b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DejaVu Serif', 'Times New Roman', serif;
+  font-size: 8.15pt;
+  line-height: 1.18;
+  color: #111827;
+  margin: 0;
+  padding: 0;
+}
+
+.footer-str {
+  string-set: doc_footer_left content();
+  display: none;
+}
+
+.nat-header {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 5px;
+}
+
+.nat-header td {
+  vertical-align: top;
+  text-align: center;
+  padding: 0;
+}
+
+.org-name {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.22;
+}
+
+.org-sub {
+  font-size: 8.4pt;
+  margin-top: 1px;
+  color: #334155;
+}
+
+.nat-title {
+  font-size: 9.6pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.nat-motto {
+  font-size: 9.3pt;
+  font-weight: bold;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.nat-line {
+  display: inline-block;
+  border-bottom: 1px solid #0f172a;
+  padding-bottom: 1px;
+}
+
+.doc-date {
+  font-size: 8.5pt;
+  font-style: italic;
+  margin-top: 2px;
+  color: #334155;
+}
+
+h1.main-title {
+  text-align: center;
+  font-size: 11pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin: 2px 0 1px 0;
+  line-height: 1.15;
+}
+
+.sub-title-center {
+  text-align: center;
+  font-size: 8.3pt;
+  font-style: italic;
+  color: #334155;
+  margin-bottom: 3px;
+}
+
+.basis-box {
+  font-size: 8.1pt;
+  font-style: italic;
+  text-align: justify;
+  margin-bottom: 3px;
+  color: #1e293b;
+}
+
+.party-box {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  page-break-inside: avoid;
+}
+
+.party-head {
+  font-size: 9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.party-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.2pt;
+}
+
+.party-tbl td {
+  padding: 1px 2px;
+  vertical-align: top;
+}
+
+.party-tbl td.k {
+  width: 22%;
+  font-weight: bold;
+  color: #1e293b;
+}
+
+.party-tbl td.s {
+  width: 2%;
+  text-align: center;
+}
+
+.sec-heading {
+  font-size: 8.9pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f3d68;
+  margin-top: 3.5px;
+  margin-bottom: 1.5px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1px;
+  page-break-after: avoid;
+}
+
+.sub-heading {
+  font-size: 9pt;
+  font-weight: bold;
+  color: #1e293b;
+  margin-top: 3px;
+  margin-bottom: 1px;
+  page-break-after: avoid;
+}
+
+p {
+  margin: 1.5px 0;
+  text-align: justify;
+}
+
+ul.tight-list {
+  margin: 1px 0 2px 0;
+  padding-left: 14px;
+}
+
+ul.tight-list li {
+  margin-bottom: 1px;
+  text-align: justify;
+}
+
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0 3px 0;
+  font-size: 7.5pt;
+}
+
+table.tbl tr {
+  page-break-inside: avoid;
+}
+
+table.tbl th, table.tbl td {
+  border: 1px solid #475569;
+  padding: 1.5px 3px;
+  vertical-align: top;
+}
+
+table.tbl th {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  font-weight: bold;
+  text-align: center;
+}
+
+table.tbl td.c {
+  text-align: center;
+}
+
+table.tbl td.r {
+  text-align: right;
+}
+
+.callout-info {
+  background: #f0f9ff;
+  border-left: 3px solid #0284c7;
+  padding: 3px 6px;
+  margin: 2.5px 0;
+  font-size: 8pt;
+  page-break-inside: avoid;
+}
+
+.callout-warn {
+  background: #fffbeb;
+  border-left: 3px solid #d97706;
+  padding: 4px 7px;
+  margin: 3.5px 0;
+  font-size: 8.4pt;
+  page-break-inside: avoid;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.5px 4px;
+  border-radius: 3px;
+  font-size: 7.5pt;
+  font-weight: bold;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.sig-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  page-break-inside: avoid;
+}
+
+.sig-table td {
+  width: 50%;
+  text-align: center;
+  vertical-align: top;
+}
+
+.sig-role {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.sig-note {
+  font-size: 8pt;
+  font-style: italic;
+  color: #475569;
+  margin-top: 1px;
+}
+
+.sig-space {
+  height: 38px;
+}
+
+.sig-name {
+  font-size: 9.2pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+code {
+  font-family: 'DejaVu Sans Mono', monospace;
+  font-size: 7.7pt;
+  background: #f1f5f9;
+  padding: 0.5px 2.5px;
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+<div class="footer-str">Phụ lục số 01 (Kỳ Tháng 11/2026) &amp; Báo cáo Usage kèm Hợp đồng khung số 0111/2026/HĐDV-LIO-INUT</div>
+
+<!-- TRANG 1: PHỤ LỤC XÁC NHẬN GÓI DỊCH VỤ & MỨC PHÍ THÁNG -->
+<table class="nat-header">
+  <tr>
+    <td style="width:48%;">
+      <div class="org-name">CÔNG TY CP ĐẦU TƯ VÀ PHÁT TRIỂN<br/>CÔNG NGHỆ INUT &ndash; HKD CÔNG NGHỆ LIO</div>
+      <div class="org-sub">Số: <strong>PL-01/2026/HĐDV-LIO-INUT</strong></div>
+    </td>
+    <td style="width:52%;">
+      <div class="nat-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="nat-motto"><span class="nat-line">Độc lập – Tự do – Hạnh phúc</span></div>
+      <div class="doc-date">Đắk Lắk, ngày 01 tháng 11 năm 2026</div>
+    </td>
+  </tr>
+</table>
+
+<h1 class="main-title">PHỤ LỤC HỢP ĐỒNG SỐ 01 &mdash; KỲ THÁNG 11/2026<br/>XÁC NHẬN GÓI CƯỚC THUÊ BAO &amp; THỎA THUẬN MỨC PHÍ DỊCH VỤ API AI</h1>
+<div class="sub-title-center">(Kèm theo và là bộ phận không tách rời của Hợp đồng nguyên tắc số <strong>0111/2026/HĐDV-LIO-INUT</strong> ký ngày 01/11/2026)</div>
+
+<div class="basis-box">
+  - Căn cứ Hợp đồng nguyên tắc (Hợp đồng khung) cung cấp gói dịch vụ Cổng kết nối API Trí tuệ Nhân tạo số <strong>0111/2026/HĐDV-LIO-INUT</strong> ký ngày 01/11/2026 giữa <strong>Hộ kinh doanh Công nghệ LIO</strong> và <strong>Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT</strong>;<br/>
+  - Căn cứ nhu cầu sử dụng hạn mức API Trí tuệ Nhân tạo (Usage Quota) thực tế của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT trong <strong>Kỳ Tháng 11/2026</strong>.
+</div>
+
+<div class="party-box">
+  <table class="party-tbl">
+    <tr>
+      <td style="width:50%; padding-right:8px; border-right:1px solid #cbd5e1;">
+        <div style="font-weight:bold; color:#0f3d68; text-transform:uppercase; margin-bottom:2px;">BÊN A (BÊN CUNG CẤP DỊCH VỤ):</div>
+        <strong>HỘ KINH DOANH CÔNG NGHỆ LIO</strong><br/>
+        - Mã số thuế: <strong>054202003668</strong><br/>
+        - Địa chỉ: 22 đường 3/2, KP Phú Thạnh 2, P. Phú Yên, tỉnh Đắk Lắk<br/>
+        - Đại diện: Ông <strong>HUỲNH ĐỨC NHÂM</strong> &ndash; Chủ HKD<br/>
+        - Tài khoản: <strong>00344714490</strong> &ndash; Ngân hàng Quân đội (MB)
+      </td>
+      <td style="width:50%; padding-left:8px;">
+        <div style="font-weight:bold; color:#0f3d68; text-transform:uppercase; margin-bottom:2px;">BÊN B (BÊN SỬ DỤNG DỊCH VỤ):</div>
+        <strong>CÔNG TY CP ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</strong><br/>
+        - Mã số thuế: <strong>4401053694</strong><br/>
+        - Địa chỉ: 161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk<br/>
+        - Đại diện: Ông <strong>NGÔ HUỲNH NGỌC KHÁNH</strong> &ndash; Giám đốc (ĐT: 0972 768 491)<br/>
+        - Tài khoản: <strong>79713</strong> &ndash; Ngân hàng Techcombank
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p>Hai Bên thống nhất ký kết <strong>Phụ lục Hợp đồng số 01</strong> để xác nhận gói dịch vụ thuê bao API Trí tuệ Nhân tạo và mức phí áp dụng cho <strong>Kỳ Tháng 11/2026</strong> (từ ngày <code>01/11/2026</code> đến hết ngày <code>30/11/2026</code>) như sau:</p>
+
+<div class="sec-heading">1. GÓI DỊCH VỤ ĐĂNG KÝ &amp; MỨC PHÍ TRỌN GÓI THỎA THUẬN KỲ THÁNG 11/2026</div>
+
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:6%;">STT</th>
+      <th style="width:32%;">Tên Hạng mục &amp; Gói cước Thuê bao</th>
+      <th style="width:28%;">Định mức Usage &amp; Quyền hạn kỹ thuật trong tháng</th>
+      <th style="width:10%;">ĐVT</th>
+      <th style="width:8%;">SL</th>
+      <th style="width:16%;">Thành tiền Trọn gói (VNĐ)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c"><strong>01</strong></td>
+      <td>
+        <strong>Thuê bao Cổng kết nối API Trí tuệ Nhân tạo 9Router &mdash; Kỳ Tháng 11/2026</strong><br/>
+        <span class="badge">Mã gói: AI-05</span> &nbsp;<strong>Gói Tăng Trưởng (Growth API Tier)</strong><br/>
+        <em>(Bao gồm trọn bộ 07 hạng mục: Unified AI Gateway, LLM Reasoning, RTK Token Saver, TTS/STT Tiếng Việt, Vision OCR/Image/Video, Embeddings &amp; Web Search/Fetch)</em>
+      </td>
+      <td>
+        - <strong>Sản lượng Requests:</strong><br/>&nbsp;&nbsp;150.001 – 220.000 requests/tháng<br/>
+        - <strong>Sản lượng Tokens:</strong><br/>&nbsp;&nbsp;20,0 tỷ – 35,0 tỷ tokens/tháng (20.0B – 35.0B tokens)<br/>
+        - <strong>Số khóa API hoạt động:</strong><br/>&nbsp;&nbsp;Tối đa 25 Bearer Keys + Smart Proxy Pool
+      </td>
+      <td class="c">Gói / Tháng</td>
+      <td class="c">01</td>
+      <td class="r" style="font-size:10pt; font-weight:bold; color:#0f3d68;">16.000.000 đ</td>
+    </tr>
+    <tr>
+      <td colspan="5" class="r" style="font-weight:bold; background:#f8fafc;">TỔNG GIÁ TRỊ GÓI THUÊ BAO TRẢ TRƯỚC KỲ THÁNG 11/2026 (ĐÃ BAO GỒM THUẾ THEO QUY ĐỊNH HKD)</td>
+      <td class="r" style="font-size:10.2pt; font-weight:bold; color:#b91c1c; background:#f8fafc;">16.000.000 đ</td>
+    </tr>
+  </tbody>
+</table>
+<p><em>(Số tiền bằng chữ: <strong>Mười sáu triệu đồng chẵn</strong>).</em></p>
+
+<div class="sec-heading">2. BẢNG ĐỐI CHIẾU CÁC MỨC GÓI THUÊ BAO THÁNG (3.000.000 Đ &ndash; 30.000.000 Đ)</div>
+<p>Hai Bên xác nhận gói dịch vụ Kỳ Tháng 11/2026 nêu tại Mục 1 được lựa chọn từ Biểu phí khung Điều 2 Hợp đồng số <strong>0111/2026/HĐDV-LIO-INUT</strong> (tích chọn <code>[X]</code> vào mức gói áp dụng trong tháng):</p>
+
+<table class="tbl" style="font-size:7.4pt;">
+  <thead>
+    <tr>
+      <th style="width:7%;">Chọn</th>
+      <th style="width:9%;">Mã Gói</th>
+      <th style="width:24%;">Tên Gói Thuê Bao</th>
+      <th style="width:21%;">Định mức Requests / Tháng</th>
+      <th style="width:22%;">Định mức Tổng Tokens / Tháng</th>
+      <th style="width:17%;">Đơn giá Gói / Tháng</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-01</strong></td><td>Gói Cơ Bản (Starter)</td><td class="c">Đến 30.000 requests</td><td class="c">Đến 3,0 tỷ tokens</td><td class="r">3.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-02</strong></td><td>Gói Tiêu Chuẩn (Standard)</td><td class="c">30.001 &ndash; 60.000 requests</td><td class="c">3,0 tỷ &ndash; 6,0 tỷ tokens</td><td class="r">5.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-03</strong></td><td>Gói Nghiệp Vụ (Business)</td><td class="c">60.001 &ndash; 100.000 requests</td><td class="c">6,0 tỷ &ndash; 12,0 tỷ tokens</td><td class="r">8.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-04</strong></td><td>Gói Chuyên Nghiệp (Pro)</td><td class="c">100.001 &ndash; 150.000 requests</td><td class="c">12,0 tỷ &ndash; 20,0 tỷ tokens</td><td class="r">12.000.000 đ</td></tr>
+    <tr><td class="c">[X]</td><td class="c"><strong>AI-05</strong></td><td>Gói Tăng Trưởng (Growth)</td><td class="c">150.001 &ndash; 220.000 requests</td><td class="c">20,0 tỷ &ndash; 35,0 tỷ tokens</td><td class="r">16.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-06</strong></td><td>Gói Doanh Nghiệp I</td><td class="c">220.001 &ndash; 300.000 requests</td><td class="c">35,0 tỷ &ndash; 50,0 tỷ tokens</td><td class="r">20.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-07</strong></td><td>Gói Doanh Nghiệp II</td><td class="c">300.001 &ndash; 380.000 requests</td><td class="c">50,0 tỷ &ndash; 65,0 tỷ tokens</td><td class="r">25.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-08</strong></td><td>Gói Hạ Tầng Toàn Diện</td><td class="c">380.001 &ndash; 500.000 requests</td><td class="c">65,0 tỷ &ndash; 90,0 tỷ tokens</td><td class="r">30.000.000 đ</td></tr>
+    <tr><td class="c">[  ]</td><td class="c"><strong>AI-FLEX</strong></td><td>Gói Thỏa Thuận Tháng</td><td colspan="2">Theo hạn mức thỏa thuận riêng tại Mục 1 Phụ lục này</td><td class="r">Theo Mục 1</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-heading">3. LỊCH TRÌNH THANH TOÁN TRẢ TRƯỚC &amp; BÀN GIAO BÁO CÁO USAGE THÁNG 11/2026</div>
+<ul class="tight-list">
+  <li><strong>Thời hạn thanh toán trả trước:</strong> <strong>Từ ngày 05/11/2026 đến ngày 15/11/2026</strong> (100% giá trị gói cước bằng chuyển khoản vào STK <strong>00344714490</strong> &ndash; Ngân hàng Quân đội MB của Chủ hộ kinh doanh <strong>Huỳnh Đức Nhâm</strong>).</li>
+  <li><strong>Nghiệm thu &amp; Báo cáo Usage cuối tháng:</strong> Kết thúc Kỳ Tháng 11/2026, Bên A kết xuất <strong>Báo cáo Đối soát Sản lượng Sử dụng API (Monthly Usage Report)</strong> theo mẫu tại Trang 2 của Phụ lục này để hai Bên ký xác nhận nghiệm thu lưu hồ sơ kế toán.</li>
+</ul>
+
+<table class="sig-table">
+  <tr>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN B (CÔNG TY INUT)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">NGÔ HUỲNH NGỌC KHÁNH</div>
+    </td>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN A (HKD CÔNG NGHỆ LIO)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu hộ kinh doanh)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">HUỲNH ĐỨC NHÂM</div>
+    </td>
+  </tr>
+</table>
+
+<!-- TRANG 2: BÁO CÁO ĐỐI SOÁT USAGE & BIÊN BẢN NGHIỆM THU SẢN LƯỢNG API THÁNG -->
+<div class="page-break"></div>
+
+<table class="nat-header">
+  <tr>
+    <td style="width:48%;">
+      <div class="org-name">HỆ THỐNG ĐỐI SOÁT 9ROUTER TELEMETRY<br/>HKD CÔNG NGHỆ LIO &ndash; CÔNG TY CP INUT</div>
+      <div class="org-sub">Mã báo cáo: <strong>USAGE-11-2026-PL01</strong></div>
+    </td>
+    <td style="width:52%;">
+      <div class="nat-title">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="nat-motto"><span class="nat-line">Độc lập – Tự do – Hạnh phúc</span></div>
+      <div class="doc-date">Đắk Lắk, ngày 30 tháng 11 năm 2026</div>
+    </td>
+  </tr>
+</table>
+
+<h1 class="main-title">BÁO CÁO SẢN LƯỢNG SỬ DỤNG API (MONTHLY USAGE REPORT)<br/>&amp; BIÊN BẢN NGHIỆM THU DỊCH VỤ KỲ THÁNG 11/2026</h1>
+<div class="sub-title-center">(Đính kèm Phụ lục số <strong>PL-01/2026/HĐDV-LIO-INUT</strong> thuộc Hợp đồng khung số <strong>0111/2026/HĐDV-LIO-INUT</strong>)</div>
+
+<div class="callout-info">
+  <strong>Thông tin Gói thuê bao đối soát Kỳ Tháng 11/2026:</strong>
+  Mã gói đăng ký: <strong>AI-05 &ndash; Gói Tăng Trưởng (Growth API Tier)</strong> &nbsp;|&nbsp;
+  Định mức gói: <strong>150.001 – 220.000 requests/tháng</strong> (<strong>20,0 tỷ – 35,0 tỷ tokens/tháng (20.0B – 35.0B tokens)</strong>) &nbsp;|&nbsp;
+  Phí thuê bao trọn gói đã thanh toán trả trước: <strong>16.000.000 VNĐ</strong> &nbsp;|&nbsp;
+  Trạng thái định mức: <strong>TRONG ĐỊNH MỨC GÓI CAM KẾT (KHÔNG PHÁT SINH PHÍ VƯỢT GÓI)</strong>.
+</div>
+
+<div class="sec-heading">I. THỐNG KÊ SẢN LƯỢNG USAGE THEO HẠNG MỤC ENDPOINT &amp; MÔ HÌNH AI (9ROUTER LOGS)</div>
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:5%;">TT</th>
+      <th style="width:27%;">Phân hệ Dịch vụ / Endpoint API</th>
+      <th style="width:26%;">Tổ hợp Model / Combo Sử dụng Chính</th>
+      <th style="width:12%;">Số lượt Gọi<br/>(Requests)</th>
+      <th style="width:15%;">Prompt + Cached<br/>Tokens</th>
+      <th style="width:15%;">Completion +<br/>Reasoning Tokens</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c">1</td>
+      <td><strong>LLM Suy luận &amp; Lập trình sâu</strong><br/><code>POST /v1/chat/completions</code></td>
+      <td><code>gemini-4-argon-high-400k</code>, <code>claude-opus-5-5-high-400k</code>, <code>gpt-6.1-sol</code></td>
+      <td class="r">84.620</td>
+      <td class="r">16.420.500.000</td>
+      <td class="r">92.450.000</td>
+    </tr>
+    <tr>
+      <td class="c">2</td>
+      <td><strong>LLM Tốc độ cao &amp; Tác nhân tự động</strong><br/><code>POST /v1/messages</code> &bull; <code>/v1/responses</code></td>
+      <td><code>gemini-3.8-flash-high</code>, <code>gemini-3.8-flash-medium</code>, <code>gpt-6-luna</code></td>
+      <td class="r">68.340</td>
+      <td class="r">9.850.200.000</td>
+      <td class="r">54.120.000</td>
+    </tr>
+    <tr>
+      <td class="c">3</td>
+      <td><strong>Nén Ngữ cảnh &amp; Tối ưu Token (RTK)</strong><br/><code>POST /v1/responses/compact</code></td>
+      <td><code>rtk-compressor</code>, <code>prompt-cache-engine</code></td>
+      <td class="r">14.210</td>
+      <td class="r">2.140.000.000</td>
+      <td class="r">8.310.000</td>
+    </tr>
+    <tr>
+      <td class="c">4</td>
+      <td><strong>Giọng nói AI Tiếng Việt (TTS &amp; STT)</strong><br/><code>POST /v1/audio/speech</code> &bull; <code>transcriptions</code></td>
+      <td><code>google-tts/vi</code>, <code>edge-tts/vi-VN-HoaiMyNeural</code>, <code>kokoro</code></td>
+      <td class="r">6.480</td>
+      <td class="r">185.400.000</td>
+      <td class="r">12.640.000</td>
+    </tr>
+    <tr>
+      <td class="c">5</td>
+      <td><strong>Thị giác Máy tính (OCR Captcha/CCCD) &amp; Ảnh</strong><br/><code>/v1/images/generations</code> &bull; <code>image-to-text</code></td>
+      <td><code>gemini-vision-ocr</code>, <code>flux-pro</code>, <code>xai-video</code></td>
+      <td class="r">5.890</td>
+      <td class="r">412.800.000</td>
+      <td class="r">9.480.000</td>
+    </tr>
+    <tr>
+      <td class="c">6</td>
+      <td><strong>Vector hóa RAG &amp; Truy vấn Web thời gian thực</strong><br/><code>POST /v1/embeddings</code> &bull; <code>/v1/search</code> &bull; <code>fetch</code></td>
+      <td><code>text-embedding-3</code>, <code>tavily/search</code>, <code>web-markdown</code></td>
+      <td class="r">4.920</td>
+      <td class="r">318.600.000</td>
+      <td class="r">6.250.000</td>
+    </tr>
+    <tr style="background:#f8fafc; font-weight:bold;">
+      <td colspan="3" class="c">TỔNG SẢN LƯỢNG USAGE THỰC TẾ TRONG KỲ THÁNG 11/2026</td>
+      <td class="r" style="color:#0f3d68;">184.460 reqs</td>
+      <td class="r" style="color:#0f3d68;">29.327.500.000</td>
+      <td class="r" style="color:#0f3d68;">183.250.000</td>
+    </tr>
+    <tr style="background:#f0f9ff; font-weight:bold;">
+      <td colspan="3" class="c">TỔNG LƯỢNG TOKENS XỬ LÝ TOÀN HỆ THỐNG (PROMPT + COMPLETION + CACHED + REASONING)</td>
+      <td colspan="3" class="c" style="color:#15803d; font-size:9.5pt;">29.510.750.000 tokens (&approx; 29,51 tỷ tokens &mdash; Đạt 100% SLA gói AI-05)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sec-heading">II. PHÂN BỔ USAGE THEO KHÓA API (BEARER KEYS) CỦA CÁC DỰ ÁN TẠI CÔNG TY INUT</div>
+<table class="tbl">
+  <thead>
+    <tr>
+      <th style="width:6%;">TT</th>
+      <th style="width:26%;">Định danh Khóa API (Key Label)</th>
+      <th style="width:36%;">Hệ thống / Dự án Nghiệp vụ Sử dụng tại Công ty INUT</th>
+      <th style="width:12%;">Số Requests</th>
+      <th style="width:12%;">Tổng Tokens</th>
+      <th style="width:8%;">Tỷ trọng</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="c">01</td>
+      <td><code>ksp-inut-crm-pdf-signer</code></td>
+      <td>Hệ thống KSP PDFSign: Bóc tách Hóa đơn Thuế GDT, Tờ khai Hải quan, Đấu thầu e-GP &amp; Soạn hợp đồng</td>
+      <td class="r">62.410</td>
+      <td class="r">10,18 tỷ</td>
+      <td class="c">34,5%</td>
+    </tr>
+    <tr>
+      <td class="c">02</td>
+      <td><code>inut-opc-inut-dev</code></td>
+      <td>Phát triển Firmware nhúng Rockchip RK3518/RK3528/RK3588, PLC Siemens S7-1200/LOGO! &amp; Kiosk VNMAP AI ONE</td>
+      <td class="r">54.120</td>
+      <td class="r">9,44 tỷ</td>
+      <td class="c">32,0%</td>
+    </tr>
+    <tr>
+      <td class="c">03</td>
+      <td><code>apphub-iot</code> &amp; <code>apphub vnmap3d</code></td>
+      <td>Vận hành Nền tảng iNut AppHub, Quản lý 16 trạm Điện mặt trời inut-solar &amp; Bản đồ số VNMAP Parking</td>
+      <td class="r">38.750</td>
+      <td class="r">6,19 tỷ</td>
+      <td class="c">21,0%</td>
+    </tr>
+    <tr>
+      <td class="c">04</td>
+      <td><code>chatbox-telegram-vnmap</code></td>
+      <td>Trợ lý AI CSKH tự động, Bot cảnh báo vận hành Telegram, TTS Tiếng Việt Kiosk &amp; Loa thông báo BLE</td>
+      <td class="r">18.290</td>
+      <td class="r">2,36 tỷ</td>
+      <td class="c">8,0%</td>
+    </tr>
+    <tr>
+      <td class="c">05</td>
+      <td><code>inuttraining-hermes</code> &amp; Khác</td>
+      <td>Đào tạo nội bộ, kiểm thử tự động (E2E Testing) &amp; Dự phòng kỹ thuật</td>
+      <td class="r">10.890</td>
+      <td class="r">1,34 tỷ</td>
+      <td class="c">4,5%</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sec-heading">III. KẾT LUẬN NGHIỆM THU &amp; XÁC NHẬN QUYẾT TOÁN KỲ THÁNG 11/2026</div>
+<p>1. Bên A (<strong>Hộ kinh doanh Công nghệ LIO</strong>) đã cung cấp đầy đủ, liên tục 24/7 gói dịch vụ <strong>AI-05 (Gói Tăng Trưởng (Growth API Tier))</strong> trong Kỳ Tháng 11/2026 đúng theo Hợp đồng khung số <strong>0111/2026/HĐDV-LIO-INUT</strong> và Phụ lục số <strong>01</strong>.</p>
+<p>2. Toàn bộ sản lượng sử dụng thực tế (<strong>184.460 requests</strong> / <strong>29,51 tỷ tokens</strong>) nằm trong định mức gói thuê bao trả trước (<strong>16.000.000 VNĐ</strong>), <strong>không phát sinh bất kỳ khoản phí vượt gói nào</strong>. Hai Bên thống nhất nghiệm thu hoàn thành 100% gói dịch vụ Kỳ Tháng 11/2026 để làm căn cứ lưu trữ chứng từ chi phí hợp lệ của Công ty Cổ phần Đầu tư và Phát triển Công nghệ INUT.</p>
+
+<table class="sig-table">
+  <tr>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN B (CÔNG TY INUT)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">NGÔ HUỲNH NGỌC KHÁNH</div>
+    </td>
+    <td>
+      <div class="sig-role">ĐẠI DIỆN BÊN A (HKD CÔNG NGHỆ LIO)</div>
+      <div class="sig-note">(Ký, ghi rõ họ tên và đóng dấu hộ kinh doanh)</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">HUỲNH ĐỨC NHÂM</div>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
