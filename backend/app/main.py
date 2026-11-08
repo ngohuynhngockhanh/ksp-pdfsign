@@ -44,6 +44,8 @@ from sqlalchemy.orm import Session
 
 from . import (
     doc_tracking,
+    docx_preview,
+    markdown_preview,
     gov_radar,
     accounts,
     ai,
@@ -210,7 +212,15 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    is_portal = request.url.path.startswith("/khoan/") or request.url.path.startswith("/s/")
+    p_path = request.url.path
+    is_portal = (
+        p_path.startswith("/khoan/")
+        or p_path.startswith("/s/")
+        or p_path.startswith("/md/")
+        or p_path.startswith("/api/share/")
+        or p_path.startswith("/api/documents/")
+        or p_path.lower().endswith((".md", ".markdown"))
+    )
     script_src = "'self' 'unsafe-inline'" if is_portal else "'self'"
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
@@ -289,6 +299,8 @@ def _startup():
         customs_check_runner.auto_seed_tasks_from_decls(db)
         customs_check_runner.start_customs_check_worker(settings)
         gov_radar.start_gov_radar_worker(settings)
+        from . import lio_signer
+        lio_signer.start_lio_signer_worker(settings)
     finally:
         gen.close()
     resume_tqc_import_jobs()
@@ -905,20 +917,61 @@ def sign(
         except Exception:
             dtype = ""
 
-    # Luu ho so
-    doc = Document(
-        doc_id=signed_id,
-        filename=body.filename or f"signed-{signed_id}.pdf",
-        signer_name=signer_label,
-        signed=True,
-        customer_id=body.customer_id,
-        doc_type=dtype,
-        order_id=body.order_id,
-    )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
-    _audit(db, user, "sign", doc.filename, f"loại={dtype or '?'}")
+    # Luu ho so (cap nhat ho so co san neu existing_document_id duoc truyen, nguoc lai tao moi)
+    doc: Document | None = None
+    if body.existing_document_id:
+        doc = db.get(Document, body.existing_document_id)
+    if doc is not None:
+        doc.doc_id = signed_id
+        doc.signed_upload_id = signed_id
+        clean_name = doc.filename if doc.filename.lower().endswith(".pdf") else f"{doc.filename}.pdf"
+        doc.signed_upload_name = f"da-ky-2-ben-{clean_name}"
+        doc.signed_upload_at = datetime.utcnow()
+        doc.signed = True
+        if signer_label and signer_label.upper() not in (doc.signer_name or "").upper():
+            doc.signer_name = f"{doc.signer_name} · {signer_label}" if (doc.signer_name or "").strip() else signer_label
+        if body.customer_id is not None:
+            doc.customer_id = body.customer_id
+        if dtype:
+            doc.doc_type = dtype
+        if body.order_id is not None:
+            doc.order_id = body.order_id
+        db.commit()
+        db.refresh(doc)
+        _audit(db, user, "sign", doc.filename, f"ký tiếp hồ sơ #{doc.id} loại={dtype or '?'}")
+        if doc.lio_session_id and doc.lio_status == "signed":
+            try:
+                from . import lio_signer
+                doc = lio_signer.submit_countersigned_document(
+                    db,
+                    settings,
+                    doc,
+                    pdf_bytes=storage.read_doc(signed_id),
+                    filename=doc.signed_upload_name,
+                )
+                _audit(
+                    db,
+                    user,
+                    "lio_countersigned",
+                    doc.filename,
+                    f"session={doc.lio_session_id} file_id={doc.lio_countersigned_file_id}",
+                )
+            except Exception as exc:
+                logger.warning("Tự động gửi bản ký 2 bên về LIO cho hồ sơ #%s chưa thành công: %s", doc.id, exc)
+    else:
+        doc = Document(
+            doc_id=signed_id,
+            filename=body.filename or f"signed-{signed_id}.pdf",
+            signer_name=signer_label,
+            signed=True,
+            customer_id=body.customer_id,
+            doc_type=dtype,
+            order_id=body.order_id,
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        _audit(db, user, "sign", doc.filename, f"loại={dtype or '?'}")
     background.add_task(_bg_nas_sync, doc.id)  # backup len NAS (nen)
     return SignResponse(
         doc_id=signed_id, signed=True, download_url=f"/api/download/{signed_id}",
@@ -1239,17 +1292,35 @@ def merge_customers(
 # Ho so
 # ---------------------------------------------------------------------------
 def _doc_out(d: Document) -> DocumentOut:
+    try:
+        cs_sigs = json.loads(d.lio_countersigned_signatures_json or "[]")
+        if not isinstance(cs_sigs, list):
+            cs_sigs = []
+    except Exception:
+        cs_sigs = []
     return DocumentOut(
         id=d.id, doc_id=d.doc_id, filename=d.filename, signer_name=d.signer_name,
         signed=d.signed, note=d.note, customer_id=d.customer_id,
         customer_name=d.customer.name if d.customer else None,
         created_at=d.created_at.isoformat(),
         download_url=f"/api/documents/{d.id}/download",
+        view_url=f"/api/documents/{d.id}/view",
         nas_synced=d.nas_synced_at is not None,
         doc_type=d.doc_type or "",
         signed_upload_name=d.signed_upload_name or "",
         order_id=d.order_id,
         order_code=f"{d.order.code} · {d.order.name}" if d.order else "",
+        lio_session_id=d.lio_session_id or "",
+        lio_status=d.lio_status or "",
+        lio_placement_method=d.lio_placement_method or "",
+        lio_reason=d.lio_reason or "",
+        lio_signed_at=d.lio_signed_at or "",
+        lio_expires_at=d.lio_expires_at or "",
+        lio_countersigned_status=d.lio_countersigned_status or "",
+        lio_countersigned_at=d.lio_countersigned_at or "",
+        lio_countersigned_file_id=d.lio_countersigned_file_id or "",
+        lio_countersigned_error=d.lio_countersigned_error or "",
+        lio_countersigned_signatures=cs_sigs,
     )
 
 
@@ -1321,8 +1392,10 @@ def rename_document(
     name = body.filename.strip()
     if not name:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ten khong duoc de trong")
-    if not name.lower().endswith(".pdf"):
-        name += ".pdf"
+    found = storage.find_doc_path(d.doc_id)
+    ext = found[1] if found else (Path(d.filename).suffix.lower() or ".pdf")
+    if not name.lower().endswith(ext.lower()):
+        name += ext
     old = d.filename
     d.filename = name
     db.commit()
@@ -1369,13 +1442,145 @@ def download_document(
     # Khach hang chi tai ho so cua minh
     if not user.is_admin and d.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
-    if not storage.exists(d.doc_id):
+    found = storage.find_doc_path(d.doc_id)
+    if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
-    data = storage.read_doc(d.doc_id)
+    fpath, suffix = found
+    media_map = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls": "application/vnd.ms-excel",
+        ".xml": "application/xml",
+        ".zip": "application/zip",
+        ".md": "text/markdown; charset=utf-8",
+        ".markdown": "text/markdown; charset=utf-8",
+    }
+    media_type = media_map.get(suffix.lower(), "application/octet-stream")
     return StreamingResponse(
-        iter([data]), media_type="application/pdf",
+        iter([fpath.read_bytes()]), media_type=media_type,
         headers={"Content-Disposition": _content_disposition(d.filename)},
     )
+
+
+@app.get("/api/documents/{doc_pk}/view")
+def view_document(
+    doc_pk: int,
+    format: str = "",
+    user: CurrentUser = Depends(require_user),
+    db: Session = Depends(get_session),
+):
+    """Xem trước trực tiếp hồ sơ (hỗ trợ PDF nguyên bản và Word .docx dựng trang A4)."""
+    require_full_portal(user)
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    if not user.is_admin and d.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
+    found = storage.find_doc_path(d.doc_id)
+    if not found:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
+    fpath, suffix = found
+    raw = fpath.read_bytes()
+    s_low = suffix.lower()
+    if s_low == ".docx" or (d.filename.lower().endswith(".docx") and docx_preview.is_valid_docx(raw)):
+        if format.lower() == "pdf":
+            pdf_bytes = docx_preview.render_docx_to_pdf_bytes(raw, title=d.filename)
+            pdf_name = Path(d.filename).stem + ".pdf"
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+            )
+        html_out = docx_preview.render_docx_preview_html(
+            raw,
+            title=d.filename,
+            download_url=f"/api/documents/{d.id}/download",
+            pdf_url=f"/api/documents/{d.id}/view?format=pdf",
+        )
+        return HTMLResponse(content=html_out)
+    if s_low in (".md", ".markdown") or (
+        d.filename.lower().endswith((".md", ".markdown"))
+        and markdown_preview.is_valid_markdown(raw, d.filename)
+    ):
+        if format.lower() == "pdf":
+            pdf_bytes = markdown_preview.render_markdown_to_pdf_bytes(raw, title=d.filename)
+            pdf_name = Path(d.filename).stem + ".pdf"
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+            )
+        html_out = markdown_preview.render_markdown_preview_html(
+            raw,
+            title=d.filename,
+            download_url=f"/api/documents/{d.id}/download",
+            pdf_url=f"/api/documents/{d.id}/view?format=pdf",
+        )
+        return HTMLResponse(content=html_out)
+    if s_low == ".pdf" or raw.startswith(b"%PDF"):
+        return StreamingResponse(
+            iter([raw]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(d.filename)}"},
+        )
+    return StreamingResponse(
+        iter([raw]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": _content_disposition(d.filename)},
+    )
+
+
+@app.post("/api/documents/upload", response_model=DocumentOut)
+async def upload_document_to_vault(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    doc_type: str = "",
+    customer_id: int | None = None,
+    note: str = "",
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Tải hồ sơ PDF hoặc Word (.docx) trực tiếp vào Kho hồ sơ vận hành."""
+    content = await file.read()
+    orig_name = (file.filename or "tai-lieu.pdf").strip()
+    ext = Path(orig_name).suffix.lower()
+    if content.startswith(b"%PDF"):
+        suffix = ".pdf"
+        if not orig_name.lower().endswith(".pdf"):
+            orig_name += ".pdf"
+    elif ext == ".docx" and docx_preview.is_valid_docx(content):
+        suffix = ".docx"
+    elif docx_preview.is_valid_docx(content):
+        suffix = ".docx"
+        if not orig_name.lower().endswith(".docx"):
+            orig_name += ".docx"
+    elif ext in (".md", ".markdown") and markdown_preview.is_valid_markdown(content, orig_name):
+        suffix = ".md"
+    else:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Chỉ hỗ trợ tải lên tệp PDF (.pdf), Microsoft Word (.docx) hoặc Markdown (.md) hợp lệ",
+        )
+    if customer_id is not None and not db.get(Customer, customer_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
+    doc_id = storage.save_upload(content, suffix=suffix)
+    doc = Document(
+        doc_id=doc_id,
+        filename=orig_name,
+        signer_name=user.username or "Admin",
+        signed=False,
+        doc_type=doc_type or "khac",
+        customer_id=customer_id,
+        note=note.strip(),
+        source_system="vault_upload",
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    _audit(db, user, "upload_doc", orig_name, f"suffix={suffix}")
+    background.add_task(_bg_nas_sync, doc.id)
+    return _doc_out(doc)
 
 
 @app.post("/api/documents/{doc_pk}/upload-signed", response_model=DocumentOut)
@@ -1394,20 +1599,43 @@ async def upload_signed(
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
     up_id = storage.save_upload(content)
+    d.doc_id = up_id
     d.signed_upload_id = up_id
     d.signed_upload_name = file.filename or f"da-ky-{up_id}.pdf"
     d.signed_upload_at = datetime.utcnow()
+    d.signed = True
     db.commit()
     _audit(db, user, "upload_signed", d.filename, d.signed_upload_name)
     # Backup NAS (best-effort)
     if settings.nas_enabled:
         try:
+            nas.sync_document(settings, db, d)
             nas.sync_extra_file(
                 settings, d.customer.name if d.customer else "",
                 "da-ky", d.signed_upload_name, content,
             )
         except Exception:
             pass
+    # Neu ho so nay da co phien ky LIO -> tu dong gui ban ky 2 ben ve LIO (best-effort)
+    if d.lio_session_id and d.lio_status == "signed":
+        try:
+            from . import lio_signer
+            d = lio_signer.submit_countersigned_document(
+                db,
+                settings,
+                d,
+                pdf_bytes=content,
+                filename=d.signed_upload_name,
+            )
+            _audit(
+                db,
+                user,
+                "lio_countersigned",
+                d.filename,
+                f"session={d.lio_session_id} file_id={d.lio_countersigned_file_id}",
+            )
+        except Exception as exc:
+            logger.warning("Tự động gửi bản ký 2 bên về LIO khi upload-signed #%s chưa thành công: %s", d.id, exc)
     db.refresh(d)
     return _doc_out(d)
 
@@ -1434,6 +1662,169 @@ def download_signed_upload(
         iter([data]), media_type="application/pdf", headers={"Content-Disposition": disp}
     )
 
+
+# ---------------------------------------------------------------------------
+# LIO Signer (ky so PDF tu xa HKD Cong nghe LIO - CAS CERT / CMC-CA)
+# ---------------------------------------------------------------------------
+@app.get("/api/lio-signer/status")
+def get_lio_signer_status(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
+    from . import lio_signer
+    return lio_signer.check_health(settings)
+
+
+@app.post("/api/documents/{doc_pk}/lio-sign", response_model=DocumentOut)
+def request_lio_signature(
+    doc_pk: int,
+    force_new: bool = False,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Gui ho so PDF sang LIO Signer de nguoi dai dien HKD Cong nghe LIO duyet ky tren dien thoai."""
+    from . import lio_signer
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    try:
+        d = lio_signer.submit_document(db, settings, d, force_new=force_new)
+    except lio_signer.LioSignerError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    _audit(db, user, "lio_sign", d.filename, f"session={d.lio_session_id} status={d.lio_status}")
+    return _doc_out(d)
+
+
+@app.post("/api/documents/{doc_pk}/lio-poll", response_model=DocumentOut)
+def poll_lio_signature(
+    doc_pk: int,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Kiem tra ngay trang thai phien ky LIO va tai file PDF da ky ve kho neu da duyet xong."""
+    from . import lio_signer
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    try:
+        d = lio_signer.poll_document(db, settings, d, notify_telegram=True)
+    except lio_signer.LioSignerError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    if d.lio_status == "signed":
+        _audit(db, user, "lio_signed", d.filename, f"session={d.lio_session_id}")
+    return _doc_out(d)
+
+
+@app.post("/api/documents/{doc_pk}/lio-countersigned", response_model=DocumentOut)
+async def send_lio_countersigned(
+    doc_pk: int,
+    request: Request,
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Gửi lại bản hợp đồng đã đủ chữ ký 2 bên về LIO (POST /v1/sessions/{session_id}/countersigned).
+
+    Hỗ trợ cả 2 cách gọi:
+    - Gửi trực tiếp file hiện có trong kho hồ sơ (body rỗng hoặc JSON).
+    - Hoặc đính kèm tệp PDF mới qua multipart/form-data (`file`) để lưu vào kho rồi đẩy sang LIO.
+    """
+    from . import lio_signer
+    d = db.get(Document, doc_pk)
+    if not d:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+
+    uploaded_bytes: bytes | None = None
+    uploaded_name: str | None = None
+    ctype = (request.headers.get("content-type") or "").lower()
+    if ctype.startswith("multipart/form-data"):
+        form = await request.form()
+        f_item = form.get("file")
+        if f_item is not None and hasattr(f_item, "read"):
+            content = await f_item.read()
+            if not content.startswith(b"%PDF"):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
+            up_id = storage.save_upload(content)
+            d.doc_id = up_id
+            d.signed_upload_id = up_id
+            d.signed_upload_name = getattr(f_item, "filename", None) or f"da-ky-2-ben-{up_id}.pdf"
+            d.signed_upload_at = datetime.utcnow()
+            d.signed = True
+            db.commit()
+            uploaded_bytes = content
+            uploaded_name = d.signed_upload_name
+            if settings.nas_enabled:
+                try:
+                    nas.sync_document(settings, db, d)
+                    nas.sync_extra_file(
+                        settings,
+                        d.customer.name if d.customer else "",
+                        "da-ky",
+                        d.signed_upload_name,
+                        content,
+                    )
+                except Exception:
+                    pass
+
+    try:
+        d = lio_signer.submit_countersigned_document(
+            db,
+            settings,
+            d,
+            pdf_bytes=uploaded_bytes,
+            filename=uploaded_name,
+            notify_telegram=True,
+        )
+    except lio_signer.LioSignerError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+
+    _audit(
+        db,
+        user,
+        "lio_countersigned",
+        d.filename,
+        f"session={d.lio_session_id} file_id={d.lio_countersigned_file_id}",
+    )
+    return _doc_out(d)
+
+
+def _bg_process_lio_webhook(delivery_id: str, payload: dict) -> None:
+    from . import lio_signer
+    settings = get_settings()
+    for db in get_session():
+        try:
+            lio_signer.process_webhook_event(db, settings, delivery_id, payload)
+        except Exception:
+            pass
+
+
+@app.post("/api/lio-signer/webhook")
+async def lio_signer_webhook(
+    request: Request,
+    background: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    """Cổng nhận Webhook từ LIO Signer (xác thực chữ ký HMAC-SHA256 trên raw body)."""
+    from . import lio_signer
+    raw_body = await request.body()
+    ts_hdr = request.headers.get("X-Lio-Timestamp", "")
+    sig_hdr = request.headers.get("X-Lio-Signature", "")
+    delivery_id = request.headers.get("X-Lio-Delivery-Id", "")
+    if not lio_signer.verify_webhook_signature(
+        settings.lio_signer_webhook_secret,
+        ts_hdr,
+        sig_hdr,
+        raw_body,
+    ):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid LIO webhook signature")
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON") from exc
+    background.add_task(_bg_process_lio_webhook, delivery_id, payload)
+    return {"ok": True}
 
 # ---------------------------------------------------------------------------
 # Cong khach hang: hoa don iHOADON da phat hanh
@@ -1569,8 +1960,10 @@ def my_portal_zip(
                 zf.writestr(_zip_arcname("hoa-don", stem + ".xml", "hoa-don.xml"), storage.read_doc(row.xml_doc_id, suffix=".xml"))
                 count += 1
         for d in docs:
-            if storage.exists(d.doc_id):
-                zf.writestr(_zip_arcname("ho-so", f"{d.id}_{d.filename}", f"ho-so-{d.id}.pdf"), storage.read_doc(d.doc_id))
+            found_doc = storage.find_doc_path(d.doc_id)
+            if found_doc:
+                fpath_doc, suffix_doc = found_doc
+                zf.writestr(_zip_arcname("ho-so", f"{d.id}_{d.filename}", f"ho-so-{d.id}{suffix_doc}"), fpath_doc.read_bytes())
                 count += 1
     if not count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có file trong phạm vi đã lọc")
@@ -1660,9 +2053,13 @@ def verify_document_record(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
     if not user.is_admin and d.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
-    if not storage.exists(d.doc_id):
+    found = storage.find_doc_path(d.doc_id)
+    if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
-    return verify.verify_document(settings, storage.read_doc(d.doc_id), d.doc_id)
+    raw = found[0].read_bytes()
+    if not raw.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chi ho tro kiem tra chu ky so tren file PDF")
+    return verify.verify_document(settings, raw, d.doc_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2623,10 +3020,13 @@ def _share_file(token: str, db: Session, inline: bool):
     fpath, suffix = found
     media_map = {
         ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".xls": "application/vnd.ms-excel",
         ".xml": "application/xml",
         ".zip": "application/zip",
+        ".md": "text/markdown; charset=utf-8",
+        ".markdown": "text/markdown; charset=utf-8",
     }
     media_type = media_map.get(suffix, "application/octet-stream")
     if inline and suffix == ".pdf":
@@ -2653,7 +3053,13 @@ def share_download(token: str, request: Request, db: Session = Depends(get_sessi
 
 
 @app.get("/api/share/{token}/view")
-def share_view(token: str, request: Request, db: Session = Depends(get_session), settings: Settings = Depends(get_settings)):
+def share_view(
+    token: str,
+    request: Request,
+    format: str = "",
+    db: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+):
     # Fallback server-side view (khi iframe load truc tiep, JS telemetry co the da ban roi)
     s = db.scalar(select(Share).where(Share.token == token))
     if s and not (datetime.utcnow() > s.expires_at):
@@ -2661,6 +3067,46 @@ def share_view(token: str, request: Request, db: Session = Depends(get_session),
             db, settings, document_id=s.document_id, action="view",
             request_headers=dict(request.headers), source=f"share_{token}",
         )
+    if s and not (datetime.utcnow() > s.expires_at):
+        found = storage.find_doc_path(s.document.doc_id)
+        if found:
+            fpath, suffix = found
+            if suffix.lower() == ".docx" or s.document.filename.lower().endswith(".docx"):
+                raw = fpath.read_bytes()
+                if docx_preview.is_valid_docx(raw):
+                    if format.lower() == "pdf":
+                        pdf_bytes = docx_preview.render_docx_to_pdf_bytes(raw, title=s.document.filename)
+                        pdf_name = Path(s.document.filename).stem + ".pdf"
+                        return Response(
+                            content=pdf_bytes,
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                        )
+                    html_out = docx_preview.render_docx_preview_html(
+                        raw,
+                        title=s.document.filename,
+                        download_url=f"/api/share/{quote(token, safe='')}/download",
+                        pdf_url=f"/api/share/{quote(token, safe='')}/view?format=pdf",
+                    )
+                    return HTMLResponse(content=html_out)
+            if suffix.lower() in (".md", ".markdown") or s.document.filename.lower().endswith((".md", ".markdown")):
+                raw = fpath.read_bytes()
+                if markdown_preview.is_valid_markdown(raw, s.document.filename):
+                    if format.lower() == "pdf":
+                        pdf_bytes = markdown_preview.render_markdown_to_pdf_bytes(raw, title=s.document.filename)
+                        pdf_name = Path(s.document.filename).stem + ".pdf"
+                        return Response(
+                            content=pdf_bytes,
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                        )
+                    html_out = markdown_preview.render_markdown_preview_html(
+                        raw,
+                        title=s.document.filename,
+                        download_url=f"/api/share/{quote(token, safe='')}/download",
+                        pdf_url=f"/api/share/{quote(token, safe='')}/view?format=pdf",
+                    )
+                    return HTMLResponse(content=html_out)
     return _share_file(token, db, inline=True)
 
 
@@ -2676,9 +3122,12 @@ def share_verify_neac(
     if datetime.utcnow() > s.expires_at:
         raise HTTPException(status.HTTP_410_GONE, "Link da het han")
     d = s.document
-    if not storage.exists(d.doc_id):
+    found = storage.find_doc_path(d.doc_id)
+    if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File khong ton tai")
-    pdf_bytes = storage.read_doc(d.doc_id)
+    pdf_bytes = found[0].read_bytes()
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chi ho tro tham dinh chu ky so NEAC tren file PDF")
     internal_check = verify.verify_document(settings, pdf_bytes, d.doc_id)
     internal_sigs = [sig.model_dump() for sig in internal_check.signatures]
 
@@ -2731,27 +3180,52 @@ def share_page(token: str, request: Request, db: Session = Depends(get_session),
 
 
 def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "", *, nonce: str = "", document_id: int = 0) -> str:
+    raw_filename = filename or ""
+    is_docx = raw_filename.lower().endswith(".docx")
+    is_md = raw_filename.lower().endswith((".md", ".markdown"))
     error = html.escape(error or "", quote=True) if error else None
     filename = html.escape(filename or "", quote=True) if filename else None
     token = quote(token or "", safe="") if token else None
     exp = html.escape(exp, quote=True)
     if error:
         inner = (
-            f'<div class="card"><div class="brand">🖊️ KSP PDF Signer</div>'
-            f'<h1>Chia sẻ tài liệu</h1><p class="err">{error}</p></div>'
+            f'<main style="flex:1;display:flex;"><div class="card"><div class="brand">🖊️ KSP PDF Signer</div>'
+            f'<h1>Chia sẻ tài liệu</h1><p class="err">{error}</p></div></main>'
         )
         preview = ""
+    elif is_docx:
+        inner = (
+            f'<header><div class="bar">'
+            f'<div class="brand">🖊️ KSP · <h1 class="fn">📝 {filename}</h1></div>'
+            f'<div class="acts">'
+            f'<a class="btn neac" href="/api/share/{token}/view?format=pdf" target="_blank">📑 Bản in PDF</a>'
+            f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
+            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải file Word (.docx)</a>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Bản xem trước trực tuyến tài liệu Microsoft Word (.docx) chuẩn khổ A4</div></header>'
+        )
+        preview = f'<main aria-label="Khung xem trước tài liệu" style="flex:1;display:flex;flex-direction:column;"><iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe></main>'
+    elif is_md:
+        inner = (
+            f'<header><div class="bar">'
+            f'<div class="brand">🖊️ KSP · <h1 class="fn">📘 {filename}</h1></div>'
+            f'<div class="acts">'
+            f'<a class="btn neac" href="/api/share/{token}/view?format=pdf" target="_blank">📑 Bản in PDF</a>'
+            f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
+            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải file Markdown (.md)</a>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Bản xem trước trực tuyến tài liệu kỹ thuật Markdown (.md)</div></header>'
+        )
+        preview = f'<main aria-label="Khung xem trước tài liệu" style="flex:1;display:flex;flex-direction:column;"><iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe></main>'
     else:
         inner = (
-            f'<div class="bar">'
-            f'<div class="brand">🖊️ KSP · <span class="fn">📄 {filename}</span></div>'
+            f'<header><div class="bar">'
+            f'<div class="brand">🖊️ KSP · <h1 class="fn">📄 {filename}</h1></div>'
             f'<div class="acts">'
             f'<button type="button" class="btn neac" onclick="checkShareNeac()">🏛️ Thẩm định chữ ký số NEAC</button>'
             f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
             f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
-            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Chữ ký số pháp nhân hợp chuẩn Quốc gia NEAC (Bộ TTTT)</div>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Chữ ký số pháp nhân hợp chuẩn Quốc gia NEAC (Bộ TTTT)</div></header>'
         )
-        preview = f'<iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe>'
+        preview = f'<main aria-label="Khung xem trước tài liệu" style="flex:1;display:flex;flex-direction:column;"><iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe></main>'
     return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon.png"><title>Xem / Tải tài liệu — KSP</title>
@@ -2761,22 +3235,22 @@ body{{font-family:system-ui,'Segoe UI',Roboto,sans-serif;background:#eef1f4;marg
 color:#1c2530;min-height:100vh;display:flex;flex-direction:column}}
 .bar{{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
 background:#fff;border-bottom:1px solid #d9dee5;padding:12px 18px}}
-.brand{{color:#1e6fd9;font-weight:700}}.fn{{color:#1c2530;font-weight:600}}
+.brand{{color:#1e6fd9;font-weight:700}}.fn{{color:#1c2530;font-weight:600;font-size:1rem;margin:0;display:inline}}
 .acts{{display:flex;gap:8px;flex-wrap:wrap}}
-.btn{{display:inline-block;background:#1e6fd9;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:.9rem;border:none;cursor:pointer;font-weight:600}}
-.btn:hover{{background:#1857aa}}
-.btn.neac{{background:#059669;color:#fff}}
-.btn.neac:hover{{background:#047857}}
-.btn.ghost{{background:#fff;color:#1e6fd9;border:1px solid #1e6fd9}}
+.btn{{display:inline-block;background:#1857aa;color:#fff;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:.9rem;border:none;cursor:pointer;font-weight:600}}
+.btn:hover{{background:#13468a}}
+.btn.neac{{background:#047857;color:#fff}}
+.btn.neac:hover{{background:#065f46}}
+.btn.ghost{{background:#fff;color:#1857aa;border:1px solid #1857aa}}
 .btn.ghost:hover{{background:#eef4fd}}
-.exp{{background:#fff6e0;color:#8a6300;font-size:.8rem;padding:5px 18px;border-bottom:1px solid #f0dca0}}
+.exp{{background:#fff6e0;color:#785500;font-size:.8rem;padding:5px 18px;border-bottom:1px solid #f0dca0}}
 .pdf{{flex:1;width:100%;border:0;min-height:70vh}}
 .card{{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:34px 40px;
 text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08);max-width:420px;margin:auto}}
-h1{{font-size:1.2rem;margin:0 0 6px}}.err{{color:#d13b3b}}
-.thanks{{text-align:center;padding:12px 18px;font-size:.85rem;color:#6b7683;
+h1{{font-size:1.2rem;margin:0 0 6px}}.err{{color:#b91c1c}}
+.thanks{{text-align:center;padding:12px 18px;font-size:.85rem;color:#4b5563;
 background:#fff;border-top:1px solid #e6eaef}}
-.thanks a{{color:#1e6fd9;text-decoration:none}}
+.thanks a{{color:#1857aa;text-decoration:underline;font-weight:600}}
 </style></head><body>{inner}{preview}
 <div id="neacModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#fff;width:100%;max-width:500px;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.25);max-height:90vh;overflow-y:auto;border:1px solid #e2e8f0;">
@@ -4563,7 +5037,31 @@ def nas_file(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Loi NAS: {e}")
     name = path.replace("/", "\\").rsplit("\\", 1)[-1]
     is_pdf = name.lower().endswith(".pdf")
-    media = "application/pdf" if is_pdf else "application/octet-stream"
+    is_docx = name.lower().endswith(".docx")
+    is_md = name.lower().endswith((".md", ".markdown"))
+    if inline and is_docx and docx_preview.is_valid_docx(data):
+        html_out = docx_preview.render_docx_preview_html(
+            data,
+            title=name,
+            download_url=f"/api/nas/file?path={quote(path)}&inline=false",
+        )
+        return HTMLResponse(content=html_out)
+    if inline and is_md and markdown_preview.is_valid_markdown(data, name):
+        html_out = markdown_preview.render_markdown_preview_html(
+            data,
+            title=name,
+            download_url=f"/api/nas/file?path={quote(path)}&inline=false",
+        )
+        return HTMLResponse(content=html_out)
+    media = (
+        "application/pdf"
+        if is_pdf
+        else (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            if is_docx
+            else ("text/markdown; charset=utf-8" if is_md else "application/octet-stream")
+        )
+    )
     kind = "inline" if (inline and is_pdf) else "attachment"
     disp = f"{kind}; filename*=UTF-8''{quote(name)}"
     return StreamingResponse(
@@ -4754,6 +5252,37 @@ def tax_report_compare(rid: int, review_id: int, user: CurrentUser = Depends(req
 # ---------------------------------------------------------------------------
 # Phuc vu frontend da build (SPA)
 # ---------------------------------------------------------------------------
+@app.get("/md/{doc_slug:path}")
+def public_markdown_viewer(doc_slug: str, format: str = "", raw: int = 0):
+    """Xem trước hoặc tải tài liệu Markdown (.md) trong thư mục docs/ của ksp-pdfsign."""
+    md_path = markdown_preview.resolve_repo_markdown_path(REPO_ROOT, doc_slug)
+    if not md_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tài liệu Markdown (.md)")
+    content = md_path.read_bytes()
+    if raw == 1 or format.lower() in ("raw", "md"):
+        return Response(
+            content=content,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": _content_disposition(md_path.name)},
+        )
+    if format.lower() == "pdf":
+        pdf_bytes = markdown_preview.render_markdown_to_pdf_bytes(content, title=md_path.name)
+        pdf_name = md_path.stem + ".pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+        )
+    slug_enc = quote(doc_slug.lstrip("/"), safe="/")
+    html_out = markdown_preview.render_markdown_preview_html(
+        content,
+        title=md_path.name,
+        download_url=f"/md/{slug_enc}?raw=1",
+        pdf_url=f"/md/{slug_enc}?format=pdf",
+    )
+    return HTMLResponse(content=html_out)
+
+
 _FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 if (_FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
@@ -4779,6 +5308,18 @@ if (_FRONTEND_DIST / "index.html").exists():
                     media_type="text/plain; charset=utf-8",
                     headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
                 )
+        if full_path.lower().endswith((".md", ".markdown")):
+            md_path = markdown_preview.resolve_repo_markdown_path(REPO_ROOT, full_path)
+            if md_path:
+                content = md_path.read_bytes()
+                slug_enc = quote(full_path.lstrip("/"), safe="/")
+                html_out = markdown_preview.render_markdown_preview_html(
+                    content,
+                    title=md_path.name,
+                    download_url=f"/md/{slug_enc}?raw=1",
+                    pdf_url=f"/md/{slug_enc}?format=pdf",
+                )
+                return HTMLResponse(content=html_out)
         # Phuc vu cac file tinh o goc (favicon...) neu co
         if full_path in _ROOT_FILES:
             p = _FRONTEND_DIST / full_path

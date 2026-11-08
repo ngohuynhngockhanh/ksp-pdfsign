@@ -67,8 +67,9 @@ export function NasBrowser() {
     const child = path ? `${path}\\${e.name}` : e.name;
     if (e.is_dir) load(child, "push");
     else {
-      const isPdf = e.name.toLowerCase().endsWith(".pdf");
-      window.open(api.nasFileUrl(child, isPdf), "_blank");
+      const lower = e.name.toLowerCase();
+      const canInline = lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".md") || lower.endsWith(".markdown");
+      window.open(api.nasFileUrl(child, canInline), "_blank");
     }
   }
 

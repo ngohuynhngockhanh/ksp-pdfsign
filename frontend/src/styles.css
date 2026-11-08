@@ -5830,3 +5830,166 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); }
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Document Vault DOCX/PDF Upload & Preview Workspace ── */
+.vault-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 9px;
+  background: #168579;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.vault-upload-btn:hover {
+  background: #116b61;
+}
+.vault-upload-btn.busy {
+  opacity: 0.68;
+  pointer-events: none;
+}
+.doc-fname-trigger {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-fname-trigger:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.chip.docx-fmt {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.chip.md-fmt {
+  background: var(--primary-soft);
+  color: var(--ink);
+}
+.doc-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(7, 28, 27, 0.72);
+  backdrop-filter: blur(6px);
+}
+.doc-preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: min(96vw, 1140px);
+  height: min(92vh, 920px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #f4f7f6;
+  box-shadow: 0 28px 80px rgba(3, 25, 23, 0.36);
+}
+.doc-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  background: #102d2b;
+  color: #f4f8f7;
+}
+.doc-preview-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.doc-preview-badge {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #168579;
+  color: #ffffff;
+}
+.doc-preview-badge.is-docx {
+  background: #1d4ed8;
+}
+.doc-preview-badge.is-md {
+  background: var(--primary);
+}
+.doc-preview-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.doc-pv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.doc-pv-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.doc-pv-btn.primary {
+  background: #168579;
+  border-color: #168579;
+  color: #ffffff;
+}
+.doc-pv-btn.primary:hover {
+  background: #126e64;
+}
+.doc-preview-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #e5ebe8;
+}
+@media (max-width: 720px) {
+  .doc-preview-backdrop {
+    padding: 8px;
+  }
+  .doc-preview-shell {
+    width: 100%;
+    height: 94vh;
+    border-radius: 12px;
+  }
+  .doc-preview-head {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+  .doc-preview-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

@@ -97,9 +97,10 @@ export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void })
                   <td className="muted col-hide-sm">{d.signer_name}</td>
                   <td className="muted col-hide-sm nowrap">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
                   <td className="col-act"><div className="row-actions">
+                    <a className="iact" href={d.view_url || api.documentViewUrl(d.id)} target="_blank" rel="noreferrer" title="Xem trước trực tiếp">Xem</a>
                     <a className="iact" href={d.download_url} title="Tải xuống">Tải</a>
                     <button className="iact" onClick={() => share(d.id, d.filename)} title="Chia sẻ">Link</button>
-                    <button className="iact" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">Kiểm tra</button>
+                    {!d.filename.toLowerCase().endsWith(".docx") && !d.filename.toLowerCase().endsWith(".md") && <button className="iact" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">Kiểm tra</button>}
                     {d.signed_upload_name && <a className="iact" href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">Bản ký</a>}
                   </div></td>
                 </tr>;
