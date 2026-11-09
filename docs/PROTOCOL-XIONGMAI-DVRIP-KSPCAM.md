@@ -545,3 +545,39 @@ Khi bắt đầu triển khai code vào `/home/ksp/ksp-camera-auto`, kiến trú
 2. **Live Hardware Smoke Test trên `inut_208_4` (`192.168.77.138`)**:
    - Tự động dò tìm (`discovery`) nhận diện đúng đầu ghi `192.168.77.138` (`Vendor: xiongmai`, `TCPPort: 34567`, `HttpPort: 80`).
    - Khi có mật khẩu của đầu ghi `192.168.77.138`, kiểm thử `Probe`, `Snapshot`, `GetRemoteDevices`, và `FindRecordings` / `StreamPlaybackFast` qua `kspcam (:2028)`.
+
+---
+
+## 6. Hồ Sơ Xác Thực Thực Tế & Bảng Kênh Đã Giải Mã Trên `inut_208_4` (`192.168.77.138`)
+
+### 6.1 Thông Tin Đầu Ghi & Tài Khoản Quản Trị Đã Kiểm Chứng (`Ret = 100` & `RTSP 200 OK`)
+- **Model / Phần cứng:** `NBD80S16S-KL` (`16` kênh IP `DigChannel: 16`, `VideoInChannel: 0`)
+- **Firmware:** `V4.03.R11.C6380233.12201.140000.0000000` (Build `2023-04-14 13:11:09`)
+- **SerialNo:** `c1beba4793bccbdapnx9` (Khóa AES `GetRandomUser`: `a4793b1beba493bc` $\to$ giải mã `GetRandomUser.Info` ra `"p1:admin1 p2:101 t:1247"`)
+- **Ổ cứng (`StorageInfo`):** `0x000E8E0D` ($\approx 953.8\text{ GB}$ / $1\text{ TB}$), ghi hình liên tục (`Status: 0`).
+- **Danh sách tài khoản quản trị trên đầu ghi (Group `admin`, đủ 55 quyền + đồng bộ `System.ExUserMap` cho RTSP `:554`):**
+
+| Vai trò | Username | Password | Băm `MD5_8` | Mã `System.ExUserMap` | Ghi chú |
+|---|---|---|---|---|---|
+| **Admin chính (`RandomUser`)** | `admin1` | `Inut12345` | `IgCDPz7Q` | `00111W51dDEyMzQS` | Tự động điền trên Web UI & tự động ánh xạ khi `kspcam` cấu hình `username: admin` |
+| **Admin dự phòng (Backup)** | `admin2` | `Inut12345` | `IgCDPz7Q` | `00111W51dDEyMzQS` | Tài khoản dự phòng đồng bộ mật khẩu `Inut12345` (55 quyền + RTSP `:554`) |
+| **Admin nội bộ / HDMI** | `pymid` | `pymid123` | `vg22TaVl` | `0011=cHltaWQxMjN` | Tài khoản `AutoLogin` trên màn hình HDMI cục bộ (`Memo: "admin 's account"`) |
+
+> **Lưu ý kỹ thuật:** Firmware `V4.03.R11.C6380233` (`BuildTime >= 2022-12-28`) chặn cứng việc tạo hoặc đổi tên tài khoản thành `admin`, `root`, `system`, `guest`, `administrator` (`IDS_ACC_InvalidUserName`, trả `Ret: 101`). Để đồng bộ cấu hình mặc định `username: admin` của `kspcam`, `CGITransport` trong `internal/xiongmai` tự động gọi `/cgi-bin/resetpwd.cgi` (`GetDevInfo` + `GetRandomUser`) và ánh xạ `admin` $\to$ `admin1` ngay trước bước `Login`, đồng thời xử lý luôn lỗi dòng header có dấu cách đầu dòng (`" Content-type: text/plain\r\n"`) của `uc-httpd 1.0.0`.
+
+### 6.2 Bảng 16 Kênh Camera IP Con Trích Xuất Từ `NetWork.RemoteDeviceV3` & `NetWork.ChnStatus`
+
+| Kênh | Tên | Trạng thái | Độ phân giải | IP Camera con | Cổng / Giao thức | User | Password | Đường dẫn RTSP Main Stream |
+|---|---|---|---|---|---|---|---|---|
+| **CH01** | `D01` | `Connected` | `1080P/D1` | `192.168.77.71` | `554` / `RTSP` | `admin` | `pymid123` | `rtsp://192.168.77.71:554/0` |
+| **CH02** | `D02` | `Offline` | `Unknown` | `192.168.77.218` | `554` / `RTSP` | `admin` | `pymid123` | `rtsp://192.168.77.218:554/Streaming/Channels/0` |
+| **CH03** | `D03` | `Connected` | `1080P/704x576` | `192.168.77.34` | `554` / `RTSP` | `admin` | `tranhung1591984` | `rtsp://192.168.77.34:554/user=admin_password=tranhung1591984_channel=1_stream=0.sdp?real_stream` |
+| **CH04** | `D04` | `Connected` | `1080P/720x576` | `192.168.77.146` | `554` / `RTSP` | `admin` | `admin` | `rtsp://192.168.77.146:554/0` |
+| **CH05** | `D05` | `Connected` | `1080P/D1` | `192.168.77.178` | `554` / `RTSP` | `admin` | `admin` | `rtsp://192.168.77.178:554/0` |
+| **CH06** | `D06` | `Connected` | `1080P/VGA` | `192.168.77.160` | `554` / `RTSP` | `admin` | `L2E8D64D` | `rtsp://192.168.77.160:554/cam/realmonitor?channel=1&subtype=0` |
+| **CH07** | `D07` | `Connected` | `1080P/704x576` | `192.168.77.65` | `554` / `RTSP` | `admin` | `pymid123` | `rtsp://192.168.77.65:554/user=admin_password=pymid123_channel=1_stream=0.sdp?real_stream` |
+| **CH08** | `D08` | `Connected` | `1080P/QVGA` | `192.168.77.205` | `554` / `RTSP` | `admin` | `tranhung159` | `rtsp://192.168.77.205:554/Streaming/Channels/101` |
+| **CH09** | `D09` | `Connected` | `1080P/VGA` | `192.168.77.84` | `554` / `RTSP` | `admin` | `L21ACFE9` | `rtsp://192.168.77.84/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif` |
+| **CH10** | `D10` | `Connected` | `1080P/VGA` | `192.168.77.147` | `554` / `RTSP` | `admin` | `L2B74148` | `rtsp://192.168.77.147:554/cam/realmonitor?channel=1&subtype=0` |
+| **CH11** | `D11` | `Offline` | `Unknown` | `192.168.77.98` | `554` / `RTSP` | `admin` | `tranhung159` | `rtsp://192.168.77.98:554/user=admin_password=tranhung159_channel=1_stream=0.sdp?real_stream` |
+| **CH12–16** | `D12–16` | `NoConfig` | — | — | — | — | — | *(Chưa gán kênh)* |
