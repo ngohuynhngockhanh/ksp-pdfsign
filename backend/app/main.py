@@ -522,16 +522,47 @@ def telegram_disconnect(
     return {"ok": True}
 
 
+def require_telegram_send_access(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+) -> CurrentUser:
+    """Cho phep goi noi bo tu loopback (127.0.0.1 / localhost) hoac Admin JWT."""
+    client_host = (request.client.host if request.client else "").replace("::ffff:", "")
+    host_header = request.headers.get("host", "").split(":", 1)[0].strip().lower()
+    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
+    if (
+        client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
+        and host_header in {"127.0.0.1", "localhost", "testserver", ""}
+        and not forwarded
+        and not request.headers.get("authorization")
+        and not request.cookies.get("ksp_session")
+    ):
+        return CurrentUser(
+            id=0,
+            username="local-9router",
+            role="admin",
+            customer_id=None,
+            training_access=True,
+            ip=client_host or "127.0.0.1",
+        )
+    user = require_user(request=request, settings=settings, db=db)
+    if not user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Chi admin duoc phep")
+    return user
+
+
 class TelegramSendMessageIn(BaseModel):
     message: str
     chat_id: str | None = None
     speak_tts: bool = True
+    parse_mode: str = ""
 
 
 @app.post("/api/telegram/send")
 def telegram_send_message(
     payload: TelegramSendMessageIn,
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_telegram_send_access),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
@@ -549,7 +580,7 @@ def telegram_send_message(
         for cid in chats:
             if cid and str(cid).lstrip("-").isdigit():
                 try:
-                    client.send_message(cid, payload.message, speak_tts=payload.speak_tts)
+                    client.send_message(cid, payload.message, speak_tts=payload.speak_tts, parse_mode=payload.parse_mode)
                     delivered += 1
                 except Exception as e:
                     logger.warning("Lỗi gửi Telegram tới chat %s: %s", cid, e)
