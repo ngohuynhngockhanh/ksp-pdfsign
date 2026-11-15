@@ -310,12 +310,14 @@ def build_html():
         padding: 6px;
     }}
     .figure-img {{
-        width: 100%;
-        max-height: 250px;
-        object-fit: contain;
+        max-width: 90%;
+        max-height: 220px;
+        width: auto !important;
+        height: auto !important;
         display: block;
         margin: 0 auto;
-        border-radius: 2px;
+        border-radius: 4px;
+        border: 1px solid #cbd5e1;
     }}
     .figure-caption {{
         font-size: 7.2pt;

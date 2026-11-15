@@ -198,10 +198,8 @@ def build_daily_report_html(
                         <strong>PVID:</strong> <code>{matched_st.get('pvid')}</code> &nbsp;|&nbsp;
                         <strong>Đường hầm:</strong> <a href="{matched_st.get('tunnel_endpoint')}">{matched_st.get('tunnel_endpoint')}</a>
                     </p>
-                    {"<img class='figure-img' style='max-height: 250px;' src='data:image/png;base64," + img_telem + "'>" if img_telem else ""}
-                    <div class="figure-caption">Hình: Màn hình viễn trắc trực tiếp trạm {matched_st.get('station_id')} trên VNPT NMS (Đầy đủ Solar, Lưới Đỏ, Tải Vàng, 0% NaN).</div>
-                    {"<img class='figure-img' style='max-height: 180px;' src='data:image/png;base64," + img_ip + "'>" if img_ip else ""}
-                    <div class="figure-caption">Hình: Nhận diện địa chỉ IP WAN và trạng thái kết nối socket datalogger trên VNPT NMS.</div>
+                    {"<div class='figure-container'><img class='figure-img' style='max-height: 220px;' src='data:image/png;base64," + img_telem + "'><div class='figure-caption'>Hình: Màn hình viễn trắc trực tiếp trạm " + matched_st.get('station_id') + " trên VNPT NMS (Đầy đủ Solar, Lưới Đỏ, Tải Vàng, 0% NaN).</div></div>" if img_telem else ""}
+                    {"<div class='figure-container'><img class='figure-img' style='max-height: 160px;' src='data:image/png;base64," + img_ip + "'><div class='figure-caption'>Hình: Nhận diện địa chỉ IP WAN và trạng thái kết nối socket datalogger trên VNPT NMS.</div></div>" if img_ip else ""}
                 </div>
             </div>
             """
@@ -428,19 +426,29 @@ def build_daily_report_html(
         padding: 8px;
     }}
 
+    .figure-container {{
+        text-align: center;
+        margin: 5px 0 8px 0;
+        page-break-inside: avoid;
+    }}
+
     .figure-img {{
-        width: 100%;
+        max-width: 90%;
+        max-height: 210px;
+        width: auto !important;
+        height: auto !important;
         display: block;
-        margin: 4px auto 2px auto;
-        border: 1px solid #e2e8f0;
-        border-radius: 2px;
+        margin: 0 auto 3px auto;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     }}
 
     .figure-caption {{
         font-size: 7.2pt;
         color: #64748b;
         text-align: center;
-        margin-bottom: 6px;
+        margin-bottom: 5px;
         font-style: italic;
     }}
 
@@ -607,11 +615,9 @@ def build_daily_report_html(
     Bằng chứng hệ thống quản trị tập trung Central Hub (phiên làm việc <code>doituyen61</code>) và cổng đối soát NATS Socket <code>113.164.234.227:8222/connz</code> xác nhận địa chỉ IP WAN của Datalogger tự động hiển thị trên NMS VNPT:
 </p>
 
-{"<img class='figure-img' style='max-height: 195px;' src='data:image/png;base64," + img_hub_table + "'>" if img_hub_table else ""}
-<div class="figure-caption">Hình: Danh sách các trạm thương mại VNPT Thanh Hóa kết nối thời gian thực về Central Hub.</div>
+{"<div class='figure-container'><img class='figure-img' style='max-height: 180px;' src='data:image/png;base64," + img_hub_table + "'><div class='figure-caption'>Hình: Danh sách các trạm thương mại VNPT Thanh Hóa kết nối thời gian thực về Central Hub.</div></div>" if img_hub_table else ""}
 
-{"<img class='figure-img' style='max-height: 185px;' src='data:image/png;base64," + img_nats_proof + "'>" if img_nats_proof else ""}
-<div class="figure-caption">Hình: Đối soát cổng NATS CONNZ xác nhận socket TCP kết nối trực tiếp đến chủ đề pvcmds.&lt;PVID&gt;.</div>
+{"<div class='figure-container'><img class='figure-img' style='max-height: 180px;' src='data:image/png;base64," + img_nats_proof + "'><div class='figure-caption'>Hình: Đối soát cổng NATS CONNZ xác nhận socket TCP kết nối trực tiếp đến chủ đề pvcmds.&lt;PVID&gt;.</div></div>" if img_nats_proof else ""}
 
 <h2>V. KẾT LUẬN &amp; KẾ HOẠCH TRIỂN KHAI TIẾP THEO</h2>
 <p style="font-size: 7.8pt; line-height: 1.4; margin: 0 0 10px 0;">
@@ -833,32 +839,58 @@ def generate_and_sign_daily_report(
 
             now_utc = datetime.now(timezone.utc)
             expires_utc = now_utc + timedelta(days=settings.share_default_days)
-            share_token = secrets.token_urlsafe(16)
             doc_note = f"Báo cáo tiến độ thi công & nghiệm thu viễn trắc {len(commercial)}/{contract_total} trạm BTS VNPT Thanh Hóa ({dt.strftime('%d/%m/%Y')}) · Ký số WIN-CA"
+            cur.execute("SELECT id, doc_id FROM documents WHERE filename = ? ORDER BY id DESC LIMIT 1", (out_path.name,))
+            existing = cur.fetchone()
+            if existing:
+                doc_pk = existing[0]
+                old_doc_id = existing[1]
+                cur.execute("""
+                    UPDATE documents 
+                    SET doc_id = ?, signer_name = ?, signed = 1, note = ?, created_at = ?
+                    WHERE id = ?
+                """, (signed_doc_id, signer_label, doc_note, now_utc.strftime("%Y-%m-%d %H:%M:%S"), doc_pk))
+                try:
+                    old_path = storage.path_for(old_doc_id, ".pdf")
+                    old_path.write_bytes(signed_pdf_bytes)
+                except Exception:
+                    pass
 
-            cur.execute("""
-                INSERT INTO documents (doc_id, filename, signer_name, signed, note, doc_type, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                signed_doc_id,
-                out_path.name,
-                signer_label,
-                1,
-                doc_note,
-                "van_ban",
-                now_utc.strftime("%Y-%m-%d %H:%M:%S")
-            ))
-            doc_pk = cur.lastrowid
+                cur.execute("SELECT token FROM shares WHERE document_id = ? ORDER BY id DESC LIMIT 1", (doc_pk,))
+                share_row = cur.fetchone()
+                if share_row:
+                    share_token = share_row[0]
+                else:
+                    share_token = secrets.token_urlsafe(16)
+                    cur.execute("""
+                        INSERT INTO shares (token, document_id, expires_at, created_at)
+                        VALUES (?, ?, ?, ?)
+                    """, (share_token, doc_pk, expires_utc.strftime("%Y-%m-%d %H:%M:%S"), now_utc.strftime("%Y-%m-%d %H:%M:%S")))
+            else:
+                share_token = secrets.token_urlsafe(16)
+                cur.execute("""
+                    INSERT INTO documents (doc_id, filename, signer_name, signed, note, doc_type, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    signed_doc_id,
+                    out_path.name,
+                    signer_label,
+                    1,
+                    doc_note,
+                    "van_ban",
+                    now_utc.strftime("%Y-%m-%d %H:%M:%S")
+                ))
+                doc_pk = cur.lastrowid
 
-            cur.execute("""
-                INSERT INTO shares (token, document_id, expires_at, created_at)
-                VALUES (?, ?, ?, ?)
-            """, (
-                share_token,
-                doc_pk,
-                expires_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                now_utc.strftime("%Y-%m-%d %H:%M:%S")
-            ))
+                cur.execute("""
+                    INSERT INTO shares (token, document_id, expires_at, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    share_token,
+                    doc_pk,
+                    expires_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                    now_utc.strftime("%Y-%m-%d %H:%M:%S")
+                ))
             conn.commit()
             conn.close()
 
