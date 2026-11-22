@@ -51,6 +51,8 @@ ALLOWED_LEAD_STATUSES = frozenset({
 })
 
 RETAIL_MULTIPLIER = 1.25
+WEB_VAT_RATE = 8
+WEB_VAT_DIVISOR = 1.0 + (WEB_VAT_RATE / 100.0)
 
 SKU_CATALOG: dict[str, dict[str, Any]] = {
     "INUT-SC-DL10": {
@@ -246,7 +248,12 @@ def compute_sku_pricing(
     coupon_code: str = "",
     discount_percent: float = 0.0,
 ) -> dict[str, Any] | None:
-    """Compute canonical SKU retail, coupon, and volume-tier pricing."""
+    """Compute canonical SKU pricing.
+
+    Website catalog prices already include 8% VAT. Quote drafts back out the
+    pre-VAT unit price (don_gia = round(unit_price_incl_vat / 1.08)) with
+    thue_suat=8 so KSP quote totals match the website's VAT-inclusive total.
+    """
     code = _clean_str(sku, 64).upper()
     spec = SKU_CATALOG.get(code)
     if not spec:
@@ -263,9 +270,11 @@ def compute_sku_pricing(
     retail = int(spec["retail_price"])
     after_coupon = round(retail * (1.0 - eff_discount / 100.0)) if eff_discount > 0 else retail
     volume_pct = 5.0 if qty >= 3 else 0.0
-    unit_price = round(after_coupon * (1.0 - volume_pct / 100.0)) if volume_pct > 0 else after_coupon
-    subtotal = int(unit_price * qty)
-    vat = round(subtotal * 0.10)
+    unit_price_incl_vat = round(after_coupon * (1.0 - volume_pct / 100.0)) if volume_pct > 0 else after_coupon
+    quoted_total_incl_vat = int(unit_price_incl_vat * qty)
+    unit_price_excl_vat = round(unit_price_incl_vat / WEB_VAT_DIVISOR)
+    subtotal = int(unit_price_excl_vat * qty)
+    vat = round(subtotal * (WEB_VAT_RATE / 100.0))
     return {
         "sku": code,
         "sku_name": spec["name"],
@@ -276,7 +285,11 @@ def compute_sku_pricing(
         "coupon_code": coupon,
         "discount_percent": eff_discount,
         "volume_discount_percent": volume_pct,
-        "unit_price": int(unit_price),
+        "vat_rate": WEB_VAT_RATE,
+        "unit_price_incl_vat_vnd": int(unit_price_incl_vat),
+        "quoted_total_incl_vat_vnd": quoted_total_incl_vat,
+        "unit_price_vnd": int(unit_price_excl_vat),
+        "unit_price": int(unit_price_excl_vat),
         "subtotal_vnd": subtotal,
         "vat_vnd": int(vat),
         "total_vnd": int(subtotal + vat),
@@ -545,7 +558,7 @@ def record_web_lead(
         product_name = product_name or pricing["sku_name"]
         discount_percent = pricing["discount_percent"]
         if quoted_price_vnd <= 0:
-            quoted_price_vnd = float(pricing["subtotal_vnd"])
+            quoted_price_vnd = float(pricing["quoted_total_incl_vat_vnd"])
     elif not coupon_code:
         discount_percent = 0.0
     elif coupon_code in COUPON_DISCOUNTS:
@@ -677,7 +690,7 @@ def format_lead_telegram_message(
 
     price_parts = []
     if lead.quoted_price_vnd and lead.quoted_price_vnd > 0:
-        price_parts.append(f"Tạm tính: <b>{_fmt_vnd(lead.quoted_price_vnd)}đ</b>")
+        price_parts.append(f"Tạm tính (đã gồm VAT 8%): <b>{_fmt_vnd(lead.quoted_price_vnd)}đ</b>")
     if lead.coupon_code:
         disc = f" (-{int(lead.discount_percent)}%)" if lead.discount_percent else ""
         price_parts.append(f"Mã: <code>{_esc(lead.coupon_code)}</code>{disc}")
@@ -1325,7 +1338,8 @@ def build_draft_quote_from_lead(db: Session, lead: WebLead) -> dict[str, Any]:
 
     if pricing:
         item_name = f"{pricing['sku_name']} ({pricing['sku']})"
-        unit_price = pricing["unit_price"]
+        unit_price = pricing["unit_price_vnd"]
+        unit_price_incl_vat = pricing["unit_price_incl_vat_vnd"]
         dvt = pricing["dvt"]
         coupon_code = pricing["coupon_code"]
         discount_pct = pricing["discount_percent"]
@@ -1338,17 +1352,21 @@ def build_draft_quote_from_lead(db: Session, lead: WebLead) -> dict[str, Any]:
         item_name = lead.product_name.strip() or "Thiết bị / Giải pháp iNut IoT"
         if lead.sku:
             item_name = f"{item_name} ({lead.sku})"
-        unit_price = round(float(lead.quoted_price_vnd) / qty) if lead.quoted_price_vnd > 0 else 0
+        unit_price_incl_vat = round(float(lead.quoted_price_vnd) / qty) if lead.quoted_price_vnd > 0 else 0
+        unit_price = round(unit_price_incl_vat / WEB_VAT_DIVISOR) if unit_price_incl_vat > 0 else 0
         dvt = "Bộ"
         coupon_code = lead.coupon_code.strip().upper()
         discount_pct = float(lead.discount_percent or 0.0)
         volume_pct = 5.0 if qty >= 3 else 0.0
         subtotal = int(unit_price * qty)
-        vat = round(subtotal * 0.10)
+        vat = round(subtotal * (WEB_VAT_RATE / 100.0))
         total = int(subtotal + vat)
         is_dealer = qty >= 10
 
-    note_lines: list[str] = [f"Báo giá từ Website Lead #{lead.id} ({lead.name})"]
+    note_lines: list[str] = [
+        f"Báo giá từ Website Lead #{lead.id} ({lead.name})",
+        "Giá niêm yết trên website đã gồm VAT 8% (đơn giá trong báo giá đã tách trước thuế 8%).",
+    ]
     if coupon_code:
         disc_str = f" (-{int(discount_pct)}%)" if discount_pct > 0 else ""
         note_lines.append(f"Áp dụng mã ưu đãi: {coupon_code}{disc_str}")
@@ -1375,13 +1393,15 @@ def build_draft_quote_from_lead(db: Session, lead: WebLead) -> dict[str, Any]:
         "coupon_code": coupon_code,
         "discount_percent": discount_pct,
         "volume_discount_percent": volume_pct,
+        "vat_rate": WEB_VAT_RATE,
+        "unit_price_incl_vat_vnd": unit_price_incl_vat,
         "items": [
             {
                 "ten": item_name,
                 "dvt": dvt,
                 "so_luong": qty,
                 "don_gia": unit_price,
-                "thue_suat": 10,
+                "thue_suat": WEB_VAT_RATE,
             }
         ],
         "subtotal_vnd": subtotal,

@@ -479,7 +479,7 @@ def test_admin_overview_leads_crud_customer_draft_quote_and_digest(client, monke
     assert cc2.json()["created"] is False
     assert cc2.json()["customer_id"] == cc1_data["customer_id"]
 
-    # 5. Draft quote prefill with canonical SKU + coupon + volume discount
+    # 5. Draft quote prefill with canonical SKU + coupon + volume discount (web price already incl. 8% VAT)
     dq1 = client.post(f"/api/web-ads/leads/{ld1}/draft-quote")
     assert dq1.status_code == 200, dq1.text
     q1 = dq1.json()
@@ -489,21 +489,28 @@ def test_admin_overview_leads_crud_customer_draft_quote_and_digest(client, monke
     assert q1["coupon_code"] == "FBADS20"
     assert q1["discount_percent"] == 20.0
     assert q1["volume_discount_percent"] == 5.0
+    assert q1["vat_rate"] == 8
+    assert q1["unit_price_incl_vat_vnd"] == 4_750_000
     assert len(q1["items"]) == 1
     assert q1["items"][0]["ten"] == "iNut Smartcity: Data Logger V1.1 (INUT-SC-DL11)"
     assert q1["items"][0]["dvt"] == "Bộ"
     assert q1["items"][0]["so_luong"] == 3
-    assert q1["items"][0]["don_gia"] == 4_750_000
-    assert q1["items"][0]["thue_suat"] == 10
-    assert q1["subtotal_vnd"] == 14_250_000
-    assert q1["vat_vnd"] == 1_425_000
-    assert q1["total_vnd"] == 15_675_000
+    # 4_750_000 / 1.08 = 4_398_148 (pre-VAT 8%) -> subtotal 13_194_444 + VAT 1_055_556 = 14_250_000
+    assert q1["items"][0]["don_gia"] == 4_398_148
+    assert q1["items"][0]["thue_suat"] == 8
+    assert q1["subtotal_vnd"] == 13_194_444
+    assert q1["vat_vnd"] == 1_055_556
+    assert q1["total_vnd"] == 14_250_000
+    assert "VAT 8%" in q1["note"]
 
-    # Dealer tier draft quote (>=10 units)
+    # Dealer tier draft quote (>=10 units, 8% VAT-inclusive -> pre-VAT unit price)
     dq2 = client.post(f"/api/web-ads/leads/{ld2}/draft-quote").json()
     assert dq2["items"][0]["ten"] == "iNut Smartcity: RS485 WIFI/4G (INUT-SC-R4WF4G)"
-    # base 2_525_000 -> retail 3_156_250 -> -20% = 2_525_000 -> -5% volume = 2_398_750
-    assert dq2["items"][0]["don_gia"] == 2_398_750
+    # base 2_525_000 -> retail 3_156_250 -> -20% = 2_525_000 -> -5% volume = 2_398_750 incl. 8% VAT
+    # pre-VAT = round(2_398_750 / 1.08) = 2_221_065
+    assert dq2["unit_price_incl_vat_vnd"] == 2_398_750
+    assert dq2["items"][0]["don_gia"] == 2_221_065
+    assert dq2["items"][0]["thue_suat"] == 8
     assert "Đại lý SI" in dq2["note"]
 
     # 6. PATCH lead status, note, quantity
@@ -578,8 +585,24 @@ def test_canonical_coupon_and_volume_discount_prevent_double_counting_and_spoofi
     lead_b_id = r_no_coupon.json()["lead_id"]
 
     # Case 3: Spoofed discount_percent=99 on known coupon or empty coupon is ignored
-    assert web_ads.compute_sku_pricing("INUT-SC-DL11", quantity=3, coupon_code="FBADS20", discount_percent=99)["unit_price"] == 4_750_000
-    assert web_ads.compute_sku_pricing("INUT-SC-DL11", quantity=3, coupon_code="", discount_percent=99)["unit_price"] == 5_937_500
+    p_with = web_ads.compute_sku_pricing("INUT-SC-DL11", quantity=3, coupon_code="FBADS20", discount_percent=99)
+    p_no = web_ads.compute_sku_pricing("INUT-SC-DL11", quantity=3, coupon_code="", discount_percent=99)
+    assert p_with["unit_price_incl_vat_vnd"] == 4_750_000
+    assert p_with["unit_price_vnd"] == 4_398_148
+    assert p_with["total_vnd"] == 14_250_000
+    assert p_no["unit_price_incl_vat_vnd"] == 5_937_500
+    assert p_no["unit_price_vnd"] == 5_497_685
+
+    # Case 4: Custom non-catalog quoted_price_vnd (already incl. 8% VAT) backs out pre-VAT 8% cleanly
+    r_custom = _signed(client, "POST", "/internal/web-ads/leads", {
+        "name": "Custom Package Lead",
+        "phone": "0911222555",
+        "product_name": "Gói tích hợp SCADA tùy chỉnh",
+        "quantity": 2,
+        "quoted_price_vnd": 21_600_000,
+    })
+    assert r_custom.status_code == 201, r_custom.text
+    lead_c_id = r_custom.json()["lead_id"]
 
     _login_admin(client)
 
@@ -589,8 +612,12 @@ def test_canonical_coupon_and_volume_discount_prevent_double_counting_and_spoofi
     draft_a = client.post(f"/api/web-ads/leads/{lead_a_id}/draft-quote").json()
     assert draft_a["discount_percent"] == 20.0
     assert draft_a["volume_discount_percent"] == 5.0
-    assert draft_a["items"][0]["don_gia"] == 4_750_000
-    assert draft_a["subtotal_vnd"] == 14_250_000
+    assert draft_a["unit_price_incl_vat_vnd"] == 4_750_000
+    assert draft_a["items"][0]["don_gia"] == 4_398_148
+    assert draft_a["items"][0]["thue_suat"] == 8
+    assert draft_a["subtotal_vnd"] == 13_194_444
+    assert draft_a["vat_vnd"] == 1_055_556
+    assert draft_a["total_vnd"] == 14_250_000
 
     detail_b = client.get(f"/api/web-ads/leads/{lead_b_id}").json()
     assert detail_b["discount_percent"] == 0.0
@@ -598,6 +625,18 @@ def test_canonical_coupon_and_volume_discount_prevent_double_counting_and_spoofi
     draft_b = client.post(f"/api/web-ads/leads/{lead_b_id}/draft-quote").json()
     assert draft_b["discount_percent"] == 0.0
     assert draft_b["volume_discount_percent"] == 5.0
-    assert draft_b["items"][0]["don_gia"] == 5_937_500
-    assert draft_b["subtotal_vnd"] == 17_812_500
+    assert draft_b["unit_price_incl_vat_vnd"] == 5_937_500
+    assert draft_b["items"][0]["don_gia"] == 5_497_685
+    assert draft_b["items"][0]["thue_suat"] == 8
+    assert draft_b["subtotal_vnd"] == 16_493_055
+    assert draft_b["vat_vnd"] == 1_319_444
+    assert draft_b["total_vnd"] == 17_812_499
+
+    draft_c = client.post(f"/api/web-ads/leads/{lead_c_id}/draft-quote").json()
+    assert draft_c["unit_price_incl_vat_vnd"] == 10_800_000
+    assert draft_c["items"][0]["don_gia"] == 10_000_000
+    assert draft_c["items"][0]["thue_suat"] == 8
+    assert draft_c["subtotal_vnd"] == 20_000_000
+    assert draft_c["vat_vnd"] == 1_600_000
+    assert draft_c["total_vnd"] == 21_600_000
 
