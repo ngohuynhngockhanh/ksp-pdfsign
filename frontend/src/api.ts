@@ -1058,6 +1058,232 @@ export interface TrademarkLookupResult {
   fee_breakdown?: IpTrademarkFeeBreakdown;
 }
 
+// --- Web Ads Analytics & Lead Capture (/api/web-ads/*) ---
+export type WebLeadStatus = "new" | "contacted" | "quoted" | "won" | "lost";
+
+export interface WebAdsTotals {
+  pageviews: number;
+  unique_visitors: number;
+  price_views: number;
+  sku_selects: number;
+  coupon_applies: number;
+  call_clicks: number;
+  zalo_clicks: number;
+  leads: number;
+  visit_to_price_rate: number;
+  price_to_lead_rate: number;
+  visit_to_lead_rate: number;
+}
+
+export interface WebAdsCampaignRow {
+  utm_campaign: string;
+  utm_source: string;
+  utm_medium: string;
+  pageviews: number;
+  unique_visitors: number;
+  price_views: number;
+  call_clicks: number;
+  zalo_clicks: number;
+  leads: number;
+  conversion_rate: number;
+}
+
+export interface WebAdsPageRow {
+  page_path: string;
+  product_key: string;
+  pageviews: number;
+  unique_visitors: number;
+  price_views: number;
+  call_clicks: number;
+  zalo_clicks: number;
+  leads: number;
+  visit_to_price_rate: number;
+  visit_to_lead_rate: number;
+}
+
+export interface WebAdsSkuRow {
+  sku: string;
+  sku_name: string;
+  product_key: string;
+  sku_selects: number;
+  leads: number;
+  total_quantity: number;
+  estimated_revenue_vnd: number;
+}
+
+export interface WebAdsDailyRow {
+  date: string;
+  pageviews: number;
+  unique_visitors: number;
+  price_views: number;
+  call_clicks: number;
+  zalo_clicks: number;
+  leads: number;
+}
+
+export interface WebAdsOverview {
+  days: number;
+  totals: WebAdsTotals;
+  by_campaign: WebAdsCampaignRow[];
+  by_page: WebAdsPageRow[];
+  by_sku: WebAdsSkuRow[];
+  daily: WebAdsDailyRow[];
+  filters: {
+    product_keys: string[];
+    utm_campaigns: string[];
+  };
+}
+
+export interface WebAdsLead {
+  id: number;
+  visitor_id: string;
+  name: string;
+  phone: string;
+  phone_masked: string;
+  phone_last4: string;
+  email: string;
+  company: string;
+  product_key: string;
+  product_name: string;
+  sku: string;
+  quantity: number;
+  coupon_code: string;
+  discount_percent: number;
+  quoted_price_vnd: number | null;
+  device_info: string;
+  need: string;
+  message: string;
+  page_path: string;
+  locale: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_content: string;
+  utm_term: string;
+  gclid: string;
+  fbclid: string;
+  referrer: string;
+  visit_count: number;
+  price_view_count: number;
+  training_session_id: number | null;
+  training_query_count: number;
+  customer_id: number | null;
+  customer_name: string | null;
+  quote_document_id: number | null;
+  status: WebLeadStatus;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebAdsEventItem {
+  id: number;
+  event_type: string;
+  page_path: string;
+  product_key: string;
+  sku: string;
+  coupon: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  referrer: string;
+  locale: string;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface WebAdsTrainingQueryItem {
+  id: number;
+  job_id: string;
+  question: string;
+  answer_text: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WebAdsLeadDetail extends WebAdsLead {
+  client_ip: string;
+  user_agent: string;
+  events: WebAdsEventItem[];
+  training_queries: WebAdsTrainingQueryItem[];
+}
+
+export interface WebAdsLeadsResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  items: WebAdsLead[];
+}
+
+export interface WebAdsLeadPatch {
+  status?: WebLeadStatus;
+  note?: string;
+  sku?: string;
+  quantity?: number;
+  quoted_price_vnd?: number | null;
+  customer_id?: number | null;
+  quote_document_id?: number | null;
+}
+
+export interface WebAdsCreateCustomerResult {
+  ok: boolean;
+  customer_id: number;
+  created: boolean;
+  customer: {
+    id: number;
+    name: string;
+    tax_code: string;
+    contact: string;
+    address: string;
+    email: string;
+    note: string;
+  };
+}
+
+export interface WebAdsDraftQuoteItem {
+  ten: string;
+  dvt: string;
+  so_luong: number;
+  don_gia: number;
+  thue_suat: number;
+}
+
+export interface WebAdsDraftQuote {
+  lead_id: number;
+  customer_id: number | null;
+  customer_name: string;
+  customer_contact: string;
+  customer_phone: string;
+  customer_email: string;
+  customer_address: string;
+  customer_tax_code: string;
+  sku: string;
+  coupon_code: string;
+  discount_percent: number;
+  volume_discount_percent: number;
+  items: WebAdsDraftQuoteItem[];
+  subtotal_vnd: number;
+  vat_vnd: number;
+  total_vnd: number;
+  note: string;
+}
+
+export interface WebAdsDailyDigestSummary {
+  days: number;
+  totals: WebAdsTotals;
+  top_campaigns: WebAdsCampaignRow[];
+  top_skus: WebAdsSkuRow[];
+  message: string;
+}
+
+export interface WebAdsDailyDigestResult {
+  ok: boolean;
+  sent: boolean;
+  delivered_count: number;
+  summary: WebAdsDailyDigestSummary;
+}
+
 
 export const api = {
   bidding: {
@@ -3728,6 +3954,70 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ acknowledged }),
+    });
+  },
+  async webAdsOverview(params?: {
+    days?: number;
+    product_key?: string;
+    utm_campaign?: string;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.days) sp.set("days", String(params.days));
+    if (params?.product_key) sp.set("product_key", params.product_key);
+    if (params?.utm_campaign) sp.set("utm_campaign", params.utm_campaign);
+    const qs = sp.toString();
+    return req<WebAdsOverview>(`/api/web-ads/overview${qs ? `?${qs}` : ""}`);
+  },
+  async webAdsLeads(params?: {
+    status?: string;
+    product_key?: string;
+    utm_campaign?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    mask_phone?: boolean;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set("status", params.status);
+    if (params?.product_key) sp.set("product_key", params.product_key);
+    if (params?.utm_campaign) sp.set("utm_campaign", params.utm_campaign);
+    if (params?.q) sp.set("q", params.q);
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    if (params?.offset != null) sp.set("offset", String(params.offset));
+    if (params?.mask_phone !== undefined) sp.set("mask_phone", params.mask_phone ? "true" : "false");
+    const qs = sp.toString();
+    return req<WebAdsLeadsResponse>(`/api/web-ads/leads${qs ? `?${qs}` : ""}`);
+  },
+  async webAdsLeadDetail(leadId: number, maskPhone = false) {
+    return req<WebAdsLeadDetail>(
+      `/api/web-ads/leads/${leadId}?mask_phone=${maskPhone ? "true" : "false"}`,
+    );
+  },
+  async updateWebAdsLead(leadId: number, payload: WebAdsLeadPatch) {
+    return req<WebAdsLead>(`/api/web-ads/leads/${leadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async deleteWebAdsLead(leadId: number) {
+    return req<{ ok: boolean; deleted_id: number }>(`/api/web-ads/leads/${leadId}`, {
+      method: "DELETE",
+    });
+  },
+  async createCustomerFromWebLead(leadId: number) {
+    return req<WebAdsCreateCustomerResult>(`/api/web-ads/leads/${leadId}/create-customer`, {
+      method: "POST",
+    });
+  },
+  async draftQuoteFromWebLead(leadId: number) {
+    return req<WebAdsDraftQuote>(`/api/web-ads/leads/${leadId}/draft-quote`, {
+      method: "POST",
+    });
+  },
+  async sendWebAdsDailyDigest(days = 1) {
+    return req<WebAdsDailyDigestResult>(`/api/web-ads/daily-digest?days=${days}`, {
+      method: "POST",
     });
   },
 };

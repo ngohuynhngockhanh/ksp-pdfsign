@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type DocRecord, type OrderRec } from "../api";
+import { api, type DocRecord, type OrderRec, type WebAdsDraftQuote } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
 import { BilliardQuoteTab } from "../components/BilliardQuoteTab";
 
@@ -48,6 +48,9 @@ function soDeXuat(n: Ngay, key: string): string {
 
 export function CreateQuote({
   onGenerated,
+  leadDraft,
+  fromLeadId,
+  onLeadDraftConsumed,
 }: {
   onGenerated: (
     docId: string,
@@ -56,6 +59,9 @@ export function CreateQuote({
     customerId: number | null,
     orderId: number | null,
   ) => void;
+  leadDraft?: WebAdsDraftQuote | null;
+  fromLeadId?: number | null;
+  onLeadDraftConsumed?: () => void;
 }) {
   const [templates, setTemplates] = useState<{ key: string; label: string }[]>([]);
   const [templateKey, setTemplateKey] = useState("bao_gia");
@@ -79,7 +85,17 @@ export function CreateQuote({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewErr, setPreviewErr] = useState("");
 
-  const [activeQuoteMode, setActiveQuoteMode] = useState<"standard" | "billiard">("billiard");
+  const [activeQuoteMode, setActiveQuoteMode] = useState<"standard" | "billiard">(
+    leadDraft || fromLeadId ? "standard" : "billiard",
+  );
+  const [linkedLeadId, setLinkedLeadId] = useState<number | null>(null);
+  const [leadBanner, setLeadBanner] = useState<{
+    leadId: number;
+    customerName: string;
+    contact: string;
+  } | null>(null);
+  const [leadLoading, setLeadLoading] = useState(false);
+  const appliedLeadRef = useRef<number | null>(null);
   const today = new Date();
   const [ngay, setNgay] = useState<Ngay>({
     day: today.getDate(),
@@ -128,6 +144,72 @@ export function CreateQuote({
     api.listProducts().then(setProducts).catch(() => {});
     api.listOrders().then(setOrders).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    function applyLeadDraft(draft: WebAdsDraftQuote) {
+      appliedLeadRef.current = draft.lead_id;
+      setActiveQuoteMode("standard");
+      setTemplateKey("bao_gia");
+      setSo((s) => (/\/(BG|DNTT|BBNT)-INUT$/.test(s) ? soDeXuat(ngay, "bao_gia") : s));
+      setBenB((b) => ({
+        ...b,
+        name: draft.customer_name || b.name,
+        email: draft.customer_email || b.email,
+        address: draft.customer_address || b.address,
+        mst: draft.customer_tax_code || b.mst,
+        dai_dien: draft.customer_contact || b.dai_dien,
+      }));
+      if (Array.isArray(draft.items) && draft.items.length > 0) {
+        setItems(
+          draft.items.map((it) => ({
+            ten: it.ten || "",
+            dvt: it.dvt || "Bộ",
+            so_luong: String(it.so_luong ?? 1),
+            don_gia: it.don_gia != null ? String(it.don_gia) : "",
+            thue_suat: String(it.thue_suat ?? 10),
+          })),
+        );
+      }
+      if (draft.note) {
+        setThuyetMinh(draft.note);
+      }
+      if (draft.customer_id) {
+        setSuggested({ id: draft.customer_id, name: draft.customer_name || `KH #${draft.customer_id}` });
+      }
+      setLinkedLeadId(draft.lead_id);
+      setLeadBanner({
+        leadId: draft.lead_id,
+        customerName: draft.customer_name || "",
+        contact: draft.customer_phone || draft.customer_contact || "",
+      });
+    }
+
+    if (leadDraft && appliedLeadRef.current !== leadDraft.lead_id) {
+      applyLeadDraft(leadDraft);
+      onLeadDraftConsumed?.();
+      return;
+    }
+
+    const urlLead = Number(new URLSearchParams(window.location.search).get("fromLead") || 0);
+    const targetLeadId = fromLeadId && fromLeadId > 0 ? fromLeadId : urlLead > 0 ? urlLead : 0;
+    if (targetLeadId > 0 && appliedLeadRef.current !== targetLeadId) {
+      appliedLeadRef.current = targetLeadId;
+      setActiveQuoteMode("standard");
+      setLeadLoading(true);
+      api
+        .draftQuoteFromWebLead(targetLeadId)
+        .then((draft) => {
+          applyLeadDraft(draft);
+          onLeadDraftConsumed?.();
+        })
+        .catch((ex) => {
+          appliedLeadRef.current = null;
+          setErr(`Không thể tải nháp báo giá từ Web Lead #${targetLeadId}: ${(ex as Error).message}`);
+        })
+        .finally(() => setLeadLoading(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadDraft, fromLeadId]);
 
   useEffect(() => {
     const date = `${ngay.year}-${String(ngay.month).padStart(2, "0")}-${String(ngay.day).padStart(2, "0")}`;
@@ -400,6 +482,15 @@ export function CreateQuote({
     setErr("");
     try {
       const r = await api.quoteGenerate(buildPayload());
+      if (linkedLeadId) {
+        await api
+          .updateWebAdsLead(linkedLeadId, {
+            status: "quoted",
+            customer_id: r.customer_id ?? suggested?.id ?? undefined,
+            quoted_price_vnd: Math.round(r.totals?.tong_truoc_thue ?? totals.truocThue),
+          })
+          .catch(() => {});
+      }
       onGenerated(
         r.doc_id,
         r.filename,
@@ -459,6 +550,43 @@ export function CreateQuote({
       ) : (
         <div className="quote-2col" style={{ marginTop: 14 }}>
       <div className="q-form">
+      {leadLoading && (
+        <div className="panel" style={{ padding: "10px 14px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
+          ⏳ Đang nạp thông tin báo giá từ Web Lead…
+        </div>
+      )}
+      {leadBanner && (
+        <div
+          className="panel"
+          style={{
+            padding: "10px 14px",
+            background: "#ecfdf5",
+            borderColor: "#a7f3d0",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 13, color: "#065f46" }}>
+            📈 <b>Đang lập báo giá từ Web Lead #{leadBanner.leadId}</b>
+            {leadBanner.customerName ? ` · ${leadBanner.customerName}` : ""}
+            {leadBanner.contact ? ` (${leadBanner.contact})` : ""}
+            {" — khi sinh PDF sẽ tự cập nhật Lead sang trạng thái Đã báo giá."}
+          </div>
+          <button
+            type="button"
+            className="btn-sm ghost"
+            onClick={() => {
+              setLinkedLeadId(null);
+              setLeadBanner(null);
+            }}
+          >
+            ✕ Bỏ gắn Lead
+          </button>
+        </div>
+      )}
       <div className="panel">
         <label>
           Loại chứng từ

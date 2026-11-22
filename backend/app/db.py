@@ -1709,6 +1709,101 @@ class SanxuatBatchSheet(Base):
     is_printed: Mapped[bool] = mapped_column(Boolean, default=False)
     printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class WebAdEvent(Base):
+    """Su kien quang cao & phan tich phễu tu inut.vn (first-party analytics)."""
+
+    __tablename__ = "web_ad_events"
+    __table_args__ = (
+        Index("ix_web_ad_events_visitor_created", "visitor_id", "created_at"),
+        Index("ix_web_ad_events_type_created", "event_type", "created_at"),
+        Index("ix_web_ad_events_campaign_created", "utm_campaign", "created_at"),
+        Index("ix_web_ad_events_product_created", "product_key", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    visitor_id: Mapped[str] = mapped_column(String(128), index=True)
+    session_id: Mapped[str] = mapped_column(String(128), default="")
+    event_type: Mapped[str] = mapped_column(String(32), index=True)
+    page_path: Mapped[str] = mapped_column(String(500), default="", index=True)
+    product_key: Mapped[str] = mapped_column(String(64), default="", index=True)
+    sku: Mapped[str] = mapped_column(String(64), default="", index=True)
+    coupon: Mapped[str] = mapped_column(String(64), default="")
+    utm_source: Mapped[str] = mapped_column(String(128), default="", index=True)
+    utm_medium: Mapped[str] = mapped_column(String(128), default="")
+    utm_campaign: Mapped[str] = mapped_column(String(256), default="", index=True)
+    utm_content: Mapped[str] = mapped_column(String(256), default="")
+    utm_term: Mapped[str] = mapped_column(String(256), default="")
+    gclid: Mapped[str] = mapped_column(String(256), default="")
+    fbclid: Mapped[str] = mapped_column(String(256), default="")
+    referrer: Mapped[str] = mapped_column(String(1000), default="")
+    locale: Mapped[str] = mapped_column(String(10), default="vi")
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(500), default="")
+    meta_json: Mapped[str] = mapped_column(Text, default="{}")
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class WebLead(Base):
+    """Lead khach hang tu form bao gia / tu van tren inut.vn (SDT ma hoa Fernet)."""
+
+    __tablename__ = "web_leads"
+    __table_args__ = (
+        Index("ix_web_leads_status_created", "status", "created_at"),
+        Index("ix_web_leads_product_created", "product_key", "created_at"),
+        Index("ix_web_leads_campaign_created", "utm_campaign", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    visitor_id: Mapped[str] = mapped_column(String(128), default="", index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    phone_ciphertext: Mapped[str] = mapped_column(Text, default="")
+    phone_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    phone_last4: Mapped[str] = mapped_column(String(4), default="")
+    email: Mapped[str] = mapped_column(String(255), default="", index=True)
+    company: Mapped[str] = mapped_column(String(255), default="")
+    product_key: Mapped[str] = mapped_column(String(64), default="", index=True)
+    product_name: Mapped[str] = mapped_column(String(255), default="")
+    sku: Mapped[str] = mapped_column(String(64), default="", index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    coupon_code: Mapped[str] = mapped_column(String(64), default="")
+    discount_percent: Mapped[float] = mapped_column(Float, default=0.0)
+    quoted_price_vnd: Mapped[float] = mapped_column(Float, default=0.0)
+    device_info: Mapped[str] = mapped_column(String(500), default="")
+    need: Mapped[str] = mapped_column(String(500), default="")
+    message: Mapped[str] = mapped_column(Text, default="")
+    page_path: Mapped[str] = mapped_column(String(500), default="")
+    locale: Mapped[str] = mapped_column(String(10), default="vi")
+    utm_source: Mapped[str] = mapped_column(String(128), default="", index=True)
+    utm_medium: Mapped[str] = mapped_column(String(128), default="")
+    utm_campaign: Mapped[str] = mapped_column(String(256), default="", index=True)
+    utm_content: Mapped[str] = mapped_column(String(256), default="")
+    utm_term: Mapped[str] = mapped_column(String(256), default="")
+    gclid: Mapped[str] = mapped_column(String(256), default="")
+    fbclid: Mapped[str] = mapped_column(String(256), default="")
+    referrer: Mapped[str] = mapped_column(String(1000), default="")
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(500), default="")
+    visit_count: Mapped[int] = mapped_column(Integer, default=0)
+    price_view_count: Mapped[int] = mapped_column(Integer, default=0)
+    training_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("training_public_sessions.id"), nullable=True, index=True
+    )
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id"), nullable=True, index=True
+    )
+    quote_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 _engine = None
 _SessionLocal = None
 

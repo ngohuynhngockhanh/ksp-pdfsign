@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import { api, type WebAdsDraftQuote } from "./api";
 import { Login } from "./pages/Login";
 import { Signer } from "./pages/Signer";
 import { Verify } from "./pages/Verify";
@@ -36,6 +36,7 @@ import { Trademarks } from "./pages/Trademarks";
 import { PieceworkContracts } from "./pages/PieceworkContracts";
 import { DocTracking } from "./pages/DocTracking";
 import { GovRadar } from "./pages/GovRadar";
+import { WebAdsLeads } from "./pages/WebAdsLeads";
 
 type Tab =
   | "home"
@@ -72,7 +73,8 @@ type Tab =
   | "standards"
   | "trademarks"
   | "doctracking"
-  | "govradar";
+  | "govradar"
+  | "webads";
 
 const ROUTES: Record<Tab, string> = {
   home: "/",
@@ -110,6 +112,7 @@ const ROUTES: Record<Tab, string> = {
   trademarks: "/trademarks",
   doctracking: "/theo-doi-xem",
   govradar: "/cong-van-chinh-phu",
+  webads: "/web-ads",
 };
 
 const PATH_TO_TAB: Record<string, Tab> = {
@@ -123,6 +126,8 @@ const PATH_TO_TAB: Record<string, Tab> = {
   "/giai-trinh-thue": "taxdefense",
   "/trademarks": "trademarks",
   "/nhan-hieu": "trademarks",
+  "/ads-leads": "webads",
+  "/lead-website": "webads",
 };
 
 function resolveTab(pathname: string): Tab | null {
@@ -133,6 +138,7 @@ function resolveTab(pathname: string): Tab | null {
   if (pathname.startsWith("/training")) return "training";
   if (pathname.startsWith("/pymid-coop")) return "pymidcoop";
   if (pathname.startsWith("/giai-trinh-thue")) return "taxdefense";
+  if (pathname.startsWith("/ads-leads") || pathname.startsWith("/web-ads") || pathname.startsWith("/lead-website")) return "webads";
   return PATH_TO_TAB[pathname] || null;
 }
 
@@ -169,6 +175,8 @@ export function App() {
   const [verifyDocPk, setVerifyDocPk] = useState<number | null>(null);
   const [openPurchaseId, setOpenPurchaseId] = useState<number | null>(null);
   const [highlightDocPk, setHighlightDocPk] = useState<number | null>(null);
+  const [quotePrefill, setQuotePrefill] = useState<WebAdsDraftQuote | null>(null);
+  const [fromLeadId, setFromLeadId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [preSign, setPreSign] = useState<
     {
@@ -229,7 +237,7 @@ export function App() {
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
               "documents", "customers", "nas", "audit", "settings", "payroll", "khoan", "verify", "training", "messenger", "telegram",
-              "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks", "doctracking", "govradar",
+              "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks", "doctracking", "govradar", "webads",
             ] as Tab[])
           : isPymidStaff
             ? (["pymidcoop"] as Tab[])
@@ -261,13 +269,17 @@ export function App() {
           if (verifyPk > 0) setVerifyDocPk(verifyPk);
           const hdPk = initial === "nhaphang" ? Number(routeParams.get("hd")) : 0;
           if (hdPk > 0) setOpenPurchaseId(hdPk);
+          const leadPk = initial === "quote" ? Number(routeParams.get("fromLead")) : 0;
+          if (leadPk > 0) setFromLeadId(leadPk);
           const initialSearch = verifyPk > 0
             ? `?doc=${verifyPk}`
             : initial === "nhaphang" && hdPk > 0
               ? `?hd=${hdPk}`
-              : initial === "nas" && routeParams.get("path")
-                ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
-                : "";
+              : initial === "quote" && leadPk > 0
+                ? `?fromLead=${leadPk}`
+                : initial === "nas" && routeParams.get("path")
+                  ? `?path=${encodeURIComponent(routeParams.get("path") || "")}`
+                  : "";
           navigate(initial, true, initialSearch);
         }
       })
@@ -283,6 +295,9 @@ export function App() {
         } else if (t === "nhaphang") {
           const hdPk = Number(sp.get("hd"));
           if (hdPk > 0) setOpenPurchaseId(hdPk);
+        } else if (t === "quote") {
+          const leadPk = Number(sp.get("fromLead"));
+          setFromLeadId(leadPk > 0 ? leadPk : null);
         }
       }
     };
@@ -304,6 +319,7 @@ export function App() {
     [
       "Kênh bán hàng & Đấu thầu",
       [
+        ["webads", "Ads & Lead Website", "📈"],
         ["messenger", "Messenger fanpage", "◌"],
         ["bidding", "Đấu Thầu (Mua Sắm Công)", "🏛️"],
         ["standards", "Hợp Chuẩn & Hợp Quy (QCVN)", "📜"],
@@ -452,6 +468,12 @@ export function App() {
         )}
         {tab === "quote" && isAdmin && (
           <CreateQuote
+            leadDraft={quotePrefill}
+            fromLeadId={fromLeadId}
+            onLeadDraftConsumed={() => {
+              setQuotePrefill(null);
+              setFromLeadId(null);
+            }}
             onGenerated={(docId, filename, docType, customerId, orderId) => {
               setPreSign({ docId, filename, docType, customerId, orderId });
               navigate("sign");
@@ -496,6 +518,15 @@ export function App() {
         {tab === "khoan" && isAdmin && <PieceworkContracts />}
         {tab === "doctracking" && isAdmin && <DocTracking />}
         {tab === "govradar" && isAdmin && <GovRadar />}
+        {tab === "webads" && isAdmin && (
+          <WebAdsLeads
+            onCreateQuote={(draft) => {
+              setQuotePrefill(draft);
+              setFromLeadId(draft.lead_id);
+              navigate("quote", false, `?fromLead=${draft.lead_id}`);
+            }}
+          />
+        )}
         </main>
       </div>
 
