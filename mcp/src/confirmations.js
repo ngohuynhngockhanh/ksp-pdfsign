@@ -15,13 +15,24 @@ export function canonicalPayloadHash(payload) {
 export class ConfirmationStore {
   #items = new Map()
 
-  constructor({ clock = Date, ttlMs = 5 * 60 * 1000, randomBytes = crypto.randomBytes } = {}) {
+  constructor({ clock = Date, ttlMs = 5 * 60 * 1000, randomBytes = crypto.randomBytes, maxItems = 1000 } = {}) {
     this.clock = clock
     this.ttlMs = ttlMs
     this.randomBytes = randomBytes
+    this.maxItems = maxItems
+  }
+
+  get size() {
+    return this.#items.size
   }
 
   prepare(toolName, payload, { highRisk = false } = {}) {
+    this.purgeExpired()
+    while (this.#items.size >= this.maxItems) {
+      const oldestKey = this.#items.keys().next().value
+      if (oldestKey === undefined) break
+      this.#items.delete(oldestKey)
+    }
     const now = this.clock.now()
     const token = this.randomBytes(32).toString('hex')
     const expiresAt = now + this.ttlMs
@@ -39,9 +50,11 @@ export class ConfirmationStore {
   }
 
   consume(token, toolName, payload) {
-    const record = this.#items.get(String(token || ''))
+    this.purgeExpired()
+    const key = String(token || '')
+    const record = this.#items.get(key)
     if (!record) return false
-    this.#items.delete(token)
+    this.#items.delete(key)
     if (record.expiresAt < this.clock.now()) return false
     if (record.toolName !== toolName) return false
     return record.payloadHash === canonicalPayloadHash(payload)

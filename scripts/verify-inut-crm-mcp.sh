@@ -11,7 +11,8 @@ fi
 token="$(<"$TOKEN_FILE")"
 health=""
 for attempt in $(seq 1 30); do
-  if health="$(curl --fail --silent --show-error --max-time 2 --header "Authorization: Bearer $token" "$MCP_URL")"; then
+  # Pass Authorization header via curl --config - (stdin), never on CLI argv
+  if health="$(printf 'header = "Authorization: Bearer %s"\n' "$token" | curl --fail --silent --show-error --max-time 2 --config - "$MCP_URL")"; then
     break
   fi
   health=""

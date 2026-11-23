@@ -5,9 +5,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=ksp
+Group=ksp
 ExecStart=/home/ksp/ksp-frpc/frpc -c /home/ksp/ksp-frpc/frpc.ini
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

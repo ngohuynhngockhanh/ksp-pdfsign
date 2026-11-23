@@ -61,18 +61,23 @@ res = clabel.print_sanxuat_v1_1_label(
 print(res)
 ```
 
-### 2.3. REST API (`http://127.0.0.1:2032/api/clabel/*`)
-- **In nhanh qua GET / POST `/api/clabel/print-sanxuat`**:
+### 2.3. REST API (`http://127.0.0.1:2032/api/clabel/*` — bắt buộc `Authorization: Bearer` loopback token & `POST` cho lệnh in)
+- **In nhanh qua `POST /api/clabel/print-sanxuat`**:
   ```bash
-  curl -sS "http://127.0.0.1:2032/api/clabel/print-sanxuat?device_id=inut_207_153"
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - -X POST "http://127.0.0.1:2032/api/clabel/print-sanxuat" \
+      -H "Content-Type: application/json" \
+      -d '{"device_id": "inut_207_153"}'
   ```
-- **Xem trước ảnh PNG 1-bit (`320x240`) qua `/api/clabel/preview-sanxuat`**:
+- **Xem trước ảnh PNG 1-bit (`320x240`) qua `GET /api/clabel/preview-sanxuat`**:
   ```bash
-  curl -sS "http://127.0.0.1:2032/api/clabel/preview-sanxuat?device_id=inut_207_153" -o /tmp/preview.png
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - "http://127.0.0.1:2032/api/clabel/preview-sanxuat?device_id=inut_207_153" -o /tmp/preview.png
   ```
-- **Hoặc gọi qua `/api/clabel/print` với `template: "sanxuat_v1.1"`**:
+- **Hoặc gọi qua `POST /api/clabel/print` với `template: "sanxuat_v1.1"`**:
   ```bash
-  curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
-    -H "Content-Type: application/json" \
-    -d '{"template": "sanxuat_v1.1", "device_id": "inut_207_153"}'
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - -X POST http://127.0.0.1:2032/api/clabel/print \
+      -H "Content-Type: application/json" \
+      -d '{"template": "sanxuat_v1.1", "device_id": "inut_207_153"}'
   ```

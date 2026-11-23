@@ -1,6 +1,6 @@
-# Cài Windows Signing Agent trên máy 192.168.1.4
+# Cài Windows Signing Agent trên máy cắm USB Token (VD: 192.168.1.4)
 
-Agent chạy trên **máy Windows đang cắm token WIN-CA**. Backend sẽ gọi tới agent qua HTTPS để ký.
+Agent chạy trên **máy Windows đang cắm token WIN-CA**. Backend sẽ gọi tới agent qua HTTPS (có xác thực chứng chỉ SAN + khóa `api_secret` riêng) để ký.
 
 ## 1. Cài Python + thư viện
 
@@ -12,52 +12,70 @@ Agent chạy trên **máy Windows đang cắm token WIN-CA**. Backend sẽ gọi
    pip install -r requirements.txt
    ```
 
-## 2. Cấu hình
+## 2. Cấu hình (`config.ini` — bắt buộc, fail closed nếu thiếu)
 
-1. Copy `config.example.ini` → `config.ini`.
-2. Sửa `pkcs11_lib` cho đúng DLL PKCS#11 của token WIN-CA. Cách tìm:
-   - Xem thư mục cài driver token (thường trong `C:\Windows\System32\` hoặc `C:\Program Files\...`).
-   - Các DLL hay gặp: `WDPKCS.dll` (WatchData/mToken), `eTPKCS11.dll` (SafeNet).
-   - Nếu không chắc, chạy thử: `python -c "import pkcs11; print(pkcs11.lib(r'ĐƯỜNG_DẪN_DLL').get_slots())"` — nếu không lỗi là đúng.
-3. Để `use_windows_logon = true` để xác thực bằng mật khẩu **Administrator** thật của máy.
+1. Copy `config.example.ini` → `config.ini` (tuyệt đối KHÔNG commit `config.ini`).
+2. Sửa `pkcs11_lib` cho đúng DLL PKCS#11 của token WIN-CA (`WDPKCS.dll`, `eTPKCS11.dll`, ...).
+3. Tạo khóa `api_secret` ngẫu nhiên dài tối thiểu 32 byte và cấu hình vào `[auth]`:
+   ```powershell
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+   - Đặt `api_secret = <chuỗi_vừa_tạo>` trong `config.ini` (và cấu hình khớp trên backend).
+   - Đặt `allowed_ips = 127.0.0.1,::1,<IP_MAY_CHU_BACKEND>/32`.
+   - Giữ `allow_windows_logon_fallback = false` để không phơi bày tài khoản OS Administrator qua HTTP.
 
-## 3. Tạo chứng chỉ HTTPS self-signed (dùng trong LAN)
+## 3. Tạo chứng chỉ HTTPS self-signed có SAN IP (`SubjectAlternativeName`)
+
+Sử dụng chứng chỉ có **SAN IP** để backend bật **`AGENT_VERIFY_TLS=true`** (và ghim chứng chỉ qua `AGENT_CA_BUNDLE=/path/to/agent-cert.pem`) thay vì tắt TLS verification:
 
 ```powershell
-python -c "from cryptography.hazmat.primitives.asymmetric import rsa; from cryptography import x509; import datetime; from cryptography.hazmat.primitives import hashes, serialization; from cryptography.x509.oid import NameOID; k=rsa.generate_private_key(public_exponent=65537,key_size=2048); n=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'192.168.1.4')]); c=x509.CertificateBuilder().subject_name(n).issuer_name(n).public_key(k.public_key()).serial_number(x509.random_serial_number()).not_valid_before(datetime.datetime.utcnow()).not_valid_after(datetime.datetime.utcnow()+datetime.timedelta(days=3650)).sign(k,hashes.SHA256()); open('key.pem','wb').write(k.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.TraditionalOpenSSL,serialization.NoEncryption())); open('cert.pem','wb').write(c.public_bytes(serialization.Encoding.PEM))"
+# Thay 192.168.1.4 bang IP LAN that cua may Windows cam token
+openssl req -x509 -newkey rsa:2048 -sha256 -days 825 -nodes `
+  -keyout key.pem -out cert.pem `
+  -subj "/CN=192.168.1.4" `
+  -addext "subjectAltName=IP:192.168.1.4,IP:127.0.0.1,DNS:localhost" `
+  -addext "basicConstraints=CA:FALSE" `
+  -addext "keyUsage=digitalSignature,keyEncipherment" `
+  -addext "extendedKeyUsage=serverAuth"
+
+# Khoa quyen doc private key (chi user chay service duoc doc)
+icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):(R)"
+```
+
+Copy `cert.pem` sang máy chủ backend (VD: `/home/ksp/ksp-pdfsign/backend/data/agent-cert.pem`) và cấu hình trong `.env` của backend:
+```env
+AGENT_SCHEME=https
+AGENT_VERIFY_TLS=true
+AGENT_CA_BUNDLE=/home/ksp/ksp-pdfsign/backend/data/agent-cert.pem
 ```
 
 ## 4. Chạy thử
 
+Bind đúng IP LAN nội bộ thay vì `0.0.0.0` (nếu có nhiều card mạng):
 ```powershell
-.\.venv\Scripts\python -m uvicorn agent:app --host 0.0.0.0 --port 8443 --ssl-keyfile key.pem --ssl-certfile cert.pem
+.\.venv\Scripts\python -m uvicorn agent:app --host 192.168.1.4 --port 8443 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
-Kiểm tra từ máy backend:
+Kiểm tra từ máy backend (có xác thực chứng chỉ bằng `--cacert`):
 ```bash
-curl -k https://192.168.1.4:8443/health
+curl --cacert /home/ksp/ksp-pdfsign/backend/data/agent-cert.pem https://192.168.1.4:8443/health
 ```
 
-## 5. Cài thành Windows Service (tự chạy nền) bằng NSSM
+## 5. Cài thành Windows Service bằng NSSM
 
 1. Tải [NSSM](https://nssm.cc/download), giải nén.
 2. ```powershell
    nssm install ksp-pdfsign-agent
    ```
    - **Path**: `…\windows-agent\.venv\Scripts\python.exe`
-   - **Arguments**: `-m uvicorn agent:app --host 0.0.0.0 --port 8443 --ssl-keyfile key.pem --ssl-certfile cert.pem`
+   - **Arguments**: `-m uvicorn agent:app --host 192.168.1.4 --port 8443 --ssl-keyfile key.pem --ssl-certfile cert.pem`
    - **Startup directory**: `…\windows-agent`
-3. Ở tab *Log on*, đặt chạy dưới tài khoản **có phiên truy cập được token** (thường là user đang đăng nhập/đã import chứng thư), nếu token yêu cầu phiên người dùng.
+3. Ở tab *Log on*, đặt chạy dưới tài khoản có phiên truy cập token.
 4. `nssm start ksp-pdfsign-agent`.
 
 ## Bảo mật
 
-- Chỉ mở cổng 8443 cho **IP của máy backend** (Windows Firewall → Inbound Rule → Scope → Remote IP).
-- Đặt mật khẩu Administrator riêng, mạnh và không ghi vào repository.
-- Không ghi log PIN / mật khẩu.
-
-## Ghi chú về PIN token
-
-Một số token WIN-CA cho phép truyền PIN qua PKCS#11 để ký tự động (phù hợp ký qua web).
-Nếu token bắt buộc bấm PIN trên phần mềm/thiết bị, cần bật chế độ "nhớ PIN" hoặc dùng
-token/HSM hỗ trợ ký không tương tác. Kiểm tra với nhà cung cấp WIN-CA.
+- Chỉ mở cổng 8443 cho **IP của máy backend** (Windows Firewall → Inbound Rule → Scope → Remote IP) kết hợp `[auth] allowed_ips` trong `config.ini`.
+- Luôn bật `AGENT_VERIFY_TLS=true` với `AGENT_CA_BUNDLE` chứa `cert.pem` có SAN IP.
+- Không bật OpenAPI `/docs` (đã tắt mặc định trong `agent.py`), không ghi log PIN / `api_secret`.
+- Agent tự động chặn 429 sau 5 lần sai khóa trong 60 giây và chỉ chấp nhận thuật toán băm SHA-256/384/512 (không hỗ trợ SHA-1).

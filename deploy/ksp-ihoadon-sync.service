@@ -5,10 +5,19 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=ksp
+Group=ksp
 WorkingDirectory=/home/ksp/ksp-pdfsign/backend
-ExecStart=/home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ihoadon_daily.py
+RuntimeDirectory=ksp-sync
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/flock -n %t/ksp-sync/ksp-ihoadon-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ihoadon_daily.py
 TimeoutStartSec=60min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ksp/ksp-pdfsign/backend/data
 UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

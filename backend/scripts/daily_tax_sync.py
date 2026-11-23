@@ -10,7 +10,9 @@ Chuc nang:
 
 from __future__ import annotations
 
+import html
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -44,19 +46,23 @@ def main() -> int:
             print(f"Sync result: {result}")
             return 0
         except Exception as exc:
-            logger.exception(f"Lỗi đồng bộ hóa đơn thuế: {exc}")
-            # Gửi cảnh báo lỗi qua Telegram nếu có thể
+            logger.exception("Lỗi đồng bộ hóa đơn thuế")
+            # Gửi cảnh báo lỗi qua Telegram nếu có cấu hình TELEGRAM_ALERT_CHAT_ID
             try:
                 from app.config import get_settings
                 from app.telegram import TelegramClient
                 settings = get_settings()
-                if settings.telegram_enabled:
+                chat_id = os.environ.get("TELEGRAM_ALERT_CHAT_ID", "").strip()
+                if settings.telegram_enabled and chat_id:
+                    safe_err = html.escape(f"{type(exc).__name__}: {str(exc)[:400]}")
                     client = TelegramClient(settings)
                     client.send_message(
-                        "1229390861",
-                        f"❌ <b>[KSP iNut] LỖI ĐỒNG BỘ HÓA ĐƠN THUẾ 24H</b>\nChi tiết: <code>{exc}</code>"
+                        chat_id,
+                        f"❌ <b>[KSP iNut] LỖI ĐỒNG BỘ HÓA ĐƠN THUẾ 24H</b>\nChi tiết: <code>{safe_err}</code>",
                     )
                     client.close()
+                elif settings.telegram_enabled:
+                    logger.warning("Bỏ qua gửi cảnh báo Telegram vì chưa đặt TELEGRAM_ALERT_CHAT_ID")
             except Exception:
                 pass
             return 1

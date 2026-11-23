@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -6,13 +7,23 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 
-import { createTokenAuthenticator, isLoopbackAddress, redactSecrets, readTokenFile } from './auth.js'
+import {
+  createTokenAuthenticator,
+  isLoopbackAddress,
+  isLoopbackHostHeader,
+  isLoopbackOriginHeader,
+  redactErrorText,
+  redactSecrets,
+  readTokenFile,
+} from './auth.js'
 import { BackendClient } from './backend-client.js'
 import { ConfirmationStore } from './confirmations.js'
 import { getToolDefinition, routeCoverage, toolDefinitions } from './catalog.js'
 import { errorEnvelope, successEnvelope, warningEnvelope, withMeta } from './response.js'
 
 const MAX_BODY_BYTES = 1_000_000
+const MAX_SSE_SESSIONS = 100
+const AUDIT_TAIL_BYTES = 262_144
 const SSE_ENDPOINT = '/messages'
 
 function jsonResult(value) {
@@ -30,7 +41,34 @@ function requestId(req) {
 }
 
 function cryptoRandomId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  return crypto.randomUUID()
+}
+
+function readRecentAuditEvents(auditPath, maxLines = 100) {
+  if (!fs.existsSync(auditPath)) return []
+  const stat = fs.statSync(auditPath)
+  if (stat.size === 0) return []
+  const start = Math.max(0, stat.size - AUDIT_TAIL_BYTES)
+  const length = stat.size - start
+  const buffer = Buffer.alloc(length)
+  const fd = fs.openSync(auditPath, 'r')
+  try {
+    fs.readSync(fd, buffer, 0, length, start)
+  } finally {
+    fs.closeSync(fd)
+  }
+  const raw = buffer.toString('utf8')
+  const lines = (start > 0 ? raw.slice(raw.indexOf('\n') + 1) : raw).trim().split('\n').slice(-maxLines)
+  const parsed = []
+  for (const line of lines) {
+    if (!line) continue
+    try {
+      parsed.push(redactSecrets(JSON.parse(line)))
+    } catch {
+      // Skip malformed/truncated lines safely.
+    }
+  }
+  return parsed
 }
 
 function safeError(error) {
@@ -41,18 +79,24 @@ function safeError(error) {
     rootCauseHint: status ? `backend returned HTTP ${status}` : 'gateway or backend dependency failed',
     safeRetry: retryable ? 'retry the same read operation once after a short delay' : 'fix the request or credentials before retrying',
     stopCondition: retryable ? 'stop after two retries or when the dependency remains unavailable' : 'stop until the input or credentials are corrected',
-    data: { detail: String(error?.detail || error?.message || 'unknown error').slice(0, 500) },
+    data: { detail: redactErrorText(error?.detail || error?.message || 'unknown error') },
   })
 }
 
 export function createRuntime(options = {}) {
   const token = options.token || (options.tokenFile ? readTokenFile(options.tokenFile) : process.env.INUT_CRM_MCP_TOKEN_FILE ? readTokenFile(process.env.INUT_CRM_MCP_TOKEN_FILE) : process.env.INUT_CRM_MCP_TOKEN)
+  const backendTokenFile = options.backendTokenFile || process.env.INUT_CRM_BACKEND_TOKEN_FILE || ''
+  const backendToken = options.backendToken !== undefined
+    ? options.backendToken
+    : backendTokenFile && fs.existsSync(backendTokenFile)
+      ? readTokenFile(backendTokenFile)
+      : process.env.INUT_CRM_BACKEND_TOKEN || token
   const authenticator = options.authenticator || createTokenAuthenticator({ token })
   const backendClient = options.backendClient || new BackendClient({
     baseUrl: options.backendUrl || process.env.KSP_BACKEND_URL || 'http://127.0.0.1:2032',
     username: options.backendUsername || process.env.MCP_BACKEND_USERNAME || process.env.APP_ADMIN_USERNAME,
     password: options.backendPassword || process.env.MCP_BACKEND_PASSWORD || process.env.APP_ADMIN_PASSWORD,
-    bearerToken: token,
+    bearerToken: backendToken,
   })
   const confirmationStore = options.confirmationStore || new ConfirmationStore()
   const auditPath = options.auditPath || process.env.INUT_CRM_MCP_AUDIT_PATH || './backend/data/mcp-audit.jsonl'
@@ -67,7 +111,7 @@ export function createRuntime(options = {}) {
       fs.appendFileSync(auditPath, `${JSON.stringify(record)}\n`, { mode: 0o600 })
       try { fs.chmodSync(auditPath, 0o600) } catch { /* best effort */ }
     } catch (error) {
-      console.error(JSON.stringify({ event: 'mcp_audit_write_failed', error: String(error.message || error) }))
+      console.error(JSON.stringify({ event: 'mcp_audit_write_failed', error: redactErrorText(error?.message || error) }))
     }
   }
 
@@ -81,22 +125,25 @@ export async function invokeTool(definition, args, runtime, meta = {}) {
     let result
     if (definition.execution === 'read') {
       if (definition.name === 'inut_crm_health') {
-        const backend = await runtime.backendClient.request('/api/health')
+        const backend = redactSecrets(await runtime.backendClient.request('/api/health'))
         result = successEnvelope('MCP gateway and KSP backend are healthy', { backend, transport: 'http' })
       } else if (definition.name === 'inut_crm_capabilities') {
         result = successEnvelope('Capability catalog loaded', { tools: toolDefinitions.map(({ name, description, access, execution, category }) => ({ name, description, access, execution, category })), route_coverage: routeCoverage })
       } else if (definition.name === 'inut_crm_whoami') {
         result = successEnvelope('Authenticated local MCP owner', { actor: 'mcp-owner', backend_url: runtime.backendClient.baseUrl })
       } else if (definition.name === 'inut_crm_audit_recent') {
-        const lines = fs.existsSync(runtime.auditPath) ? fs.readFileSync(runtime.auditPath, 'utf8').trim().split('\n').slice(-100) : []
-        result = successEnvelope('Recent redacted MCP audit events loaded', { items: lines.filter(Boolean).map((line) => JSON.parse(line)) })
+        const items = readRecentAuditEvents(runtime.auditPath, 100)
+        result = successEnvelope('Recent redacted MCP audit events loaded', { items })
       } else {
-        result = successEnvelope('Backend read completed', await runtime.backendClient.dispatch(definition.name, args))
+        result = successEnvelope('Backend read completed', redactSecrets(await runtime.backendClient.dispatch(definition.name, args)))
       }
     } else {
-      const payload = { operation: args.operation, ...(args.payload || {}) }
+      const confirmationPayload = {
+        operation: String(args.operation || ''),
+        payload: args.payload || {},
+      }
       if (args.mode === 'prepare') {
-        const confirmation = runtime.confirmationStore.prepare(definition.name, payload, { highRisk: definition.access === 'high_risk' })
+        const confirmation = runtime.confirmationStore.prepare(definition.name, confirmationPayload, { highRisk: definition.access === 'high_risk' })
         result = warningEnvelope('Mutation prepared; no data or external side effect has occurred', {
           tool: definition.name,
           operation: args.operation,
@@ -111,7 +158,7 @@ export async function invokeTool(definition, args, runtime, meta = {}) {
             safeRetry: 'call mode=prepare first, then execute the exact same payload',
             stopCondition: 'do not retry execute without a valid token',
           })
-        } else if (!runtime.confirmationStore.consume(args.confirmation_token, definition.name, payload)) {
+        } else if (!runtime.confirmationStore.consume(args.confirmation_token, definition.name, confirmationPayload)) {
           result = errorEnvelope('invalid_confirmation', 'Confirmation token is invalid, expired, replayed, or bound to another payload', {
             retryable: false,
             rootCauseHint: 'confirmation hash or TTL validation failed',
@@ -119,10 +166,10 @@ export async function invokeTool(definition, args, runtime, meta = {}) {
             stopCondition: 'stop using the rejected token',
           })
         } else {
-          result = successEnvelope('Mutation executed', await runtime.backendClient.dispatch(definition.name, {
+          result = successEnvelope('Mutation executed', redactSecrets(await runtime.backendClient.dispatch(definition.name, {
             ...args,
             payload: args.payload || {},
-          }))
+          })))
         }
       }
     }
@@ -131,7 +178,7 @@ export async function invokeTool(definition, args, runtime, meta = {}) {
     return envelope
   } catch (error) {
     const envelope = withMeta(safeError(error), { ...baseMeta, duration_ms: Date.now() - started })
-    runtime.audit({ request_id: baseMeta.request_id, actor: 'mcp-owner', tool: definition.name, outcome: 'error', error: error.message })
+    runtime.audit({ request_id: baseMeta.request_id, actor: 'mcp-owner', tool: definition.name, outcome: 'error', error: redactErrorText(error?.message || error) })
     return envelope
   }
 }
@@ -214,6 +261,8 @@ function sendJson(res, status, body) {
 
 function authorize(req, runtime) {
   if (!isLoopbackAddress(req.socket.remoteAddress)) return { ok: false, status: 403, message: 'loopback_only' }
+  if (!isLoopbackHostHeader(req.headers.host)) return { ok: false, status: 403, message: 'invalid_host' }
+  if (!isLoopbackOriginHeader(req.headers.origin)) return { ok: false, status: 403, message: 'invalid_origin' }
   const result = runtime.authenticator.authenticate(req.headers.authorization)
   return result.authenticated ? { ok: true, actor: result.actor } : { ok: false, status: 401, message: 'invalid_api_key' }
 }
@@ -221,46 +270,59 @@ function authorize(req, runtime) {
 export function createHttpServer(runtime = createRuntime()) {
   const sseTransports = new Map()
   const server = http.createServer(async (req, res) => {
-    const auth = authorize(req, runtime)
-    if (!auth.ok) return sendJson(res, auth.status, { ok: false, error: auth.message })
-    const id = requestId(req)
+    try {
+      const auth = authorize(req, runtime)
+      if (!auth.ok) return sendJson(res, auth.status, { ok: false, error: auth.message })
+      const id = requestId(req)
 
-    if (req.method === 'GET' && req.url === '/health') {
-      return sendJson(res, 200, { ok: true, service: 'inut-crm', version: process.env.INUT_CRM_MCP_VERSION || '1.0.0', tools_count: toolDefinitions.length, backend_url: runtime.backendClient.baseUrl })
-    }
-    if (req.method === 'GET' && req.url === '/tools') {
-      return sendJson(res, 200, { ok: true, count: toolDefinitions.length, tools: toolDefinitions.map(({ inputSchema, ...definition }) => definition) })
-    }
-    if (req.method === 'GET' && req.url === '/sse') {
-      const mcp = createMcpServer(runtime, { requestId: id })
-      const transport = new SSEServerTransport(SSE_ENDPOINT, res)
-      sseTransports.set(transport.sessionId, { transport, mcp })
-      req.on('close', () => { sseTransports.delete(transport.sessionId); transport.close().catch(() => {}); mcp.close().catch(() => {}) })
-      return mcp.connect(transport)
-    }
-    if (req.method === 'POST' && req.url?.startsWith('/messages')) {
-      const sessionId = new URL(req.url, 'http://127.0.0.1').searchParams.get('sessionId')
-      const session = sseTransports.get(sessionId)
-      if (!session) return sendJson(res, 404, { error: 'sse_session_not_found' })
-      const body = await parseJsonBody(req)
-      return session.transport.handlePostMessage(req, res, body)
-    }
-    if (req.url === '/mcp' && req.method === 'POST') {
-      const body = await parseJsonBody(req)
-      req.headers.accept = 'application/json, text/event-stream'
-      const mcp = createMcpServer(runtime, { requestId: id })
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
-      try {
-        await mcp.connect(transport)
-        await transport.handleRequest(req, res, body)
-      } catch (error) {
-        if (!res.headersSent) sendJson(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: 'MCP request failed' }, id: body?.id ?? null })
-      } finally {
-        res.on('close', () => { transport.close().catch(() => {}); mcp.close().catch(() => {}) })
+      if (req.method === 'GET' && req.url === '/health') {
+        return sendJson(res, 200, { ok: true, service: 'inut-crm', version: process.env.INUT_CRM_MCP_VERSION || '1.0.0', tools_count: toolDefinitions.length, backend_url: runtime.backendClient.baseUrl })
       }
-      return
+      if (req.method === 'GET' && req.url === '/tools') {
+        return sendJson(res, 200, { ok: true, count: toolDefinitions.length, tools: toolDefinitions.map(({ inputSchema, ...definition }) => definition) })
+      }
+      if (req.method === 'GET' && req.url === '/sse') {
+        if (sseTransports.size >= MAX_SSE_SESSIONS) {
+          return sendJson(res, 503, { ok: false, error: 'too_many_sse_sessions' })
+        }
+        const mcp = createMcpServer(runtime, { requestId: id })
+        const transport = new SSEServerTransport(SSE_ENDPOINT, res)
+        sseTransports.set(transport.sessionId, { transport, mcp })
+        req.on('close', () => { sseTransports.delete(transport.sessionId); transport.close().catch(() => {}); mcp.close().catch(() => {}) })
+        await mcp.connect(transport)
+        return
+      }
+      if (req.method === 'POST' && req.url?.startsWith('/messages')) {
+        const sessionId = new URL(req.url, 'http://127.0.0.1').searchParams.get('sessionId')
+        const session = sseTransports.get(sessionId)
+        if (!session) return sendJson(res, 404, { error: 'sse_session_not_found' })
+        const body = await parseJsonBody(req)
+        await session.transport.handlePostMessage(req, res, body)
+        return
+      }
+      if (req.url === '/mcp' && req.method === 'POST') {
+        const body = await parseJsonBody(req)
+        req.headers.accept = 'application/json, text/event-stream'
+        const mcp = createMcpServer(runtime, { requestId: id })
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
+        try {
+          await mcp.connect(transport)
+          await transport.handleRequest(req, res, body)
+        } catch {
+          if (!res.headersSent) sendJson(res, 500, { jsonrpc: '2.0', error: { code: -32603, message: 'MCP request failed' }, id: body?.id ?? null })
+        } finally {
+          res.on('close', () => { transport.close().catch(() => {}); mcp.close().catch(() => {}) })
+        }
+        return
+      }
+      return sendJson(res, 404, { ok: false, error: 'not_found' })
+    } catch (error) {
+      if (res.headersSent || res.destroyed) return
+      const status = Number(error?.statusCode || 0)
+      if (status === 400) return sendJson(res, 400, { ok: false, error: 'invalid_json' })
+      if (status === 413) return sendJson(res, 413, { ok: false, error: 'payload_too_large' })
+      return sendJson(res, 500, { ok: false, error: 'internal_error' })
     }
-    return sendJson(res, 404, { ok: false, error: 'not_found' })
   })
   return server
 }

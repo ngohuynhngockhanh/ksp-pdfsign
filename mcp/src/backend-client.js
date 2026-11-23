@@ -1,5 +1,97 @@
 import { Blob } from 'node:buffer'
 
+const STOCK_REPORT_ROUTES = Object.freeze({
+  stock: '/api/inv/stock',
+  availability: '/api/inv/availability',
+  'hanging-value': '/api/inv/hanging-value',
+  hanging_value: '/api/inv/hanging-value',
+  traceability: '/api/inv/traceability',
+})
+
+const PAYROLL_READ_ROUTES = Object.freeze({
+  employees: '/api/payroll/employees',
+  periods: '/api/payroll/periods',
+  imports: '/api/payroll/imports',
+  'hr-summary': '/api/payroll/hr-summary',
+  forecast: '/api/payroll/forecast',
+  'sync-drive/status': '/api/payroll/sync-drive/status',
+})
+
+const CUSTOMS_DRIVE_READ_ROUTES = Object.freeze({
+  sources: '/api/inv/customs-drive/sources',
+  folders: '/api/inv/customs-drive/folders',
+  'check-tasks': '/api/inv/customs-drive/check-tasks',
+})
+
+const NAS_READ_ROUTES = Object.freeze({
+  status: '/api/nas/status',
+  disk: '/api/nas/disk',
+  browse: '/api/nas/browse',
+})
+
+const SPX_READ_ROUTES = Object.freeze({
+  stats: '/api/spx/stats',
+  orders: '/api/spx/orders',
+  settings: '/api/spx/settings',
+  printers: '/api/spx/printers',
+  'session/validate': '/api/spx/session/validate',
+})
+
+const CLABEL_READ_ROUTES = Object.freeze({
+  status: '/api/clabel/status',
+  scan: '/api/clabel/scan',
+  'sanxuat-devices': '/api/clabel/sanxuat-devices',
+  'sanxuat-batches': '/api/clabel/sanxuat-batches',
+})
+
+const PYMID_READ_ROUTES = Object.freeze({
+  catalog: '/api/pymid/catalog',
+  staff: '/api/pymid/staff',
+  orders: '/api/pymid/orders',
+})
+
+const TRAINING_READ_ROUTES = Object.freeze({
+  search: '/api/training/search',
+  history: '/api/training/history',
+  knowledge: '/api/training/knowledge',
+  stats: '/api/training/stats',
+  'public-leads': '/api/training/public-leads',
+})
+
+const STANDARDS_READ_ROUTES = Object.freeze({
+  statistics: '/api/standards/statistics',
+  search: '/api/standards/search',
+  rules: '/api/standards/rules',
+  playbooks: '/api/standards/playbooks',
+  'hs-mappings': '/api/standards/hs-mappings',
+  'testing-labs': '/api/standards/testing-labs',
+  'game/state': '/api/standards/game/state',
+  'lookup/model': '/api/standards/lookup/model',
+  'lookup/tax-code': '/api/standards/lookup/tax-code',
+  suggest: '/api/standards/suggest',
+  'risk-classification/statistics': '/api/standards/risk-classification/statistics',
+  'risk-classification/classify': '/api/standards/risk-classification/classify',
+  'risk-classification/catalog': '/api/standards/risk-classification/catalog',
+})
+
+function resolveAllowlisted(map, value, fallbackKey, toolName) {
+  const key = value === undefined || value === null || value === '' ? fallbackKey : String(value).trim()
+  if (!Object.prototype.hasOwnProperty.call(map, key)) {
+    throw new Error(`unsupported_resource:${toolName}:${key}`)
+  }
+  return map[key]
+}
+
+function stockRoute(args) {
+  const filters = args?.filters || {}
+  const report = filters.report === undefined || filters.report === null || filters.report === '' ? 'stock' : String(filters.report).trim()
+  if (report === 'card' || report === 'flow') {
+    const itemId = args.id ?? filters.item_id
+    return [`/api/inv/items/${segment(itemId)}/${report}`, filters]
+  }
+  return [resolveAllowlisted(STOCK_REPORT_ROUTES, report, 'stock', 'inventory_stock'), filters]
+}
+
 const READ_ROUTES = {
   crm_customers_search: () => ['/api/customers'],
   crm_customer_get: ({ args }) => [`/api/customers/${id(args)}`],
@@ -24,7 +116,7 @@ const READ_ROUTES = {
   bidding_competitors: ({ args }) => [`/api/bidding/tenders/${segment(args.id || args.query)}/competitors`],
   inventory_warehouses: () => ['/api/inv/warehouses'],
   inventory_items: ({ args }) => ['/api/inv/items', { q: args.query, ...(args.filters || {}) }],
-  inventory_stock: ({ args }) => [`/api/inv/${args.filters?.report || 'stock'}`, args.filters || {}],
+  inventory_stock: ({ args }) => stockRoute(args),
   inventory_purchases: ({ args }) => ['/api/inv/purchase', args.filters || {}],
   inventory_sales: ({ args }) => ['/api/inv/sale', args.filters || {}],
   inventory_issues: ({ args }) => ['/api/inv/issues', args.filters || {}],
@@ -35,19 +127,19 @@ const READ_ROUTES = {
   tax_review: ({ args }) => ['/api/tax/review', args.filters || {}],
   tax_reports: ({ args }) => ['/api/tax/reports', args.filters || {}],
   ihoadon: ({ args }) => [args.filters?.resource === 'drafts' ? '/api/inv/ihoadon/drafts' : '/api/inv/ihoadon/dashboard', args.filters || {}],
-  payroll: ({ args }) => [`/api/payroll/${args.filters?.resource || 'employees'}`, args.filters || {}],
+  payroll: ({ args }) => [resolveAllowlisted(PAYROLL_READ_ROUTES, args.filters?.resource, 'employees', 'payroll'), args.filters || {}],
   email_sync: () => ['/api/inv/email-sync/runs'],
   telegram: () => ['/api/telegram/status'],
   facebook_conversations: ({ args }) => ['/api/facebook/conversations', args.filters || {}],
-  customs_drive: ({ args }) => [`/api/inv/customs-drive/${args.filters?.resource || 'sources'}`, args.filters || {}],
-  nas: ({ args }) => [`/api/nas/${args.filters?.resource || 'status'}`, args.filters || {}],
-  spx: ({ args }) => [`/api/spx/${args.filters?.resource || 'stats'}`, args.filters || {}],
+  customs_drive: ({ args }) => [resolveAllowlisted(CUSTOMS_DRIVE_READ_ROUTES, args.filters?.resource, 'sources', 'customs_drive'), args.filters || {}],
+  nas: ({ args }) => [resolveAllowlisted(NAS_READ_ROUTES, args.filters?.resource, 'status', 'nas'), args.filters || {}],
+  spx: ({ args }) => [resolveAllowlisted(SPX_READ_ROUTES, args.filters?.resource, 'stats', 'spx'), args.filters || {}],
   spx_print_by_label: ({ args }) => ['/api/spx/stats', args.filters || {}],
-  clabel_ble_print: ({ args }) => [`/api/clabel/${args.filters?.resource || 'status'}`, args.filters || {}],
-  pymid: ({ args }) => [`/api/pymid/${args.filters?.resource || 'catalog'}`, args.filters || {}],
-  training: ({ args }) => [`/api/training/${args.filters?.resource || 'search'}`, { q: args.query, ...(args.filters || {}) }],
+  clabel_ble_print: ({ args }) => [resolveAllowlisted(CLABEL_READ_ROUTES, args.filters?.resource, 'status', 'clabel_ble_print'), args.filters || {}],
+  pymid: ({ args }) => [resolveAllowlisted(PYMID_READ_ROUTES, args.filters?.resource, 'catalog', 'pymid'), args.filters || {}],
+  training: ({ args }) => [resolveAllowlisted(TRAINING_READ_ROUTES, args.filters?.resource, 'search', 'training'), { q: args.query, ...(args.filters || {}) }],
   ai: () => ['/api/ai/status'],
-  standards: ({ args }) => [`/api/standards/${args.filters?.resource || 'statistics'}`, args.filters || {}],
+  standards: ({ args }) => [resolveAllowlisted(STANDARDS_READ_ROUTES, args.filters?.resource, 'statistics', 'standards'), args.filters || {}],
   standards_tqc_status: () => ['/api/standards/tqc/status'],
   standards_tqc_search: ({ args }) => ['/api/standards/tqc/search', {
     q: args.query,
@@ -120,8 +212,19 @@ function id(args) {
 }
 
 function segment(value) {
-  const text = String(value || '').trim()
-  if (!text || text.includes('/') || text.includes('\\')) throw new Error('invalid path identifier')
+  const text = String(value ?? '').trim()
+  if (
+    !text ||
+    text === '.' ||
+    text === '..' ||
+    text.includes('..') ||
+    text.includes('/') ||
+    text.includes('\\') ||
+    /%2e|%2f|%5c/i.test(text) ||
+    !/^[A-Za-z0-9._-]+$/.test(text)
+  ) {
+    throw new Error('invalid path identifier')
+  }
   return encodeURIComponent(text)
 }
 
@@ -162,11 +265,12 @@ function normalizePayload(toolName, source) {
 }
 
 export class BackendClient {
-  constructor({ baseUrl, username, password, bearerToken, fetchImpl = globalThis.fetch } = {}) {
+  constructor({ baseUrl, username, password, bearerToken, timeoutMs = 30_000, fetchImpl = globalThis.fetch } = {}) {
     this.baseUrl = String(baseUrl || 'http://127.0.0.1:2032').replace(/\/$/, '')
     this.username = username || ''
     this.password = password || ''
     this.bearerToken = bearerToken || ''
+    this.timeoutMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30_000
     this.fetchImpl = fetchImpl
     this.cookie = ''
   }
@@ -178,6 +282,7 @@ export class BackendClient {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username: this.username, password: this.password }),
+      signal: AbortSignal.timeout(this.timeoutMs),
     })
     if (!response.ok) throw new Error(`backend_login_failed:${response.status}`)
     const cookies = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : []
@@ -186,8 +291,16 @@ export class BackendClient {
   }
 
   async request(path, { method = 'GET', query = {}, body, raw = false, retry = true } = {}) {
+    const rawPath = String(path || '')
+    if (!rawPath.startsWith('/api/') || rawPath.includes('..') || rawPath.includes('\\') || /%2e|%2f|%5c/i.test(rawPath)) {
+      throw new Error(`invalid_path:${rawPath}`)
+    }
+    const expectedOrigin = new URL(this.baseUrl).origin
+    const url = new URL(rawPath, `${this.baseUrl}/`)
+    if (url.origin !== expectedOrigin || !url.pathname.startsWith('/api/')) {
+      throw new Error(`invalid_path:${rawPath}`)
+    }
     if (!this.cookie) await this.login()
-    const url = new URL(path, `${this.baseUrl}/`)
     for (const [key, value] of Object.entries(query || {})) {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value))
     }
@@ -199,7 +312,12 @@ export class BackendClient {
       headers['content-type'] = 'application/json'
       requestBody = JSON.stringify(body)
     }
-    const response = await this.fetchImpl(url, { method, headers, body: requestBody })
+    const response = await this.fetchImpl(url, {
+      method,
+      headers,
+      body: requestBody,
+      signal: AbortSignal.timeout(this.timeoutMs),
+    })
     if (response.status === 401 && retry) {
       await this.login()
       return this.request(path, { method, query, body, raw, retry: false })

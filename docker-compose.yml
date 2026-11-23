@@ -4,11 +4,11 @@ services:
     env_file: .env
     volumes:
       - ./backend/data:/app/data
-      - ./backend/app/trust:/app/app/trust
+      - ./backend/app/trust:/app/app/trust:ro
     environment:
       - DATA_DIR=/app/data
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -18,7 +18,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
-# Windows Agent KHONG chay o day — no chay tren may Windows 192.168.1.4
+# Windows Agent KHONG chay o day — no chay tren may Windows cam USB token
 # (xem windows-agent/install-service.md).

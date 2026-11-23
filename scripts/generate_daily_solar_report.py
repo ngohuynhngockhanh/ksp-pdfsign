@@ -747,14 +747,25 @@ def generate_and_sign_daily_report(
     )
     signing_cert, registry = signing._build_cert_registry(chain)
 
+    token_pin = (getattr(settings, "token_pin", "") or os.environ.get("TOKEN_PIN", "")).strip()
+    if not token_pin:
+        env_file = REPO_ROOT / ".env"
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("TOKEN_PIN="):
+                    token_pin = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+    if not token_pin:
+        raise RuntimeError("TOKEN_PIN chua duoc cau hinh trong moi truong hoac file .env cuc bo.")
+
     req = SignRequest(
         doc_id="raw_upload",
         rect=sig_rect,
-        cert_id="6616B8A61F228D0EAFF8AAF5F44F3ECD660DD8CD",
+        cert_id=os.environ.get("WINCA_CERT_ID", "6616B8A61F228D0EAFF8AAF5F44F3ECD660DD8CD"),
         agent=AgentTarget(
             ip=settings.agent_default_ip,
             admin_password=settings.agent_admin_password,
-            pin="12345678"
+            pin=token_pin,
         ),
         reason=f"Báo cáo Tiến độ Thi công & Nghiệm thu Viễn trắc {len(commercial)}/{contract_total} Trạm BTS VNPT Thanh Hóa ({dt.strftime('%d/%m/%Y')})",
         location=INUT_PROFILE.default_location,

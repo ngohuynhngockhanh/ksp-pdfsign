@@ -26,13 +26,18 @@ if (( NODE_MAJOR < 22 )); then
   exit 1
 fi
 
-mkdir -p "$TOKEN_DIR" "$SERVICE_DIR"
-chmod 700 "$TOKEN_DIR"
+mkdir -p "$TOKEN_DIR" "$SERVICE_DIR" "$ROOT_DIR/backend/data/mcp-audit"
+chmod 700 "$TOKEN_DIR" "$ROOT_DIR/backend/data/mcp-audit"
 if [[ ! -s "$TOKEN_FILE" ]]; then
   umask 077
   "$NODE_BIN" -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))" > "$TOKEN_FILE"
 fi
 chmod 600 "$TOKEN_FILE"
+if [[ ! -f "$TOKEN_DIR/mcp.env" ]]; then
+  umask 077
+  : > "$TOKEN_DIR/mcp.env"
+fi
+chmod 600 "$TOKEN_DIR/mcp.env"
 
 npm --prefix "$ROOT_DIR/mcp" ci --omit=dev
 sed "s#%h/ksp-pdfsign#$ROOT_DIR#g; s#%h/.config#${XDG_CONFIG_HOME:-$HOME/.config}#g" \

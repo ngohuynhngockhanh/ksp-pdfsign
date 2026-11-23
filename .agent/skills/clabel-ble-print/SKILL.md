@@ -109,8 +109,11 @@ Ket qua dich nguoc bang **REA MCP** tu `Clabel_Mini_v1.7.1.apk` (`com.ct.clabel.
 Mẫu tem xuất xưởng chuẩn công nghiệp có **Logo iNut + biểu tượng `®` & `©`**, huy hiệu **`★ MAKE IN VIETNAM`**, **QR mã thiết bị có gắn logo iNut ở tâm** và **Ngày sản xuất (`NSX`) tự động lấy theo ngày gọi lệnh in**:
 ```bash
 ./scripts/print_clabel.py --sanxuat-v1.1 inut_207_153
-# Hoặc qua API:
-curl -sS "http://127.0.0.1:2032/api/clabel/print-sanxuat?device_id=inut_207_153"
+# Hoặc qua API (bắt buộc POST + Authorization Bearer loopback token):
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST "http://127.0.0.1:2032/api/clabel/print-sanxuat" \
+    -H "Content-Type: application/json" \
+    -d '{"device_id": "inut_207_153"}'
 ```
 
 ### 3.2. In tem co Ma vach 1D (Code128) hoac tat Logo/QR
@@ -172,59 +175,67 @@ Ho tro cac loai phan tu: `logo`, `image`, `text`, `qrcode`, `barcode`, `line`, `
 
 ## 4. REST API Endpoints trong `ksp-pdfsign` (`http://127.0.0.1:2032/api/clabel/*`) & MCP (`clabel_ble_print`)
 
-Khi goi truc tiep tren may chu local (`http://127.0.0.1:2032/api/clabel/...`), endpoint cho phep goi thang khong can cookie/token (hoac dung Admin JWT / MCP Bearer token khi goi tu xa):
+Moi yeu cau toi `/api/clabel/*` (bao gom loopback `127.0.0.1:2032`) **bat buoc xac thuc** bang Admin session cookie hoac loopback `Authorization: Bearer <token>` (tu `~/.config/inut-crm/inut-crm.token` / `LOOPBACK_SERVICE_TOKEN_FILE`, truyen qua `curl --config -` de tranh lo token tren `argv`). Cac route in/thay doi trang thai chi chap nhan **`POST`** (khong dung `GET`).
 
 ### 4.1. In tem nhan bang JSON (`POST /api/clabel/print`)
 ```bash
-curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "iNut JSC",
-    "subtitle": "IoT & Edge Computing",
-    "lines": ["Gateway: 77.88.207.23", "Printer: CT221B-X420", "Size: 400x300 (320x240px)"],
-    "badge": "INUT-BLE GATEWAY READY",
-    "footer_title": "Đắk Lắk - TP.HCM",
-    "footer_lines": ["MST: 4401053694", "https://inut.vn"],
-    "qr_data": "https://inut.vn",
-    "show_logo": true,
-    "border": true,
-    "width": 400,
-    "height": 300,
-    "copies": 1
-  }'
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST http://127.0.0.1:2032/api/clabel/print \
+    -H "Content-Type: application/json" \
+    -d '{
+      "title": "iNut JSC",
+      "subtitle": "IoT & Edge Computing",
+      "lines": ["Gateway: 77.88.207.23", "Printer: CT221B-X420", "Size: 400x300 (320x240px)"],
+      "badge": "INUT-BLE GATEWAY READY",
+      "footer_title": "Đắk Lắk - TP.HCM",
+      "footer_lines": ["MST: 4401053694", "https://inut.vn"],
+      "qr_data": "https://inut.vn",
+      "show_logo": true,
+      "border": true,
+      "width": 400,
+      "height": 300,
+      "copies": 1
+    }'
 ```
-### 4.1b. In & Xem Trước Tem USB HUB (`GET/POST /api/clabel/preview-usb-hub` & `/print-usb-hub`)
+### 4.1b. In & Xem Trước Tem USB HUB (`GET /api/clabel/preview-usb-hub` & `POST /api/clabel/print-usb-hub`)
 ```bash
-# Xem trước ảnh PNG 1-bit tem USB HUB:
-curl -sS "http://127.0.0.1:2032/api/clabel/preview-usb-hub" -o /tmp/usb_hub.png
+# Xem trước ảnh PNG 1-bit tem USB HUB (read-only GET voi Bearer token):
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - "http://127.0.0.1:2032/api/clabel/preview-usb-hub" -o /tmp/usb_hub.png
 
-# Gửi lệnh in trực tiếp:
-curl -sS -X POST "http://127.0.0.1:2032/api/clabel/print-usb-hub"
+# Gửi lệnh in trực tiếp (POST voi Bearer token):
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST "http://127.0.0.1:2032/api/clabel/print-usb-hub"
 
 # Hoặc truyền template="usb_hub" trong body POST /api/clabel/print:
-curl -sS -X POST http://127.0.0.1:2032/api/clabel/print \
-  -H "Content-Type: application/json" \
-  -d '{"template": "usb_hub", "line1": "USB HUB 0 =>", "line2": "USB HUB 1 =>"}'
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST http://127.0.0.1:2032/api/clabel/print \
+    -H "Content-Type: application/json" \
+    -d '{"template": "usb_hub", "line1": "USB HUB 0 =>", "line2": "USB HUB 1 =>"}'
 ```
 
 
-### 4.2. In nhanh 1 dong qua Query Params (`GET /api/clabel/print`)
+### 4.2. In nhanh bang JSON toi gian (`POST /api/clabel/print`)
 ```bash
-curl -sS "http://127.0.0.1:2032/api/clabel/print?title=iNut+JSC&subtitle=IoT+Gateway&badge=READY&qr_data=https://inut.vn"
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST "http://127.0.0.1:2032/api/clabel/print" \
+    -H "Content-Type: application/json" \
+    -d '{"title": "iNut JSC", "subtitle": "IoT Gateway", "badge": "READY", "qr_data": "https://inut.vn"}'
 ```
 
 ### 4.3. Upload file hinh anh truc tiep de in (`POST /api/clabel/print-image`)
 ```bash
-curl -sS -X POST http://127.0.0.1:2032/api/clabel/print-image \
-  -F "file=@backend/app/assets/logo.png" \
-  -F "width=400" \
-  -F "height=300" \
-  -F "dither=false"
+printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+  curl -sS --config - -X POST http://127.0.0.1:2032/api/clabel/print-image \
+    -F "file=@backend/app/assets/logo.png" \
+    -F "width=400" \
+    -F "height=300" \
+    -F "dither=false"
 ```
 
 ### 4.4. Xem truoc anh PNG (`GET/POST /api/clabel/preview`), Trang thai & Quet BLE
-- `GET http://127.0.0.1:2032/api/clabel/status`: Kiem tra `bluetooth.service`, `ble-remote.service` va `CT221B-X420` tren `77.88.207.23`.
-- `POST http://127.0.0.1:2032/api/clabel/scan`: Quet danh sach thiet bi BLE xung quanh gateway `77.88.207.23`.
-- `GET/POST http://127.0.0.1:2032/api/clabel/preview`: Render va tra ve file anh `image/png` 1-bit (`320x240`).
-- `POST http://127.0.0.1:2032/api/clabel/print-tspl`: Gui truc tiep chuoi lenh TSPL (`tspl` hoac `tspl_base64`) sang may in.
+- `GET http://127.0.0.1:2032/api/clabel/status` (kem `Authorization: Bearer <token>`): Kiem tra `bluetooth.service`, `ble-remote.service` va `CT221B-X420`.
+- `POST http://127.0.0.1:2032/api/clabel/scan` (kem `Authorization: Bearer <token>`): Quet danh sach thiet bi BLE xung quanh gateway.
+- `GET/POST http://127.0.0.1:2032/api/clabel/preview` (kem `Authorization: Bearer <token>`): Render va tra ve file anh `image/png` 1-bit (`320x240`).
+- `POST http://127.0.0.1:2032/api/clabel/print-tspl` (kem `Authorization: Bearer <token>`): Gui truc tiep chuoi lenh TSPL (`tspl` hoac `tspl_base64`) sang may in.
 - **MCP Tool (`inut-crm-mcp`)**: `clabel_ble_print` (`operation: "print" | "scan" | "print_tspl"`).

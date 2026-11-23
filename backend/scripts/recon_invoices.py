@@ -16,7 +16,7 @@ token = get_access_token_from_refresh(
     cfg["refresh_token"],
     cfg["accounts_url"]
 )
-print("Access token obtained:", token[:15] + "...")
+print(f"Access token obtained (length={len(token)})")
 
 mail_api_url = cfg["mail_api_url"].rstrip("/")
 acc_req = urllib.request.Request(f"{mail_api_url}/api/accounts")

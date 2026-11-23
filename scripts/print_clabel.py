@@ -99,7 +99,11 @@ def main() -> int:
         action="store_true",
         help="Mau xuat xuong iNut Smartcity: RS485 WIFI (ten chuan hoa don Cty IoT)",
     )
-    parser.add_argument("--wifi-pass", default="inut12345", help="Mat khau Wi-Fi mac dinh (mac dinh: inut12345)")
+    parser.add_argument(
+        "--wifi-pass",
+        default=os.environ.get("CLABEL_DEFAULT_WIFI_PASS", ""),
+        help="Mat khau Wi-Fi in tren tem (doc tu CLABEL_DEFAULT_WIFI_PASS neu bo trong)",
+    )
     parser.add_argument("--serial-number", default=None, help="So serial / Ma thiet bi")
     parser.add_argument("--no-qr-logo", action="store_true", help="Tat logo iNut mini o tam ma QR")
     parser.add_argument("--title", default="iNut JSC", help="Tieu de chinh tren tem")

@@ -66,7 +66,11 @@ def main() -> int:
         default="Rockchip · Xuất xưởng v1.1 ©",
         help="Dòng phụ trên tem lẻ Clabel 40x30",
     )
-    parser.add_argument("--wifi-pass", default="inut12345", help="Mật khẩu Wi-Fi mặc định")
+    parser.add_argument(
+        "--wifi-pass",
+        default=os.environ.get("CLABEL_DEFAULT_WIFI_PASS", ""),
+        help="Mật khẩu Wi-Fi in trên tem (đọc từ CLABEL_DEFAULT_WIFI_PASS nếu bỏ trống)",
+    )
     parser.add_argument(
         "--no-auto-clabel",
         action="store_true",

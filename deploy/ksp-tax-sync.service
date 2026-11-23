@@ -5,10 +5,19 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=ksp
+Group=ksp
 WorkingDirectory=/home/ksp/ksp-pdfsign/backend
-ExecStart=/usr/bin/flock -n /tmp/ksp-tax-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/tax_daily.py
+RuntimeDirectory=ksp-sync
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/flock -n %t/ksp-sync/ksp-tax-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/tax_daily.py
 TimeoutStartSec=25min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ksp/ksp-pdfsign/backend/data
 UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

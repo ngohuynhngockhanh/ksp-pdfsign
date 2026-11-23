@@ -714,14 +714,25 @@ def main():
     )
     signing_cert, registry = signing._build_cert_registry(chain)
 
+    token_pin = (getattr(settings, "token_pin", "") or os.environ.get("TOKEN_PIN", "")).strip()
+    if not token_pin:
+        env_file = Path(__file__).resolve().parent.parent / ".env"
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("TOKEN_PIN="):
+                    token_pin = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+    if not token_pin:
+        raise RuntimeError("TOKEN_PIN chua duoc cau hinh trong moi truong hoac file .env cuc bo.")
+
     req = SignRequest(
         doc_id="raw_upload",
         rect=sig_rect,
-        cert_id="6616B8A61F228D0EAFF8AAF5F44F3ECD660DD8CD",
+        cert_id=os.environ.get("WINCA_CERT_ID", "6616B8A61F228D0EAFF8AAF5F44F3ECD660DD8CD"),
         agent=AgentTarget(
             ip=settings.agent_default_ip,
             admin_password=settings.agent_admin_password,
-            pin="12345678"
+            pin=token_pin,
         ),
         reason="Nghiệm thu Kỹ thuật & Viễn trắc 4 Trạm Thương mại Dự án VNPT Thanh Hóa 14/11/2026",
         location=INUT_PROFILE.default_location,

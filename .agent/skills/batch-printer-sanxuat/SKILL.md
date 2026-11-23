@@ -48,20 +48,23 @@ chmod +x scripts/print_sanxuat_batch.py
     --devices "inut_208_107,inut_208_108,inut_208_106,inut_208_105,inut_208_104,inut_207_154,inut_207_156,inut_207_157"
   ```
 
-### 2.2. REST API (`http://127.0.0.1:2032/api/clabel/*`)
-- **Chay Batch Printer San Xuat (`POST /api/clabel/sanxuat-batch` hoac `GET /api/clabel/sanxuat-batch`)**:
+### 2.2. REST API (`http://127.0.0.1:2032/api/clabel/*` — bắt buộc `Authorization: Bearer` loopback token & `POST` cho lệnh in)
+- **Chay Batch Printer San Xuat (`POST /api/clabel/sanxuat-batch` — chi chap nhan `POST`)**:
   ```bash
-  curl -sS -X POST http://127.0.0.1:2032/api/clabel/sanxuat-batch \
-    -H "Content-Type: application/json" \
-    -d '{
-      "device_ids": "inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183"
-    }'
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - -X POST http://127.0.0.1:2032/api/clabel/sanxuat-batch \
+      -H "Content-Type: application/json" \
+      -d '{
+        "device_ids": "inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183"
+      }'
   ```
 - **Xem danh sach thiet bi da in tem Clabel (`GET /api/clabel/sanxuat-devices`)**:
   ```bash
-  curl -sS http://127.0.0.1:2032/api/clabel/sanxuat-devices
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - http://127.0.0.1:2032/api/clabel/sanxuat-devices
   ```
 - **Xem lich su cac phieu lo 70x100 da xuat (`GET /api/clabel/sanxuat-batches`)**:
   ```bash
-  curl -sS http://127.0.0.1:2032/api/clabel/sanxuat-batches
+  printf 'header = "Authorization: Bearer %s"\n' "$(<~/.config/inut-crm/inut-crm.token)" | \
+    curl -sS --config - http://127.0.0.1:2032/api/clabel/sanxuat-batches
   ```

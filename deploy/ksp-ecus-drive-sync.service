@@ -8,9 +8,16 @@ Type=oneshot
 User=ksp
 Group=ksp
 WorkingDirectory=/home/ksp/ksp-pdfsign/backend
-ExecStart=/usr/bin/flock -n /tmp/ksp-ecus-drive-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ecus_drive_sync.py
+RuntimeDirectory=ksp-sync
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/flock -n %t/ksp-sync/ksp-ecus-drive-sync.lock /home/ksp/ksp-pdfsign/backend/.venv/bin/python scripts/ecus_drive_sync.py
 TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ksp/ksp-pdfsign/backend/data
 UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
