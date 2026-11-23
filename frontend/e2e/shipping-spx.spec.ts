@@ -112,7 +112,7 @@ test("renders INUT Operations Dark Emerald header and stats cards", async ({ pag
   // Verify Header
   await expect(page.getByRole("heading", { name: "Đồng Bộ & In Vận Đơn SPX" })).toBeVisible();
   await expect(page.getByText("SPX Express")).toBeVisible();
-  await expect(page.getByText(/Máy TP732H \(192\.168\.1\.158\)/)).toBeVisible();
+  await expect(page.getByText(/Máy TP732H \(192\.168\.1\.10\)/)).toBeVisible();
 
   // Verify Quick Print Bar with 65% Align Right badge
   await expect(page.getByText("Tỉ Lệ Vàng 65% Lệch Phải")).toBeVisible();

@@ -285,8 +285,8 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
   await expect(page.getByRole("button", { name: "⚡ Smart Paste" })).toBeVisible();
 
   // Check navigation tabs exist
-  const tabContracts = page.getByRole("button", { name: /Danh Sách Hợp Đồng Khoán/i });
-  const tabContractors = page.getByRole("button", { name: /Danh Bạ Nhà Cung Cấp \/ Thợ/i });
+  const tabContracts = page.getByRole("tab", { name: /Danh Sách Hợp Đồng Khoán/i });
+  const tabContractors = page.getByRole("tab", { name: /Danh Bạ Nhà Cung Cấp \/ Thợ/i });
   await expect(tabContracts).toBeVisible();
   await expect(tabContractors).toBeVisible();
 
@@ -294,7 +294,7 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name.startsWith("desktop")) {
     // Desktop: Table must be visible, cards must be hidden
     const desktopTable = page.locator(".piecework-desktop-table");
     await expect(desktopTable).toBeVisible();
@@ -311,20 +311,20 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     await verifyBtn.click();
 
     // Verify modal elements
-    const verifyModal = page.locator(".piecework-modal-box");
+    const verifyModal = page.locator('[role="dialog"]').first();
     await expect(verifyModal).toBeVisible();
     await expect(verifyModal.getByText("CHỮ KÝ SỐ HỢP LỆ THEO CHUẨN FOXIT READER & CƠ QUAN THUẾ")).toBeVisible();
     await expect(verifyModal.getByText("4401053694").first()).toBeVisible();
     await expect(verifyModal.getByText("WINCA / WINGROUP CA").first()).toBeVisible();
 
     // Close modal
-    await verifyModal.getByRole("button", { name: "✕" }).click();
+    await verifyModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(verifyModal).toBeHidden();
 
     // Open Audit Modal on desktop and verify NO raw JSON is shown
     const auditBtn = desktopTable.getByRole("button", { name: /Kiểm định/i });
     await auditBtn.click();
-    const auditModal = page.locator(".piecework-modal-box");
+    const auditModal = page.locator('[role="dialog"]').first();
     await expect(auditModal).toBeVisible();
     await expect(auditModal.getByText("Báo Cáo Kiểm Định Hồ Sơ Chi Tiết")).toBeVisible();
     await expect(auditModal.getByText("CCCD Trước")).toBeVisible();
@@ -333,13 +333,13 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     await expect(auditModal).not.toContainText('{"valid":');
     await expect(auditModal).not.toContainText('{"cccd_format":');
     await expect(auditModal).not.toContainText('{"acceptance_doc":');
-    await auditModal.getByRole("button", { name: "✕" }).click();
+    await auditModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(auditModal).toBeHidden();
 
     // Open Share Modal on desktop
     const shareBtn = desktopTable.getByRole("button", { name: /Share/i });
     await shareBtn.click();
-    const shareModal = page.locator(".piecework-modal-box");
+    const shareModal = page.locator('[role="dialog"]').first();
     await expect(shareModal).toBeVisible();
     await expect(shareModal.getByText("Chia Sẻ Hợp Đồng & Tệp PDF")).toBeVisible();
     await expect(shareModal.getByRole("button", { name: /PDF ĐÃ KÝ SỐ/i })).toBeVisible();
@@ -354,7 +354,7 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     // Switch back to Signed tab and verify ?signed=1
     await shareModal.getByRole("button", { name: /PDF ĐÃ KÝ SỐ/i }).click();
     await expect(urlInput).toHaveValue(/signed=1/);
-    await shareModal.getByRole("button", { name: "✕" }).click();
+    await shareModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(shareModal).toBeHidden();
 
     // Switch to Tab 2: Contractor Directory
@@ -368,24 +368,24 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     // Open Tax Summary modal for contractor
     const taxBtn = contractorsTable.getByRole("button", { name: /Quyết Toán Thuế/i });
     await taxBtn.click();
-    const taxModal = page.locator(".piecework-modal-box");
+    const taxModal = page.locator('[role="dialog"]').first();
     await expect(taxModal).toBeVisible();
     await expect(taxModal.getByText("Bảng Kê Chi Trả Thù Lao & Khấu Trừ Thuế TNCN")).toBeVisible();
     await expect(taxModal.getByText("4.500.000 đ").first()).toBeVisible();
-    await taxModal.getByRole("button", { name: "✕" }).click();
+    await taxModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(taxModal).toBeHidden();
 
     // Open Smart Paste modal from header
     const smartBtn = page.getByRole("button", { name: "⚡ Smart Paste", exact: true });
     await smartBtn.click();
-    const smartModal = page.locator(".piecework-modal-box");
+    const smartModal = page.locator('[role="dialog"]').first();
     await expect(smartModal).toBeVisible();
     await expect(smartModal.getByText("Dán Nhanh & Trích Xuất Thông Tin Thợ")).toBeVisible();
-    await smartModal.getByRole("button", { name: "✕" }).click();
+    await smartModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(smartModal).toBeHidden();
   }
 
-  if (testInfo.project.name === "mobile") {
+  if (testInfo.project.name.startsWith("mobile") || testInfo.project.name === "tablet-768") {
     // Mobile: Desktop table must be hidden, Mobile Card Stack must be visible!
     await expect(page.locator(".piecework-desktop-table")).toBeHidden();
     const mobileCards = page.locator(".piecework-mobile-cards");
@@ -409,7 +409,7 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     const detailBtn = card.getByRole("button", { name: /Chi tiết HĐ/i });
     await detailBtn.click();
 
-    const detailModal = page.locator(".piecework-modal-box");
+    const detailModal = page.locator('[role="dialog"]').first();
     await expect(detailModal).toBeVisible();
     await expect(detailModal.getByText("Chi tiết Hồ sơ & Deficiency Checklist")).toBeVisible();
 
@@ -422,14 +422,14 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     expect(modalOverflow).toBeLessThanOrEqual(1);
 
     // Close detail modal
-    await detailModal.getByRole("button", { name: "✕" }).click();
+    await detailModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(detailModal).toBeHidden();
 
     // Open Signing Modal on mobile
     const signBtn = card.getByRole("button", { name: /Ký lại INUT|Ký số INUT/i });
     await signBtn.click();
 
-    const signModal = page.locator(".piecework-modal-box");
+    const signModal = page.locator('[role="dialog"]').first();
     await expect(signModal).toBeVisible();
     await expect(signModal.getByText("Ký Số Điện Tử Bên A (INUT)")).toBeVisible();
 
@@ -446,13 +446,13 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     expect(dtBox!.x + dtBox!.width).toBeLessThanOrEqual(signBox!.x + signBox!.width + 4);
 
     // Close signing modal
-    await signModal.getByRole("button", { name: "✕" }).click();
+    await signModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(signModal).toBeHidden();
 
     // Open Audit Modal on mobile and verify NO raw JSON is shown
     const mobileAuditBtn = card.getByRole("button", { name: /Kiểm định/i });
     await mobileAuditBtn.click();
-    const mobileAuditModal = page.locator(".piecework-modal-box");
+    const mobileAuditModal = page.locator('[role="dialog"]').first();
     await expect(mobileAuditModal).toBeVisible();
     await expect(mobileAuditModal.getByText("Báo Cáo Kiểm Định Hồ Sơ Chi Tiết")).toBeVisible();
     await expect(mobileAuditModal.getByText("CCCD Trước")).toBeVisible();
@@ -461,13 +461,13 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     await expect(mobileAuditModal).not.toContainText('{"valid":');
     await expect(mobileAuditModal).not.toContainText('{"cccd_format":');
     await expect(mobileAuditModal).not.toContainText('{"acceptance_doc":');
-    await mobileAuditModal.getByRole("button", { name: "✕" }).click();
+    await mobileAuditModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(mobileAuditModal).toBeHidden();
 
     // Open Share Modal on mobile
     const mobileShareBtn = card.getByRole("button", { name: /Chia sẻ PDF/i });
     await mobileShareBtn.click();
-    const mobileShareModal = page.locator(".piecework-modal-box");
+    const mobileShareModal = page.locator('[role="dialog"]').first();
     await expect(mobileShareModal).toBeVisible();
     await expect(mobileShareModal.getByText("Chia Sẻ Hợp Đồng & Tệp PDF")).toBeVisible();
     await expect(mobileShareModal.getByRole("button", { name: /Gửi qua Zalo/i })).toBeVisible();
@@ -477,7 +477,7 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     await mobileShareModal.getByRole("button", { name: /PDF BẢN THẢO/i }).click();
     const mobileUrlInput = mobileShareModal.locator("input[type='text']");
     await expect(mobileUrlInput).toHaveValue(/signed=0/);
-    await mobileShareModal.getByRole("button", { name: "✕" }).click();
+    await mobileShareModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(mobileShareModal).toBeHidden();
 
     // Switch to Contractor tab on mobile
@@ -491,10 +491,10 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     // Check tax summary on mobile
     const mobileTaxBtn = cCard.getByRole("button", { name: /Quyết Toán Thuế/i });
     await mobileTaxBtn.click();
-    const mTaxModal = page.locator(".piecework-modal-box");
+    const mTaxModal = page.locator('[role="dialog"]').first();
     await expect(mTaxModal).toBeVisible();
     await expect(mTaxModal.getByText("Bảng Kê Chi Trả Thù Lao & Khấu Trừ Thuế TNCN")).toBeVisible();
-    await mTaxModal.getByRole("button", { name: "✕" }).click();
+    await mTaxModal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
     await expect(mTaxModal).toBeHidden();
   }
 });

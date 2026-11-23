@@ -9,6 +9,7 @@ test("quản trị bộ hồ sơ Drive và hàng chờ tờ khai", async ({ page
     if (path === "/api/me") return route.fulfill({ json: { username: "admin", role: "admin", customer_id: null, customer_name: null, agent_default_ip: "", default_location: "", using_default_secrets: false, must_change_password: false, training_access: false } });
     if (path === "/api/inv/warehouses") return route.fulfill({ json: [{ id: 1, code: "HH", name: "Hàng hóa" }] });
     if (path === "/api/inv/customs" && route.request().method() === "GET") return route.fulfill({ json: [declaration] });
+    if (path === "/api/inv/customs-drive/check-tasks") return route.fulfill({ json: [] });
     if (path === "/api/inv/customs-drive/sources") return route.fulfill({ json: [{ id: 1, year: 2026, folder_id: "1yg_TqCrWS4dDx-O-bYYhfktFq1OdNk9z", enabled: true, last_synced_at: "" }] });
     if (path === "/api/inv/customs-drive/folders" && route.request().method() === "GET") return route.fulfill({ json: folders });
     if (path === "/api/inv/customs-drive/sync/2026") {
@@ -30,7 +31,8 @@ test("quản trị bộ hồ sơ Drive và hàng chờ tờ khai", async ({ page
   await expect(page.getByText("Đã sao chép ghi chú gửi nhà cung cấp.")).toBeVisible();
   await page.getByRole("button", { name: "Đồng bộ Drive" }).click();
   await expect(page.getByText("Đã đồng bộ 2 folder")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Chờ tờ khai" })).toBeVisible();
+  await expect(page.locator(".customs-drive-stats").getByRole("button", { name: /Chờ tờ khai/ })).toBeVisible();
+  await page.getByRole("button", { name: "Mở rộng tất cả" }).click();
   await expect(page.getByText("Commercial Invoice Origin China.pdf")).toBeVisible();
   await expect(page.getByText("Đã thấy Origin China trên CI/PL; cần review mục đích ưu đãi C/O.")).toBeVisible();
   await page.getByLabel("Gán tờ khai cho Chưa có tờ khai").selectOption("12");

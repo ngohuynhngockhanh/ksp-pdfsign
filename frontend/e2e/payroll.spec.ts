@@ -208,7 +208,7 @@ test("admin reviews an anonymized payroll parsed from Excel", async ({ page }, t
   await expect(page.getByText("Review xong: 0 cảnh báo.")).toBeVisible();
   await page.getByRole("button", { name: "Cập nhật file gốc trên Drive" }).click();
   await expect(page.getByText(/Đã gửi lên Google Drive/)).toBeVisible();
-  if (testInfo.project.name === "mobile") {
+  if (testInfo.project.name.startsWith("mobile") || testInfo.project.name === "tablet-768") {
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("Nhân viên mẫu");
     await expect(page.getByLabel("Tóm tắt bảng lương 2026-07")).toContainText("12.240.000");
     await expect(page.getByLabel("Nội dung bảng lương 2026-07")).toBeHidden();

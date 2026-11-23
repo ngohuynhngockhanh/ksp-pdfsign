@@ -481,10 +481,10 @@ test("E2E-1: Bidding Cockpit Header and Tab Navigation", async ({ page }) => {
   await expect(page.getByText("MST 4401053694")).toBeVisible();
 
   // Verify 4 Main Tabs exist
-  const searchTab = page.getByRole("button", { name: /Tra Cứu Gói Thầu/i });
-  const bookmarksTab = page.getByRole("button", { name: /Gói Thầu Quan Tâm/i });
-  const contractorsTab = page.getByRole("button", { name: /Năng Lực Nhà Thầu & Khách Hàng CRM/i });
-  const watchlistTab = page.getByRole("button", { name: /Bộ Lọc Tự Động & Cảnh Báo/i });
+  const searchTab = page.getByRole("tab", { name: /Tra Cứu Gói Thầu/i });
+  const bookmarksTab = page.getByRole("tab", { name: /Gói Thầu Quan Tâm/i });
+  const contractorsTab = page.getByRole("tab", { name: /Năng Lực Nhà Thầu & (Khách Hàng )?CRM/i });
+  const watchlistTab = page.getByRole("tab", { name: /Bộ Lọc Tự Động & Cảnh Báo/i });
 
   await expect(searchTab).toBeVisible();
   await expect(bookmarksTab).toBeVisible();
@@ -526,7 +526,7 @@ test("E2E-2: Live Search and Filter Controls", async ({ page }) => {
 
 test("E2E-3: Contractor Intelligence & CRM Scan Cockpit", async ({ page }) => {
   await page.goto("/dau-thau");
-  await page.getByRole("button", { name: /Năng Lực Nhà Thầu/i }).click();
+  await page.getByRole("tab", { name: /Năng Lực Nhà Thầu/i }).click();
 
   // Verify Playbook subtab is visible by default
   await expect(page.getByText("CẨM NANG HÀNH ĐỘNG ĐẤU THẦU THỰC CHIẾN")).toBeVisible();
@@ -537,10 +537,10 @@ test("E2E-3: Contractor Intelligence & CRM Scan Cockpit", async ({ page }) => {
 
 test("E2E-4: Contractor Dossier Modal with Won Packages Drill-down", async ({ page }) => {
   await page.goto("/dau-thau");
-  await page.getByRole("button", { name: /Năng Lực Nhà Thầu/i }).click();
+  await page.getByRole("tab", { name: /Năng Lực Nhà Thầu/i }).click();
 
   // Verify Won Packages subtab and search bar
-  await expect(page.getByRole("button", { name: /Kho Gói Thầu Đã Trúng & Cẩm Nang INUT/i })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Kho Gói Thầu Đã Trúng & Cẩm Nang INUT/i })).toBeVisible();
   const wonSearchInput = page.getByPlaceholder(/Tìm gói thầu đã trúng/i);
   await expect(wonSearchInput).toBeVisible();
 });
@@ -565,7 +565,7 @@ test("E2E-6: Responsive Mobile Viewport Layout", async ({ page }) => {
   await page.goto("/dau-thau");
 
   // Verify responsive navigation tabs
-  const searchTab = page.getByRole("button", { name: /Tra Cứu/i }).first();
+  const searchTab = page.getByRole("tab", { name: /Tra Cứu/i }).first();
   await expect(searchTab).toBeVisible();
 
   // Verify input is responsive
@@ -577,7 +577,7 @@ test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import
   await page.goto("/dau-thau");
 
   // Click on "Thẩm Định Hồ Sơ Thầu (Dossier Review)" tab
-  const dossierTab = page.getByRole("button", { name: /Thẩm Định Hồ Sơ Thầu/i });
+  const dossierTab = page.getByRole("tab", { name: /Thẩm Định Hồ Sơ Thầu/i });
   await expect(dossierTab).toBeVisible();
   await dossierTab.click();
 
@@ -593,14 +593,14 @@ test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import
   await expect(page.getByText("Bổ sung Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT")).toBeVisible();
 
   // Switch to Sub-tab 2: 9 Files
-  const filesSubTab = page.getByRole("button", { name: /Thẩm Định Độc Lập 9 Tài Liệu/i });
+  const filesSubTab = page.getByRole("tab", { name: /Thẩm Định (Độc Lập )?9 Tài Liệu/i });
   await filesSubTab.click();
   await expect(page.getByText("01_Thuyet_minh_nang_luc_phap_ly.docx")).toBeVisible();
   await expect(page.getByText("06_Bien_phap_to_chuc_cung_cap_lap_dat.docx")).toBeVisible();
   await expect(page.getByText("🚨 CẦN SỬA GẤP")).toBeVisible();
 
   // Switch to Sub-tab 3: 18 Equipment Items
-  const itemsSubTab = page.getByRole("button", { name: /Ma Trận Kỹ Thuật 18 Hạng Mục/i });
+  const itemsSubTab = page.getByRole("tab", { name: /Ma Trận Kỹ Thuật 18 Hạng Mục/i });
   await itemsSubTab.click();
   await expect(page.getByText("Cảm biến đo mực nước hồ dải đo 0-20m")).toBeVisible();
   await expect(page.getByText("HCRZ-LD100-A2")).toBeVisible();
@@ -608,7 +608,7 @@ test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import
   await expect(page.getByText("Nhà sản xuất OEM")).toBeVisible();
 
   // Switch to Sub-tab 4: Pricing & Discount Letter
-  const pricingSubTab = page.getByRole("button", { name: /Cơ Cấu Giá & Thư Giảm Giá Chiến Lược/i });
+  const pricingSubTab = page.getByRole("tab", { name: /Cơ Cấu Giá & Thư Giảm Giá/i });
   await pricingSubTab.click();
   await expect(page.getByText("PHẦN MỀM SCADA (MỤC 18)")).toBeVisible();
   await expect(page.getByText("Mẫu Thư Giảm Giá Chiến Lược")).toBeVisible();
@@ -617,9 +617,9 @@ test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import
   // Test Import Drive Modal
   const importBtn = page.getByRole("button", { name: /Nhập Hồ Sơ Thầu Mới \(Google Drive\)/i });
   await importBtn.click();
-  const modal = page.locator(".modal");
+  const modal = page.locator('[role="dialog"]').first();
   await expect(modal).toBeVisible();
   await expect(modal.getByText("Nhập Hồ Sơ Thầu Từ Google Drive")).toBeVisible();
-  await modal.getByRole("button", { name: "✕" }).click();
+  await modal.getByRole("button", { name: /Đóng hộp thoại|✕/ }).click();
   await expect(modal).toHaveCount(0);
 });

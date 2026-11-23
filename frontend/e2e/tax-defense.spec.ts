@@ -331,5 +331,5 @@ test("renders TaxDefense page with KPI metrics and 4-year matrix", async ({ page
   await page.getByRole("button", { name: /Xem Giải Trình/i }).first().click();
   await expect(page.getByText(/Căn Cứ Giải Trình Bảo Vệ Pháp Lý/i)).toBeVisible();
   await expect(page.getByText(/Giao dịch bán hàng \(Đầu ra\)/i)).toBeVisible();
-  await page.getByRole("button", { name: "Đóng" }).click();
+  await page.getByRole("button", { name: "Đóng", exact: true }).click();
 });

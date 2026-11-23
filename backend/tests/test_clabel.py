@@ -88,11 +88,10 @@ def test_tspl_native_commands():
     assert raw.endswith(b"PRINT 1,2\r\n")
 
 
-def test_clabel_api_endpoints():
-    from fastapi.testclient import TestClient
-    from app.main import app
+def test_clabel_api_endpoints(client):
+    from tests.test_api import _login
 
-    client = TestClient(app)
+    _login(client)
 
     # 1. GET /api/clabel/preview
     r_prev = client.get("/api/clabel/preview", params={"title": "iNut JSC", "subtitle": "BLE Endpoint"})
@@ -138,9 +137,8 @@ def test_clabel_api_endpoints():
     assert r_up.json()["width_dots"] == 320
 
 
-def test_sanxuat_v1_1_rockchip_label_and_api():
-    from fastapi.testclient import TestClient
-    from app.main import app
+def test_sanxuat_v1_1_rockchip_label_and_api(client):
+    from tests.test_api import _login
 
     img = clabel.render_sanxuat_v1_1_label("inut_207_153")
     assert img.size == (320, 240)
@@ -149,14 +147,14 @@ def test_sanxuat_v1_1_rockchip_label_and_api():
     assert extrema[0] == 0
     assert extrema[1] > 0
 
-    client = TestClient(app)
+    _login(client)
     r_prev = client.get("/api/clabel/preview-sanxuat", params={"device_id": "inut_207_153"})
     assert r_prev.status_code == 200
     assert r_prev.headers["content-type"] == "image/png"
     im = Image.open(io.BytesIO(r_prev.content))
     assert im.size == (320, 240)
 
-    r_print = client.get(
+    r_print = client.post(
         "/api/clabel/print-sanxuat",
         params={"device_id": "inut_207_153", "print_remote": "false"},
     )
@@ -172,54 +170,41 @@ def test_sanxuat_v1_1_rockchip_label_and_api():
     assert body["is_printed"] is False
 
 
-def test_sanxuat_batch_printer_api(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
-    from app import config, db
-    from app.main import app
+def test_sanxuat_batch_printer_api(client):
+    from tests.test_api import _login
 
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    config.get_settings.cache_clear()
-    db.reset_engine_for_tests()
-    db.init_db()
+    _login(client)
+    r_devs = client.get("/api/clabel/sanxuat-devices")
+    assert r_devs.status_code == 200
+    seeded = {d["device_id"] for d in r_devs.json()["devices"]}
+    assert "inut_207_153" in seeded
+    assert "inut_207_183" in seeded
 
-    try:
-        client = TestClient(app)
-        r_devs = client.get("/api/clabel/sanxuat-devices")
-        assert r_devs.status_code == 200
-        seeded = {d["device_id"] for d in r_devs.json()["devices"]}
-        assert "inut_207_153" in seeded
-        assert "inut_207_183" in seeded
+    csv_10 = "inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183"
+    r_batch = client.post(
+        "/api/clabel/sanxuat-batch",
+        json={
+            "device_ids": csv_10,
+            "auto_print_missing_clabel": False,
+            "print_batch_sheet_remote": False,
+        },
+    )
+    assert r_batch.status_code == 200
+    data = r_batch.json()
+    assert data["device_count"] == 10
+    assert data["device_ids_csv"] == csv_10
+    assert len(data["already_clabel_printed"]) == 10
+    assert data["auto_clabel_printed"] == []
+    assert len(data["items"]) == 10
+    assert all(it["mfg_date"] == "19/10/2026" for it in data["items"])
 
-        csv_10 = "inut_207_153,inut_207_159,inut_207_160,inut_207_161,inut_207_178,inut_207_179,inut_207_180,inut_207_181,inut_207_182,inut_207_183"
-        r_batch = client.post(
-            "/api/clabel/sanxuat-batch",
-            json={
-                "device_ids": csv_10,
-                "auto_print_missing_clabel": False,
-                "print_batch_sheet_remote": False,
-            },
-        )
-        assert r_batch.status_code == 200
-        data = r_batch.json()
-        assert data["device_count"] == 10
-        assert data["device_ids_csv"] == csv_10
-        assert len(data["already_clabel_printed"]) == 10
-        assert data["auto_clabel_printed"] == []
-        assert len(data["items"]) == 10
-        assert all(it["mfg_date"] == "19/10/2026" for it in data["items"])
-
-        r_batches = client.get("/api/clabel/sanxuat-batches")
-        assert r_batches.status_code == 200
-        assert r_batches.json()["count"] == 1
-    finally:
-        monkeypatch.delenv("DATA_DIR", raising=False)
-        config.get_settings.cache_clear()
-        db.reset_engine_for_tests()
+    r_batches = client.get("/api/clabel/sanxuat-batches")
+    assert r_batches.status_code == 200
+    assert r_batches.json()["count"] == 1
 
 
-def test_usb_hub_label_and_endpoints():
-    from fastapi.testclient import TestClient
-    from app.main import app
+def test_usb_hub_label_and_endpoints(client):
+    from tests.test_api import _login
 
     img = clabel.render_usb_hub_label(line1="USB HUB 0 =>", line2="USB HUB 1 =>", align="center")
     assert img.size == (320, 240)
@@ -237,7 +222,7 @@ def test_usb_hub_label_and_endpoints():
     assert out["is_printed"] is False
     assert len(out["preview_png_base64"]) > 100
 
-    client = TestClient(app)
+    _login(client)
     # Preview endpoint
     r_prev = client.get("/api/clabel/preview-usb-hub")
     assert r_prev.status_code == 200

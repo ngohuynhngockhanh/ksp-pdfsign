@@ -28,7 +28,7 @@ test("tax login warning stays readable and actionable on mobile", async ({ page 
   await expect(alert).toBeVisible();
   await expect(alert).toContainText("Phiên cổng thuế hết hạn; cần nhập captcha lại trong CRM");
 
-  if (testInfo.project.name === "mobile") {
+  if (testInfo.project.name.startsWith("mobile")) {
     const [alertBox, actionBox] = await Promise.all([alert.boundingBox(), action.boundingBox()]);
     expect(alertBox).not.toBeNull();
     expect(actionBox).not.toBeNull();

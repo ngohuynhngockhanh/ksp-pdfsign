@@ -1,0 +1,175 @@
+name: KSP-PDFSign 5-Stage Release Quality Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ksp-pdfsign-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage1-static-and-supply-chain:
+    name: "Stage 1: Static, Secret Scan & Supply-Chain Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check zero hardcoded credentials in tracked files & configs
+        run: |
+          python3 - <<'PY'
+          import re, subprocess, sys
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          patterns = [
+              (re.compile(r'nas_password\s*:\s*str\s*=\s*"[^"]+"'), "hardcoded nas_password in config"),
+              (re.compile(r'tts_(?:kokoro|vnmap)_api_key\s*:\s*str\s*=\s*"[^"]+"'), "hardcoded TTS API key"),
+              (re.compile(r'^\s*NAS_PASSWORD=\S+', re.M), "non-empty NAS_PASSWORD in .env.example"),
+              (re.compile(r'^\s*TOKEN_PIN=\S+', re.M), "non-empty TOKEN_PIN in .env.example"),
+              (re.compile(r'pin\s*=\s*"[0-9]{6,}"'), "hardcoded numeric USB token PIN"),
+          ]
+          hits = []
+          for rel in tracked:
+              if not rel.endswith((".py", ".example", ".js", ".mjs", ".ts", ".tsx")):
+                  continue
+              if rel.startswith("backend/tests/"):
+                  continue
+              txt = open(rel, errors="ignore").read()
+              for rx, label in patterns:
+                  if rx.search(txt):
+                      hits.append(f"{rel}: {label}")
+          if hits:
+              print("SECRET SCAN FAILED:\n" + "\n".join(hits))
+              sys.exit(1)
+          print("Secret scan clean.")
+          PY
+
+      - name: Verify python-jose removed & PyJWT pinned
+        run: |
+          ! grep -i "python-jose" backend/requirements.txt
+          grep -qi "PyJWT" backend/requirements.txt
+
+      - name: Frontend TypeScript check (tsc --noEmit)
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+  stage2-backend-security-and-regression:
+    name: "Stage 2: Backend Security & Business-Invariant Pytest"
+    runs-on: ubuntu-latest
+    needs: stage1-static-and-supply-chain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install system libs for WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2
+      - name: Install backend dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pytest pytest-cov
+      - name: Run full isolated pytest suite (security + business invariants + core)
+        working-directory: backend
+        env:
+          APP_ADMIN_PASSWORD: "TestAdminPass!2026"
+          AGENT_ADMIN_PASSWORD: "TestAgentPass!2026"
+          NAS_ENABLED: "false"
+        run: |
+          pytest tests/test_security_authz.py tests/test_security_injection_ssrf.py tests/test_security_crypto_biz.py -v
+          pytest tests/ -v --tb=short
+
+  stage3-mcp-and-windows-agent:
+    name: "Stage 3: MCP Gateway & Windows Agent Security Tests"
+    runs-on: ubuntu-latest
+    needs: stage1-static-and-supply-chain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run MCP Node test suite
+        working-directory: mcp
+        run: |
+          npm ci
+          npm test
+      - name: Run Windows Agent security unit tests
+        run: |
+          pip install fastapi httpx pytest pydantic
+          pytest windows-agent/test_agent.py -v
+
+  stage4-frontend-mobile-playwright:
+    name: "Stage 4: Frontend Build & 5-Viewport Playwright + A11y Matrix"
+    runs-on: ubuntu-latest
+    needs: stage1-static-and-supply-chain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build frontend & install Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Run full 5-viewport Playwright suite
+        working-directory: frontend
+        run: npx playwright test
+
+  stage5-ephemeral-fullstack-smoke:
+    name: "Stage 5: Ephemeral Real-Backend Full-Stack Smoke"
+    runs-on: ubuntu-latest
+    needs:
+      - stage2-backend-security-and-regression
+      - stage3-mcp-and-windows-agent
+      - stage4-frontend-mobile-playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install backend & frontend build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2
+          pip install -r backend/requirements.txt
+          cd frontend && npm ci && npm run build && npx playwright install --with-deps chromium
+      - name: Run fullstack-smoke.spec.ts against ephemeral FastAPI with tmp DATA_DIR
+        run: |
+          TMP_DATA="$(mktemp -d)"
+          trap 'kill $UVICORN_PID 2>/dev/null || true; rm -rf "$TMP_DATA"' EXIT
+          (
+            cd backend
+            DATA_DIR="$TMP_DATA" \
+            APP_ADMIN_PASSWORD="TestAdminPass!2026" \
+            AGENT_ADMIN_PASSWORD="TestAgentPass!2026" \
+            NAS_ENABLED="false" \
+            uvicorn app.main:app --host 127.0.0.1 --port 2039
+          ) &
+          UVICORN_PID=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:2039/api/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          cd frontend
+          FULLSTACK_BASE_URL="http://127.0.0.1:2039" \
+          FULLSTACK_ADMIN_PASSWORD="TestAdminPass!2026" \
+          npx playwright test e2e/fullstack-smoke.spec.ts --project=desktop-1280 --project=mobile-390-ios

@@ -221,9 +221,14 @@ def test_customer_account_and_documents(client):
     assert a.status_code == 200
     assert a.json()["customer_name"] == "Khach Hang A"
 
-    # Khach hang dang nhap -> chi thay ho so cua minh
+    # Khach hang dang nhap -> phai doi mat khau lan dau (SEC-BE-08), sau do moi xem ho so cua minh
     client.post("/api/logout")
     assert client.post("/api/login", json={"username": "kha", "password": "matkhau123"}).status_code == 200
+    assert client.get("/api/my/documents").status_code == 403
+    r = client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "moi12345@@"})
+    assert r.status_code == 200
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "kha", "password": "moi12345@@"}).status_code == 200
     mine = client.get("/api/my/documents").json()
     assert len(mine) == 1 and mine[0]["id"] == docpk
     assert client.get(f"/api/documents/{docpk}/download").status_code == 200
@@ -232,12 +237,6 @@ def test_customer_account_and_documents(client):
     assert client.post("/api/upload", files={"file": ("t.pdf", PDF, "application/pdf")}).status_code == 403
     assert client.get("/api/users").status_code == 403
     assert client.post("/api/users/1/password", json={"new_password": "x"}).status_code == 403
-
-    # Khach hang tu doi mat khau
-    r = client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "moi12345@@"})
-    assert r.status_code == 200
-    client.post("/api/logout")
-    assert client.post("/api/login", json={"username": "kha", "password": "moi12345@@"}).status_code == 200
 
 
 def test_ihoadon_customer_portal_sync_and_isolation(client, monkeypatch):
@@ -279,6 +278,9 @@ def test_ihoadon_customer_portal_sync_and_isolation(client, monkeypatch):
 
     client.post("/api/logout")
     assert client.post("/api/login", json={"username": "invoice_a", "password": "matkhau123"}).status_code == 200
+    assert client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "invA_new!2026"}).status_code == 200
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "invoice_a", "password": "invA_new!2026"}).status_code == 200
     invoices = client.get("/api/my/invoices").json()
     assert len(invoices) == 1 and invoices[0]["customer_id"] == a["id"]
     iid = invoices[0]["id"]
@@ -292,6 +294,9 @@ def test_ihoadon_customer_portal_sync_and_isolation(client, monkeypatch):
 
     client.post("/api/logout")
     assert client.post("/api/login", json={"username": "invoice_b", "password": "matkhau123"}).status_code == 200
+    assert client.post("/api/me/password", json={"old_password": "matkhau123", "new_password": "invB_new!2026"}).status_code == 200
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"username": "invoice_b", "password": "invB_new!2026"}).status_code == 200
     assert client.get("/api/my/invoices").json() == []
     assert client.get(f"/api/my/invoices/{iid}/pdf").status_code == 403
 
@@ -362,9 +367,15 @@ def test_upload_zip_empty(client):
 def test_forged_admin_token_rejected(client):
     # Gia mao JWT bang secret MAC DINH cong khai -> phai bi tu choi (401),
     # vi server tu sinh secret ngau nhien.
-    from jose import jwt
-    forged = jwt.encode({"sub": "hacker", "uid": 999, "role": "admin", "cid": None},
-                        "change-me-to-a-long-random-string", algorithm="HS256")
+    try:
+        import jwt
+    except ImportError:
+        from jose import jwt
+    forged = jwt.encode(
+        {"sub": "hacker", "uid": 999, "role": "admin", "cid": None},
+        "change-me-to-a-long-random-string",
+        algorithm="HS256",
+    )
     client.cookies.set("ksp_session", forged)
     assert client.get("/api/customers").status_code == 401
 

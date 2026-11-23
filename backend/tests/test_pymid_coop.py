@@ -211,6 +211,16 @@ def test_pymid_owner_can_create_staff_account_with_coop_only_access(app_env):
 
     staff = TestClient(app_env.app)
     login(staff, "pymid.nhanvien01", "PymidStaff123@")
+    # SEC-BE-08: newly created staff account must change initial password before accessing data APIs
+    assert staff.get("/api/pymid/catalog").status_code == 403
+    chg = staff.post(
+        "/api/me/password",
+        json={"old_password": "PymidStaff123@", "new_password": "PymidStaffNew!2026"},
+    )
+    assert chg.status_code == 200, chg.text
+    staff.post("/api/logout")
+    login(staff, "pymid.nhanvien01", "PymidStaffNew!2026")
+
     assert staff.get("/api/pymid/catalog").status_code == 200
     me = staff.get("/api/me").json()
     assert me["role"] == "pymid_staff"

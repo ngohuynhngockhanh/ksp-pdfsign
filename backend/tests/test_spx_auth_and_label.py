@@ -1315,7 +1315,9 @@ def test_t4_e2e_rest_zero_fake_template_blocks_unresolvable_spxvn(auth_client, m
         json={"tracking_no": "SPXVN06647830539A", "print_remote": False},
     )
     assert r_qp.status_code == 500
-    assert "Tuyệt đối không tự chế tem mẫu" in r_qp.json()["detail"]
+    detail = r_qp.json()["detail"]
+    assert "Lỗi in nhanh vận đơn SPX" in detail
+    assert "Mã tra cứu" in detail
 
     r_get = auth_client.get("/api/spx/orders/SPXVN06647830539A")
     assert r_get.status_code == 404

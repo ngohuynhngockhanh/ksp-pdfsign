@@ -174,7 +174,7 @@ def test_render_bbnt():
 
 def test_quote_templates_registry():
     keys = [t["key"] for t in bbbg.list_quote_templates()]
-    assert keys == ["bao_gia", "de_nghi_tt", "bbnt", "phieu_mua_hang", "bao_gia_billiard"]
+    assert keys == ["bao_gia", "de_nghi_tt", "bbnt", "phieu_mua_hang", "bao_gia_billiard", "bao_gia_solar"]
 
 
 # ---------------------------------------------------------------------------

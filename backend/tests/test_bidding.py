@@ -248,6 +248,13 @@ def test_bidding_bookmark_crud():
     gen = db.get_session()
     s = next(gen)
 
+    admin = s.scalar(db.select(User).where(User.username == "admin"))
+    if not admin:
+        admin = User(username="admin", role="admin", password_hash="dummy")
+        s.add(admin)
+        s.commit()
+        s.refresh(admin)
+
     # 1. Create Bookmark
     bm_data = {
         "tbmt_code": "IB2600001001-00",
@@ -261,7 +268,7 @@ def test_bidding_bookmark_crud():
         "status": "watching",
         "note": "Gói tiềm năng cao cho iNut Gateway",
     }
-    bm = bidding.create_bookmark(s, bm_data, user_id=1)
+    bm = bidding.create_bookmark(s, bm_data, user_id=admin.id)
     assert bm.id is not None
     assert bm.tbmt_code == "IB2600001001-00"
     assert bm.status == "watching"
@@ -294,6 +301,13 @@ def test_bidding_watchlist_crud():
     gen = db.get_session()
     s = next(gen)
 
+    admin = s.scalar(db.select(User).where(User.username == "admin"))
+    if not admin:
+        admin = User(username="admin", role="admin", password_hash="dummy")
+        s.add(admin)
+        s.commit()
+        s.refresh(admin)
+
     # 1. Create Watchlist
     wl_data = {
         "name": "SCADA & IoT TP.HCM",
@@ -305,7 +319,7 @@ def test_bidding_watchlist_crud():
         "notify_telegram": True,
         "is_active": True,
     }
-    wl = bidding.create_watchlist(s, wl_data, user_id=1)
+    wl = bidding.create_watchlist(s, wl_data, user_id=admin.id)
     assert wl.id is not None
     assert wl.name == "SCADA & IoT TP.HCM"
     assert wl.is_active is True

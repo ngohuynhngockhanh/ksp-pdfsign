@@ -108,14 +108,27 @@ def test_markdown_upload_preview_pdf_and_public_share(client):
     assert pub_dl.content == md_bytes
 
 
-def test_public_md_viewer_route_for_repo_docs(client):
-    r = client.get("/md/PROTOCOL-XIONGMAI-DVRIP-KSPCAM.md")
+def test_public_md_viewer_route_for_repo_docs(client, tmp_path, monkeypatch):
+    # SEC-BE-06: internal repo-root markdown files must NOT be publicly exposed via /md/
+    r_blocked = client.get("/md/PROTOCOL-XIONGMAI-DVRIP-KSPCAM.md")
+    assert r_blocked.status_code == 404
+
+    # Public markdown documents placed explicitly in docs/public/ are served cleanly
+    from app import main as main_mod
+
+    pub_dir = tmp_path / "docs" / "public"
+    pub_dir.mkdir(parents=True)
+    sample = "# Public Guide\n\nSafe documentation content for **KSP**.\n"
+    (pub_dir / "public-guide.md").write_text(sample, encoding="utf-8")
+    monkeypatch.setattr(main_mod, "REPO_ROOT", tmp_path)
+
+    r = client.get("/md/public-guide.md")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "Hangzhou Xiongmai Technology" in r.text
-    assert "ev_1ce203f282f0495660fe05f7c0fe3335b5d40a15a2f2e497cd77fa983e76a5dc" in r.text
+    assert "Public Guide" in r.text
+    assert "Safe documentation content" in r.text
 
-    r_raw = client.get("/md/PROTOCOL-XIONGMAI-DVRIP-KSPCAM.md?raw=1")
+    r_raw = client.get("/md/public-guide.md?raw=1")
     assert r_raw.status_code == 200
     assert "text/markdown" in r_raw.headers["content-type"]
-    assert b"/tmp/xm_re/ocx_extracted/Web/plugin/class.js" in r_raw.content
+    assert b"Public Guide" in r_raw.content

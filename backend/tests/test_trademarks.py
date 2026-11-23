@@ -715,13 +715,16 @@ class TestTrademarkApiEndpoints:
             assert data["total_in_db"] >= 5
 
     def test_api_post_sync_exception_handling(self, client):
-        """POST /api/trademarks/sync returns 500 when uncaught internal error occurs."""
+        """POST /api/trademarks/sync returns 500 with redacted error_detail (SEC-BE-20)."""
         _login(client)
 
         with patch("app.trademark.sync_trademarks_from_wipo", side_effect=RuntimeError("Database lock")):
             resp = client.post("/api/trademarks/sync", json={})
             assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-            assert "Database lock" in resp.json()["detail"]
+            detail = resp.json()["detail"]
+            assert "Lỗi khi đồng bộ từ Cục SHTT" in detail
+            assert "Mã tra cứu" in detail
+            assert "Database lock" not in detail
 
     def test_api_post_lookup_online(self, client):
         """POST /api/trademarks/lookup-online validates query and returns live results."""

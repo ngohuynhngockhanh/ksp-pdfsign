@@ -24,6 +24,7 @@ test("admin sees a complete document table and can classify each file", async ({
       username: "admin", role: "admin", customer_name: null, agent_default_ip: "",
       default_location: "", using_default_secrets: false, must_change_password: false,
     }});
+    if (path === "/api/inv/customs-drive/check-tasks") return route.fulfill({ json: [] });
     if (path === "/api/inv/customs-drive/sources") return route.fulfill({ json: [{ id: 1, year: 2026, folder_id: "drive-root-2026", enabled: true, last_synced_at: "" }] });
     if (path === "/api/inv/customs-drive/folders" && request.method() === "GET") return route.fulfill({ json: [folder] });
     if (path === "/api/inv/customs-drive/documents/12/kind" && request.method() === "PATCH") {
@@ -39,6 +40,7 @@ test("admin sees a complete document table and can classify each file", async ({
   await page.goto("/to-khai-nk");
 
   const dossier = page.getByRole("region", { name: "Bộ hồ sơ 108286660050" });
+  await dossier.getByRole("button", { name: /Xem bảng chứng từ/i }).click();
   await expect(dossier.getByRole("columnheader", { name: "Chứng từ", exact: true })).toBeVisible();
   await expect(dossier.getByRole("columnheader", { name: "Loại chứng từ" })).toBeVisible();
   await expect(dossier.getByRole("columnheader", { name: "Liên quan / dùng để làm gì" })).toBeVisible();

@@ -41,6 +41,6 @@ test("fetches a fresh CAPTCHA when the saved tax session is expired", async ({ p
   await page.goto("/dong-bo-thue");
 
   await expect(page.getByText("Phiên đã hết hạn", { exact: false })).toBeVisible();
-  await expect(page.locator("svg")).toBeVisible();
+  await expect(page.locator('img[src^="data:image/svg+xml"]')).toBeVisible();
   expect(captchaCalls.count).toBe(1);
 });
