@@ -1,0 +1,171 @@
+{
+  "month_str": "11/2026",
+  "report_date": "23/11/2026",
+  "period_start_vn": "01/11/2026",
+  "period_end_vn": "23/11/2026",
+  "days_count": 23,
+  "last_event_ts_vn": "19:37 ngày 23/11/2026 (GMT+7)",
+  "active_keys_count": 10,
+  "inut_total": {
+    "requests": 138546,
+    "prompt": 29253450489,
+    "cached": 26382570183,
+    "completion": 103014846,
+    "total_tokens": 29356465335,
+    "non_cached_tokens": 2973895152,
+    "cached_pct": 89.86970972811773
+  },
+  "excluded": {
+    "nham-inut": {
+      "requests": 33287,
+      "prompt": 2235523890,
+      "cached": 1827869064,
+      "completion": 14931479,
+      "total_tokens": 2250455369
+    }
+  },
+  "cluster_total": {
+    "requests": 171833,
+    "prompt": 31488974379,
+    "cached": 28210439247,
+    "completion": 117946325,
+    "total_tokens": 31606920704
+  },
+  "model_rows": [
+    {
+      "id": "flash",
+      "title": "LLM Tốc độ cao & Tác nhân tự động (Flash)",
+      "endpoint_html": "POST /v1/responses &bull; /v1/chat/completions",
+      "top_models": [
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-high-1m",
+        "gemini-3.8-flash-high-400k"
+      ],
+      "requests": 78859,
+      "prompt": 16997838357,
+      "cached": 15724014876,
+      "completion": 38674395,
+      "total": 17036512752
+    },
+    {
+      "id": "argon",
+      "title": "LLM Suy luận & Lập trình chuyên sâu (Argon)",
+      "endpoint_html": "POST /v1/responses &bull; /v1/chat/completions",
+      "top_models": [
+        "gemini-4-argon-high-400k",
+        "gemini-4-argon-high",
+        "gemini-4-argon-medium-400k"
+      ],
+      "requests": 45082,
+      "prompt": 9269741646,
+      "cached": 8127264973,
+      "completion": 48524173,
+      "total": 9318265819
+    },
+    {
+      "id": "hydro_carbon",
+      "title": "LLM Suy luận cấp cao (Hydrogen &amp; Carbon)",
+      "endpoint_html": "POST /v1/responses &bull; /v1/chat/completions",
+      "top_models": [
+        "gemini-4-hydrogen-xhigh-400k",
+        "gemini-4-hydrogen-xhigh",
+        "gemini-4-carbon-medium-400k"
+      ],
+      "requests": 9726,
+      "prompt": 2311013730,
+      "cached": 1912426291,
+      "completion": 12443594,
+      "total": 2323457324
+    },
+    {
+      "id": "claude",
+      "title": "LLM Suy luận &amp; Soạn thảo chuyên sâu (Claude)",
+      "endpoint_html": "POST /v1/responses &bull; /v1/chat/completions",
+      "top_models": [
+        "claude-opus-5-5-high-400k",
+        "claude-opus-4-6-thinking-200k",
+        "claude-opus-4-6-thinking-400k"
+      ],
+      "requests": 3395,
+      "prompt": 494029058,
+      "cached": 448741675,
+      "completion": 2953067,
+      "total": 496982125
+    },
+    {
+      "id": "codex_other",
+      "title": "LLM Lập trình Codex &amp; Dịch vụ bổ trợ",
+      "endpoint_html": "POST /v1/responses &bull; /v1/chat/completions &bull; /v1/systemone",
+      "top_models": [
+        "gpt-6-sol",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol"
+      ],
+      "requests": 1484,
+      "prompt": 180827698,
+      "cached": 170122368,
+      "completion": 419617,
+      "total": 181247315
+    }
+  ],
+  "key_rows": [
+    {
+      "labels": [
+        "ksp-50.212"
+      ],
+      "desc": "Máy chủ phát triển & vận hành KSP / hệ sinh thái nội bộ Công ty INUT",
+      "requests": 84447,
+      "total": 17829451874,
+      "share_pct": 60.7343277555387
+    },
+    {
+      "labels": [
+        "pymid-cty"
+      ],
+      "desc": "Hệ thống tác nhân AI lập trình, soạn thảo kỹ thuật & tự động hóa nghiệp vụ doanh nghiệp",
+      "requests": 39381,
+      "total": 9000589145,
+      "share_pct": 30.6596487086922
+    },
+    {
+      "labels": [
+        "apphub.a.inut.io.vn"
+      ],
+      "desc": "Nền tảng iNut AppHub, giám sát IoT/SCADA & vận hành cụm trạm năng lượng",
+      "requests": 5542,
+      "total": 2168740033,
+      "share_pct": 7.387606131227038
+    },
+    {
+      "labels": [
+        "root8-21"
+      ],
+      "desc": "Hạ tầng kỹ thuật, kiểm thử tự động & cụm dịch vụ nội bộ INUT",
+      "requests": 1717,
+      "total": 341345244,
+      "share_pct": 1.1627600261296922
+    },
+    {
+      "labels": [
+        "Inut-ai-router",
+        "inut-trade"
+      ],
+      "desc": "Cổng định tuyến AI thiết bị biên iNut & phân tích dữ liệu vận hành",
+      "requests": 7256,
+      "total": 15530710,
+      "share_pct": 0.05290388274873011
+    },
+    {
+      "labels": [
+        "Chatbot.vnmap.ai",
+        "apphub vnmap3d",
+        "inut-opc-inut-dev",
+        "ksp-inut-crm-pdf-signer"
+      ],
+      "desc": "Trợ lý VNMAP, bản đồ số 3D, PLC/OPC công nghiệp & KSP PDFSign",
+      "requests": 203,
+      "total": 808329,
+      "share_pct": 0.0027534956636495215
+    }
+  ]
+}
