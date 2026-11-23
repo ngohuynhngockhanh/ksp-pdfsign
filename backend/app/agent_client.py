@@ -5,23 +5,50 @@ Chi gui DIGEST/DATA can ky qua mang, khong gui ca file PDF.
 from __future__ import annotations
 
 import base64
+from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
 from .config import Settings
+from .host_discovery import FALLBACK_WINDOWS_IPS
 from .schemas import AgentTarget, CertInfo
+from .security_utils import validate_allowed_host
 
 
 class AgentError(RuntimeError):
     pass
 
 
+def _allowed_agent_hosts(settings: Settings) -> set[str]:
+    hosts = {
+        h.strip()
+        for h in (
+            settings.agent_default_ip,
+            getattr(settings, "ecus_ssh_host", ""),
+            *FALLBACK_WINDOWS_IPS,
+        )
+        if h and h.strip()
+    }
+    extra = getattr(settings, "allowed_ssh_hosts", "") or ""
+    for item in extra.split(","):
+        if item.strip():
+            hosts.add(item.strip())
+    return hosts
+
+
 def _base_url(settings: Settings, ip: str) -> str:
-    return f"{settings.agent_scheme}://{ip}:{settings.agent_port}"
+    try:
+        validated = validate_allowed_host(ip, _allowed_agent_hosts(settings))
+    except ValueError as e:
+        raise AgentError(str(e)) from e
+    return f"{settings.agent_scheme}://{validated}:{settings.agent_port}"
 
 
 def _client(settings: Settings) -> httpx.Client:
-    return httpx.Client(verify=settings.agent_verify_tls, timeout=30.0)
+    ca_bundle = (getattr(settings, "agent_ca_bundle", "") or "").strip()
+    verify: bool | str = ca_bundle if (ca_bundle and Path(ca_bundle).is_file()) else settings.agent_verify_tls
+    return httpx.Client(verify=verify, timeout=30.0)
 
 
 def list_certs(settings: Settings, ip: str, admin_password: str) -> list[CertInfo]:
@@ -81,7 +108,7 @@ def get_cert_chain(
     settings: Settings, ip: str, admin_password: str, cert_id: str
 ) -> list[bytes]:
     """Lay chung thu ky + chuoi (DER bytes) cho cert_id."""
-    url = f"{_base_url(settings, ip)}/cert-chain/{cert_id}"
+    url = f"{_base_url(settings, ip)}/cert-chain/{quote(cert_id, safe='')}"
     try:
         with _client(settings) as c:
             r = c.get(url, headers={"X-Admin-Password": admin_password})

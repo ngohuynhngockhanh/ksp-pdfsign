@@ -20,6 +20,8 @@ from pygments.formatters import HtmlFormatter
 from pygments.lexers import TextLexer, get_lexer_by_name
 from pygments.util import ClassNotFound
 
+from .security_utils import safe_weasyprint_url_fetcher
+
 
 def is_valid_markdown(data: bytes, filename: str = "") -> bool:
     """Kiểm tra nhanh dữ liệu UTF-8 hợp lệ và không phải nhị phân PDF/ZIP."""
@@ -216,7 +218,7 @@ def _highlight_code_block(code: str, lang: str) -> str:
         f'<div class="md-code-card">'
         f'<div class="md-code-bar">'
         f'<span class="md-code-lang">{badge}</span>'
-        f'<button type="button" class="md-copy-btn" onclick="copyCodeBlock(this)" aria-label="Sao chép mã nguồn">Sao chép</button>'
+        f'<button type="button" class="md-copy-btn" data-copy-code="1" aria-label="Sao chép mã nguồn">Sao chép</button>'
         f'</div>'
         f'<pre class="md-code-pre" tabindex="0"><code>{highlighted}</code></pre>'
         f'</div>'
@@ -245,7 +247,7 @@ def render_markdown_body_parts(md_input: bytes | str) -> dict[str, Any]:
         r"\big)": ")",
     }
 
-    md = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
     raw_html = md.render(text)
 
     # Thay thế code blocks bằng khối tô màu cú pháp hoặc sơ đồ SVG
@@ -328,6 +330,7 @@ def render_markdown_preview_html(
     download_url: str = "",
     pdf_url: str = "",
     print_mode: bool = False,
+    csp_nonce: str = "",
 ) -> str:
     """Sinh trang HTML5 hoàn chỉnh hiển thị tài liệu Markdown (.md) chuẩn INUT Operations Design System."""
     parsed = render_markdown_body_parts(md_input)
@@ -380,14 +383,14 @@ def render_markdown_preview_html(
   </div>
   <div class="md-tb-right">
     <div class="md-search-wrap">
-      <input type="search" id="mdSearchInput" class="md-search-input" placeholder="Tìm nhanh từ khóa..." aria-label="Tìm nhanh từ khóa trong tài liệu" oninput="filterMarkdownSections(this.value)" />
+      <input type="search" id="mdSearchInput" class="md-search-input" placeholder="Tìm nhanh từ khóa..." aria-label="Tìm nhanh từ khóa trong tài liệu" />
     </div>
     <div class="md-zoom-group" role="group" aria-label="Thu phóng trang">
-      <button type="button" class="tb-icon" onclick="stepZoom(-10)" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
-      <button type="button" class="tb-zoom-val" id="zoomLabel" onclick="resetZoom()" title="Đặt lại 100%" aria-label="Tỷ lệ thu phóng hiện tại">100%</button>
-      <button type="button" class="tb-icon" onclick="stepZoom(10)" title="Phóng to" aria-label="Phóng to">+</button>
+      <button type="button" class="tb-icon" data-md-action="zoom-out" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
+      <button type="button" class="tb-zoom-val" id="zoomLabel" data-md-action="zoom-reset" title="Đặt lại 100%" aria-label="Tỷ lệ thu phóng hiện tại">100%</button>
+      <button type="button" class="tb-icon" data-md-action="zoom-in" title="Phóng to" aria-label="Phóng to">+</button>
     </div>
-    <button type="button" class="tb-btn" onclick="window.print()" aria-label="In tài liệu">
+    <button type="button" class="tb-btn" data-md-action="print" aria-label="In tài liệu">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span>In</span>
     </button>
@@ -396,50 +399,65 @@ def render_markdown_preview_html(
   </div>
 </header>"""
 
+    nonce_attr = f' nonce="{html.escape(csp_nonce, quote=True)}"' if csp_nonce else ""
     script_html = (
         ""
         if print_mode
-        else """
-<script>
-(function(){
+        else f"""
+<script{nonce_attr}>
+(function(){{
   var zoom = 100;
   var sheet = document.getElementById('mdSheet');
   var label = document.getElementById('zoomLabel');
-  function apply(){
+  function apply(){{
     if(!sheet || !label) return;
     sheet.style.zoom = (zoom / 100).toString();
     label.textContent = zoom + '%';
-  }
-  window.stepZoom = function(delta){
+  }}
+  function stepZoom(delta){{
     zoom = Math.max(70, Math.min(150, zoom + delta));
     apply();
-  };
-  window.resetZoom = function(){
+  }}
+  function resetZoom(){{
     zoom = 100;
     apply();
-  };
-  window.copyCodeBlock = function(btn){
+  }}
+  function copyCodeBlock(btn){{
     var card = btn && btn.closest('.md-code-card');
     var pre = card && card.querySelector('pre');
     if(!pre) return;
     var text = pre.innerText || pre.textContent || '';
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(function(){
+    if(navigator.clipboard && navigator.clipboard.writeText){{
+      navigator.clipboard.writeText(text).then(function(){{
         var old = btn.textContent;
         btn.textContent = 'Đã chép ✓';
-        setTimeout(function(){ btn.textContent = old; }, 1600);
-      });
-    }
-  };
-  window.filterMarkdownSections = function(q){
+        setTimeout(function(){{ btn.textContent = old; }}, 1600);
+      }});
+    }}
+  }}
+  function filterMarkdownSections(q){{
     var term = (q || '').trim().toLowerCase();
     var links = document.querySelectorAll('#mdTocNav .md-toc-link');
-    for(var i = 0; i < links.length; i++){
+    for(var i = 0; i < links.length; i++){{
       var txt = (links[i].textContent || '').toLowerCase();
       links[i].style.display = (!term || txt.indexOf(term) !== -1) ? '' : 'none';
-    }
-  };
-})();
+    }}
+  }}
+  var searchInput = document.getElementById('mdSearchInput');
+  if(searchInput){{
+    searchInput.addEventListener('input', function(){{ filterMarkdownSections(searchInput.value); }});
+  }}
+  document.addEventListener('click', function(ev){{
+    var target = ev.target && ev.target.closest ? ev.target.closest('[data-md-action],[data-copy-code]') : null;
+    if(!target) return;
+    if(target.hasAttribute('data-copy-code')){{ copyCodeBlock(target); return; }}
+    var act = target.getAttribute('data-md-action');
+    if(act === 'zoom-out') stepZoom(-10);
+    else if(act === 'zoom-in') stepZoom(10);
+    else if(act === 'zoom-reset') resetZoom();
+    else if(act === 'print') window.print();
+  }});
+}})();
 </script>"""
     )
 
@@ -900,39 +918,46 @@ def render_markdown_to_pdf_bytes(md_input: bytes | str, *, title: str = "Tài li
     import weasyprint
 
     html_str = render_markdown_preview_html(md_input, title=title, print_mode=True)
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return weasyprint.HTML(
+        string=html_str,
+        url_fetcher=safe_weasyprint_url_fetcher,
+    ).write_pdf()
 
 
 def resolve_repo_markdown_path(repo_root: Path, slug_or_path: str) -> Path | None:
-    """Tìm file .md an toàn bên trong repo_root/docs hoặc repo_root (chống path traversal)."""
+    """Tìm file .md công khai an toàn bên trong repo_root/docs/public/ (chống path traversal & lộ tài liệu nội bộ)."""
     cleaned = (slug_or_path or "").strip().lstrip("/")
-    if not cleaned or ".." in cleaned:
+    if not cleaned or ".." in cleaned or "\\" in cleaned or "\x00" in cleaned:
         return None
-    if cleaned.startswith("docs/"):
-        rel = cleaned[len("docs/"):]
-    else:
-        rel = cleaned
 
-    candidates: list[Path] = []
-    for base in (repo_root / "docs", repo_root):
-        p1 = (base / rel).resolve()
-        p2 = (base / f"{rel}.md").resolve()
-        candidates.extend([p1, p2])
+    for prefix in ("docs/public/", "public/"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
 
-    root_resolved = repo_root.resolve()
+    if not cleaned:
+        return None
+
+    parts = [p for p in cleaned.split("/") if p]
+    if not parts or any(p.startswith(".") or p in (".", "..") for p in parts):
+        return None
+
+    public_dir = (repo_root / "docs" / "public").resolve()
+    if not public_dir.is_dir():
+        return None
+
+    rel = "/".join(parts)
+    candidates = [
+        (public_dir / rel).resolve(),
+        (public_dir / f"{rel}.md").resolve(),
+    ]
     for cand in candidates:
         try:
-            cand.relative_to(root_resolved)
+            rel_cand = cand.relative_to(public_dir)
         except ValueError:
+            continue
+        if any(seg.startswith(".") for seg in rel_cand.parts):
             continue
         if cand.is_file() and cand.suffix.lower() in (".md", ".markdown"):
             return cand
-
-    # Fallback tìm không phân biệt hoa thường trong repo_root/docs
-    target_names = {Path(rel).name.lower(), f"{Path(rel).name.lower()}.md"}
-    docs_dir = (repo_root / "docs").resolve()
-    if docs_dir.is_dir():
-        for p in docs_dir.rglob("*.md"):
-            if p.name.lower() in target_names:
-                return p
     return None

@@ -13,9 +13,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from . import clabel
-from .auth import CurrentUser, require_user
+from .auth import CurrentUser, authenticate_loopback_bearer, require_user
 from .config import Settings, get_settings
 from .db import get_session
+from .security_utils import error_detail
+from .storage import read_upload_limited
 
 logger = logging.getLogger(__name__)
 
@@ -27,27 +29,10 @@ def require_clabel_access(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ) -> CurrentUser:
-    """Cho phep goi truc tiep tu loopback (127.0.0.1 / localhost) hoac xac thuc Admin JWT / MCP Bearer."""
-    client_host = (request.client.host if request.client else "").replace("::ffff:", "")
-    host_header = request.headers.get("host", "").split(":", 1)[0].strip().lower()
-    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
-
-    # Neu goi truc tiep tren may chu local (127.0.0.1:2032) khong qua reverse proxy / frpc
-    if (
-        client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
-        and host_header in {"127.0.0.1", "localhost", "testserver", ""}
-        and not forwarded
-        and not request.headers.get("authorization")
-        and not request.cookies.get("ksp_session")
-    ):
-        return CurrentUser(
-            id=0,
-            username="local-ble-gateway",
-            role="admin",
-            customer_id=None,
-            training_access=True,
-            ip=client_host or "127.0.0.1",
-        )
+    """Chi cho phep Admin JWT hoac loopback Bearer token hop le."""
+    svc_user = authenticate_loopback_bearer(request, db)
+    if svc_user is not None:
+        return svc_user
 
     user = require_user(request=request, settings=settings, db=db)
     if not user.is_admin:
@@ -258,9 +243,13 @@ def clabel_gateway_status(
     try:
         gw = clabel.ClabelBLEGateway()
         return gw.get_gateway_status()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi kiem tra trang thai BLE Gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi kiểm tra trạng thái BLE Gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.get("/scan")
@@ -279,9 +268,13 @@ def clabel_scan_printers(
             "configured_printer_mac": get_settings().clabel_printer_mac,
             "devices": devices,
         }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi quet BLE tren gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi quét thiết bị BLE trên gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.get("/preview")
@@ -340,49 +333,13 @@ def clabel_print_label(
     """Render va gui lenh in TSPL qua BLE Gateway sang may in Clabel CT221B-X420."""
     try:
         return _execute_print(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi in tem Clabel qua BLE Gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.get("/print")
-def clabel_print_label_get(
-    title: str = Query(default="iNut JSC"),
-    subtitle: str = Query(default="IoT & Edge Computing"),
-    line: list[str] | None = Query(default=None),
-    badge: str = Query(default="INUT-BLE GATEWAY READY"),
-    footer_title: str = Query(default="Đắk Lắk - TP.HCM"),
-    qr_data: str | None = Query(default="https://inut.vn"),
-    barcode_data: str | None = Query(default=None),
-    show_logo: bool = Query(default=True),
-    border: bool = Query(default=True),
-    width: int = Query(default=400),
-    height: int = Query(default=300),
-    copies: int = Query(default=1, ge=1, le=20),
-    print_remote: bool = Query(default=True),
-    user: CurrentUser = Depends(require_clabel_access),
-) -> dict[str, Any]:
-    """In nhanh tem Clabel qua GET query params."""
-    payload = ClabelPrintRequest(
-        title=title,
-        subtitle=subtitle,
-        lines=line,
-        badge=badge,
-        footer_title=footer_title,
-        qr_data=qr_data,
-        barcode_data=barcode_data,
-        show_logo=show_logo,
-        border=border,
-        width=width,
-        height=height,
-        copies=copies,
-        print_remote=print_remote,
-    )
-    try:
-        return _execute_print(payload)
-    except Exception as exc:
-        logger.exception("Loi khi in tem Clabel qua BLE Gateway (GET)")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi in tem Clabel qua BLE Gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.post("/print-image")
@@ -401,7 +358,7 @@ async def clabel_print_uploaded_image(
     user: CurrentUser = Depends(require_clabel_access),
 ) -> dict[str, Any]:
     """Upload truc tiep file anh (PNG/JPG/WEBP) qua multipart/form-data va in ra Clabel CT221B."""
-    raw = await file.read()
+    raw = await read_upload_limited(file, max_bytes=10 * 1024 * 1024)
     if not raw:
         raise HTTPException(status_code=400, detail="File anh trong")
     payload = ClabelPrintRequest(
@@ -419,9 +376,13 @@ async def clabel_print_uploaded_image(
     )
     try:
         return _execute_print(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi in file anh upload qua BLE Gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi in ảnh tải lên qua BLE Gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.post("/print-tspl")
@@ -441,9 +402,13 @@ def clabel_print_raw_tspl(
         res = gw.send_tspl(raw_bytes, mac=payload.mac)
         res["is_printed"] = True
         return res
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi gui raw TSPL qua BLE Gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi gửi raw TSPL qua BLE Gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.get("/preview-sanxuat")
@@ -478,7 +443,6 @@ def clabel_preview_sanxuat(
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
-@router.get("/print-sanxuat")
 @router.post("/print-sanxuat")
 def clabel_print_sanxuat(
     device_id: str = Query(default="inut_200_177", description="Ma thiet bi / SN (vd: inut_207_153)"),
@@ -507,9 +471,13 @@ def clabel_print_sanxuat(
             copies=copies,
             print_remote=print_remote,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi in tem Mau Xuat Xuong v1.1 Rockchip")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi in tem Mẫu Xuất Xưởng v1.1", exc, "ksp.clabel"),
+        ) from exc
 
 
 @router.get("/preview-usb-hub")
@@ -542,7 +510,6 @@ def clabel_preview_usb_hub(
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
-@router.get("/print-usb-hub")
 @router.post("/print-usb-hub")
 def clabel_print_usb_hub(
     line1: str = Query(default="USB HUB 0 =>", description="Dong 1 (mac dinh: 'USB HUB 0 =>')"),
@@ -567,9 +534,13 @@ def clabel_print_usb_hub(
             copies=copies,
             print_remote=print_remote,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi in tem USB HUB qua BLE Gateway")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi in tem USB HUB qua BLE Gateway", exc, "ksp.clabel"),
+        ) from exc
 
 
 class SanxuatBatchRequest(BaseModel):
@@ -588,6 +559,8 @@ class SanxuatBatchRequest(BaseModel):
     print_batch_sheet_remote: bool = True
     inut_dev_host: str = "inut-dev"
     inut_dev_printer: str = "TP732H"
+    host: str | None = None
+    printer_name: str | None = None
 
 
 @router.get("/sanxuat-devices")
@@ -658,35 +631,6 @@ def list_sanxuat_batches(
     }
 
 
-@router.get("/sanxuat-batch")
-def run_sanxuat_batch_get(
-    device_ids: str = Query(..., description="Danh sach ma inut cach nhau dau phay"),
-    batch_code: str | None = Query(default=None),
-    auto_print_missing_clabel: bool = Query(default=True),
-    force_reprint_clabel: bool = Query(default=False),
-    print_batch_sheet_remote: bool = Query(default=True),
-    inut_dev_host: str = Query(default="inut-dev"),
-    inut_dev_printer: str = Query(default="TP732H"),
-    db: Session = Depends(get_session),
-    user: CurrentUser = Depends(require_clabel_access),
-) -> dict[str, Any]:
-    """Chay quy trinh Batch Printer San Xuat (auto in Clabel neu chua in + in to phieu 70x100 tren inut-dev)."""
-    try:
-        return clabel.run_sanxuat_batch_printer(
-            db,
-            device_ids=device_ids,
-            batch_code=batch_code,
-            auto_print_missing_clabel=auto_print_missing_clabel,
-            force_reprint_clabel=force_reprint_clabel,
-            print_batch_sheet_remote=print_batch_sheet_remote,
-            inut_dev_host=inut_dev_host,
-            inut_dev_printer=inut_dev_printer,
-        )
-    except Exception as exc:
-        logger.exception("Loi khi chay Batch Printer San Xuat (GET)")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
 @router.post("/sanxuat-batch")
 def run_sanxuat_batch_post(
     payload: SanxuatBatchRequest,
@@ -702,6 +646,8 @@ def run_sanxuat_batch_post(
                 eff_model = "iNut Smartcity - Data Logger v1.1"
             if eff_prod_line == "Rockchip · Xuất xưởng v1.1 ©":
                 eff_prod_line = "iNut Smartcity · Xuất xưởng v1.1 ©"
+        eff_host = payload.host if payload.host is not None else payload.inut_dev_host
+        eff_printer = payload.printer_name if payload.printer_name is not None else payload.inut_dev_printer
         return clabel.run_sanxuat_batch_printer(
             db,
             device_ids=payload.device_ids,
@@ -713,9 +659,13 @@ def run_sanxuat_batch_post(
             auto_print_missing_clabel=payload.auto_print_missing_clabel,
             force_reprint_clabel=payload.force_reprint_clabel,
             print_batch_sheet_remote=payload.print_batch_sheet_remote,
-            inut_dev_host=payload.inut_dev_host,
-            inut_dev_printer=payload.inut_dev_printer,
+            inut_dev_host=eff_host,
+            inut_dev_printer=eff_printer,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Loi khi chay Batch Printer San Xuat (POST)")
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=error_detail("Lỗi chạy Batch Printer Sản Xuất", exc, "ksp.clabel"),
+        ) from exc

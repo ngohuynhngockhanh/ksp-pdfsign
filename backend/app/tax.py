@@ -18,9 +18,10 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import uuid
-from zoneinfo import ZoneInfo
 
 import httpx
+
+from .security_utils import get_gov_tls_verify
 
 BASE = "https://hoadondientu.gdt.gov.vn/api"
 _TIMEOUT = 30.0
@@ -51,7 +52,7 @@ def _client(session_cookies: dict | None = None) -> httpx.Client:
     headers["request-id"] = str(uuid.uuid4())
     return httpx.Client(
         timeout=_TIMEOUT,
-        verify=False,
+        verify=get_gov_tls_verify(),
         headers=headers,
         cookies=session_cookies,
         follow_redirects=True,

@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import shutil
+import socket
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -120,6 +121,10 @@ def _rclone_binary() -> str:
     return binary
 
 
+
+def _resolve_rclone_bind(bind_cfg: str) -> str:
+    b = (bind_cfg or "").strip()
+    return b if b else "0.0.0.0"
 def _safe_drive_path(path: str) -> str:
     parsed = PurePosixPath(path)
     if parsed.is_absolute() or ".." in parsed.parts or not path.strip():
@@ -129,8 +134,9 @@ def _safe_drive_path(path: str) -> str:
 
 def _rclone_list(folder_id: str) -> list[dict]:
     settings = get_settings()
+    bind_ip = _resolve_rclone_bind(settings.customs_drive_bind)
     command = [_rclone_binary(), "lsjson", settings.customs_drive_remote, "--recursive",
-               "--drive-root-folder-id", folder_id, "--bind", settings.customs_drive_bind]
+               "--fast-list", "--drive-root-folder-id", folder_id, "--bind", bind_ip]
     result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
     if result.returncode:
         raise RuntimeError(f"Không đọc được Drive: {result.stderr[-300:]}")
@@ -144,9 +150,10 @@ def _rclone_download(folder_id: str, path: str) -> bytes:
     suffix = Path(safe_path).suffix
     with tempfile.TemporaryDirectory() as temp_dir:
         target = Path(temp_dir) / f"download{suffix}"
+        bind_ip = _resolve_rclone_bind(settings.customs_drive_bind)
         command = [_rclone_binary(), "copyto", f"{settings.customs_drive_remote}{safe_path}",
                    str(target), "--drive-root-folder-id", folder_id,
-                   "--bind", settings.customs_drive_bind]
+                   "--bind", bind_ip]
         result = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
         if result.returncode or not target.is_file():
             raise RuntimeError(f"Không tải được file Drive: {result.stderr[-300:]}")

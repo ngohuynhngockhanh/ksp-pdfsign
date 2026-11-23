@@ -9,11 +9,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path("/home/ksp/ksp-pdfsign/backend/data/ksp.db")
+from .config import get_settings
+
+
+def _get_db_path() -> Path:
+    return get_settings().data_path / "ksp.db"
 
 
 def _get_db():
-    conn = sqlite3.connect(DB_PATH)
+    db_path = _get_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=5.0)
+    conn.execute("PRAGMA busy_timeout=5000;")
     conn.row_factory = sqlite3.Row
     return conn
 

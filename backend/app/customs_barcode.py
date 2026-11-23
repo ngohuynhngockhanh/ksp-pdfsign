@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -103,7 +105,8 @@ def fetch_customs_barcode_pdf(
         if len(parts[0]) == 4:  # YYYY-MM-DD -> DD/MM/YYYY
             ngay_to_khai = f"{parts[2]}/{parts[1]}/{parts[0]}"
 
-    client = httpx.Client(verify=False, timeout=30.0, follow_redirects=True)
+    from .security_utils import get_gov_tls_verify
+    client = httpx.Client(verify=get_gov_tls_verify(), timeout=30.0, follow_redirects=True)
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -311,15 +314,17 @@ def fetch_and_sync_customs_barcode(
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir) / filename
             tmp_path.write_bytes(pdf_bytes)
+            rclone_bin = shutil.which("rclone") or str(Path.home() / ".local" / "bin" / "rclone")
+            bind_ip = (settings.customs_drive_bind or "").strip() or "0.0.0.0"
             cmd = [
-                "rclone",
-                "copy",
-                str(tmpdir),
-                settings.customs_drive_remote,
+                rclone_bin,
+                "copyto",
+                str(tmp_path),
+                f"{settings.customs_drive_remote}{filename}",
                 "--drive-root-folder-id",
                 target_folder_id,
                 "--bind",
-                settings.customs_drive_bind,
+                bind_ip,
                 "--retries",
                 "2",
             ]

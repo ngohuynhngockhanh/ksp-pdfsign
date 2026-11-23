@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { 
+    size: A4; 
+    margin: 10mm 14mm 10mm 14mm; 
+    @bottom-center { 
+      content: "Trang " counter(page) "/" counter(pages); 
+      font-size: 10px; 
+      font-style: italic; 
+    } 
+  }
+  * { box-sizing: border-box; }
+  body { 
+    font-family: "DejaVu Serif", "Times New Roman", serif; 
+    font-size: 10.8px; 
+    line-height: 1.34; 
+    color: #111; 
+  }
+  .header { display: flex; justify-content: space-between; text-align: center; margin-bottom: 5px; }
+  .header .left { width: 52%; font-weight: bold; text-transform: uppercase; font-size: 11px; }
+  .header .right { width: 46%; }
+  .header .right .country { font-weight: bold; text-transform: uppercase; font-size: 12px; }
+  .header .right .motto { font-weight: bold; font-size: 12px; }
+  .header .right .motto u { text-decoration: none; border-bottom: 1px solid #000; }
+  .soline { margin-top: 2px; font-size: 11px; font-weight: normal; }
+  
+  h1 { text-align: center; font-size: 14.5px; margin: 6px 0 2px; text-transform: uppercase; color: #0f172a; }
+  .number { text-align: center; font-size: 11px; font-style: italic; margin-bottom: 4px; color: #475569; }
+  .basis { text-align: justify; margin-bottom: 4px; font-style: italic; font-size: 10.3px; line-height: 1.35; }
+  
+  .party-title { font-weight: bold; text-transform: uppercase; font-size: 11px; margin-top: 4px; color: #174b72; border-bottom: 1px solid #174b72; padding-bottom: 1px; }
+  .party-table { width: 100%; border-collapse: collapse; margin: 2px 0 4px; }
+  .party-table td { padding: 1.5px 3px; vertical-align: top; }
+  .party-table .key { width: 22%; font-weight: bold; }
+  .party-table .sep { width: 2%; text-align: center; }
+  
+  .article-title { font-weight: bold; text-transform: uppercase; margin-top: 5px; margin-bottom: 2px; font-size: 11px; color: #174b72; }
+  p { margin: 2px 0; text-align: justify; }
+  
+  table.data-table { width: 100%; border-collapse: collapse; margin: 5px 0; }
+  table.data-table tr { page-break-inside: avoid; break-inside: avoid; }
+  table.data-table th, table.data-table td { border: 1px solid #333; padding: 3px 5px; font-size: 10.2px; }
+  table.data-table th { background-color: #f1f6f9; text-align: center; font-weight: bold; }
+  table.data-table td.c { text-align: center; }
+  table.data-table td.r { text-align: right; }
+  
+  .bank-box { background: #f8fafc; border-left: 3px solid #174b72; padding: 6px 10px; margin: 5px 0; font-size: 10.8px; }
+  
+  .signs { display: flex; justify-content: space-between; text-align: center; margin-top: 10px; page-break-inside: avoid; }
+  .signs .col { width: 48%; }
+  .signs .role { font-weight: bold; text-transform: uppercase; font-size: 11.5px; }
+  .signs .hint { font-style: italic; font-size: 10px; margin-top: 1px; }
+  .signs .space { height: 70px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .signature-img { max-height: 65px; max-width: 160px; object-fit: contain; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="left">CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN<br>CÔNG NGHỆ INUT<div class="soline">Số: {{ contract_code }}</div></div>
+    <div class="right">
+      <div class="country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+      <div class="motto"><u>Độc lập – Tự do – Hạnh phúc</u></div>
+      <div style="font-style: italic; font-size: 11px; margin-top: 4px;">{{ location_short or "Đắk Lắk" }}, ngày {{ contract_date_display }}</div>
+    </div>
+  </div>
+
+  <h1>HỢP ĐỒNG CUNG CẤP GIẢI PHÁP PHẦN MỀM & DỊCH VỤ</h1>
+  <div class="number">(V/v: {{ title }})</div>
+
+  <div class="basis">
+    - Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015 và Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;<br>
+    - Căn cứ Luật Công nghệ thông tin số 67/2006/QH11 và Luật Giao dịch điện tử số 20/2023/QH15;<br>
+    - Căn cứ nhu cầu và khả năng thực tế của hai Bên.
+  </div>
+  <p>Hôm nay, ngày {{ contract_date_display }}, chúng tôi gồm các Bên dưới đây:</p>
+
+  <div class="party-title">BÊN A (BÊN BÁN / CUNG CẤP DỊCH VỤ): CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+  <table class="party-table">
+    <tr><td class="key">Địa chỉ trụ sở</td><td class="sep">:</td><td>161 Trường Chinh, Phường Tuy Hòa, Tỉnh Đắk Lắk, Việt Nam</td></tr>
+    <tr><td class="key">Mã số thuế</td><td class="sep">:</td><td>4401053694</td></tr>
+    <tr><td class="key">Đại diện pháp luật</td><td class="sep">:</td><td>Ông <b>NGÔ HUỲNH NGỌC KHÁNH</b> &nbsp;&nbsp;&nbsp;&nbsp; Chức vụ: Giám đốc</td></tr>
+    <tr><td class="key">Điện thoại / Hotline</td><td class="sep">:</td><td>0972 768 491 &nbsp;&nbsp;|&nbsp;&nbsp; Email: hotro@inut.vn &nbsp;&nbsp;|&nbsp;&nbsp; Website: inut.vn</td></tr>
+    <tr><td class="key">Tài khoản ngân hàng</td><td class="sep">:</td><td><b>79713</b> tại Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank) — Chủ TK: CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</td></tr>
+  </table>
+
+  <div class="party-title">BÊN B (BÊN MUA / KHÁCH HÀNG): SÂN PICKLEBALL NGUYỄN HUỆ</div>
+  <table class="party-table">
+    <tr><td class="key">Người đại diện</td><td class="sep">:</td><td>Bà <b>{{ worker_name|upper }}</b> &nbsp;&nbsp;&nbsp;&nbsp; Ngày sinh: 10/11/1970</td></tr>
+    <tr><td class="key">Số CCCD / Định danh</td><td class="sep">:</td><td>{{ worker_id_card }} {% if worker_id_card_date %} &nbsp;(Ngày cấp: {{ worker_id_card_date }}{% if worker_id_card_place %} tại {{ worker_id_card_place }}{% endif %}){% endif %}</td></tr>
+    <tr><td class="key">Quê quán</td><td class="sep">:</td><td>Thị trấn Phú Lộc, Huyện Phú Lộc, Tỉnh Thừa Thiên Huế</td></tr>
+    <tr><td class="key">Nơi thường trú</td><td class="sep">:</td><td>{{ worker_address }}</td></tr>
+    {% if worker_phone %}<tr><td class="key">Số điện thoại liên hệ</td><td class="sep">:</td><td>{{ worker_phone }}</td></tr>{% endif %}
+  </table>
+
+  <p>Sau khi thỏa thuận, hai Bên đồng ý ký kết Hợp đồng kinh tế với các điều khoản và điều kiện sau:</p>
+
+  <div class="article-title">ĐIỀU 1. ĐỐI TƯỢNG VÀ NỘI DUNG HỢP ĐỒNG</div>
+  <p>Bên A đồng ý cung cấp và Bên B đồng ý nhận bàn giao gói bản quyền <b>Trọn đời (tính từ ngày ký hợp đồng)</b> giải pháp phần mềm quản trị camera tại biên (iNut Manager Prime v2) và hệ thống chuyển đổi luồng dữ liệu camera IP sang định dạng HLS/MP4 phục vụ cắt clip qua mã QR, xem lại tình huống (CheckVar) và livestream tại Sân Pickleball Nguyễn Huệ theo chi tiết dưới đây:</p>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:5%">STT</th>
+        <th>Tên gói bản quyền phần mềm & dịch vụ</th>
+        <th style="width:8%">ĐVT</th>
+        <th style="width:6%">SL</th>
+        <th style="width:17%">Đơn giá (VNĐ)</th>
+        <th style="width:17%">Thành tiền (VNĐ)</th>
+        <th style="width:8%">Thuế</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.ten }}</td>
+        <td class="c">{{ it.dvt }}</td>
+        <td class="c">{{ it.so_luong }}</td>
+        <td class="r">{{ "{:,.0f}".format(it.don_gia) if it.don_gia > 0 else "Miễn phí" }}</td>
+        <td class="r">{{ "{:,.0f}".format(it.thanh_tien) }}</td>
+        <td class="c">{{ "KCT" if it.thanh_tien > 0 else "—" }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="5" style="text-align:center; font-weight:bold;">TỔNG CỘNG GIÁ TRỊ HỢP ĐỒNG</td>
+        <td class="r" style="font-weight:bold;">{{ "{:,.0f}".format(total_amount) }} VNĐ</td>
+        <td class="c" style="font-weight:bold;">KCT</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p><i>(Số tiền viết bằng chữ: {{ total_amount_in_word }}).</i></p>
+  <p style="font-size: 10px; color: #475569; font-style: italic;">Ghi chú thuế: Sản phẩm bản quyền phần mềm thuộc đối tượng không chịu thuế giá trị gia tăng (KCT) theo quy định của Luật Thuế GTGT.</p>
+
+  <div class="article-title">ĐIỀU 2. GIÁ TRỊ HỢP ĐỒNG VÀ PHƯƠNG THỨC THANH TOÁN</div>
+  <p>2.1. <b>Giá trị hợp đồng:</b> Tổng giá trị hợp đồng là: <b>{{ "{:,.0f}".format(total_amount) }} VNĐ</b> (Bằng chữ: <i>{{ total_amount_in_word }}</i>).</p>
+  <p>2.2. <b>Phương thức thanh toán:</b> Chuyển khoản ngân hàng vào tài khoản của Bên A theo thông tin dưới đây:</p>
+  <div class="bank-box" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; page-break-inside: avoid;">
+    <div style="flex: 1;">
+      <b>Thông tin tài khoản nhận thanh toán của Bên A (Công ty iNut):</b><br>
+      - Đơn vị thụ hưởng: <b>CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</b><br>
+      - Số tài khoản: <b>79713</b> tại <b>Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank)</b><br>
+      - Số tiền thanh toán: <b style="color: #b91c1c;">{{ "{:,.0f}".format(total_amount) }} VNĐ</b><br>
+      {% if inut_transfer_memo %}- Nội dung chuyển khoản: <b style="color: #0284c7;">{{ inut_transfer_memo }}</b>{% endif %}
+    </div>
+    {% if inut_vietqr_data_uri or vietqr_data_uri %}
+    <div style="text-align: center; width: 105px; flex-shrink: 0;">
+      <img src="{{ inut_vietqr_data_uri or vietqr_data_uri }}" style="width: 95px; height: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff;" alt="VietQR iNut">
+      <div style="font-size: 8px; color: #64748b; margin-top: 2px;">Quét mã VietQR</div>
+    </div>
+    {% endif %}
+  </div>
+  <p>2.3. <b>Tiến độ thanh toán (Chia làm 02 đợt):</b></p>
+  <p>• <b>Đợt 1:</b> Thanh toán <b>4.500.000 VNĐ</b> (Bốn triệu năm trăm nghìn đồng) cho tháng góp đầu tiên Chi phí phần mềm ngay sau khi Bên A hoàn tất cài đặt, kích hoạt bản quyền và bàn giao phần mềm đưa vào sử dụng.</p>
+  <p>• <b>Đợt 2:</b> Thanh toán <b>4.500.000 VNĐ</b> (Bốn triệu năm trăm nghìn đồng) cho tháng góp thứ hai Chi phí phần mềm (Hoàn tất thanh toán 100% giá trị hợp đồng).</p>
+
+  <div class="article-title">ĐIỀU 3. QUYỀN VÀ TRÁCH NHIỆM CỦA CÁC BÊN</div>
+  <p>3.1. <b>Quyền và trách nhiệm của Bên B (Bên Mua):</b></p>
+  <p>• Yêu cầu Bên A bàn giao đầy đủ thông tin bản quyền, cài đặt cấu hình và hướng dẫn sử dụng phần mềm.</p>
+  <p>• Được sử dụng và hưởng trọn vẹn toàn bộ tiện ích của giải pháp phần mềm sau khi được Bên A cài đặt, bàn giao sử dụng mà không phải trả bất kỳ chi phí thuê bao hàng tháng phát sinh nào.</p>
+  <p>• Chuẩn bị sẵn mặt bằng, hệ thống camera IP và hạ tầng mạng Internet tại sân đáp ứng yêu cầu tối thiểu để kết nối phần mềm.</p>
+  <p>• Thanh toán cho Bên A đầy đủ, đúng hạn giá trị hợp đồng theo thỏa thuận tại Điều 2.</p>
+  <p>3.2. <b>Quyền và trách nhiệm của Bên A (Bên Bán):</b></p>
+  <p>• Thực hiện cung cấp đầy đủ số lượng gói bản quyền phần mềm, mã QR và dịch vụ đi kèm theo danh mục tại Điều 1.</p>
+  <p>• Cài đặt, tích hợp luồng camera và hướng dẫn sử dụng phần mềm cho quản lý / kỹ thuật viên của Bên B.</p>
+  <p>• Đảm bảo hệ thống phần mềm vận hành ổn định, an toàn dữ liệu và hỗ trợ kỹ thuật trực tuyến trong suốt thời gian bảo hành.</p>
+
+  <div class="article-title">ĐIỀU 4. BẢO HÀNH VÀ BẢO TRÌ</div>
+  <p>• Bên A cam kết bảo hành kỹ thuật cho gói bản quyền phần mềm và hệ thống trong thời hạn <b>01 năm (12 tháng)</b> kể từ ngày bàn giao (lỗi 1 đổi 1 đối với thiết bị biên đi kèm nếu có).</p>
+  <p>• Sau thời hạn 01 năm, phí dịch vụ bảo hành / hỗ trợ kỹ thuật cấu hình lại theo yêu cầu là: <b>300.000 đồng/lần</b> (chưa VAT).</p>
+
+  <div class="article-title">ĐIỀU 5. ĐIỀU KHOẢN CHUNG VÀ KÝ KẾT ĐIỆN TỬ</div>
+  <p>5.1. Hai Bên cam kết thực hiện nghiêm túc các điều khoản đã thỏa thuận trong Hợp đồng này. Mọi sửa đổi, bổ sung phải được lập thành văn bản có xác nhận của đại diện hai Bên.</p>
+  <p>5.2. Hợp đồng này được xác lập dưới dạng văn bản điện tử theo quy định của Luật Giao dịch điện tử 2023. Chữ ký số của Bên A và chữ ký điện tử kèm định danh ảnh khuôn mặt eKYC của Bên B trên nền tảng lưu trữ của Bên A có giá trị chứng cứ đầy đủ và ràng buộc pháp lý giữa hai Bên.</p>
+
+  <div class="signs">
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN B (BÊN MUA)</div>
+      <div class="hint">(Ký điện tử &amp; Chụp ảnh xác thực eKYC)</div>
+      <div class="space">
+        {% if worker_signature_data %}
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin: 4px 0;">
+          <img class="signature-img" src="{{ worker_signature_data }}" alt="Chữ ký khách hàng" style="max-height: 65px; max-width: 140px;">
+          {% if worker_face_photo_data %}
+          <img src="{{ worker_face_photo_data }}" alt="Ảnh eKYC" style="width: 44px; height: 56px; object-fit: cover; border-radius: 4px; border: 1.5px solid #0284c7;" title="Ảnh chụp chân dung lúc ký">
+          {% endif %}
+        </div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Thời gian: {{ worker_signed_date_display }}</div>
+        {% elif is_signed_by_worker %}
+        <div style="border: 1px dashed #0284c7; color: #0284c7; padding: 4px 10px; border-radius: 4px; font-weight: bold; background: #f0f9ff; font-size: 11px;">
+          ✓ ĐÃ KÝ ONLINE QUA PORTAL<br>
+          <span style="font-size: 9px; color: #0369a1;">Thời gian: {{ worker_signed_date_display }}</span>
+        </div>
+        {% else %}
+        <div style="color: #94a3b8; font-style: italic; font-size: 11px; padding-top: 30px;">
+          (Chưa ký online qua Portal)
+        </div>
+        {% endif %}
+      </div>
+      <div><b>BÀ {{ worker_name|upper }}</b><br><span style="font-size:10px; color:#64748b;">Đại diện Sân Pickleball Nguyễn Huệ</span></div>
+    </div>
+    <div class="col">
+      <div class="role">ĐẠI DIỆN BÊN A (BÊN BÁN)</div>
+      <div class="hint">(Ký số, đóng dấu PAdES)</div>
+      <div class="space">
+        <!-- Vị trí dành riêng cho chữ ký số điện tử Bên A (USB Token WIN-CA / PyHanko) -->
+      </div>
+      <div><b>ÔNG NGÔ HUỲNH NGỌC KHÁNH</b><br><span style="font-size:10px; color:#64748b;">Giám đốc Công ty iNut</span></div>
+    </div>
+  </div>
+
+  {% if id_card_front_data_uri or id_card_back_data_uri %}
+  <div style="page-break-before: always; margin-top: 10px;">
+    <div style="text-align: center; font-weight: bold; font-size: 13px; text-transform: uppercase; color: #174b72; margin-bottom: 2px; border-bottom: 2px solid #174b72; padding-bottom: 4px;">
+      PHỤ LỤC I: ẢNH CHỤP CĂN CƯỚC CÔNG DÂN CỦA KHÁCH HÀNG (BÊN MUA)
+    </div>
+    <div style="font-size: 10.5px; font-style: italic; text-align: center; color: #64748b; margin-bottom: 12px;">
+      (Kèm theo Hợp đồng số: {{ contract_code }})
+    </div>
+    <div style="display: flex; justify-content: space-around; gap: 16px; align-items: flex-start; margin-top: 14px;">
+      {% if id_card_front_data_uri %}
+      <div style="text-align: center; width: 48%;">
+        <div style="font-size: 11px; font-weight: bold; color: #334155; margin-bottom: 5px;">MẶT TRƯỚC CCCD:</div>
+        <img src="{{ id_card_front_data_uri }}" style="width: 100%; max-height: 220px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Mặt trước CCCD">
+      </div>
+      {% endif %}
+      {% if id_card_back_data_uri %}
+      <div style="text-align: center; width: 48%;">
+        <div style="font-size: 11px; font-weight: bold; color: #334155; margin-bottom: 5px;">MẶT SAU CCCD:</div>
+        <img src="{{ id_card_back_data_uri }}" style="width: 100%; max-height: 220px; object-fit: contain; border: 1.5px solid #94a3b8; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" alt="Mặt sau CCCD">
+      </div>
+      {% endif %}
+    </div>
+    <div style="margin-top: 16px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10.5px; color: #475569; text-align: justify; line-height: 1.45;">
+      <b>Cam kết của Khách hàng:</b> Tôi cam kết 02 ảnh chụp Căn cước công dân nêu trên là bản chụp thật, rõ nét từ giấy tờ tùy thân chính chủ của tôi, không qua chỉnh sửa tẩy xóa, dùng làm căn cứ xác thực danh tính cho Hợp đồng mua bán điện tử theo quy định của pháp luật.
+    </div>
+  </div>
+  {% endif %}
+
+</body>
+</html>

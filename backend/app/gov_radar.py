@@ -123,7 +123,9 @@ OTHER_PROVINCE_MARKERS = [
 
 
 def _http_get(url: str, timeout: int = 15) -> str:
-    """Fetch HTML tu cong .gov.vn voi SSL fallback an toan cho cac cong tinh."""
+    """Fetch HTML tu cong .gov.vn voi xac thuc TLS mac dinh (ho tro GOV_CA_BUNDLE / ALLOW_INSECURE_GOV_TLS)."""
+    from .security_utils import get_gov_tls_verify
+
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -133,17 +135,18 @@ def _http_get(url: str, timeout: int = 15) -> str:
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
     }
     req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            return raw.decode("utf-8", errors="replace")
-    except Exception:
+    verify = get_gov_tls_verify()
+    if isinstance(verify, str):
+        ctx = ssl.create_default_context(cafile=verify)
+    elif verify is False:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-            raw = resp.read()
-            return raw.decode("utf-8", errors="replace")
+    else:
+        ctx = ssl.create_default_context()
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        raw = resp.read()
+        return raw.decode("utf-8", errors="replace")
 
 
 def _clean_text(s: str) -> str:

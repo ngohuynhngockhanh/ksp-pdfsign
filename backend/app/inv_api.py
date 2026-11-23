@@ -44,7 +44,8 @@ from .db import (
     Share,
     get_session,
 )
-from .inventory import NegativeStockError, PostError, normalize_name
+from .inventory import NegativeStockError, PostConflictError, PostError, normalize_name
+from .storage import read_upload_limited
 from .schemas import (
     AssembleIn,
     BulkIds,
@@ -601,7 +602,7 @@ async def opening_import(
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    data = await file.read()
+    data = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     try:
         parsed = inv_import.parse_opening_xlsx(data)
     except ValueError as e:
@@ -746,9 +747,11 @@ async def purchase_upload(
     results = []
     for f in files:
         name = f.filename or "file"
-        content = await f.read()
+        content = await read_upload_limited(f, max_bytes=50 * 1024 * 1024)
         try:
             expanded = inv_import.expand_zip(name, content)
+        except inv_import.ZipLimitError as e:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
         except Exception as e:  # noqa: BLE001
             results.append({"filename": name, "ok": False, "error": str(e)})
             continue
@@ -773,6 +776,8 @@ async def purchase_import_url(
     for name, content in files:
         try:
             expanded = inv_import.expand_zip(name, content)
+        except inv_import.ZipLimitError as e:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
         except Exception as e:  # noqa: BLE001
             results.append({"filename": name, "ok": False, "error": str(e)})
             continue
@@ -789,7 +794,7 @@ async def purchase_bang_ke(
     db: Session = Depends(get_session),
 ):
     """Doi chieu bang ke hoa don mua vao (Excel ke khai thue) voi cac HD da import."""
-    data = await file.read()
+    data = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     try:
         rows = inv_import.parse_bang_ke_xlsx(data)
         result = inv_import.reconcile_bang_ke(db, rows)
@@ -934,7 +939,10 @@ def email_sync_save_settings(
         "mailbox": body.mailbox.strip() or "INBOX",
         "days": str(body.days or 30),
     }
-    email_sync.save_zoho_settings(db, config)
+    try:
+        email_sync.save_zoho_settings(db, config)
+    except email_sync.EmailSyncError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     _audit(db, user, "email_sync_save_settings", body.mode, f"Mode: {body.mode}")
     return EmailSyncSettingsOut(
         enabled=body.enabled,
@@ -1247,7 +1255,7 @@ async def purchase_attach_pdf(
     inv = db.get(InvPurchase, pid)
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn mua")
-    content = await file.read()
+    content = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File bổ sung phải là PDF hợp lệ")
     if inv.doc_id:
@@ -1347,6 +1355,9 @@ def purchase_post(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
     try:
         inventory.post_purchase(db, inv)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -1366,6 +1377,9 @@ def purchase_void(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hóa đơn")
     try:
         inventory.unpost_purchase(db, inv)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -1742,9 +1756,11 @@ async def sale_upload(
     results = []
     for f in files:
         name = f.filename or "file"
-        content = await f.read()
+        content = await read_upload_limited(f, max_bytes=50 * 1024 * 1024)
         try:
             expanded = inv_import.expand_zip(name, content)
+        except inv_import.ZipLimitError as e:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
         except Exception as e:  # noqa: BLE001
             results.append({"filename": name, "ok": False, "error": str(e)})
             continue
@@ -1767,6 +1783,8 @@ async def sale_import_url(
     for name, content in files:
         try:
             expanded = inv_import.expand_zip(name, content)
+        except inv_import.ZipLimitError as e:
+            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(e)) from e
         except Exception as e:  # noqa: BLE001
             results.append({"filename": name, "ok": False, "error": str(e)})
             continue
@@ -3235,6 +3253,9 @@ def issue_post(
     override = (body.override_reason or "").strip() if body else ""
     try:
         inventory.post_issue(db, iss, override_reason=override or None)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -3257,6 +3278,9 @@ def issue_void(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy phiếu xuất")
     try:
         inventory.unpost_issue(db, iss)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -3909,6 +3933,9 @@ def production_post(
     override = (body.override_reason or "").strip() if body else ""
     try:
         inventory.post_production(db, prod, override_reason=override or None)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -3931,6 +3958,9 @@ def production_void(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy lệnh sản xuất")
     try:
         inventory.unpost_production(db, prod)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -4432,7 +4462,7 @@ async def customs_upload(
     results = []
     for f in files:
         name = f.filename or "file"
-        content = await f.read()
+        content = await read_upload_limited(f, max_bytes=25 * 1024 * 1024)
         results.append(_import_one_customs_file(db, user, name, content))
     return {"results": results}
 
@@ -4547,6 +4577,9 @@ def customs_post(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
     try:
         inventory.post_customs(db, decl)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -4566,6 +4599,9 @@ def customs_void(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
     try:
         inventory.unpost_customs(db, decl)
+    except PostConflictError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
     except PostError as e:
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -4596,7 +4632,7 @@ async def customs_attach(
     decl = db.get(InvCustomsDecl, cid)
     if not decl:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tờ khai")
-    content = await file.read()
+    content = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
 
     try:
         parsed = customs.parse_giay_nop_tien(content)

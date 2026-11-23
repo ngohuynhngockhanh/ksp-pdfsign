@@ -6,7 +6,7 @@ pyhanko-certvalidator==0.26.3
 python-multipart==0.0.20
 pydantic==2.10.4
 pydantic-settings==2.7.1
-python-jose[cryptography]==3.3.0
+PyJWT[crypto]==2.15.1
 httpx==0.28.1
 SQLAlchemy==2.0.36
 smbprotocol==1.17.0
@@ -17,7 +17,6 @@ Jinja2==3.1.6
 rapidocr-onnxruntime==1.4.4
 openpyxl==3.1.5
 gdown==5.2.0
-reportlab>=4.0.0
-python-barcode>=0.15.0
-qrcode>=7.4.2
-
+reportlab==5.0.1
+python-barcode==0.16.1
+qrcode==8.2

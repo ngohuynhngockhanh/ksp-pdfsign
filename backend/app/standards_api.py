@@ -18,9 +18,11 @@ from sqlalchemy.orm import Session
 from . import standards
 from . import tqc_cnhq
 from .audit import record as audit_record
-from .auth import CurrentUser, require_admin, require_user
+from .auth import CurrentUser, require_admin
 from .config import Settings, get_settings
 from .db import JobRun, TqcCertificate, get_session
+from .security_utils import safe_content_disposition
+from .storage import read_upload_limited_sync
 
 router = APIRouter(prefix="/api/standards", tags=["standards"])
 _TQC_IMPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tqc-csv-import")
@@ -55,7 +57,7 @@ class TqcImportRequest(BaseModel):
 
 @router.get("/statistics")
 def get_standards_statistics(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Thong ke tong so quy chuan QCVN/TCVN theo Bo va linh vuc."""
     return standards.StandardsRegistryService.get_statistics()
@@ -67,7 +69,7 @@ def search_standards(
     ministry: str = Query("", description="Bo chu quan: BTTTT, BKHCN, BTNMT, BCT, BYT"),
     category: str = Query("", description="Linh vuc: radio_telecom, emc, electrical_safety, environment, metrology, iso_management"),
     procedure_type: str = Query("", description="Loai thu tuc: mandatory_cert_and_cr, mandatory_cr_declaration, voluntary_system_cert"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Tra cuu danh sach quy chuan QCVN / TCVN da tieu chi."""
     return standards.StandardsRegistryService.search(
@@ -90,7 +92,7 @@ def lookup_standards_by_model(
     fuzzy: bool = Query(True, description="Bật tìm kiếm mờ (Fuzzy matching)"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Direction 1: Tra cứu quy chuẩn kỹ thuật QCVN/TCVN áp dụng theo Model thiết bị hoặc HS Code."""
@@ -117,7 +119,7 @@ def lookup_standards_by_tax_code(
     ministry: str = Query("", max_length=150, description="Lọc theo Bộ quản lý chuyên ngành"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Direction 2: Tra cứu hồ sơ chứng nhận/công bố hợp quy và danh mục QCVN theo MST hoặc Tên doanh nghiệp."""
@@ -141,7 +143,7 @@ def lookup_standards_by_enterprise_tax_code(
     ministry: str = Query("", max_length=150, description="Lọc theo Bộ quản lý"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Tra cứu hồ sơ hợp quy và danh mục tiêu chuẩn của một doanh nghiệp cụ thể theo MST."""
@@ -161,7 +163,7 @@ def suggest_standards(
     q: str = Query("", max_length=150, description="Từ khóa gợi ý tìm kiếm"),
     type: str = Query("all", max_length=150, description="Loại gợi ý: all, model, tax_code, company, qcvn, hs_code"),
     limit: int = Query(10, ge=1, le=50),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Gợi ý thông minh (Auto-complete) cho Models, MST, Doanh nghiệp, QCVN và HS Code."""
@@ -175,7 +177,7 @@ def suggest_standards(
 
 @router.get("/rules")
 def get_inference_rules(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Danh mục toàn bộ các luật suy luận quy chuẩn kỹ thuật (Rule-based inference engine)."""
     rules = standards.RuleInferenceEngine.get_all_rules()
@@ -336,7 +338,7 @@ def _tqc_job_payload(job: JobRun) -> dict[str, Any]:
 
 @router.get("/tqc/status")
 def get_tqc_status(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Return safe TQC connector configuration and local index health."""
@@ -361,7 +363,7 @@ def search_tqc_certificates(
     valid_on: str = Query("", max_length=20),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(20, ge=1, le=100),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Search only records already verified into the local TQC index."""
@@ -392,7 +394,7 @@ def search_tqc_certificates(
 def get_tqc_certificate(
     certificate_no: str,
     refresh: bool = Query(False),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
@@ -463,9 +465,7 @@ def import_tqc_csv(
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Import a bounded CSV containing certificate numbers or TQC QR payloads."""
-    content = file.file.read(5 * 1024 * 1024 + 1)
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="CSV vượt quá giới hạn 5 MB")
+    content = read_upload_limited_sync(file, max_bytes=5 * 1024 * 1024)
     try:
         entries = tqc_cnhq.parse_import_csv(content.decode("utf-8-sig"))
     except UnicodeDecodeError as exc:
@@ -553,7 +553,7 @@ def retry_tqc_import_job(
 @router.get("/hs-lookup/{hs_code}")
 def lookup_by_hs_code(
     hs_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Tra cuu quy chuan va thu tuc kiem tra chuyen nganh Hai quan theo ma HS Code."""
     res = standards.HsCodeConformityService.lookup_hs_code(hs_code)
@@ -567,7 +567,7 @@ def lookup_by_hs_code(
 
 @router.get("/hs-mappings")
 def list_hs_mappings(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Lay danh sach tat ca cac ma HS Code da duoc anh xa quy chuan."""
     return standards.HsCodeConformityService.HS_CODE_MAPPINGS
@@ -575,14 +575,14 @@ def list_hs_mappings(
 
 @router.get("/testing-labs")
 def list_testing_labs(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Lay danh ba cac phong thu nghiem va to chuc chung nhan chi dinh."""
     return standards.TestingLabRegistryService.list_all()
 
 @router.get("/risk-classification/statistics")
 def get_risk_classification_statistics(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Thống kê danh mục phân loại rủi ro theo Thông tư số 36/2026/TT-BKHCN."""
     return standards.BkhcnRiskClassificationService.get_statistics()
@@ -592,7 +592,7 @@ def get_risk_classification_statistics(
 def classify_product_risk(
     hs_code: str = Query("", description="Mã HS Code"),
     q: str = Query("", description="Tên mặt hàng hoặc từ khóa"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Phân loại mức độ rủi ro (CAO / TRUNG BÌNH / THẤP) theo Thông tư số 36/2026/TT-BKHCN."""
     return standards.BkhcnRiskClassificationService.classify(hs_code=hs_code, query=q)
@@ -605,7 +605,7 @@ def get_risk_classification_catalog(
     q: str = Query("", description="Từ khóa tìm kiếm"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=300),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Lấy danh mục sản phẩm có mức độ rủi ro trung bình, rủi ro cao theo Thông tư 36/2026/TT-BKHCN."""
     items = standards.BkhcnRiskClassificationService.get_catalog()
@@ -645,7 +645,7 @@ def get_risk_classification_catalog(
 
 @router.get("/risk-classification/pdf")
 def download_risk_circular_pdf(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ):
     """Tải toàn văn Thông tư số 36/2026/TT-BKHCN (bản ký số chính thức của Bộ KH&CN)."""
     from fastapi.responses import FileResponse
@@ -665,7 +665,7 @@ def download_risk_circular_pdf(
 @router.get("/{code:path}/pdf")
 def download_standard_pdf(
     code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Tai toan van tom tat quy chuan ky thuat QCVN/TCVN duoi dang PDF."""
     std = standards.StandardsRegistryService.get_by_code(code)
@@ -679,7 +679,7 @@ def download_standard_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -688,7 +688,7 @@ def download_standard_pdf(
 @router.post("/generate-cr-declaration/pdf")
 def generate_cr_declaration_pdf(
     req: CrDeclarationRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Sinh Ban Cong Bo Hop Quy (CR) chuan Mau 02 TT28 dinh dang PDF."""
     pdf_bytes, filename = standards.ConformityDocumentGenerator.generate_cr_declaration_pdf(
@@ -709,7 +709,7 @@ def generate_cr_declaration_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -718,7 +718,7 @@ def generate_cr_declaration_pdf(
 @router.post("/generate-cr-declaration/docx")
 def generate_cr_declaration_docx(
     req: CrDeclarationRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Sinh Ban Cong Bo Hop Quy (CR) chuan Mau 02 TT28 dinh dang Word (DOCX)."""
     doc_bytes, filename = standards.ConformityDocumentGenerator.generate_cr_declaration_docx(
@@ -739,7 +739,7 @@ def generate_cr_declaration_docx(
         content=doc_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -747,7 +747,7 @@ def generate_cr_declaration_docx(
 
 @router.get("/playbooks")
 def list_playbooks(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Lay danh sach cam nang huong dan thuc chien & case study nhap khau."""
     return standards.PracticalPlaybookService.list_all()
@@ -756,7 +756,7 @@ def list_playbooks(
 @router.get("/playbooks/{playbook_id}")
 def get_playbook_detail(
     playbook_id: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Lay chi tiet 1 case study huong dan nhap khau thiet bi."""
     pb = standards.PracticalPlaybookService.get_by_id(playbook_id)
@@ -781,7 +781,7 @@ class UpdateNoteRequest(BaseModel):
 
 @router.get("/game/state")
 def get_game_state(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Lay toan bo trang thai tien do Game, Level, EXP va danh sach 6 Ai."""
     return StandardsGameService.get_game_state()
@@ -789,7 +789,7 @@ def get_game_state(
 @router.post("/game/complete")
 def complete_game_quest(
     req: CompleteQuestRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Hoan thanh 1 Ai nhiem vu, cong 500 EXP va mo khoa Ai tiep theo."""
     return StandardsGameService.complete_quest(req.quest_id, req.note)
@@ -797,14 +797,14 @@ def complete_game_quest(
 @router.post("/game/note")
 def update_game_note(
     req: UpdateNoteRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Cap nhat ghi chu tac chien cho 1 Ai."""
     return StandardsGameService.update_quest_note(req.quest_id, req.note)
 
 @router.post("/game/reset")
 def reset_game_progress(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Reset lai toan bo tien do Game."""
     return StandardsGameService.reset_game()

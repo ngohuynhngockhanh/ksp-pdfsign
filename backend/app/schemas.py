@@ -54,6 +54,7 @@ class SignRequest(BaseModel):
     customer_id: int | None = None  # gan luon khi ky (tuy chon)
     doc_type: str = ""  # phan loai (bbbg khi ky BBBG vua sinh)
     order_id: int | None = None  # gan vao don hang (tuy chon)
+    existing_document_id: int | None = None  # ky tiep len ho so co san trong kho (vd ky 2 ben sau LIO)
 
 
 class SignResponse(BaseModel):
@@ -144,11 +145,23 @@ class DocumentOut(BaseModel):
     customer_name: str | None = None
     created_at: str
     download_url: str
+    view_url: str = ""
     nas_synced: bool = False
     doc_type: str = ""
     signed_upload_name: str = ""  # rong = chua co ban da ky tai len
     order_id: int | None = None
     order_code: str = ""  # vd "DH-0001 · Ten don hang"
+    lio_session_id: str = ""
+    lio_status: str = ""
+    lio_placement_method: str = ""
+    lio_reason: str = ""
+    lio_signed_at: str = ""
+    lio_expires_at: str = ""
+    lio_countersigned_status: str = ""
+    lio_countersigned_at: str = ""
+    lio_countersigned_file_id: str = ""
+    lio_countersigned_error: str = ""
+    lio_countersigned_signatures: list[dict] = Field(default_factory=list)
 
 
 class DocumentRename(BaseModel):

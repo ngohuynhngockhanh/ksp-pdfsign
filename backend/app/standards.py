@@ -1107,7 +1107,26 @@ class ConformityDocumentGenerator:
         test_lab_name: str = "Trung tâm Đo lường Chất lượng Viễn thông (Cục Viễn thông)",
     ) -> tuple[bytes, str]:
         """Sinh Ban Cong Bo Hop Quy (CR) chuan phap ly dinh dang PDF."""
+        from html import escape as _esc
+        from .security_utils import safe_weasyprint_url_fetcher
+
         standards = applicable_standards or ["QCVN 117:2020/BTTTT", "QCVN 54:2020/BTTTT", "QCVN 18:2022/BTTTT", "QCVN 132:2022/BTTTT"]
+
+        e_tax = _esc(str(tax_code or ""), quote=True)
+        e_company = _esc(str(company_name or ""), quote=True)
+        e_address = _esc(str(address or ""), quote=True)
+        e_rep_name = _esc(str(representative_name or ""), quote=True)
+        e_rep_title = _esc(str(representative_title or ""), quote=True)
+        e_product = _esc(str(product_name or ""), quote=True)
+        e_model = _esc(str(model_name or ""), quote=True)
+        e_mfr = _esc(str(manufacturer or ""), quote=True)
+        e_origin = _esc(str(country_of_origin or ""), quote=True)
+        e_report = _esc(str(test_report_number or ""), quote=True)
+        e_lab = _esc(str(test_lab_name or ""), quote=True)
+        rows_html = "".join(
+            f'<tr><td style="text-align: center;">{idx+1}</td><td><strong>{_esc(str(std), quote=True)}</strong></td><td>Quy chuẩn kỹ thuật quốc gia do Bộ quản lý chuyên ngành ban hành</td></tr>'
+            for idx, std in enumerate(standards)
+        )
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -1135,19 +1154,19 @@ class ConformityDocumentGenerator:
   <div class="title">BẢN CÔNG BỐ HỢP QUY</div>
   <div class="subtitle">(Ban hành kèm theo Thông tư số 28/2012/TT-BKHCN và Thông tư số 02/2017/TT-BKHCN)</div>
 
-  <p>Số: <strong>CBHQ-{tax_code}-{datetime.now().strftime('%Y%m%d')}</strong></p>
+  <p>Số: <strong>CBHQ-{e_tax}-{datetime.now().strftime('%Y%m%d')}</strong></p>
 
-  <p><strong>1. Tên tổ chức, cá nhân công bố:</strong> {company_name}</p>
-  <p>• Mã số doanh nghiệp / Mã số thuế: <strong>{tax_code}</strong></p>
-  <p>• Địa chỉ trụ sở chính: {address}</p>
-  <p>• Người đại diện theo pháp luật: <strong>{representative_name}</strong> — Chức vụ: {representative_title}</p>
+  <p><strong>1. Tên tổ chức, cá nhân công bố:</strong> {e_company}</p>
+  <p>• Mã số doanh nghiệp / Mã số thuế: <strong>{e_tax}</strong></p>
+  <p>• Địa chỉ trụ sở chính: {e_address}</p>
+  <p>• Người đại diện theo pháp luật: <strong>{e_rep_name}</strong> — Chức vụ: {e_rep_title}</p>
 
   <p><strong>2. Thông tin về sản phẩm, hàng hóa công bố hợp quy:</strong></p>
   <div class="box">
-    • Tên sản phẩm, hàng hóa: <strong>{product_name}</strong><br>
-    • Ký hiệu / Mã kiểu loại (Model): <strong>{model_name}</strong><br>
-    • Nhà sản xuất: {manufacturer}<br>
-    • Xuất xứ hàng hóa: <strong>{country_of_origin}</strong>
+    • Tên sản phẩm, hàng hóa: <strong>{e_product}</strong><br>
+    • Ký hiệu / Mã kiểu loại (Model): <strong>{e_model}</strong><br>
+    • Nhà sản xuất: {e_mfr}<br>
+    • Xuất xứ hàng hóa: <strong>{e_origin}</strong>
   </div>
 
   <p><strong>3. Phù hợp với các Quy chuẩn kỹ thuật quốc gia (QCVN) sau đây:</strong></p>
@@ -1160,16 +1179,16 @@ class ConformityDocumentGenerator:
       </tr>
     </thead>
     <tbody>
-      {"".join([f'<tr><td style="text-align: center;">{idx+1}</td><td><strong>{std}</strong></td><td>Quy chuẩn kỹ thuật quốc gia do Bộ quản lý chuyên ngành ban hành</td></tr>' for idx, std in enumerate(standards)])}
+      {rows_html}
     </tbody>
   </table>
 
   <p><strong>4. Căn cứ công bố hợp quy:</strong></p>
-  <p>• Phiếu kết quả thử nghiệm số: <strong>{test_report_number}</strong></p>
-  <p>• Đơn vị thử nghiệm thực hiện: <strong>{test_lab_name}</strong> (Được Bộ quản lý chuyên ngành chỉ định).</p>
+  <p>• Phiếu kết quả thử nghiệm số: <strong>{e_report}</strong></p>
+  <p>• Đơn vị thử nghiệm thực hiện: <strong>{e_lab}</strong> (Được Bộ quản lý chuyên ngành chỉ định).</p>
 
   <p><strong>5. Cam kết của tổ chức, cá nhân:</strong></p>
-  <p>{company_name} cam kết và chịu hoàn toàn trách nhiệm trước pháp luật về tính phù hợp của sản phẩm, hàng hóa đối với các Quy chuẩn kỹ thuật quốc gia đã công bố và duy trì việc kiểm soát chất lượng trong suốt quá trình sản xuất, lưu thông trên thị trường.</p>
+  <p>{e_company} cam kết và chịu hoàn toàn trách nhiệm trước pháp luật về tính phù hợp của sản phẩm, hàng hóa đối với các Quy chuẩn kỹ thuật quốc gia đã công bố và duy trì việc kiểm soát chất lượng trong suốt quá trình sản xuất, lưu thông trên thị trường.</p>
 
   <table class="footer">
     <tr>
@@ -1180,27 +1199,36 @@ class ConformityDocumentGenerator:
         <div style="height: 75px; display: flex; align-items: center; justify-content: center; color: #047857; font-weight: bold;">
           [ĐÃ KÝ SỐ ĐIỆN TỬ KSP iNUT]
         </div>
-        <strong>{representative_name}</strong><br>
-        <em>{representative_title}</em>
+        <strong>{e_rep_name}</strong><br>
+        <em>{e_rep_title}</em>
       </td>
     </tr>
   </table>
 </body>
 </html>"""
-        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+        pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
         filename = f"Ban_Cong_Bo_Hop_Quy_{model_name}_{tax_code}.pdf"
         return pdf_bytes, filename
 
     @classmethod
     def generate_standard_summary_pdf(cls, standard_data: dict[str, Any]) -> tuple[bytes, str]:
         """Xuat toan van tom tat quy chuan ky thuat QCVN dinh dang PDF."""
-        code = standard_data.get("code", "QCVN")
-        name = standard_data.get("name", "Quy chuẩn kỹ thuật quốc gia")
-        ministry = standard_data.get("ministry_label", "Bộ quản lý chuyên ngành")
-        circular = standard_data.get("circular", "Thông tư quy định")
-        target = standard_data.get("target_equipment", "Thiết bị điện tử")
+        from html import escape as _esc
+        from .security_utils import safe_weasyprint_url_fetcher
+
+        raw_code = str(standard_data.get("code", "QCVN"))
+        code = _esc(raw_code, quote=True)
+        name = _esc(str(standard_data.get("name", "Quy chuẩn kỹ thuật quốc gia")), quote=True)
+        ministry = _esc(str(standard_data.get("ministry_label", "Bộ quản lý chuyên ngành")), quote=True)
+        circular = _esc(str(standard_data.get("circular", "Thông tư quy định")), quote=True)
+        effective_date = _esc(str(standard_data.get("effective_date", "Hiện hành")), quote=True)
+        procedure_label = _esc(str(standard_data.get("procedure_label", "Bắt buộc")), quote=True)
+        target = _esc(str(standard_data.get("target_equipment", "Thiết bị điện tử")), quote=True)
         reqs = standard_data.get("key_technical_requirements", [])
         labs = standard_data.get("testing_labs", [])
+
+        reqs_html = "".join(f'<li style="margin-bottom: 8px;">{_esc(str(r), quote=True)}</li>' for r in reqs)
+        labs_html = "".join(f'<li style="margin-bottom: 6px;"><strong>{_esc(str(lab), quote=True)}</strong></li>' for lab in labs)
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -1227,21 +1255,21 @@ class ConformityDocumentGenerator:
   <div class="box">
     <strong>Cơ quan ban hành:</strong> {ministry}<br>
     <strong>Văn bản pháp lý:</strong> {circular}<br>
-    <strong>Ngày hiệu lực:</strong> {standard_data.get('effective_date', 'Hiện hành')}<br>
-    <strong>Thủ tục áp dụng:</strong> {standard_data.get('procedure_label', 'Bắt buộc')}<br>
+    <strong>Ngày hiệu lực:</strong> {effective_date}<br>
+    <strong>Thủ tục áp dụng:</strong> {procedure_label}<br>
     <strong>Đối tượng thiết bị áp dụng:</strong> {target}
   </div>
 
   <h3>MỤC 1. CHỈ TIÊU KỸ THUẬT CỐT LÕI BẮT BUỘC</h3>
   <div class="req-box">
     <ul>
-      {"".join([f'<li style="margin-bottom: 8px;">{r}</li>' for r in reqs])}
+      {reqs_html}
     </ul>
   </div>
 
   <h3>MỤC 2. TỔ CHỨC THỬ NGHIỆM & CHỨNG NHẬN ĐƯỢC CHỈ ĐỊNH</h3>
   <ul>
-    {"".join([f'<li style="margin-bottom: 6px;"><strong>{lab}</strong></li>' for lab in labs])}
+    {labs_html}
   </ul>
 
   <div style="margin-top: 40px; text-align: right; font-style: italic; font-size: 11pt;">
@@ -1249,8 +1277,8 @@ class ConformityDocumentGenerator:
   </div>
 </body>
 </html>"""
-        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-        filename = f"Toan_Van_Quy_Chuan_{code.replace('/', '_').replace(':', '_')}.pdf"
+        pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
+        filename = f"Toan_Van_Quy_Chuan_{raw_code.replace('/', '_').replace(':', '_')}.pdf"
         return pdf_bytes, filename
 
 

@@ -207,15 +207,23 @@ def validate_spx_session(db: Session, cookie_str: str | None = None) -> dict[str
         }
 
 
-def _run_playwright_spx_login(username: str, password: str, timeout: int = 45) -> str:
+def _run_playwright_spx_login(username: str, password: str, timeout: int = 75) -> str:
     """Chạy script Playwright Chromium headless để đăng nhập cổng SPX và trích xuất chuỗi cookie."""
     repo_root = Path(__file__).resolve().parents[2]
     script_path = repo_root / "scripts" / "spx_auto_login.js"
     if not script_path.exists():
         raise RuntimeError(f"Không tìm thấy script đăng nhập tự động SPX tại {script_path}")
 
+    child_env = dict(os.environ)
+    child_env["SPX_USERNAME"] = username
+    child_env["SPX_PASSWORD"] = password
+    child_env["SPX_JSON_OUTPUT"] = "1"
+    stdin_payload = json.dumps({"username": username, "password": password})
+
     proc = subprocess.run(
-        ["node", str(script_path), username, password],
+        ["node", str(script_path), "--json-output"],
+        input=stdin_payload,
+        env=child_env,
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -881,6 +889,8 @@ def quick_print_by_code(
     print_remote: bool = True,
 ) -> dict[str, Any]:
     """Nhập mã vận đơn / Order SN -> Tra cứu SPX chính hãng -> Lấy nhãn tỉ lệ vàng 65% -> Lưu Share 90 ngày -> In ngay."""
+    if print_remote:
+        host, printer_name, _ = _validate_windows_print_params(host, printer_name)
     clean_code = (code or "").strip().upper()
     if not clean_code:
         raise ValueError("Vui lòng nhập Mã vận đơn (SPXVN...) hoặc Mã đơn SPX (VN...).")
@@ -1048,6 +1058,7 @@ def batch_print_unprinted(
     host: str = "192.168.1.10",
 ) -> dict[str, Any]:
     """In hàng loạt toàn bộ đơn chưa in (hoặc theo danh sách tracking chỉ định) sang TP732H."""
+    host, printer_name, _ = _validate_windows_print_params(host, printer_name)
     query = select(SpxShipment).where(SpxShipment.is_printed == False)
 
     if tracking_numbers:
@@ -1551,17 +1562,69 @@ def get_spx_order_label(
     db.commit()
     return pdf_bytes
 
+def _allowed_windows_hosts() -> set[str]:
+    from .config import get_settings
+
+    settings = get_settings()
+    hosts = {"192.168.1.10", "192.168.1.111", "inut-dev"}
+    for candidate in (
+        getattr(settings, "agent_default_ip", ""),
+        getattr(settings, "ecus_ssh_host", ""),
+    ):
+        if candidate and candidate.strip():
+            hosts.add(candidate.strip().lower())
+    extra = getattr(settings, "allowed_ssh_hosts", "") or ""
+    for item in extra.split(","):
+        if item.strip():
+            hosts.add(item.strip().lower())
+    return hosts
+
+
+def _validate_windows_print_params(host: str, printer_name: str, win_file_name: str | None = None) -> tuple[str, str, str]:
+    from .security_utils import validate_allowed_host, validate_safe_token_str
+
+    clean_host = validate_allowed_host(host, _allowed_windows_hosts())
+    clean_printer = validate_safe_token_str(
+        printer_name, pattern=r"^[A-Za-z0-9 _.-]{1,64}$", field="printer_name"
+    )
+    clean_file = ""
+    if win_file_name is not None:
+        clean_file = validate_safe_token_str(
+            win_file_name, pattern=r"^[A-Za-z0-9_.-]{1,120}$", field="win_file_name"
+        )
+    return clean_host, clean_printer, clean_file
+
+
+def _build_foxit_encoded_cmd(win_file_name: str, printer_name: str) -> str:
+    import base64
+    from .security_utils import build_powershell_encoded_command
+
+    file_b64 = base64.b64encode(f"C:\\ksp\\{win_file_name}".encode("utf-8")).decode("ascii")
+    printer_b64 = base64.b64encode(printer_name.encode("utf-8")).decode("ascii")
+    ps_script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$f = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{file_b64}'))\n"
+        f"$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{printer_b64}'))\n"
+        "& 'C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe' '/t' $f $p\n"
+    )
+    encoded = build_powershell_encoded_command(ps_script)
+    return f"powershell -NoProfile -NonInteractive -EncodedCommand {encoded}"
+
+
 def list_remote_printers(host: str = "192.168.1.10") -> list[dict[str, Any]]:
     """Liệt kê danh sách máy in thực tế trên máy Windows (tự resolve IP qua nmap nếu cần)."""
     import subprocess
+    from .security_utils import validate_allowed_host
+
+    clean_host = validate_allowed_host(host, _allowed_windows_hosts())
     try:
-        resolved_host = resolve_windows_host(host, probe_port=445)
+        resolved_host = resolve_windows_host(clean_host, probe_port=445)
     except TypeError:
-        resolved_host = resolve_windows_host(host)
+        resolved_host = resolve_windows_host(clean_host)
     cmd = [
         "ssh", "-n",
         "-i", "/home/ksp/.ssh/id_ed25519",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ProxyCommand=none",
         "-o", "ConnectTimeout=15",
         f"Administrator@{resolved_host}",
@@ -1601,25 +1664,34 @@ def print_spx_order_remote(
 ) -> dict[str, Any]:
     """Gửi lệnh in tem nhãn A6 trực tiếp sang máy in (TP732H/TP58H) trên máy Windows (tự resolve IP)."""
     import subprocess
+    from .security_utils import validate_safe_token_str
+
+    clean_tracking = validate_safe_token_str(
+        tracking_no, pattern=r"^[A-Za-z0-9_.-]{1,80}$", field="tracking_no"
+    )
+    win_file_name = f"label_{clean_tracking}.pdf"
+    clean_host, clean_printer, win_file_name = _validate_windows_print_params(
+        host, printer_name, win_file_name
+    )
+
     try:
-        resolved_host = resolve_windows_host(host, probe_port=445)
+        resolved_host = resolve_windows_host(clean_host, probe_port=445)
     except TypeError:
-        resolved_host = resolve_windows_host(host)
-    shipment = get_spx_order(db, tracking_no)
+        resolved_host = resolve_windows_host(clean_host)
+    shipment = get_spx_order(db, clean_tracking)
     if not shipment:
-        raise ValueError(f"Không tìm thấy vận đơn {tracking_no}")
+        raise ValueError(f"Không tìm thấy vận đơn {clean_tracking}")
 
     # Đảm bảo file PDF tồn tại và không phải tem mẫu bị nhiễm cache (Cache Poisoning Guard)
-    get_spx_order_label(db, tracking_no)
+    get_spx_order_label(db, clean_tracking)
     db.refresh(shipment)
     pdf_path = storage.path_for(shipment.label_doc_id)
 
     # 1. SCP file PDF sang máy Windows C:\ksp\
-    win_file_name = f"label_{tracking_no}.pdf"
     scp_cmd = [
         "scp", "-O",
         "-i", "/home/ksp/.ssh/id_ed25519",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ProxyCommand=none",
         "-o", "ConnectTimeout=60",
         str(pdf_path),
@@ -1629,16 +1701,16 @@ def print_spx_order_remote(
     if scp_proc.returncode != 0:
         raise RuntimeError(f"Lỗi chuyển file nhãn sang máy {resolved_host}: {scp_proc.stderr}")
 
-    # 2. In file qua Foxit Reader CLI trên Windows
-    foxit_cmd = f'"C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe" /t "C:\\ksp\\{win_file_name}" "{printer_name}"'
+    # 2. In file qua Foxit Reader CLI bằng PowerShell EncodedCommand an toàn
+    ps_cmd = _build_foxit_encoded_cmd(win_file_name, clean_printer)
     ssh_print_cmd = [
         "ssh", "-n",
         "-i", "/home/ksp/.ssh/id_ed25519",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ProxyCommand=none",
         "-o", "ConnectTimeout=60",
         f"Administrator@{resolved_host}",
-        foxit_cmd,
+        ps_cmd,
     ]
     print_proc = subprocess.run(ssh_print_cmd, capture_output=True, text=True, timeout=90)
     if print_proc.returncode != 0:
@@ -1650,8 +1722,8 @@ def print_spx_order_remote(
 
     return {
         "success": True,
-        "message": f"Đã gửi lệnh in tem A6 ({tracking_no}) thành công tới máy in '{printer_name}' tại {host}!",
-        "tracking_no": tracking_no,
+        "message": f"Đã gửi lệnh in tem A6 ({clean_tracking}) thành công tới máy in '{clean_printer}' tại {clean_host}!",
+        "tracking_no": clean_tracking,
         "is_printed": True,
         "printed_at": shipment.printed_at.isoformat() if shipment.printed_at else None,
         "file_path": f"C:\\ksp\\{win_file_name}",
@@ -1677,6 +1749,11 @@ def print_custom_shipping_label(
     """Tạo và in tem giao hàng tự do (không phụ thuộc SPX) sang máy in nhiệt TP732H."""
     import subprocess
     from .spx_label import generate_custom_shipping_label_100x50
+
+    clean_host = host
+    clean_printer = printer_name
+    if print_remote:
+        clean_host, clean_printer, _ = _validate_windows_print_params(host, printer_name)
 
     creds = get_spx_raw_credentials(db)
     s_name = sender_name.strip() if sender_name else (creds.get("spx_sender_name") or DEFAULT_SENDER["spx_sender_name"])
@@ -1742,17 +1819,21 @@ def print_custom_shipping_label(
     # 2. Gửi lệnh in nếu có yêu cầu remote
     print_res = {}
     if print_remote:
+        safe_tn = re.sub(r"[^A-Za-z0-9_.-]", "_", tracking_no)[:80]
+        win_file_name = f"label_{safe_tn}.pdf"
+        clean_host, clean_printer, win_file_name = _validate_windows_print_params(
+            clean_host, clean_printer, win_file_name
+        )
         try:
-            resolved_host = resolve_windows_host(host, probe_port=445)
+            resolved_host = resolve_windows_host(clean_host, probe_port=445)
         except TypeError:
-            resolved_host = resolve_windows_host(host)
+            resolved_host = resolve_windows_host(clean_host)
         pdf_path = storage.path_for(doc_id)
-        win_file_name = f"label_{tracking_no}.pdf"
         scp_cmd = [
             "scp", "-O",
             "-i", "/home/ksp/.ssh/id_ed25519",
-            "-o", "StrictHostKeyChecking=no",
-        "-o", "ProxyCommand=none",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ProxyCommand=none",
             "-o", "ConnectTimeout=60",
             str(pdf_path),
             f"Administrator@{resolved_host}:C:/ksp/{win_file_name}",
@@ -1761,15 +1842,15 @@ def print_custom_shipping_label(
         if scp_proc.returncode != 0:
             raise RuntimeError(f"Lỗi chuyển file nhãn sang máy {resolved_host}: {scp_proc.stderr}")
 
-        foxit_cmd = f'"C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe" /t "C:\\ksp\\{win_file_name}" "{printer_name}"'
+        ps_cmd = _build_foxit_encoded_cmd(win_file_name, clean_printer)
         ssh_print_cmd = [
             "ssh", "-n",
             "-i", "/home/ksp/.ssh/id_ed25519",
-            "-o", "StrictHostKeyChecking=no",
-        "-o", "ProxyCommand=none",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ProxyCommand=none",
             "-o", "ConnectTimeout=60",
             f"Administrator@{resolved_host}",
-            foxit_cmd,
+            ps_cmd,
         ]
         print_proc = subprocess.run(ssh_print_cmd, capture_output=True, text=True, timeout=90)
         if print_proc.returncode != 0:
@@ -1781,7 +1862,7 @@ def print_custom_shipping_label(
         db.refresh(shipment)
         print_res = {
             "success": True,
-            "message": f"Đã gửi lệnh in tem ({code}) thành công tới máy in '{printer_name}' tại {resolved_host}!",
+            "message": f"Đã gửi lệnh in tem ({code}) thành công tới máy in '{clean_printer}' tại {resolved_host}!",
             "file_path": f"C:\\ksp\\{win_file_name}",
         }
 

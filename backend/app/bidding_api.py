@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 
 from . import bidding
-from .auth import CurrentUser, require_full_portal, require_user
+from .auth import CurrentUser, require_admin, require_full_portal
 from .config import Settings, get_settings
+from .security_utils import safe_content_disposition
 from .db import (
     BiddingDossierFileReview,
     BiddingDossierItemReview,
@@ -100,7 +101,7 @@ def search_tenders(
     method: str = Query("", description="Hình thức lựa chọn nhà thầu"),
     page: int = Query(1, ge=1, description="Trang (1-indexed)"),
     page_size: int = Query(10, ge=1, le=100, description="Số kết quả mỗi trang"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingSearchResponse:
     """Tra cuu danh sach goi thau tu Mua Sam Cong e-GP (hoac Smart Mock fallback)."""
@@ -128,7 +129,7 @@ def search_tenders(
 @router.get("/tenders/{tbmt_code}", response_model=TenderItemOut)
 def get_tender_detail(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> TenderItemOut:
     """Lay chi tiet goi thau theo ma TBMT."""
@@ -145,7 +146,7 @@ def get_tender_detail(
 @router.get("/tenders/{tbmt_code}/html-preview", response_class=HTMLResponse)
 def get_tender_html_preview(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> HTMLResponse:
     """Sinh ma HTML giao dien E-HSMT chuan Cổng Mua Sam Cong e-GP de xem truc tiep hoac nhung iframe."""
@@ -165,7 +166,7 @@ def get_tender_html_preview(
 def analyze_tender_with_ai(
     tbmt_code: str,
     body: BiddingAIAnalyzeRequest = BiddingAIAnalyzeRequest(),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> BiddingAIAnalyzeResponse:
@@ -204,7 +205,7 @@ def list_bookmarks(
     search: str = Query("", description="Tìm kiếm từ khóa"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingBookmarkListOut:
     """Lay danh sach cac goi thau dang quan tam / theo doi."""
@@ -221,7 +222,7 @@ def list_bookmarks(
 @router.post("/bookmarks", response_model=BiddingBookmarkOut, status_code=status.HTTP_201_CREATED)
 def create_bookmark(
     body: BiddingBookmarkCreate,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingBookmarkOut:
     """Luu 1 goi thau vao danh sach quan tam (Bookmark / Pipeline)."""
@@ -238,7 +239,7 @@ def create_bookmark(
 @router.get("/bookmarks/{id}", response_model=BiddingBookmarkOut)
 def get_bookmark(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingBookmarkOut:
     """Xem chi tiet 1 bookmark."""
@@ -256,7 +257,7 @@ def get_bookmark(
 def update_bookmark(
     id: int,
     body: BiddingBookmarkUpdate,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingBookmarkOut:
     """Cap nhat trang thai pipeline, ghi chu, hoac AI summary cua bookmark."""
@@ -279,7 +280,7 @@ def update_bookmark(
 @router.delete("/bookmarks/{id}")
 def delete_bookmark(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Xoa goi thau khoi danh sach bookmark."""
@@ -298,7 +299,7 @@ def delete_bookmark(
 @router.get("/watchlist", response_model=BiddingWatchlistListOut)
 def list_watchlists(
     is_active: bool | None = Query(None, description="Lọc theo trạng thái kích hoạt"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingWatchlistListOut:
     """Lay danh sach cac quy tac theo doi tu dong (Watchlist)."""
@@ -313,7 +314,7 @@ def list_watchlists(
 @router.post("/watchlist", response_model=BiddingWatchlistOut, status_code=status.HTTP_201_CREATED)
 def create_watchlist(
     body: BiddingWatchlistCreate,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingWatchlistOut:
     """Tao moi 1 quy tac theo doi tu dong (Watchlist & Canh bao Telegram)."""
@@ -330,7 +331,7 @@ def create_watchlist(
 @router.get("/watchlist/{id}", response_model=BiddingWatchlistOut)
 def get_watchlist(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingWatchlistOut:
     """Xem chi tiet 1 quy tac watchlist."""
@@ -348,7 +349,7 @@ def get_watchlist(
 def update_watchlist(
     id: int,
     body: BiddingWatchlistUpdate,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingWatchlistOut:
     """Sua doi quy tac theo doi watchlist."""
@@ -366,7 +367,7 @@ def update_watchlist(
 @router.delete("/watchlist/{id}")
 def delete_watchlist(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Xoa quy tac watchlist."""
@@ -383,7 +384,7 @@ def delete_watchlist(
 @router.post("/watchlist/{id}/scan", response_model=BiddingScanResultOut)
 def scan_single_watchlist(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> BiddingScanResultOut:
@@ -402,7 +403,7 @@ def scan_single_watchlist(
 @router.post("/watchlist/scan-all", response_model=BiddingScanResultOut)
 @router.post("/scan-all", response_model=BiddingScanResultOut)
 def scan_all_watchlists(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> BiddingScanResultOut:
@@ -416,7 +417,7 @@ def scan_all_watchlists(
 
 @router.get("/contractors/crm-scan")
 def scan_crm_contractors(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Quet toan bo khach hang CRM cua INUT va doi soat ho so nang luc dau thau."""
@@ -427,7 +428,7 @@ def scan_crm_contractors(
 @router.get("/contractors/search")
 def search_contractors(
     query: str = Query(..., description="Ten cong ty hoac Ma So Thue can tra cuu"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> list[dict[str, Any]]:
     """Tra cuu ho so nha thau theo ten hoac ma so thue."""
@@ -438,7 +439,7 @@ def search_contractors(
 @router.get("/contractors/{tax_code}")
 def get_contractor_profile(
     tax_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Lay chi tiet ho so nha thau va danh sach goi thau da tham gia."""
@@ -453,7 +454,7 @@ def get_contractor_profile(
 def get_won_packages(
     query: str = Query("", description="Tu khoa tim kiem goi thau da trung"),
     field: str = Query("", description="Linh vuc goi thau (HH, XL, TV, PTV, HHOP)"),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Lay danh sach tat ca cac goi thau da trung cua cac nha thau lon de hoc tap."""
     require_full_portal(user)
@@ -462,7 +463,7 @@ def get_won_packages(
 
 @router.get("/playbook")
 def get_inut_bidding_playbook(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> dict[str, Any]:
     """Lay cam nang chien luoc dau thau, cac bo kit E-HSDT chuan mau danh rieng cho INUT."""
     require_full_portal(user)
@@ -474,7 +475,7 @@ def get_inut_bidding_playbook(
 @router.get("/tenders/{tbmt_code}/attachments")
 def list_tender_attachments(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Lay danh sach tat ca cac file dinh kem E-HSMT (PDF/DOCX) co the tai ve."""
     require_full_portal(user)
@@ -486,7 +487,7 @@ def list_tender_attachments(
 def download_tender_attachment(
     tbmt_code: str,
     file_id: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Tai file dinh kem cu the (PDF/DOCX) cua goi thau."""
     require_full_portal(user)
@@ -496,7 +497,7 @@ def download_tender_attachment(
         content=content_bytes,
         media_type=mime_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -505,7 +506,7 @@ def download_tender_attachment(
 @router.get("/tenders/{tbmt_code}/download-all-zip")
 def download_full_tender_dossier_zip(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Tai tron bo ho so E-HSMT bao gom tat ca file PDF va Word dinh kem duoi dang file ZIP."""
     require_full_portal(user)
@@ -515,7 +516,7 @@ def download_full_tender_dossier_zip(
         content=zip_bytes,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+            "Content-Disposition": safe_content_disposition(zip_filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -526,7 +527,7 @@ def download_full_tender_dossier_zip(
 @router.get("/tenders/{tbmt_code}/competitors")
 def list_tender_competitors(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> list[dict[str, Any]]:
     """Lay danh sach cac nha thau doi thu da tham gia nop E-HSDT cho goi thau."""
     require_full_portal(user)
@@ -539,7 +540,7 @@ def download_competitor_file(
     tbmt_code: str,
     tax_code: str,
     file_id: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Tai 1 file E-HSDT cu the cua nha thau doi thu."""
     require_full_portal(user)
@@ -551,7 +552,7 @@ def download_competitor_file(
         content=content_bytes,
         media_type=mime_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -560,7 +561,7 @@ def download_competitor_file(
 @router.get("/tenders/{tbmt_code}/competitors/download-all-zip")
 def download_all_competitors_dossier_zip(
     tbmt_code: str,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Response:
     """Tai tron bo E-HSDT cua TAT CA cac nha thau tham gia goi thau (ZIP)."""
     require_full_portal(user)
@@ -570,7 +571,7 @@ def download_all_competitors_dossier_zip(
         content=zip_bytes,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+            "Content-Disposition": safe_content_disposition(zip_filename),
             "Cache-Control": "no-cache",
         },
     )
@@ -581,7 +582,7 @@ def download_all_competitors_dossier_zip(
 
 @router.get("/dossier-reviews", response_model=list[BiddingDossierReviewOut])
 def list_dossier_reviews(
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> list[BiddingDossierReviewOut]:
     """Danh sách các hồ sơ dự thầu đã được thẩm định chuyên sâu."""
@@ -620,7 +621,7 @@ def list_dossier_reviews(
 @router.get("/dossier-reviews/{id}", response_model=BiddingDossierReviewDetailOut)
 def get_dossier_review_detail(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> BiddingDossierReviewDetailOut:
     """Chi tiết thẩm định hồ sơ thầu gồm 9 file độc lập và ma trận 18 hạng mục kỹ thuật."""
@@ -699,7 +700,7 @@ def get_dossier_review_detail(
 @router.post("/dossier-reviews/import-drive")
 def import_dossier_from_drive(
     body: BiddingDossierImportDriveRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """Nhập hồ sơ thầu từ liên kết Google Drive và khởi tạo tiến trình thẩm định đa tác nhân."""
@@ -723,7 +724,7 @@ def import_dossier_from_drive(
 @router.get("/dossier-reviews/{id}/export-markdown")
 def export_dossier_review_markdown(
     id: int,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> Response:
     """Xuất toàn bộ Báo cáo Thẩm định Hồ sơ Thầu dưới dạng văn bản Markdown chuẩn để gửi cho đối tác."""
@@ -796,7 +797,7 @@ def export_dossier_review_markdown(
         content=report_md.encode("utf-8"),
         media_type="text/markdown; charset=utf-8",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": safe_content_disposition(filename),
             "Cache-Control": "no-cache",
         },
     )

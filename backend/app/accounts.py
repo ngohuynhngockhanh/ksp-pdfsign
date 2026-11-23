@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 import unicodedata
 
 from sqlalchemy import select
@@ -20,10 +21,10 @@ def slug_username(name: str) -> str:
     return s
 
 
-def default_password(tax_code: str) -> str:
-    """Mat khau mac dinh theo quy uoc cap tai khoan khach hang cua INUT."""
+def default_password(tax_code: str = "") -> str:
+    """Sinh mat khau tam ngau nhien manh (>=12 ky tu) cho moi tai khoan khach hang."""
     del tax_code
-    return "inut12345"
+    return secrets.token_urlsafe(10)
 
 
 def default_username(name: str, tax_code: str, customer_id: int | None = None) -> str:

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from . import db as db_module, spx
 from .auth import CurrentUser, require_admin
 from .db import get_session
+from .security_utils import error_detail, safe_content_disposition
 from .schemas import (
     CustomLabelPrintIn,
     SpxBatchPrintIn,
@@ -126,8 +127,10 @@ def refresh_session(
             password=payload.password if payload else None,
         )
     except Exception as e:
-        logger.exception("Loi tu dong dang nhap SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi tự động đăng nhập SPX: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi tự động đăng nhập SPX", e, "ksp.spx"),
+        )
 
 
 @router.get("/stats", response_model=SpxStatsOut)
@@ -158,8 +161,10 @@ def quick_print(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi in nhanh SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi in nhanh: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi in nhanh vận đơn SPX", e, "ksp.spx"),
+        )
 
 
 
@@ -189,8 +194,10 @@ def print_custom_label(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi in tem nhan giao hang: %s", e)
-        raise HTTPException(status_code=500, detail=f"Loi in tem nhan giao hang: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi in tem nhãn giao hàng", e, "ksp.spx"),
+        )
 
 @router.post("/sync-orders")
 def sync_orders(
@@ -204,8 +211,10 @@ def sync_orders(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi dong bo SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi đồng bộ: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi đồng bộ đơn SPX", e, "ksp.spx"),
+        )
 
 
 @router.post("/batch-print")
@@ -224,9 +233,13 @@ def batch_print(
             printer_name=payload.printer_name,
             host=payload.host,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi in hang loat SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi in hàng loạt: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi in hàng loạt SPX", e, "ksp.spx"),
+        )
 
 
 
@@ -243,8 +256,10 @@ def create_order(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi tao van don SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi tạo vận đơn: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi tạo vận đơn SPX", e, "ksp.spx"),
+        )
 
 
 @router.get("/orders", response_model=SpxOrderListOut)
@@ -295,6 +310,7 @@ def get_order(
 def get_order_label(
     tracking_no: str,
     force_refresh: bool = Query(default=False),
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
     """Tai hoac in tem nhan PDF chinh hang cua van don SPX."""
@@ -304,14 +320,18 @@ def get_order_label(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename=SPX_{tracking_no}_A6.pdf"
+                "Content-Disposition": safe_content_disposition(
+                    f"SPX_{tracking_no}_A6.pdf", disposition="inline"
+                )
             },
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.exception("Loi xuat tem nhan SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi tải tem nhãn: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi tải tem nhãn SPX", e, "ksp.spx"),
+        )
 
 
 @router.post("/orders/{tracking_no}/mark-printed", response_model=SpxOrderOut)
@@ -355,8 +375,10 @@ def cancel_order(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi huy van don SPX: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi hủy vận đơn: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi hủy vận đơn SPX", e, "ksp.spx"),
+        )
 
 
 @router.get("/printers")
@@ -365,7 +387,10 @@ def get_printers(
     user: CurrentUser = Depends(require_admin),
 ):
     """Lay danh sach may in tren may Windows."""
-    return spx.list_remote_printers(host=host)
+    try:
+        return spx.list_remote_printers(host=host)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/orders/{tracking_no}/print-remote")
@@ -381,8 +406,12 @@ def print_order_remote(
         return spx.print_spx_order_remote(
             db, tracking_no, host=host, printer_name=printer_name
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Loi in tu xa: %s", e)
-        raise HTTPException(status_code=500, detail=f"Lỗi in từ xa: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=error_detail("Lỗi in tem nhãn từ xa", e, "ksp.spx"),
+        )
 
 

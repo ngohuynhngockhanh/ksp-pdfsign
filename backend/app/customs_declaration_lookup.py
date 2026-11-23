@@ -77,9 +77,10 @@ def lookup_customs_declaration(
     last_error = ""
     for attempt in range(1, max_retries + 1):
         try:
+            from .security_utils import get_gov_tls_verify
             with httpx.Client(
                 base_url=CUSTOMS_PORTAL_BASE,
-                verify=False,
+                verify=get_gov_tls_verify(),
                 timeout=30.0,
                 follow_redirects=True,
             ) as client:

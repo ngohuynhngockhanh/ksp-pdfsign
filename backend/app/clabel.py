@@ -1160,6 +1160,34 @@ def build_label_tspl(
     return builder.build(sets=1, copies=copies)
 
 
+def _allowed_ble_hosts() -> set[str]:
+    settings = get_settings()
+    hosts = set()
+    if settings.ble_gateway_host and settings.ble_gateway_host.strip():
+        hosts.add(settings.ble_gateway_host.strip().lower())
+    extra = getattr(settings, "allowed_ssh_hosts", "") or ""
+    for item in extra.split(","):
+        if item.strip():
+            hosts.add(item.strip().lower())
+    return hosts
+
+
+def _allowed_inut_dev_hosts() -> set[str]:
+    settings = get_settings()
+    hosts = {"inut-dev", "192.168.1.10", "192.168.1.111"}
+    for candidate in (
+        getattr(settings, "agent_default_ip", ""),
+        getattr(settings, "ecus_ssh_host", ""),
+    ):
+        if candidate and candidate.strip():
+            hosts.add(candidate.strip().lower())
+    extra = getattr(settings, "allowed_ssh_hosts", "") or ""
+    for item in extra.split(","):
+        if item.strip():
+            hosts.add(item.strip().lower())
+    return hosts
+
+
 @dataclass
 class ClabelBLEGateway:
     """Client dieu khien BLE Gateway (`root@77.88.207.23`) de quet va in sang Clabel CT221B."""
@@ -1170,11 +1198,16 @@ class ClabelBLEGateway:
     ssh_key_path: str = field(default_factory=lambda: get_settings().ble_gateway_ssh_key_path)
     timeout: int = field(default_factory=lambda: get_settings().ble_gateway_timeout)
 
+    def __post_init__(self) -> None:
+        from .security_utils import validate_allowed_host
+
+        self.host = validate_allowed_host(self.host, _allowed_ble_hosts())
+
     def _ssh_base_args(self) -> list[str]:
         args = [
             "ssh",
             "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=no",
+            "-o", "StrictHostKeyChecking=accept-new",
             "-o", f"ConnectTimeout={min(15, self.timeout)}",
             "-p", str(self.port),
         ]
@@ -2188,13 +2221,26 @@ def print_pdf_on_inut_dev(
     printer_name: str = "TP732H",
 ) -> dict[str, Any]:
     """SCP file PDF sang may inut-dev (Windows host) va goi Foxit Reader CLI in ra may in nhiet TP732H."""
+    import base64
     from .host_discovery import resolve_windows_host
+    from .security_utils import (
+        build_powershell_encoded_command,
+        validate_allowed_host,
+        validate_safe_token_str,
+    )
 
     target_host = "192.168.1.10" if host in ("inut-dev", "", None) else host
+    clean_host = validate_allowed_host(target_host, _allowed_inut_dev_hosts())
+    clean_printer = validate_safe_token_str(
+        printer_name, pattern=r"^[A-Za-z0-9 _.-]{1,64}$", field="printer_name"
+    )
+    clean_file = validate_safe_token_str(
+        win_file_name, pattern=r"^[A-Za-z0-9_.-]{1,120}$", field="win_file_name"
+    )
     try:
-        resolved_host = resolve_windows_host(target_host, probe_port=445)
+        resolved_host = resolve_windows_host(clean_host, probe_port=445)
     except TypeError:
-        resolved_host = resolve_windows_host(target_host)
+        resolved_host = resolve_windows_host(clean_host)
 
     scp_cmd = [
         "scp",
@@ -2202,26 +2248,35 @@ def print_pdf_on_inut_dev(
         "-i",
         "/home/ksp/.ssh/id_ed25519",
         "-o",
-        "StrictHostKeyChecking=no",
+        "StrictHostKeyChecking=accept-new",
         "-o",
         "ProxyCommand=none",
         "-o",
         "ConnectTimeout=60",
         str(pdf_path),
-        f"Administrator@{resolved_host}:C:/ksp/{win_file_name}",
+        f"Administrator@{resolved_host}:C:/ksp/{clean_file}",
     ]
     scp_proc = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
     if scp_proc.returncode != 0:
         raise RuntimeError(f"Loi chuyen file PDF sang may inut-dev ({resolved_host}): {scp_proc.stderr}")
 
-    foxit_cmd = f'"C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe" /t "C:\\ksp\\{win_file_name}" "{printer_name}"'
+    file_b64 = base64.b64encode(f"C:\\ksp\\{clean_file}".encode("utf-8")).decode("ascii")
+    printer_b64 = base64.b64encode(clean_printer.encode("utf-8")).decode("ascii")
+    ps_script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$f = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{file_b64}'))\n"
+        f"$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{printer_b64}'))\n"
+        "& 'C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe' '/t' $f $p\n"
+    )
+    encoded_ps = build_powershell_encoded_command(ps_script)
+    foxit_cmd = f"powershell -NoProfile -NonInteractive -EncodedCommand {encoded_ps}"
     ssh_print_cmd = [
         "ssh",
         "-n",
         "-i",
         "/home/ksp/.ssh/id_ed25519",
         "-o",
-        "StrictHostKeyChecking=no",
+        "StrictHostKeyChecking=accept-new",
         "-o",
         "ProxyCommand=none",
         "-o",
@@ -2236,8 +2291,8 @@ def print_pdf_on_inut_dev(
     return {
         "success": True,
         "resolved_host": resolved_host,
-        "printer_name": printer_name,
-        "remote_file": f"C:\\ksp\\{win_file_name}",
+        "printer_name": clean_printer,
+        "remote_file": f"C:\\ksp\\{clean_file}",
     }
 
 
@@ -2274,6 +2329,18 @@ def run_sanxuat_batch_printer(
     from sqlalchemy import select
     from . import storage
     from .db import Document, SanxuatBatchSheet, SanxuatDeviceLabel, Share, init_db
+    from .security_utils import validate_allowed_host, validate_safe_token_str
+
+    # Validate remote host / printer / gateway parameters upfront BEFORE any DB or subprocess work
+    target_inut_host = "192.168.1.10" if inut_dev_host in ("inut-dev", "", None) else inut_dev_host
+    inut_dev_host = validate_allowed_host(target_inut_host, _allowed_inut_dev_hosts())
+    inut_dev_printer = validate_safe_token_str(
+        inut_dev_printer, pattern=r"^[A-Za-z0-9 _.-]{1,64}$", field="printer_name"
+    )
+    if clabel_gateway_host:
+        clabel_gateway_host = validate_allowed_host(clabel_gateway_host, _allowed_ble_hosts())
+    if clabel_mac and not re.match(r"^[0-9A-Fa-f:]{17}$", clabel_mac.strip()):
+        raise ValueError(f"Dia chi MAC Clabel khong hop le: {clabel_mac}")
 
     init_db()
     clean_ids = parse_device_id_list(device_ids)

@@ -79,8 +79,18 @@ def verify_nonce(
         return False
 
     now = time.time()
-    if now - ts > _NONCE_TTL:
-        return False  # het han
+    if now - ts > _NONCE_TTL or ts - now > 30:
+        return False  # het han hoac sai lech thoi gian
+
+    # Verify HMAC truoc khi luu _used_nonces (chong DoS bo nho bang nonce gia)
+    ts_window = ts // _NONCE_TTL
+    ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
+    payload = f"{share_token}:{document_id}:{ts_window}:{ua_hash}"
+    expected = hmac.new(
+        _nonce_secret(settings).encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(mac_given, expected):
+        return False
 
     # Replay check
     with _nonce_lock:
@@ -88,15 +98,7 @@ def verify_nonce(
         if nonce in _used_nonces:
             return False
         _used_nonces[nonce] = now + _NONCE_TTL + 10  # keep a bit longer
-
-    # Verify HMAC
-    ts_window = ts // _NONCE_TTL
-    ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
-    payload = f"{share_token}:{document_id}:{ts_window}:{ua_hash}"
-    expected = hmac.new(
-        _nonce_secret(settings).encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(mac_given, expected)
+    return True
 
 
 def _maybe_cleanup(now: float) -> None:
@@ -163,6 +165,7 @@ def record_view(
     document_id: int,
     action: str = "view",
     ip: str = "",
+    rate_limit_ip: str = "",
     city: str = "",
     region: str = "",
     isp: str = "",
@@ -202,7 +205,9 @@ def record_view(
     if tracking:
         # Check if not expired
         if tracking.expires_at is None or datetime.utcnow() <= tracking.expires_at:
-            if _should_notify(ip, document_id, action):
+            # Cooldown luon khoa theo server-observed IP (khong tin body.ip tu client)
+            cooldown_ip = (rate_limit_ip or ip or "unknown").strip()
+            if _should_notify(cooldown_ip, document_id, action):
                 should_tg = True
                 view.notified = True
 

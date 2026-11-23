@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
@@ -11,12 +12,29 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import storage, trademark
-from .auth import CurrentUser, require_user
+from .auth import CurrentUser, require_admin
 from .db import IpTrademark, get_session
+from .security_utils import error_detail
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trademarks", tags=["trademarks"])
+
+_ALLOWED_TRADEMARK_LOGO_HOSTS = (
+    "wipopublish.ipvietnam.gov.vn",
+    "ipvietnam.gov.vn",
+)
+
+
+def _is_allowed_trademark_logo_url(url: str) -> bool:
+    try:
+        parsed = urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower().rstrip(".")
+    return any(host == h or host.endswith(f".{h}") for h in _ALLOWED_TRADEMARK_LOGO_HOSTS)
 
 
 class TrademarkSyncRequest(BaseModel):
@@ -31,7 +49,7 @@ class TrademarkLookupRequest(BaseModel):
 @router.get("", summary="Lay danh sach nhan hieu da luu trong he thong")
 def list_trademarks(
     db: Session = Depends(get_session),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> List[Dict[str, Any]]:
     """Tra ve toan bo nhan hieu kem tinh toan thoi han hieu luc va du toan le phi."""
     # Tu dong khoi tao du lieu mau cua INUT neu CSDL chua co ban ghi nao
@@ -47,7 +65,7 @@ def list_trademarks(
 def get_trademark_detail(
     trademark_id: int,
     db: Session = Depends(get_session),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Dict[str, Any]:
     tm = db.get(IpTrademark, trademark_id)
     if not tm:
@@ -62,7 +80,7 @@ def get_trademark_detail(
 def sync_trademarks(
     req: TrademarkSyncRequest = TrademarkSyncRequest(),
     db: Session = Depends(get_session),
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Ket noi Cổng Cục SHTT, crawl thong tin nhan hieu va anh logo luu tru noi bo."""
     try:
@@ -77,17 +95,16 @@ def sync_trademarks(
         result["items"] = [trademark.trademark_to_dict(tm) for tm in records]
         return result
     except Exception as e:
-        logger.exception("Loi khi dong bo nhan hieu: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi khi đồng bộ từ Cục SHTT: {str(e)}",
+            detail=error_detail("Lỗi khi đồng bộ từ Cục SHTT", e, "ksp.trademarks"),
         )
 
 
 @router.post("/lookup-online", summary="Tra cuu nhan hieu truc tuyen tu Cong Cuc SHTT")
 def lookup_trademarks_online(
     req: TrademarkLookupRequest,
-    user: CurrentUser = Depends(require_user),
+    user: CurrentUser = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Tra cuu truc tiep theo tu khoa bat ky ma khong can luu vao CSDL truoc."""
     try:
@@ -99,19 +116,19 @@ def lookup_trademarks_online(
             "items": items,
         }
     except Exception as e:
-        logger.exception("Loi khi tra cuu online: %s", e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Không thể tra cứu trực tuyến từ Cục SHTT: {str(e)}",
+            detail=error_detail("Không thể tra cứu trực tuyến từ Cục SHTT", e, "ksp.trademarks"),
         )
 
 
 @router.get("/{trademark_id}/logo", summary="Xem anh logo nhan hieu da luu tru")
 def get_trademark_logo(
     trademark_id: int,
+    user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    """Phuc vu file anh logo luu trong KSP Storage. Neu chua co, chuyen huong toi URL goc."""
+    """Phuc vu file anh logo luu trong KSP Storage. Neu chua co, chuyen huong toi URL goc hop le."""
     tm = db.get(IpTrademark, trademark_id)
     if not tm:
         raise HTTPException(
@@ -123,15 +140,21 @@ def get_trademark_logo(
         try:
             p = storage.path_for(tm.logo_doc_id, suffix=tm.logo_suffix or ".jpg")
             if p.exists():
+                safe_num = "".join(c for c in (tm.application_number or str(trademark_id)) if c.isalnum() or c in "-_")
                 return FileResponse(
                     path=str(p),
                     media_type="image/jpeg",
-                    filename=f"trademark_{tm.application_number or trademark_id}.jpg",
+                    filename=f"trademark_{safe_num or trademark_id}.jpg",
                 )
         except Exception:
             pass
 
     if tm.remote_logo_url:
+        if not _is_allowed_trademark_logo_url(tm.remote_logo_url):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL logo không thuộc tên miền Cục SHTT/WIPO được phép",
+            )
         return RedirectResponse(url=tm.remote_logo_url)
 
     raise HTTPException(

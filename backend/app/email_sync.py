@@ -179,8 +179,29 @@ def get_zoho_settings(db: Session, settings: Settings) -> dict[str, Any]:
     }
 
 
+_ZOHO_ALLOWED_HOSTS = (
+    "*.zoho.com",
+    "*.zoho.eu",
+    "*.zoho.in",
+    "*.zoho.com.au",
+    "*.zoho.jp",
+)
+
+
+def _validate_zoho_url(url: str, label: str = "Zoho URL") -> str:
+    from .security_utils import validate_outbound_url
+    try:
+        return validate_outbound_url(url, allowed_hosts=_ZOHO_ALLOWED_HOSTS)
+    except ValueError as exc:
+        raise EmailSyncError(f"{label} không hợp lệ (chỉ cho phép tên miền Zoho HTTPS): {exc}") from exc
+
+
 def save_zoho_settings(db: Session, config: dict[str, Any]) -> None:
     """Luu cau hinh Zoho vao bang AppSetting (tu dong ma hoa Fernet cho client_secret, refresh_token, password)."""
+    if config.get("accounts_url"):
+        _validate_zoho_url(str(config["accounts_url"]), "accounts_url")
+    if config.get("mail_api_url"):
+        _validate_zoho_url(str(config["mail_api_url"]), "mail_api_url")
     for key, val in config.items():
         # Chu y: mode, client_id, etc. luu theo prefix zoho_ hoac zoho_imap_
         if key in {"mode", "client_id", "client_secret", "refresh_token", "accounts_url", "mail_api_url"}:
@@ -218,6 +239,7 @@ def exchange_grant_token(
     if not client_id or not client_secret or not grant_token:
         raise EmailAuthError("Cần Client ID, Client Secret và Mã code (Grant Token)")
 
+    accounts_url = _validate_zoho_url(accounts_url, "accounts_url")
     url = f"{accounts_url.rstrip('/')}/oauth/v2/token"
     data = urllib.parse.urlencode({
         "code": grant_token,
@@ -255,6 +277,7 @@ def get_access_token_from_refresh(
     if not client_id or not client_secret or not refresh_token:
         raise EmailAuthError("Cần Client ID, Client Secret và Refresh Token để lấy access token")
 
+    accounts_url = _validate_zoho_url(accounts_url, "accounts_url")
     url = f"{accounts_url.rstrip('/')}/oauth/v2/token"
     data = urllib.parse.urlencode({
         "refresh_token": refresh_token,
@@ -315,6 +338,8 @@ def fetch_rest_api_attachments(
     timeout: float = 25.0,
 ) -> list[dict[str, Any]]:
     """Quet va tai file dinh kem tu Zoho Mail REST API OAuth 2.0 (ho tro phan trang)."""
+    accounts_url = _validate_zoho_url(accounts_url, "accounts_url")
+    mail_api_url = _validate_zoho_url(mail_api_url, "mail_api_url")
     access_token = get_access_token_from_refresh(
         client_id=client_id,
         client_secret=client_secret,

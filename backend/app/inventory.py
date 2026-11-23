@@ -436,6 +436,43 @@ class PostError(Exception):
     """Chung tu chua du dieu kien ghi so (loi nghiep vu, tra 400)."""
 
 
+class PostConflictError(PostError):
+    """Xung dot trang thai (vd ghi so / huy ghi so dong thoi hoac da ghi so -> 409)."""
+
+
+def _claim_status(
+    db: Session,
+    model,
+    row_id: int,
+    expected_status: str,
+    claim_status: str,
+    conflict_msg: str,
+) -> None:
+    """Chiem quyen chuyen trang thai nguyen tu trong DB (chong TOCTOU race condition)."""
+    from sqlalchemy import update as sa_update
+
+    # Ket thuc read snapshot cu neu session chua co thay doi pending -> DML UPDATE
+    # se mo write transaction moi co busy_timeout trong SQLite WAL (khong bi SQLITE_BUSY_SNAPSHOT).
+    if (
+        db.bind is not None
+        and db.bind.dialect.name == "sqlite"
+        and not db.new
+        and not db.dirty
+        and not db.deleted
+    ):
+        db.rollback()
+
+    res = db.execute(
+        sa_update(model)
+        .where(model.id == row_id, model.status == expected_status)
+        .values(status=claim_status)
+    )
+    db.flush()
+    if res.rowcount != 1:
+        db.rollback()
+        raise PostConflictError(conflict_msg)
+
+
 _ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -492,75 +529,97 @@ def post_purchase(db: Session, inv: InvPurchase) -> None:
     hang_hoa: moi dong -> 1 move 'nhap' (vao kho).
     dich_vu: chi phi/dich vu -> chi danh dau da ghi so, KHONG nhap kho.
     """
-    if inv.status != "draft":
-        raise PostError(f"Hóa đơn đang ở trạng thái '{inv.status}', chỉ ghi sổ được bản nháp")
-    _check_ngay(inv.ngay)
-    # Chan ghi so trung (ca hai loai): cung MST ben ban + so HD (bo so 0 dau)
-    so_hd_norm = normalize_so_hd(inv.so_hd)
-    if inv.mst_ban and so_hd_norm:
-        for other in db.scalars(
-            select(InvPurchase).where(
-                InvPurchase.status == "posted",
-                InvPurchase.mst_ban == inv.mst_ban,
-                InvPurchase.id != inv.id,
-            )
-        ):
-            if normalize_so_hd(other.so_hd) == so_hd_norm:
-                raise PostError(
-                    f"Đã có hóa đơn #{other.id} ghi sổ với cùng MST bên bán + số HĐ "
-                    f"{inv.so_hd} — coi chừng ghi sổ trùng"
+    _claim_status(
+        db,
+        InvPurchase,
+        inv.id,
+        "draft",
+        "posting",
+        f"Hóa đơn đang ở trạng thái '{inv.status}', chỉ ghi sổ được bản nháp",
+    )
+    db.refresh(inv)
+    try:
+        _check_ngay(inv.ngay)
+        # Chan ghi so trung (ca hai loai): cung MST ben ban + so HD (bo so 0 dau)
+        so_hd_norm = normalize_so_hd(inv.so_hd)
+        if inv.mst_ban and so_hd_norm:
+            for other in db.scalars(
+                select(InvPurchase).where(
+                    InvPurchase.status == "posted",
+                    InvPurchase.mst_ban == inv.mst_ban,
+                    InvPurchase.id != inv.id,
                 )
+            ):
+                if normalize_so_hd(other.so_hd) == so_hd_norm:
+                    raise PostError(
+                        f"Đã có hóa đơn #{other.id} ghi sổ với cùng MST bên bán + số HĐ "
+                        f"{inv.so_hd} — coi chừng ghi sổ trùng"
+                    )
 
-    if inv.source in ("gdt_portal", "excel_bk") or inv.loai == "dich_vu":
-        # Hóa đơn đối soát thuế / chi phí dịch vụ: TUYỆT ĐỐI KHÔNG TẠO MOVE KHO, KHÔNG ẢNH HƯỞNG TỒN KHO
+        if inv.source in ("gdt_portal", "excel_bk") or inv.loai == "dich_vu":
+            # Hóa đơn đối soát thuế / chi phí dịch vụ: TUYỆT ĐỐI KHÔNG TẠO MOVE KHO, KHÔNG ẢNH HƯỞNG TỒN KHO
+            inv.status = "posted"
+            inv.posted_at = _utcnow()
+            db.commit()
+            return
+
+        if not inv.lines:
+            raise PostError("Hóa đơn chưa có dòng hàng nào")
+        pairs: set[tuple[int, int]] = set()
+        for ln in inv.lines:
+            if not ln.item_id or not ln.warehouse_id:
+                raise PostError(
+                    f"Dòng {ln.stt} ({ln.ten_raw[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
+                )
+            if ln.so_luong <= 0:
+                raise PostError(f"Dòng {ln.stt} ({ln.ten_raw[:40]}): số lượng phải > 0")
+            # Thanh tien = so luong * don gia (tinh lai, khong tin so parse san)
+            gia_tri = round(ln.so_luong * ln.don_gia)
+            db.add(InvMove(
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                ngay=inv.ngay,
+                loai="nhap",
+                so_luong=ln.so_luong,
+                don_gia=ln.don_gia or (gia_tri / ln.so_luong),
+                gia_tri=gia_tri,
+                ref_type="purchase",
+                ref_id=inv.id,
+                ref_line_id=ln.id,
+            ))
+            pairs.add((ln.item_id, ln.warehouse_id))
+        db.flush()
+        validate_pairs(db, pairs)
+        _upsert_purchase_aliases(db, inv)
         inv.status = "posted"
         inv.posted_at = _utcnow()
         db.commit()
-        return
-
-    if not inv.lines:
-        raise PostError("Hóa đơn chưa có dòng hàng nào")
-    pairs: set[tuple[int, int]] = set()
-    for ln in inv.lines:
-        if not ln.item_id or not ln.warehouse_id:
-            raise PostError(
-                f"Dòng {ln.stt} ({ln.ten_raw[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
-            )
-        if ln.so_luong <= 0:
-            raise PostError(f"Dòng {ln.stt} ({ln.ten_raw[:40]}): số lượng phải > 0")
-        # Thanh tien = so luong * don gia (tinh lai, khong tin so parse san)
-        gia_tri = round(ln.so_luong * ln.don_gia)
-        db.add(InvMove(
-            item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id,
-            ngay=inv.ngay,
-            loai="nhap",
-            so_luong=ln.so_luong,
-            don_gia=ln.don_gia or (gia_tri / ln.so_luong),
-            gia_tri=gia_tri,
-            ref_type="purchase",
-            ref_id=inv.id,
-            ref_line_id=ln.id,
-        ))
-        pairs.add((ln.item_id, ln.warehouse_id))
-    db.flush()
-    validate_pairs(db, pairs)
-    _upsert_purchase_aliases(db, inv)
-    inv.status = "posted"
-    inv.posted_at = _utcnow()
-    db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def unpost_purchase(db: Session, inv: InvPurchase) -> None:
     """Huy ghi so (ve nhap): xoa moves; chan neu lam am kho phieu xuat sau do."""
-    if inv.status != "posted":
-        raise PostError("Hóa đơn chưa ghi sổ")
-    pairs = _delete_ref_moves(db, "purchase", inv.id)
-    db.flush()
-    validate_pairs(db, pairs)
-    inv.status = "draft"
-    inv.posted_at = None
-    db.commit()
+    _claim_status(
+        db,
+        InvPurchase,
+        inv.id,
+        "posted",
+        "voiding",
+        "Hóa đơn chưa ghi sổ hoặc đang được xử lý",
+    )
+    db.refresh(inv)
+    try:
+        pairs = _delete_ref_moves(db, "purchase", inv.id)
+        db.flush()
+        validate_pairs(db, pairs)
+        inv.status = "draft"
+        inv.posted_at = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def post_issue(db: Session, iss: InvIssue, override_reason: str | None = None) -> None:
@@ -573,68 +632,90 @@ def post_issue(db: Session, iss: InvIssue, override_reason: str | None = None) -
     Van chay replay de tinh gia von (replay gan gia_tri truoc khi validate raise),
     chi KHONG chan. Danh dau iss.am_kho_override=True + luu ly do vao iss.ly_do.
     """
-    if iss.status != "draft":
-        raise PostError(f"Phiếu đang ở trạng thái '{iss.status}'")
-    _check_ngay(iss.ngay)
-    if not iss.lines:
-        raise PostError("Phiếu xuất chưa có dòng hàng nào")
-    pairs: set[tuple[int, int]] = set()
-    line_moves: dict[int, InvMove] = {}
-    for ln in iss.lines:
-        if ln.so_luong <= 0:
-            raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
-        m = InvMove(
-            item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id,
-            ngay=iss.ngay,
-            loai="xuat",
-            so_luong=ln.so_luong,
-            ref_type="issue",
-            ref_id=iss.id,
-            ref_line_id=ln.id,
-        )
-        db.add(m)
-        line_moves[ln.id] = m
-        pairs.add((ln.item_id, ln.warehouse_id))
-    db.flush()
-    if override_reason:
-        # Chap nhan am kho: replay van gan gia_von len move, chi bo qua chan.
-        try:
-            validate_pairs(db, pairs)
-        except NegativeStockError:
-            pass
-        iss.am_kho_override = True
-        iss.ly_do = (override_reason or "")[:255]
-    else:
-        validate_pairs(db, pairs)  # tinh lai gia von (gan len move objects)
-    # Dong bang gia von + thanh tien ban len tung dong; tong hop
-    tong = 0.0
-    for ln in iss.lines:
-        m = line_moves.get(ln.id)
-        ln.gia_von = m.gia_tri if m else 0.0
-        ln.thanh_tien_ban = round(ln.so_luong * (ln.don_gia_ban or 0.0))
-        tong += ln.gia_von
-    iss.tong_gia_von = tong
-    if not iss.tk_no or not iss.tk_co:
-        no, co = dinh_khoan_xuat(iss.muc_dich or "ban")
-        iss.tk_no = iss.tk_no or no
-        iss.tk_co = iss.tk_co or co
-    if not iss.so_ct:
-        iss.so_ct = f"PX-{(iss.ngay or '')[:4] or '----'}-{iss.id:04d}"
-    iss.status = "posted"
-    iss.posted_at = _utcnow()
-    db.commit()
+    _claim_status(
+        db,
+        InvIssue,
+        iss.id,
+        "draft",
+        "posting",
+        f"Phiếu đang ở trạng thái '{iss.status}'",
+    )
+    db.refresh(iss)
+    try:
+        _check_ngay(iss.ngay)
+        if not iss.lines:
+            raise PostError("Phiếu xuất chưa có dòng hàng nào")
+        pairs: set[tuple[int, int]] = set()
+        line_moves: dict[int, InvMove] = {}
+        for ln in iss.lines:
+            if ln.so_luong <= 0:
+                raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
+            m = InvMove(
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                ngay=iss.ngay,
+                loai="xuat",
+                so_luong=ln.so_luong,
+                ref_type="issue",
+                ref_id=iss.id,
+                ref_line_id=ln.id,
+            )
+            db.add(m)
+            line_moves[ln.id] = m
+            pairs.add((ln.item_id, ln.warehouse_id))
+        db.flush()
+        if override_reason:
+            # Chap nhan am kho: replay van gan gia_von len move, chi bo qua chan.
+            try:
+                validate_pairs(db, pairs)
+            except NegativeStockError:
+                pass
+            iss.am_kho_override = True
+            iss.ly_do = (override_reason or "")[:255]
+        else:
+            validate_pairs(db, pairs)  # tinh lai gia von (gan len move objects)
+        # Dong bang gia von + thanh tien ban len tung dong; tong hop
+        tong = 0.0
+        for ln in iss.lines:
+            m = line_moves.get(ln.id)
+            ln.gia_von = m.gia_tri if m else 0.0
+            ln.thanh_tien_ban = round(ln.so_luong * (ln.don_gia_ban or 0.0))
+            tong += ln.gia_von
+        iss.tong_gia_von = tong
+        if not iss.tk_no or not iss.tk_co:
+            no, co = dinh_khoan_xuat(iss.muc_dich or "ban")
+            iss.tk_no = iss.tk_no or no
+            iss.tk_co = iss.tk_co or co
+        if not iss.so_ct:
+            iss.so_ct = f"PX-{(iss.ngay or '')[:4] or '----'}-{iss.id:04d}"
+        iss.status = "posted"
+        iss.posted_at = _utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def unpost_issue(db: Session, iss: InvIssue) -> None:
-    if iss.status != "posted":
-        raise PostError("Phiếu chưa ghi sổ")
-    pairs = _delete_ref_moves(db, "issue", iss.id)
-    db.flush()
-    validate_pairs(db, pairs)
-    iss.status = "draft"
-    iss.posted_at = None
-    db.commit()
+    _claim_status(
+        db,
+        InvIssue,
+        iss.id,
+        "posted",
+        "voiding",
+        "Phiếu chưa ghi sổ hoặc đang được xử lý",
+    )
+    db.refresh(iss)
+    try:
+        pairs = _delete_ref_moves(db, "issue", iss.id)
+        db.flush()
+        validate_pairs(db, pairs)
+        iss.status = "draft"
+        iss.posted_at = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def post_production(db: Session, prod: InvProduction, override_reason: str | None = None) -> None:
@@ -647,110 +728,132 @@ def post_production(db: Session, prod: InvProduction, override_reason: str | Non
     se nhap bu). Chi bo qua chan o buoc xuat NVL; buoc nhap TP van validate binh
     thuong (TP nhap vao khong am). Danh dau prod.am_kho_override + luu ly do note.
     """
-    if prod.status != "draft":
-        raise PostError(f"Lệnh đang ở trạng thái '{prod.status}'")
-    _check_ngay(prod.ngay)
-    consumes = [ln for ln in prod.lines if ln.chieu == "vao"]
-    outputs = [ln for ln in prod.lines if ln.chieu == "ra"]
-    if not consumes or not outputs:
-        raise PostError("Lệnh sản xuất cần ít nhất 1 dòng tiêu hao và 1 dòng thành phẩm")
-    out_ids = {ln.item_id for ln in outputs}
-    if out_ids & {ln.item_id for ln in consumes}:
-        raise PostError("Một mặt hàng không thể vừa là nguyên liệu vừa là thành phẩm")
-    for ln in prod.lines:
-        if ln.so_luong <= 0:
-            raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
+    _claim_status(
+        db,
+        InvProduction,
+        prod.id,
+        "draft",
+        "posting",
+        f"Lệnh đang ở trạng thái '{prod.status}'",
+    )
+    db.refresh(prod)
+    try:
+        _check_ngay(prod.ngay)
+        consumes = [ln for ln in prod.lines if ln.chieu == "vao"]
+        outputs = [ln for ln in prod.lines if ln.chieu == "ra"]
+        if not consumes or not outputs:
+            raise PostError("Lệnh sản xuất cần ít nhất 1 dòng tiêu hao và 1 dòng thành phẩm")
+        out_ids = {ln.item_id for ln in outputs}
+        if out_ids & {ln.item_id for ln in consumes}:
+            raise PostError("Một mặt hàng không thể vừa là nguyên liệu vừa là thành phẩm")
+        for ln in prod.lines:
+            if ln.so_luong <= 0:
+                raise PostError(f"Dòng mặt hàng #{ln.item_id}: số lượng phải > 0")
 
-    # 1) Xuat tieu hao (sx_out) — replay tinh gia von, co the bao am kho
-    pairs: set[tuple[int, int]] = set()
-    out_moves: list[tuple[InvProductionLine, InvMove]] = []
-    for ln in consumes:
-        m = InvMove(
-            item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id,
-            ngay=prod.ngay,
-            loai="sx_out",
-            so_luong=ln.so_luong,
-            ref_type="production",
-            ref_id=prod.id,
-            ref_line_id=ln.id,
-            lot_number=getattr(ln, "lot_number", "") or "",
-            serial_numbers=getattr(ln, "serial_numbers", "") or "",
-        )
-        db.add(m)
-        out_moves.append((ln, m))
-        pairs.add((ln.item_id, ln.warehouse_id))
-    db.flush()
-    if override_reason:
-        try:
-            validate_pairs(db, pairs)  # van chay replay de tinh gia von NVL
-        except NegativeStockError:
-            pass
-        prod.am_kho_override = True
-        prod.note = (f"[ÂM KHO ĐÃ DUYỆT] {override_reason} · " + (prod.note or ""))[:500]
-    else:
-        validate_pairs(db, pairs)
-
-    # 1b) Gia tam tinh: NVL nao chua co gia von (gia_tri==0) ma co don_gia_tam
-    # -> gan gia tri tam len dong xuat (giu can bang gia tri xuat/nhap TP; se
-    # tu dieu chinh khi NVL co gia von that o lan replay sau).
-    for ln, m in out_moves:
-        if (not m.gia_tri) and (ln.don_gia_tam or 0) > 0:
-            m.gia_tri = round(ln.so_luong * ln.don_gia_tam)
-            m.don_gia = ln.don_gia_tam
-
-    # 2) Gia thanh = tong gia tri NVL tieu hao + nhan cong (622) + SX chung (627)
-    nvl_cost = sum(m.gia_tri for _, m in out_moves)
-    total_cost = nvl_cost + (prod.cp_nhan_cong or 0.0) + (prod.cp_sxc or 0.0)
-    total_out_qty = sum(ln.so_luong for ln in outputs)
-    don_gia_tp = total_cost / total_out_qty if total_out_qty else 0.0
-
-    in_pairs: set[tuple[int, int]] = set()
-    allocated = 0.0
-    for i, ln in enumerate(outputs):
-        if i < len(outputs) - 1:
-            gia_tri = round(ln.so_luong * don_gia_tp)
-            allocated += gia_tri
+        # 1) Xuat tieu hao (sx_out) — replay tinh gia von, co the bao am kho
+        pairs: set[tuple[int, int]] = set()
+        out_moves: list[tuple[InvProductionLine, InvMove]] = []
+        for ln in consumes:
+            m = InvMove(
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                ngay=prod.ngay,
+                loai="sx_out",
+                so_luong=ln.so_luong,
+                ref_type="production",
+                ref_id=prod.id,
+                ref_line_id=ln.id,
+                lot_number=getattr(ln, "lot_number", "") or "",
+                serial_numbers=getattr(ln, "serial_numbers", "") or "",
+            )
+            db.add(m)
+            out_moves.append((ln, m))
+            pairs.add((ln.item_id, ln.warehouse_id))
+        db.flush()
+        if override_reason:
+            try:
+                validate_pairs(db, pairs)  # van chay replay de tinh gia von NVL
+            except NegativeStockError:
+                pass
+            prod.am_kho_override = True
+            prod.note = (f"[ÂM KHO ĐÃ DUYỆT] {override_reason} · " + (prod.note or ""))[:500]
         else:
-            gia_tri = round(total_cost - allocated)  # dong cuoi nhan phan du
-        out_lot = getattr(ln, "lot_number", "") or getattr(prod, "lot_number", "") or ""
-        out_serials = getattr(ln, "serial_numbers", "") or getattr(prod, "serial_numbers", "") or ""
-        db.add(InvMove(
-            item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id,
-            ngay=prod.ngay,
-            loai="sx_in",
-            so_luong=ln.so_luong,
-            don_gia=don_gia_tp,
-            gia_tri=gia_tri,
-            ref_type="production",
-            ref_id=prod.id,
-            ref_line_id=ln.id,
-            lot_number=out_lot,
-            serial_numbers=out_serials,
-        ))
-        in_pairs.add((ln.item_id, ln.warehouse_id))
-    db.flush()
-    # Chi validate cap thanh pham (in_pairs): cap NVL (pairs) da validate o buoc 1;
-    # replay lai chung se ghi de gia_tri tam tinh vua gan (thanh pham luon khac NVL).
-    validate_pairs(db, in_pairs)
-    prod.tong_gia_thanh = total_cost
-    if not prod.so_ct:
-        prod.so_ct = f"LSX-{(prod.ngay or '')[:4] or '----'}-{prod.id:04d}"
-    prod.status = "posted"
-    prod.posted_at = _utcnow()
-    db.commit()
+            validate_pairs(db, pairs)
+
+        # 1b) Gia tam tinh: NVL nao chua co gia von (gia_tri==0) ma co don_gia_tam
+        # -> gan gia tri tam len dong xuat (giu can bang gia tri xuat/nhap TP; se
+        # tu dieu chinh khi NVL co gia von that o lan replay sau).
+        for ln, m in out_moves:
+            if (not m.gia_tri) and (ln.don_gia_tam or 0) > 0:
+                m.gia_tri = round(ln.so_luong * ln.don_gia_tam)
+                m.don_gia = ln.don_gia_tam
+
+        # 2) Gia thanh = tong gia tri NVL tieu hao + nhan cong (622) + SX chung (627)
+        nvl_cost = sum(m.gia_tri for _, m in out_moves)
+        total_cost = nvl_cost + (prod.cp_nhan_cong or 0.0) + (prod.cp_sxc or 0.0)
+        total_out_qty = sum(ln.so_luong for ln in outputs)
+        don_gia_tp = total_cost / total_out_qty if total_out_qty else 0.0
+
+        in_pairs: set[tuple[int, int]] = set()
+        allocated = 0.0
+        for i, ln in enumerate(outputs):
+            if i < len(outputs) - 1:
+                gia_tri = round(ln.so_luong * don_gia_tp)
+                allocated += gia_tri
+            else:
+                gia_tri = round(total_cost - allocated)  # dong cuoi nhan phan du
+            out_lot = getattr(ln, "lot_number", "") or getattr(prod, "lot_number", "") or ""
+            out_serials = getattr(ln, "serial_numbers", "") or getattr(prod, "serial_numbers", "") or ""
+            db.add(InvMove(
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                ngay=prod.ngay,
+                loai="sx_in",
+                so_luong=ln.so_luong,
+                don_gia=don_gia_tp,
+                gia_tri=gia_tri,
+                ref_type="production",
+                ref_id=prod.id,
+                ref_line_id=ln.id,
+                lot_number=out_lot,
+                serial_numbers=out_serials,
+            ))
+            in_pairs.add((ln.item_id, ln.warehouse_id))
+        db.flush()
+        # Chi validate cap thanh pham (in_pairs): cap NVL (pairs) da validate o buoc 1;
+        # replay lai chung se ghi de gia_tri tam tinh vua gan (thanh pham luon khac NVL).
+        validate_pairs(db, in_pairs)
+        prod.tong_gia_thanh = total_cost
+        if not prod.so_ct:
+            prod.so_ct = f"LSX-{(prod.ngay or '')[:4] or '----'}-{prod.id:04d}"
+        prod.status = "posted"
+        prod.posted_at = _utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def unpost_production(db: Session, prod: InvProduction) -> None:
-    if prod.status != "posted":
-        raise PostError("Lệnh chưa ghi sổ")
-    pairs = _delete_ref_moves(db, "production", prod.id)
-    db.flush()
-    validate_pairs(db, pairs)
-    prod.status = "draft"
-    prod.posted_at = None
-    db.commit()
+    _claim_status(
+        db,
+        InvProduction,
+        prod.id,
+        "posted",
+        "voiding",
+        "Lệnh chưa ghi sổ hoặc đang được xử lý",
+    )
+    db.refresh(prod)
+    try:
+        pairs = _delete_ref_moves(db, "production", prod.id)
+        db.flush()
+        validate_pairs(db, pairs)
+        prod.status = "draft"
+        prod.posted_at = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -764,63 +867,85 @@ def post_customs(db: Session, decl: InvCustomsDecl) -> None:
     + tien_thue_nk + PHAN BO chi phi tu InvCustomsCost theo ti trong tri_gia_tinh_thue
     cua tung dong (dong cuoi nhan phan du lam tron — pattern giong post_production).
     """
-    if decl.status != "draft":
-        raise PostError(f"Tờ khai đang ở trạng thái '{decl.status}', chỉ ghi sổ được bản nháp")
-    _check_ngay(decl.ngay_dang_ky)
-    if not decl.lines:
-        raise PostError("Tờ khai chưa có dòng hàng nào")
-    for ln in decl.lines:
-        if not ln.item_id or not ln.warehouse_id:
-            raise PostError(
-                f"Dòng {ln.stt} ({ln.mo_ta[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
-            )
-        if ln.so_luong <= 0:
-            raise PostError(f"Dòng {ln.stt} ({ln.mo_ta[:40]}): số lượng phải > 0")
+    _claim_status(
+        db,
+        InvCustomsDecl,
+        decl.id,
+        "draft",
+        "posting",
+        f"Tờ khai đang ở trạng thái '{decl.status}', chỉ ghi sổ được bản nháp",
+    )
+    db.refresh(decl)
+    try:
+        _check_ngay(decl.ngay_dang_ky)
+        if not decl.lines:
+            raise PostError("Tờ khai chưa có dòng hàng nào")
+        for ln in decl.lines:
+            if not ln.item_id or not ln.warehouse_id:
+                raise PostError(
+                    f"Dòng {ln.stt} ({ln.mo_ta[:40]}): chưa chọn mặt hàng/kho — phải khớp hết mới ghi sổ được"
+                )
+            if ln.so_luong <= 0:
+                raise PostError(f"Dòng {ln.stt} ({ln.mo_ta[:40]}): số lượng phải > 0")
 
-    tong_costs = sum(c.so_tien for c in decl.costs)
-    tong_thue_co_so = sum(ln.tri_gia_tinh_thue for ln in decl.lines)
-    lines_sorted = sorted(decl.lines, key=lambda x: (x.stt, x.id))
+        tong_costs = sum(c.so_tien for c in decl.costs)
+        tong_thue_co_so = sum(ln.tri_gia_tinh_thue for ln in decl.lines)
+        lines_sorted = sorted(decl.lines, key=lambda x: (x.stt, x.id))
 
-    pairs: set[tuple[int, int]] = set()
-    allocated = 0.0
-    for i, ln in enumerate(lines_sorted):
-        if i < len(lines_sorted) - 1:
-            phan_bo = round(tong_costs * (ln.tri_gia_tinh_thue / tong_thue_co_so)) if tong_thue_co_so > EPS else 0.0
-            allocated += phan_bo
-        else:
-            phan_bo = round(tong_costs - allocated)  # dong cuoi nhan phan du lam tron
-        gia_von = round(ln.tri_gia_tinh_thue + ln.tien_thue_nk + phan_bo)
-        ln.gia_von = gia_von
-        db.add(InvMove(
-            item_id=ln.item_id,
-            warehouse_id=ln.warehouse_id,
-            ngay=decl.ngay_dang_ky,
-            loai="nhap",
-            so_luong=ln.so_luong,
-            don_gia=gia_von / ln.so_luong if ln.so_luong else 0.0,
-            gia_tri=gia_von,
-            ref_type="customs",
-            ref_id=decl.id,
-            ref_line_id=ln.id,
-        ))
-        pairs.add((ln.item_id, ln.warehouse_id))
-    db.flush()
-    validate_pairs(db, pairs)
-    decl.status = "posted"
-    decl.posted_at = _utcnow()
-    db.commit()
+        pairs: set[tuple[int, int]] = set()
+        allocated = 0.0
+        for i, ln in enumerate(lines_sorted):
+            if i < len(lines_sorted) - 1:
+                phan_bo = round(tong_costs * (ln.tri_gia_tinh_thue / tong_thue_co_so)) if tong_thue_co_so > EPS else 0.0
+                allocated += phan_bo
+            else:
+                phan_bo = round(tong_costs - allocated)  # dong cuoi nhan phan du lam tron
+            gia_von = round(ln.tri_gia_tinh_thue + ln.tien_thue_nk + phan_bo)
+            ln.gia_von = gia_von
+            db.add(InvMove(
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                ngay=decl.ngay_dang_ky,
+                loai="nhap",
+                so_luong=ln.so_luong,
+                don_gia=gia_von / ln.so_luong if ln.so_luong else 0.0,
+                gia_tri=gia_von,
+                ref_type="customs",
+                ref_id=decl.id,
+                ref_line_id=ln.id,
+            ))
+            pairs.add((ln.item_id, ln.warehouse_id))
+        db.flush()
+        validate_pairs(db, pairs)
+        decl.status = "posted"
+        decl.posted_at = _utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def unpost_customs(db: Session, decl: InvCustomsDecl) -> None:
     """Huy ghi so (ve nhap): xoa moves; chan neu lam am kho phieu xuat sau do."""
-    if decl.status != "posted":
-        raise PostError("Tờ khai chưa ghi sổ")
-    pairs = _delete_ref_moves(db, "customs", decl.id)
-    db.flush()
-    validate_pairs(db, pairs)
-    decl.status = "draft"
-    decl.posted_at = None
-    db.commit()
+    _claim_status(
+        db,
+        InvCustomsDecl,
+        decl.id,
+        "posted",
+        "voiding",
+        "Tờ khai chưa ghi sổ hoặc đang được xử lý",
+    )
+    db.refresh(decl)
+    try:
+        pairs = _delete_ref_moves(db, "customs", decl.id)
+        db.flush()
+        validate_pairs(db, pairs)
+        decl.status = "draft"
+        decl.posted_at = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 # ---------------------------------------------------------------------------

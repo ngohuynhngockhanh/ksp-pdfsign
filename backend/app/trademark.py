@@ -420,10 +420,11 @@ def download_and_store_logo(
         if client:
             resp = client.get(remote_url, timeout=15.0)
         else:
+            from .security_utils import get_gov_tls_verify
             with httpx.Client(
                 headers=WIPO_DEFAULT_HEADERS,
                 timeout=15.0,
-                verify=False,
+                verify=get_gov_tls_verify(),
                 follow_redirects=True,
             ) as c:
                 resp = c.get(remote_url)
@@ -531,10 +532,11 @@ def search_wipo_trademarks(
                 follow_redirects=True,
             )
         else:
+            from .security_utils import get_gov_tls_verify
             with httpx.Client(
                 headers=WIPO_DEFAULT_HEADERS,
                 timeout=20.0,
-                verify=False,
+                verify=get_gov_tls_verify(),
                 follow_redirects=True,
             ) as c:
                 resp = c.get(WIPO_SEARCH_URL, params=params)
@@ -607,7 +609,8 @@ def sync_trademarks_from_wipo(
         }
 
     synced = 0
-    with httpx.Client(headers=WIPO_DEFAULT_HEADERS, timeout=15.0, verify=False, follow_redirects=True) as client:
+    from .security_utils import get_gov_tls_verify
+    with httpx.Client(headers=WIPO_DEFAULT_HEADERS, timeout=15.0, verify=get_gov_tls_verify(), follow_redirects=True) as client:
         for item in wipo_items:
             app_no = item["application_number"]
             tm = db.scalar(select(IpTrademark).where(IpTrademark.application_number == app_no))

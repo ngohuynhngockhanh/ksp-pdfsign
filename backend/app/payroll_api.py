@@ -389,7 +389,8 @@ def lock_period(period_id: int, db: Session = Depends(get_session), _: CurrentUs
 
 @router.post("/imports")
 async def upload_import(file: UploadFile = File(...), db: Session = Depends(get_session), user: CurrentUser = Depends(require_admin)):
-    data = await file.read()
+    from .storage import read_upload_limited
+    data = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     if not file.filename or not file.filename.lower().endswith(".xlsx"): raise HTTPException(400, "Chỉ chấp nhận tệp XLSX")
     root = get_settings().data_path / "payroll_imports"; root.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(data).hexdigest(); path = root / f"{digest}.xlsx"; path.write_bytes(data)
@@ -701,8 +702,9 @@ async def upload_payment_evidence(payment_id: int, file: UploadFile = File(...),
         raise HTTPException(400, "Chứng từ chỉ chấp nhận PDF, PNG hoặc JPG")
     if file.content_type and file.content_type != allowed[suffix]:
         raise HTTPException(400, "Loại nội dung chứng từ không khớp phần mở rộng")
-    data = await file.read(10_000_001)
-    if not data or len(data) > 10_000_000:
+    from .storage import read_upload_limited
+    data = await read_upload_limited(file, max_bytes=10 * 1024 * 1024)
+    if not data:
         raise HTTPException(400, "Chứng từ phải có dung lượng từ 1 byte đến 10 MB")
     signatures = {".pdf": (b"%PDF",), ".png": (b"\x89PNG\r\n\x1a\n",),
                   ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",)}

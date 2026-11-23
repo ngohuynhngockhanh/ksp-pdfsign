@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    event,
     select,
 )
 from sqlalchemy.orm import (
@@ -139,6 +140,22 @@ class Document(Base):
     source_system: Mapped[str] = mapped_column(String(30), default="", index=True)
     source_external_id: Mapped[str] = mapped_column(String(100), default="", index=True)
     source_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # LIO Signer (ky so tu xa HKD Cong nghe LIO)
+    lio_session_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    lio_status: Mapped[str] = mapped_column(String(40), default="", index=True)
+    lio_polling_url: Mapped[str] = mapped_column(String(1000), default="")
+    lio_file_url: Mapped[str] = mapped_column(String(1000), default="")
+    lio_placement_method: Mapped[str] = mapped_column(String(50), default="")
+    lio_reason: Mapped[str] = mapped_column(String(255), default="")
+    lio_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    lio_expires_at: Mapped[str] = mapped_column(String(64), default="")
+    lio_signed_at: Mapped[str] = mapped_column(String(64), default="")
+    lio_last_delivery_id: Mapped[str] = mapped_column(String(128), default="")
+    lio_countersigned_status: Mapped[str] = mapped_column(String(40), default="")
+    lio_countersigned_at: Mapped[str] = mapped_column(String(64), default="")
+    lio_countersigned_file_id: Mapped[str] = mapped_column(String(100), default="")
+    lio_countersigned_error: Mapped[str] = mapped_column(String(255), default="")
+    lio_countersigned_signatures_json: Mapped[str] = mapped_column(Text, default="[]")
 
     customer: Mapped["Customer | None"] = relationship(back_populates="documents")
     order: Mapped["Order | None"] = relationship(back_populates="documents")
@@ -1804,9 +1821,28 @@ class WebLead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class RevokedToken(Base):
+    """Danh sach JWT da thu hoi theo tung phien (jti) khi nguoi dung dang xuat."""
+
+    __tablename__ = "revoked_tokens"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 _engine = None
 _SessionLocal = None
 
+
+def _configure_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
 
 
 def _init_engine():
@@ -1818,6 +1854,7 @@ def _init_engine():
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
     )
+    event.listen(_engine, "connect", _configure_sqlite_pragmas)
     _SessionLocal = sessionmaker(bind=_engine, autoflush=False, expire_on_commit=False)
 
 
@@ -2113,7 +2150,7 @@ def _seed_piecework_contracts() -> None:
                     worker_signed_at=datetime(2026, 9, 29, 16, 30, tzinfo=timezone.utc),
                     is_signed_by_inut=True,
                     inut_signed_at=datetime(2026, 9, 28, 9, 0, tzinfo=timezone.utc),
-                    portal_token="dongson-kiosk-token-849200",
+                    portal_token=__import__("secrets").token_urlsafe(24),
                 ),
                 PieceworkContract(
                     contract_code="02/2026/HĐGK-SONLA-LL100",
@@ -2151,7 +2188,7 @@ def _seed_piecework_contracts() -> None:
                     is_signed_by_worker=False,
                     is_signed_by_inut=False,
                     inut_signed_at=None,
-                    portal_token="sonla-ll100-token-850082",
+                    portal_token=__import__("secrets").token_urlsafe(24),
                 ),
                 PieceworkContract(
                     contract_code="03/2026/HĐGK-DAKLAK-WEBCAM",
@@ -2193,7 +2230,7 @@ def _seed_piecework_contracts() -> None:
                     worker_signed_at=datetime(2026, 9, 25, 11, 23, 49, tzinfo=timezone.utc),
                     is_signed_by_inut=True,
                     inut_signed_at=datetime(2026, 9, 24, 14, 18, 36, tzinfo=timezone.utc),
-                    portal_token="daklak-webcam-token-866093",
+                    portal_token=__import__("secrets").token_urlsafe(24),
                 )
             ]
             for c in contracts:
@@ -2569,6 +2606,21 @@ def _migrate_add_columns() -> None:
             "source_system": "VARCHAR(30) DEFAULT ''",
             "source_external_id": "VARCHAR(100) DEFAULT ''",
             "source_synced_at": "DATETIME",
+            "lio_session_id": "VARCHAR(100) DEFAULT ''",
+            "lio_status": "VARCHAR(40) DEFAULT ''",
+            "lio_polling_url": "VARCHAR(1000) DEFAULT ''",
+            "lio_file_url": "VARCHAR(1000) DEFAULT ''",
+            "lio_placement_method": "VARCHAR(50) DEFAULT ''",
+            "lio_reason": "VARCHAR(255) DEFAULT ''",
+            "lio_requested_at": "DATETIME",
+            "lio_expires_at": "VARCHAR(64) DEFAULT ''",
+            "lio_signed_at": "VARCHAR(64) DEFAULT ''",
+            "lio_last_delivery_id": "VARCHAR(128) DEFAULT ''",
+            "lio_countersigned_status": "VARCHAR(40) DEFAULT ''",
+            "lio_countersigned_at": "VARCHAR(64) DEFAULT ''",
+            "lio_countersigned_file_id": "VARCHAR(100) DEFAULT ''",
+            "lio_countersigned_error": "VARCHAR(255) DEFAULT ''",
+            "lio_countersigned_signatures_json": "TEXT DEFAULT '[]'",
         },
         "customers": {
             "address": "VARCHAR(500) DEFAULT ''",

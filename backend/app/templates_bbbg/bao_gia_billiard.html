@@ -265,7 +265,7 @@
       <tr>
         <td class="col-num">{{ loop.index }}</td>
         <td class="col-name">{{ it.ten }}</td>
-        <td class="col-desc">{{ it.dien_giai|replace('\n', '<br>')|safe }}</td>
+        <td class="col-desc">{{ it.dien_giai|e|replace('\n', '<br>')|safe }}</td>
         <td class="col-unit">{{ it.dvt }}</td>
         <td class="col-price">{{ it.don_gia|vnd }}</td>
         <td class="col-qty">{{ it.so_luong }}</td>
@@ -289,7 +289,7 @@
       <tr>
         <td class="col-num">{{ loop.index }}</td>
         <td class="col-name">{{ it.ten }}</td>
-        <td class="col-desc">{{ it.dien_giai|replace('\n', '<br>')|safe }}</td>
+        <td class="col-desc">{{ it.dien_giai|e|replace('\n', '<br>')|safe }}</td>
         <td class="col-unit">{{ it.dvt }}</td>
         <td class="col-price">{{ it.don_gia|vnd }}</td>
         <td class="col-qty">{{ it.so_luong }}</td>

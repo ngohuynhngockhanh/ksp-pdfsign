@@ -1,6 +1,8 @@
 """FastAPI app: dang nhap, ky, kiem tra, quan ly khach hang & ho so."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import io as _io
 import html
 import json
@@ -8,6 +10,8 @@ import logging
 import math
 import re
 import secrets
+import threading
+import time
 import zipfile
 
 logger = logging.getLogger("ksp_pdfsign")
@@ -46,6 +50,7 @@ from . import (
     doc_tracking,
     docx_preview,
     markdown_preview,
+    xlsx_preview,
     gov_radar,
     accounts,
     ai,
@@ -57,6 +62,7 @@ from . import (
     ihoadon_sync,
     money,
     nas,
+    security_utils,
     settings_store,
     signing,
     tax,
@@ -79,12 +85,15 @@ from .auth import (
     COOKIE_NAME,
     CurrentUser,
     authenticate,
+    authenticate_loopback_bearer,
     create_token,
     ensure_admin_seed,
+    extract_request_token,
     require_admin,
     require_full_portal,
     require_training,
     require_user,
+    revoke_token,
 )
 from .config import REPO_ROOT, Settings, get_settings
 from .db import (
@@ -188,28 +197,85 @@ app.include_router(web_ads_router)
 
 
 def _training_error(exc: training.TrainingError) -> HTTPException:
-    return HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+    return HTTPException(
+        status.HTTP_502_BAD_GATEWAY,
+        security_utils.error_detail("Lỗi kết nối dịch vụ iNut Training", exc, "ksp.training"),
+    )
+
+
+_DEV_CORS_ORIGINS = {
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:2032",
+    "http://127.0.0.1:2032",
+}
+
+_CSRF_REFERER_EXEMPT_PREFIXES = (
+    "/webhooks/",
+    "/api/lio-signer/webhook",
+    "/internal/",
+    "/api/mail/send",
+    "/api/login",
+    "/api/logout",
+    "/api/doc-telemetry",
+    "/api/public/",
+)
+
+
+def _inject_viewer_nonce(html_out: str, csp_nonce: str) -> str:
+    """Gan nonce CSP vao the <script> cuoi cung cua trinh xem tai lieu noi bo."""
+    if not csp_nonce or not html_out:
+        return html_out
+    idx = html_out.rfind("<script>")
+    if idx == -1:
+        return html_out
+    safe_nonce = html.escape(csp_nonce, quote=True)
+    return html_out[:idx] + f'<script nonce="{safe_nonce}">' + html_out[idx + len("<script>"):]
 
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    """Chan CSRF theo Origin va gan header bao mat cho API/frontend."""
+    """Chan CSRF theo Origin/Referer va gan header bao mat + CSP nonce cho API/frontend."""
+    csp_nonce = secrets.token_urlsafe(16)
+    request.state.csp_nonce = csp_nonce
+    settings = get_settings()
+
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
-        origin = request.headers.get("origin", "")
+        parsed = urlsplit(settings.public_base_url)
+        public_origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+        allowed = {o for o in (public_origin,) if o}
+        if settings.app_dev_cors:
+            allowed.update(_DEV_CORS_ORIGINS)
+        if request.client and request.client.host == "testclient":
+            allowed.add("http://testserver")
+
+        origin = (request.headers.get("origin") or "").strip()
         if origin:
-            settings = get_settings()
-            parsed = urlsplit(settings.public_base_url)
-            public_origin = f"{parsed.scheme}://{parsed.netloc}"
-            allowed = {
-                public_origin,
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:2032",
-                "http://127.0.0.1:2032",
-            }
             if origin not in allowed:
                 return JSONResponse({"detail": "Nguon yeu cau khong hop le"}, status_code=403)
+        elif (
+            COOKIE_NAME in request.cookies
+            and not (request.headers.get("authorization") or "").startswith("Bearer ")
+            and not request.url.path.startswith(_CSRF_REFERER_EXEMPT_PREFIXES)
+        ):
+            sec_fetch_site = (request.headers.get("sec-fetch-site") or "").strip().lower()
+            if sec_fetch_site == "cross-site":
+                return JSONResponse({"detail": "Nguon yeu cau khong hop le"}, status_code=403)
+            referer = (request.headers.get("referer") or "").strip()
+            if referer:
+                rp = urlsplit(referer)
+                ref_origin = f"{rp.scheme}://{rp.netloc}" if rp.scheme and rp.netloc else ""
+                if ref_origin not in allowed:
+                    return JSONResponse({"detail": "Nguon yeu cau khong hop le"}, status_code=403)
+
     response = await call_next(request)
+    if not settings.app_dev_cors:
+        acao = response.headers.get("access-control-allow-origin", "")
+        if acao in _DEV_CORS_ORIGINS:
+            del response.headers["access-control-allow-origin"]
+            if "access-control-allow-credentials" in response.headers:
+                del response.headers["access-control-allow-credentials"]
+
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -223,10 +289,15 @@ async def security_middleware(request: Request, call_next):
         or p_path.startswith("/api/documents/")
         or p_path.lower().endswith((".md", ".markdown"))
     )
-    script_src = "'self' 'unsafe-inline'" if is_portal else "'self'"
+    script_src = f"'self' 'nonce-{csp_nonce}'" if is_portal else "'self'"
+    connect_sources = ["'self'"]
+    if settings.app_dev_cors:
+        connect_sources.extend(["http://localhost:5173", "ws://localhost:5173"])
+    if p_path.startswith("/s/"):
+        connect_sources.extend(["https://ipwho.is", "https://1.1.1.1"])
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-        f"script-src {script_src}; connect-src 'self' http://localhost:5173 ws://localhost:5173; "
+        f"script-src {script_src}; connect-src {' '.join(connect_sources)}; "
         "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
     )
     return response
@@ -234,8 +305,7 @@ async def security_middleware(request: Request, call_next):
 
 def _content_disposition(filename: str) -> str:
     """Content-Disposition an toan cho ten file tieng Viet (RFC 5987)."""
-    ascii_name = filename.encode("ascii", "ignore").decode() or "document.pdf"
-    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+    return security_utils.safe_content_disposition(filename, disposition="attachment")
 
 
 def _audit(db, user, action: str, target: str = "", detail: str = "") -> None:
@@ -269,9 +339,19 @@ def _bg_ihoadon_sync() -> None:
     finally:
         gen.close()
 
+_init_cors_settings = get_settings()
+_init_cors_parsed = urlsplit(_init_cors_settings.public_base_url)
+_init_cors_origins = (
+    [f"{_init_cors_parsed.scheme}://{_init_cors_parsed.netloc}"]
+    if _init_cors_parsed.scheme and _init_cors_parsed.netloc
+    else []
+)
+if _init_cors_settings.app_dev_cors:
+    _init_cors_origins.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_init_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -334,8 +414,8 @@ def _cleanup_facebook_messages(db: Session, settings: Settings) -> None:
 # Auth
 # ---------------------------------------------------------------------------
 @app.get("/api/health")
-def health(settings: Settings = Depends(get_settings)):
-    return {"status": "ok", "using_default_secrets": settings.using_default_secrets}
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/api/public/site-config")
@@ -366,27 +446,26 @@ LOGIN_LOCK_FAILS = 5
 LOGIN_LOCK_MINUTES = 30
 
 
-def _recent_consecutive_fails(db: Session, ip: str) -> tuple[int, datetime | None]:
+def _recent_consecutive_fails(db: Session, ip: str, username: str = "") -> tuple[int, datetime | None]:
     """(so lan login_fail lien tiep trong 30 phut, thoi diem sai gan nhat).
 
-    Dem tu audit log — khong can bang moi, song sot qua restart. Cac lan bi
-    chan (login_locked) khong tinh la fail de khoa tu het han sau 30 phut.
+    Khoa theo cap (ip, username.lower()) de chong DoS khoa ca cong ty sau proxy/NAT
+    nhung van chan brute-force vao tung tai khoan.
     """
     if not ip:
         return 0, None
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
         minutes=LOGIN_LOCK_MINUTES
     )
-    rows = db.scalars(
-        select(AuditLog)
-        .where(
-            AuditLog.ip == ip,
-            AuditLog.action.in_(["login", "login_fail"]),
-            AuditLog.ts >= since,
-        )
-        .order_by(AuditLog.ts.desc())
-        .limit(LOGIN_LOCK_FAILS * 4)
+    q = select(AuditLog).where(
+        AuditLog.ip == ip,
+        AuditLog.action.in_(["login", "login_fail"]),
+        AuditLog.ts >= since,
     )
+    uname_norm = (username or "").strip().lower()
+    if uname_norm:
+        q = q.where(func.lower(AuditLog.username) == uname_norm)
+    rows = db.scalars(q.order_by(AuditLog.ts.desc()).limit(LOGIN_LOCK_FAILS * 4))
     fails = 0
     last_fail = None
     for r in rows:
@@ -398,13 +477,13 @@ def _recent_consecutive_fails(db: Session, ip: str) -> tuple[int, datetime | Non
     return fails, last_fail
 
 
-def _count_recent_fails(db: Session, ip: str) -> int:
-    return _recent_consecutive_fails(db, ip)[0]
+def _count_recent_fails(db: Session, ip: str, username: str = "") -> int:
+    return _recent_consecutive_fails(db, ip, username)[0]
 
 
-def _login_lock_remaining(db: Session, ip: str) -> int:
-    """So phut IP con bi khoa (0 = khong khoa)."""
-    fails, last_fail = _recent_consecutive_fails(db, ip)
+def _login_lock_remaining(db: Session, ip: str, username: str = "") -> int:
+    """So phut tai khoan/IP con bi khoa (0 = khong khoa)."""
+    fails, last_fail = _recent_consecutive_fails(db, ip, username)
     if fails < LOGIN_LOCK_FAILS or last_fail is None:
         return 0
     if last_fail.tzinfo is not None:
@@ -422,22 +501,23 @@ def login(
     db: Session = Depends(get_session),
 ):
     ip = request.client.host if request.client else ""
-    locked = _login_lock_remaining(db, ip)
+    uname_norm = (body.username or "").strip().lower()
+    locked = _login_lock_remaining(db, ip, uname_norm)
     if locked:
-        audit.record(db, body.username, "?", ip, "login_locked", detail=f"còn {locked} phút")
+        audit.record(db, uname_norm, "?", ip, "login_locked", detail=f"còn {locked} phút")
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            f"IP tạm khóa {LOGIN_LOCK_MINUTES} phút do nhập sai mật khẩu "
+            f"Tài khoản tạm khóa {LOGIN_LOCK_MINUTES} phút do nhập sai mật khẩu "
             f"{LOGIN_LOCK_FAILS} lần liên tiếp — thử lại sau {locked} phút",
         )
     user = authenticate(db, body.username, body.password)
     if user is None:
-        audit.record(db, body.username, "?", ip, "login_fail")
-        con_lai = LOGIN_LOCK_FAILS - _count_recent_fails(db, ip)
+        audit.record(db, uname_norm, "?", ip, "login_fail")
+        con_lai = LOGIN_LOCK_FAILS - _count_recent_fails(db, ip, uname_norm)
         if con_lai <= 0:
             raise HTTPException(
                 status.HTTP_401_UNAUTHORIZED,
-                f"Sai tai khoan hoac mat khau — IP bị khóa {LOGIN_LOCK_MINUTES} phút",
+                f"Sai tai khoan hoac mat khau — tài khoản bị khóa {LOGIN_LOCK_MINUTES} phút",
             )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sai tai khoan hoac mat khau")
     audit.record(db, user.username, user.role, ip, "login")
@@ -452,7 +532,14 @@ def login(
 
 
 @app.post("/api/logout")
-def logout():
+def logout(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    token = extract_request_token(request)
+    if token:
+        revoke_token(db, token, settings)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE_NAME)
     return resp
@@ -529,25 +616,10 @@ def require_telegram_send_access(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ) -> CurrentUser:
-    """Cho phep goi noi bo tu loopback (127.0.0.1 / localhost) hoac Admin JWT."""
-    client_host = (request.client.host if request.client else "").replace("::ffff:", "")
-    host_header = request.headers.get("host", "").split(":", 1)[0].strip().lower()
-    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
-    if (
-        client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
-        and host_header in {"127.0.0.1", "localhost", "testserver", ""}
-        and not forwarded
-        and not request.headers.get("authorization")
-        and not request.cookies.get("ksp_session")
-    ):
-        return CurrentUser(
-            id=0,
-            username="local-9router",
-            role="admin",
-            customer_id=None,
-            training_access=True,
-            ip=client_host or "127.0.0.1",
-        )
+    """Chi cho phep Admin JWT/Cookie hoac loopback service Bearer token hop le."""
+    lb_user = authenticate_loopback_bearer(request, db)
+    if lb_user is not None:
+        return lb_user
     user = require_user(request=request, settings=settings, db=db)
     if not user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Chi admin duoc phep")
@@ -731,7 +803,10 @@ def tts_synthesize_api(
             provider=payload.provider,
         )
     except tts.TtsError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi tổng hợp giọng nói TTS", exc, "ksp.tts"),
+        ) from exc
 
     if response_format == "json":
         import base64
@@ -776,7 +851,10 @@ def tts_speak_api(
             alarm_sound=payload.alarm_sound,
         )
     except tts.TtsError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi phát âm thanh ra loa BLE", exc, "ksp.tts"),
+        ) from exc
 
 
 @app.post("/api/tts/speaker/volume")
@@ -788,7 +866,10 @@ def tts_speaker_volume_api(
     try:
         return tts.set_ble_speaker_volume(payload.volume, settings)
     except tts.TtsError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi điều chỉnh âm lượng loa BLE", exc, "ksp.tts"),
+        ) from exc
 
 
 @app.post("/api/tts/speaker/sound")
@@ -800,7 +881,10 @@ def tts_speaker_sound_api(
     try:
         return tts.play_ble_speaker_sound(payload.sound, settings)
     except tts.TtsError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi phát âm báo loa BLE", exc, "ksp.tts"),
+        ) from exc
 
 
 @app.post("/api/tts/speaker/stop")
@@ -811,7 +895,10 @@ def tts_speaker_stop_api(
     try:
         return tts.stop_ble_speaker(settings)
     except tts.TtsError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi dừng loa BLE", exc, "ksp.tts"),
+        ) from exc
 
 class MailSendIn(BaseModel):
     to: str
@@ -823,9 +910,76 @@ class MailSendIn(BaseModel):
     expiry_minutes: int | None = 15
 
 
+_MAIL_RATE_LOCK = threading.Lock()
+_MAIL_RATE_BUCKETS: dict[str, list[float]] = {}
+_MAIL_RATE_LIMIT = 30
+_MAIL_RATE_WINDOW = 60.0
+
+
+def _check_mail_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    with _MAIL_RATE_LOCK:
+        hits = [t for t in _MAIL_RATE_BUCKETS.get(key, []) if now - t < _MAIL_RATE_WINDOW]
+        if len(hits) >= _MAIL_RATE_LIMIT:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Quá giới hạn gửi email (tối đa 30 thư/phút)",
+            )
+        hits.append(now)
+        _MAIL_RATE_BUCKETS[key] = hits
+
+
 @app.post("/api/mail/send")
-def mail_send_api(payload: MailSendIn, db: Session = Depends(get_session)):
-    """API phát email tập trung cho hệ sinh thái iNut qua cấu hình SMTP của KSP."""
+async def mail_send_api(
+    payload: MailSendIn,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """API phát email tập trung cho hệ sinh thái iNut qua cấu hình SMTP của KSP.
+
+    Yêu cầu 1 trong các cơ chế xác thực:
+    - Header `X-INUT-Mail-Signature` (HMAC-SHA256 trên raw body với `MAIL_HMAC_SECRET`)
+    - Header `Authorization: Bearer <MAIL_API_TOKEN>`
+    - Loopback service token hợp lệ
+    - Hoặc phiên Admin (`require_admin`).
+    """
+    ip = request.client.host if request.client else ""
+    actor = ""
+    role = "service"
+
+    sig_header = (request.headers.get("x-inut-mail-signature") or "").strip()
+    if sig_header and settings.mail_hmac_secret:
+        raw_body = await request.body()
+        expected_hex = hmac.new(
+            settings.mail_hmac_secret.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest()
+        supplied_hex = sig_header[7:].strip() if sig_header.lower().startswith("sha256=") else sig_header
+        if hmac.compare_digest(supplied_hex.lower(), expected_hex.lower()):
+            actor = "mail-hmac"
+
+    if not actor and settings.mail_api_token:
+        auth_header = (request.headers.get("authorization") or "").strip()
+        if auth_header.startswith("Bearer "):
+            supplied_tok = auth_header[7:].strip()
+            if supplied_tok and hmac.compare_digest(supplied_tok, settings.mail_api_token):
+                actor = "mail-token"
+
+    if not actor:
+        lb_user = authenticate_loopback_bearer(request, db)
+        if lb_user is not None:
+            actor = lb_user.username
+            role = lb_user.role
+
+    if not actor:
+        user = require_user(request=request, settings=settings, db=db)
+        if not user.is_admin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Chi admin duoc phep")
+        actor = user.username
+        role = user.role
+
+    _check_mail_rate_limit(f"{actor}:{ip}")
+
     to_email = payload.to.strip()
     if not to_email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu địa chỉ email người nhận")
@@ -843,6 +997,7 @@ def mail_send_api(payload: MailSendIn, db: Session = Depends(get_session)):
     if not ok:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không thể gửi email qua SMTP của KSP (chưa cấu hình hoặc lỗi kết nối)")
 
+    audit.record(db, actor, role, ip, "mail_send", to_email, (payload.subject or "")[:160])
     return {"ok": True, "message": "Email đã được gửi thành công", "to": to_email}
 
 # ---------------------------------------------------------------------------
@@ -850,7 +1005,7 @@ def mail_send_api(payload: MailSendIn, db: Session = Depends(get_session)):
 # ---------------------------------------------------------------------------
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...), user: CurrentUser = Depends(require_admin)):
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
     doc_id = storage.save_upload(content)
@@ -865,7 +1020,7 @@ _ZIP_MAX_FILES = 50
 @app.post("/api/upload-zip")
 async def upload_zip(file: UploadFile = File(...), user: CurrentUser = Depends(require_admin)):
     """Tai len 1 file ZIP chua nhieu PDF, tach tung file de ky lan luot."""
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=100 * 1024 * 1024)
     if not content.startswith(b"PK"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai ZIP hop le")
     try:
@@ -889,8 +1044,19 @@ async def upload_zip(file: UploadFile = File(...), user: CurrentUser = Depends(r
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"ZIP co qua nhieu file (> {_ZIP_MAX_FILES})")
 
     files = []
+    running_uncompressed = 0
     for info in pdf_infos:
-        data = zf.read(info)
+        chunks: list[bytes] = []
+        with zf.open(info, "r") as zf_stream:
+            while True:
+                chunk = zf_stream.read(65536)
+                if not chunk:
+                    break
+                running_uncompressed += len(chunk)
+                if running_uncompressed > _ZIP_MAX_TOTAL_SIZE:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "ZIP qua lon (giai nen > 200MB)")
+                chunks.append(chunk)
+        data = b"".join(chunks)
         if not data.startswith(b"%PDF"):
             continue  # bo qua file khong phai PDF that
         doc_id = storage.save_upload(data)
@@ -921,7 +1087,10 @@ def list_certs(
     try:
         certs = token_backend.list_certs(settings, body.ip, body.admin_password)
     except token_backend.BackendError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Không thể kết nối máy ký số USB Token", e, "ksp.sign"),
+        )
     return {"certs": [c.model_dump() for c in certs]}
 
 
@@ -938,9 +1107,15 @@ def sign(
     try:
         signed_id, signer_label = signing.sign_document(settings, body)
     except token_backend.BackendError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi kết nối máy ký số USB Token", e, "ksp.sign"),
+        )
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Ky that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Ký số thất bại", e, "ksp.sign"),
+        )
 
     # Phan loai: uu tien loai chi dinh (vd BBBG), nguoc lai tu nhan dien.
     dtype = body.doc_type
@@ -1031,7 +1206,7 @@ def verify_upload(
     settings: Settings = Depends(get_settings),
 ):
     require_full_portal(user)
-    content = file.file.read()
+    content = storage.read_upload_limited_sync(file, max_bytes=25 * 1024 * 1024)
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
     doc_id = storage.save_upload(content)
@@ -1226,14 +1401,29 @@ def login_by_link(
     if not link or link.revoked or datetime.utcnow() > link.expires_at:
         raise HTTPException(status.HTTP_410_GONE, "Link đăng nhập không còn hiệu lực")
     account = link.user
+    # Link dang nhap chi dung 1 lan (single-use)
+    link.revoked = True
+    db.commit()
     jwt_token = create_token(account, settings)
     audit.record(
         db, account.username, account.role,
         request.client.host if request.client else "", "login_link",
     )
-    # Cho phép chuyển hướng tùy chọn (VD: /giai-trinh-thue)
-    target = request.query_params.get("next") or request.query_params.get("redirect")
-    if target and target.startswith("/") and not target.startswith("//"):
+    # Cho phép chuyển hướng nội bộ an toàn (chặn open-redirect dạng /\evil.com hay https://...)
+    target = (request.query_params.get("next") or request.query_params.get("redirect") or "").strip()
+    parsed_target = urlsplit(target) if target else None
+    is_safe_target = bool(
+        target
+        and target.startswith("/")
+        and not target.startswith("//")
+        and "\\" not in target
+        and "\r" not in target
+        and "\n" not in target
+        and parsed_target is not None
+        and not parsed_target.scheme
+        and not parsed_target.netloc
+    )
+    if is_safe_target:
         landing = target
     else:
         landing = "/training" if account.role == "admin" or account.training_access else "/ho-so-cua-toi"
@@ -1276,6 +1466,7 @@ def merge_customers(
     # neu khong khi xoa src ben duoi ORM se tu NULL lai FK (cascade ngam dinh).
     for u in db.scalars(select(User).where(User.customer_id == src.id)):
         u.customer = tgt
+        u.session_version += 1
     for d in db.scalars(select(Document).where(Document.customer_id == src.id)):
         d.customer = tgt
     # Order/InvSale/InvIssue chi co quan he 1 chieu (Customer khong co orders/
@@ -1438,14 +1629,30 @@ def rename_document(
     return _doc_out(d)
 
 
+def _gc_unreferenced_doc_files(db: Session, doc_ids: set[str]) -> None:
+    """Xoa file vat ly trong storage neu khong con ban ghi Document nao tham chieu."""
+    for did in doc_ids:
+        if not did:
+            continue
+        still_used = db.scalar(
+            select(func.count(Document.id)).where(
+                (Document.doc_id == did) | (Document.signed_upload_id == did)
+            )
+        )
+        if not still_used:
+            storage.delete_doc_any(did)
+
+
 @app.delete("/api/documents/{doc_pk}")
 def delete_document(doc_pk: int, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)):
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
+    candidate_ids = {x for x in (d.doc_id, d.signed_upload_id) if x}
     _audit(db, user, "delete_doc", d.filename)
     db.delete(d)
     db.commit()
+    _gc_unreferenced_doc_files(db, candidate_ids)
     return {"ok": True}
 
 
@@ -1488,8 +1695,19 @@ def download_document(
         ".zip": "application/zip",
         ".md": "text/markdown; charset=utf-8",
         ".markdown": "text/markdown; charset=utf-8",
+        ".mp4": "video/mp4",
     }
     media_type = media_map.get(suffix.lower(), "application/octet-stream")
+    if suffix.lower() == ".mp4":
+        return FileResponse(
+            fpath,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": _content_disposition(d.filename),
+                "Accept-Ranges": "bytes",
+                "X-Accel-Buffering": "no",
+            },
+        )
     return StreamingResponse(
         iter([fpath.read_bytes()]), media_type=media_type,
         headers={"Content-Disposition": _content_disposition(d.filename)},
@@ -1499,6 +1717,7 @@ def download_document(
 @app.get("/api/documents/{doc_pk}/view")
 def view_document(
     doc_pk: int,
+    request: Request,
     format: str = "",
     user: CurrentUser = Depends(require_user),
     db: Session = Depends(get_session),
@@ -1516,6 +1735,7 @@ def view_document(
     fpath, suffix = found
     raw = fpath.read_bytes()
     s_low = suffix.lower()
+    csp_nonce = getattr(request.state, "csp_nonce", "")
     if s_low == ".docx" or (d.filename.lower().endswith(".docx") and docx_preview.is_valid_docx(raw)):
         if format.lower() == "pdf":
             pdf_bytes = docx_preview.render_docx_to_pdf_bytes(raw, title=d.filename)
@@ -1523,7 +1743,7 @@ def view_document(
             return Response(
                 content=pdf_bytes,
                 media_type="application/pdf",
-                headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
             )
         html_out = docx_preview.render_docx_preview_html(
             raw,
@@ -1531,7 +1751,7 @@ def view_document(
             download_url=f"/api/documents/{d.id}/download",
             pdf_url=f"/api/documents/{d.id}/view?format=pdf",
         )
-        return HTMLResponse(content=html_out)
+        return HTMLResponse(content=_inject_viewer_nonce(html_out, csp_nonce))
     if s_low in (".md", ".markdown") or (
         d.filename.lower().endswith((".md", ".markdown"))
         and markdown_preview.is_valid_markdown(raw, d.filename)
@@ -1542,20 +1762,40 @@ def view_document(
             return Response(
                 content=pdf_bytes,
                 media_type="application/pdf",
-                headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
             )
         html_out = markdown_preview.render_markdown_preview_html(
             raw,
             title=d.filename,
             download_url=f"/api/documents/{d.id}/download",
             pdf_url=f"/api/documents/{d.id}/view?format=pdf",
+            csp_nonce=csp_nonce,
         )
         return HTMLResponse(content=html_out)
+    if s_low in (".xlsx", ".xls") or (
+        d.filename.lower().endswith((".xlsx", ".xls"))
+        and xlsx_preview.is_valid_xlsx(raw)
+    ):
+        if format.lower() == "pdf":
+            pdf_bytes = xlsx_preview.render_xlsx_to_pdf_bytes(raw, title=d.filename)
+            pdf_name = Path(d.filename).stem + ".pdf"
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
+            )
+        html_out = xlsx_preview.render_xlsx_preview_html(
+            raw,
+            title=d.filename,
+            download_url=f"/api/documents/{d.id}/download",
+            pdf_url=f"/api/documents/{d.id}/view?format=pdf",
+        )
+        return HTMLResponse(content=_inject_viewer_nonce(html_out, csp_nonce))
     if s_low == ".pdf" or raw.startswith(b"%PDF"):
         return StreamingResponse(
             iter([raw]),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(d.filename)}"},
+            headers={"Content-Disposition": security_utils.safe_content_disposition(d.filename, disposition="inline")},
         )
     return StreamingResponse(
         iter([raw]),
@@ -1575,9 +1815,10 @@ async def upload_document_to_vault(
     db: Session = Depends(get_session),
 ):
     """Tải hồ sơ PDF hoặc Word (.docx) trực tiếp vào Kho hồ sơ vận hành."""
-    content = await file.read()
     orig_name = (file.filename or "tai-lieu.pdf").strip()
     ext = Path(orig_name).suffix.lower()
+    max_bytes = 100 * 1024 * 1024 if ext == ".mp4" else 25 * 1024 * 1024
+    content = await storage.read_upload_limited(file, max_bytes=max_bytes)
     if content.startswith(b"%PDF"):
         suffix = ".pdf"
         if not orig_name.lower().endswith(".pdf"):
@@ -1588,12 +1829,20 @@ async def upload_document_to_vault(
         suffix = ".docx"
         if not orig_name.lower().endswith(".docx"):
             orig_name += ".docx"
+    elif ext in (".xlsx", ".xls") and xlsx_preview.is_valid_xlsx(content):
+        suffix = ext
+    elif xlsx_preview.is_valid_xlsx(content):
+        suffix = ".xlsx"
+        if not orig_name.lower().endswith((".xlsx", ".xls")):
+            orig_name += ".xlsx"
     elif ext in (".md", ".markdown") and markdown_preview.is_valid_markdown(content, orig_name):
         suffix = ".md"
+    elif ext == ".mp4" and len(content) >= 12 and b"ftyp" in content[:32]:
+        suffix = ".mp4"
     else:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Chỉ hỗ trợ tải lên tệp PDF (.pdf), Microsoft Word (.docx) hoặc Markdown (.md) hợp lệ",
+            "Chỉ hỗ trợ tải lên tệp PDF (.pdf), Microsoft Word (.docx), Excel (.xlsx), Markdown (.md) hoặc Video (.mp4) hợp lệ",
         )
     if customer_id is not None and not db.get(Customer, customer_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay khach hang")
@@ -1628,7 +1877,7 @@ async def upload_signed(
     d = db.get(Document, doc_pk)
     if not d:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     if not content.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
     up_id = storage.save_upload(content)
@@ -1776,7 +2025,7 @@ async def send_lio_countersigned(
         form = await request.form()
         f_item = form.get("file")
         if f_item is not None and hasattr(f_item, "read"):
-            content = await f_item.read()
+            content = await storage.read_upload_limited(f_item, max_bytes=25 * 1024 * 1024)
             if not content.startswith(b"%PDF"):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "File khong phai PDF hop le")
             up_id = storage.save_upload(content)
@@ -2197,10 +2446,16 @@ def bulk_delete(
     body: BulkIds, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_session)
 ):
     n = 0
+    candidate_ids: set[str] = set()
     for d in db.scalars(select(Document).where(Document.id.in_(body.ids))):
+        if d.doc_id:
+            candidate_ids.add(d.doc_id)
+        if d.signed_upload_id:
+            candidate_ids.add(d.signed_upload_id)
         db.delete(d)
         n += 1
     db.commit()
+    _gc_unreferenced_doc_files(db, candidate_ids)
     _audit(db, user, "bulk_delete", f"{n} hồ sơ")
     return {"ok": True, "count": n}
 
@@ -2445,7 +2700,10 @@ def training_archived_pc_ui_help(settings: Settings = Depends(get_settings)):
 
 
 @app.get("/training/eval-report", response_class=HTMLResponse)
-def training_eval_report(settings: Settings = Depends(get_settings)):
+def training_eval_report(
+    user: CurrentUser = Depends(require_admin),
+    settings: Settings = Depends(get_settings),
+):
     try:
         content = training.archived_eval_report(settings)
     except training.TrainingError as exc:
@@ -3008,6 +3266,11 @@ def create_share(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Khong tim thay ho so")
     if not user.is_admin and d.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Khong co quyen")
+    if body.days is not None and body.days > 365:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Thời hạn chia sẻ tối đa 365 ngày",
+        )
     days = body.days if body.days and body.days > 0 else settings.share_default_days
     token = secrets.token_urlsafe(16)
     expires = datetime.utcnow() + timedelta(days=days)
@@ -3060,13 +3323,24 @@ def _share_file(token: str, db: Session, inline: bool):
         ".zip": "application/zip",
         ".md": "text/markdown; charset=utf-8",
         ".markdown": "text/markdown; charset=utf-8",
+        ".mp4": "video/mp4",
     }
-    media_type = media_map.get(suffix, "application/octet-stream")
-    if inline and suffix == ".pdf":
+    media_type = media_map.get(suffix.lower(), "application/octet-stream")
+    if inline and suffix.lower() in (".pdf", ".mp4"):
         # Xem truc tiep trong trinh duyet
         disp = f"inline; filename*=UTF-8''{quote(d.filename)}"
     else:
         disp = _content_disposition(d.filename)
+    if suffix.lower() == ".mp4":
+        return FileResponse(
+            fpath,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": disp,
+                "Accept-Ranges": "bytes",
+                "X-Accel-Buffering": "no",
+            },
+        )
     return StreamingResponse(
         iter([fpath.read_bytes()]),
         media_type=media_type,
@@ -3104,6 +3378,7 @@ def share_view(
         found = storage.find_doc_path(s.document.doc_id)
         if found:
             fpath, suffix = found
+            csp_nonce = getattr(request.state, "csp_nonce", "")
             if suffix.lower() == ".docx" or s.document.filename.lower().endswith(".docx"):
                 raw = fpath.read_bytes()
                 if docx_preview.is_valid_docx(raw):
@@ -3113,7 +3388,7 @@ def share_view(
                         return Response(
                             content=pdf_bytes,
                             media_type="application/pdf",
-                            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                            headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
                         )
                     html_out = docx_preview.render_docx_preview_html(
                         raw,
@@ -3121,7 +3396,7 @@ def share_view(
                         download_url=f"/api/share/{quote(token, safe='')}/download",
                         pdf_url=f"/api/share/{quote(token, safe='')}/view?format=pdf",
                     )
-                    return HTMLResponse(content=html_out)
+                    return HTMLResponse(content=_inject_viewer_nonce(html_out, csp_nonce))
             if suffix.lower() in (".md", ".markdown") or s.document.filename.lower().endswith((".md", ".markdown")):
                 raw = fpath.read_bytes()
                 if markdown_preview.is_valid_markdown(raw, s.document.filename):
@@ -3131,24 +3406,65 @@ def share_view(
                         return Response(
                             content=pdf_bytes,
                             media_type="application/pdf",
-                            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+                            headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
                         )
                     html_out = markdown_preview.render_markdown_preview_html(
                         raw,
                         title=s.document.filename,
                         download_url=f"/api/share/{quote(token, safe='')}/download",
                         pdf_url=f"/api/share/{quote(token, safe='')}/view?format=pdf",
+                        csp_nonce=csp_nonce,
                     )
                     return HTMLResponse(content=html_out)
+            if suffix.lower() in (".xlsx", ".xls") or s.document.filename.lower().endswith((".xlsx", ".xls")):
+                raw = fpath.read_bytes()
+                if xlsx_preview.is_valid_xlsx(raw):
+                    if format.lower() == "pdf":
+                        pdf_bytes = xlsx_preview.render_xlsx_to_pdf_bytes(raw, title=s.document.filename)
+                        pdf_name = Path(s.document.filename).stem + ".pdf"
+                        return Response(
+                            content=pdf_bytes,
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
+                        )
+                    html_out = xlsx_preview.render_xlsx_preview_html(
+                        raw,
+                        title=s.document.filename,
+                        download_url=f"/api/share/{quote(token, safe='')}/download",
+                        pdf_url=f"/api/share/{quote(token, safe='')}/view?format=pdf",
+                    )
+                    return HTMLResponse(content=_inject_viewer_nonce(html_out, csp_nonce))
     return _share_file(token, db, inline=True)
+
+
+_SHARE_NEAC_RATE_LOCK = threading.Lock()
+_SHARE_NEAC_RATE_BUCKETS: dict[str, list[float]] = {}
+_SHARE_NEAC_RATE_LIMIT = 5
+_SHARE_NEAC_RATE_WINDOW = 60.0
+
+
+def _check_share_neac_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    with _SHARE_NEAC_RATE_LOCK:
+        hits = [t for t in _SHARE_NEAC_RATE_BUCKETS.get(key, []) if now - t < _SHARE_NEAC_RATE_WINDOW]
+        if len(hits) >= _SHARE_NEAC_RATE_LIMIT:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Quá nhiều lượt yêu cầu thẩm định NEAC — vui lòng thử lại sau 1 phút",
+            )
+        hits.append(now)
+        _SHARE_NEAC_RATE_BUCKETS[key] = hits
 
 
 @app.get("/api/share/{token}/verify-neac")
 def share_verify_neac(
     token: str,
+    request: Request,
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ):
+    client_ip = request.client.host if request.client else ""
+    _check_share_neac_rate_limit(f"{client_ip}:{token}")
     s = db.scalar(select(Share).where(Share.token == token))
     if not s:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Link khong ton tai")
@@ -3184,7 +3500,13 @@ def share_verify_neac(
         "ok": True,
         "doc_label": d.filename,
         "internal_verification": {
-            "valid": any(sig.get("valid") for sig in internal_sigs),
+            "valid": bool(
+                internal_sigs
+                and all(
+                    sig.get("valid") and sig.get("intact") and sig.get("trusted")
+                    for sig in internal_sigs
+                )
+            ),
             "signatures": internal_sigs,
         },
         "neac_result": neac_res,
@@ -3194,14 +3516,15 @@ def share_verify_neac(
 
 @app.get("/s/{token}", response_class=HTMLResponse)
 def share_page(token: str, request: Request, db: Session = Depends(get_session), settings: Settings = Depends(get_settings)):
+    csp_nonce = getattr(request.state, "csp_nonce", "")
     s = db.scalar(select(Share).where(Share.token == token))
     if not s:
-        return HTMLResponse(_share_html("Link không tồn tại", None, None), status_code=404)
+        return HTMLResponse(_share_html("Link không tồn tại", None, None, csp_nonce=csp_nonce), status_code=404)
     expired = datetime.utcnow() > s.expires_at
     exp = s.expires_at.strftime("%d/%m/%Y %H:%M")
     if expired:
         return HTMLResponse(
-            _share_html(f"Link đã hết hạn (từ {exp})", s.document.filename, None), status_code=410
+            _share_html(f"Link đã hết hạn (từ {exp})", s.document.filename, None, csp_nonce=csp_nonce), status_code=410
         )
     nonce = doc_tracking.generate_nonce(
         settings,
@@ -3209,17 +3532,34 @@ def share_page(token: str, request: Request, db: Session = Depends(get_session),
         document_id=s.document_id,
         user_agent=request.headers.get("user-agent", ""),
     )
-    return HTMLResponse(_share_html(None, s.document.filename, token, exp, nonce=nonce, document_id=s.document_id))
+    return HTMLResponse(
+        _share_html(
+            None, s.document.filename, token, exp,
+            nonce=nonce, document_id=s.document_id, csp_nonce=csp_nonce,
+        )
+    )
 
 
-def _share_html(error: str | None, filename: str | None, token: str | None, exp: str = "", *, nonce: str = "", document_id: int = 0) -> str:
+def _share_html(
+    error: str | None,
+    filename: str | None,
+    token: str | None,
+    exp: str = "",
+    *,
+    nonce: str = "",
+    document_id: int = 0,
+    csp_nonce: str = "",
+) -> str:
     raw_filename = filename or ""
     is_docx = raw_filename.lower().endswith(".docx")
     is_md = raw_filename.lower().endswith((".md", ".markdown"))
+    is_xlsx = raw_filename.lower().endswith((".xlsx", ".xls"))
+    is_mp4 = raw_filename.lower().endswith(".mp4")
     error = html.escape(error or "", quote=True) if error else None
     filename = html.escape(filename or "", quote=True) if filename else None
     token = quote(token or "", safe="") if token else None
     exp = html.escape(exp, quote=True)
+    nonce_attr = f' nonce="{html.escape(csp_nonce, quote=True)}"' if csp_nonce else ""
     if error:
         inner = (
             f'<main style="flex:1;display:flex;"><div class="card"><div class="brand">🖊️ KSP PDF Signer</div>'
@@ -3248,12 +3588,42 @@ def _share_html(error: str | None, filename: str | None, token: str | None, exp:
             f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Bản xem trước trực tuyến tài liệu kỹ thuật Markdown (.md)</div></header>'
         )
         preview = f'<main aria-label="Khung xem trước tài liệu" style="flex:1;display:flex;flex-direction:column;"><iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe></main>'
+    elif is_xlsx:
+        inner = (
+            f'<header><div class="bar">'
+            f'<div class="brand">🖊️ KSP · <h1 class="fn">📊 {filename}</h1></div>'
+            f'<div class="acts">'
+            f'<a class="btn neac" href="/api/share/{token}/view?format=pdf" target="_blank">📑 Bản in PDF</a>'
+            f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
+            f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải file Excel (.xlsx)</a>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Bản xem trước trực tuyến bảng tính Microsoft Excel (.xlsx) chuẩn chỉ</div></header>'
+        )
+        preview = f'<main aria-label="Khung xem trước tài liệu" style="flex:1;display:flex;flex-direction:column;"><iframe class="pdf" src="/api/share/{token}/view" title="{filename}"></iframe></main>'
+    elif is_mp4:
+        inner = (
+            f'<header><div class="bar">'
+            f'<div class="brand">🎬 KSP · <h1 class="fn">{filename}</h1></div>'
+            f'<div class="acts">'
+            f'<a class="btn" id="kspVideoDlBtn" href="/api/share/{token}/download" download="{filename}">⬇️ Tải video MP4</a>'
+            f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Video MP4 chuẩn iPhone / Safari / QuickTime</div></header>'
+        )
+        preview = (
+            f'<main aria-label="Trình phát video" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;background:#09111f;">'
+            f'<video controls playsinline webkit-playsinline preload="metadata" src="/api/share/{token}/view" '
+            f'style="width:100%;max-width:1180px;max-height:76vh;border-radius:12px;background:#000;box-shadow:0 12px 36px rgba(0,0,0,.55);"></video>'
+            f'<div id="kspDlProg" style="display:none;margin-top:14px;width:100%;max-width:520px;background:#0f1d33;border:1px solid rgba(115,230,243,.45);border-radius:10px;padding:10px 14px;color:#e2f6fa;font-size:13px;">'
+            f'<div style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px;"><span id="kspDlText">Đang tải...</span><span id="kspDlPct">0%</span></div>'
+            f'<div style="height:7px;background:rgba(148,163,184,.25);border-radius:999px;overflow:hidden;"><div id="kspDlBar" style="height:100%;width:0%;background:linear-gradient(90deg,#38bdf8,#34d399);transition:width .12s linear;"></div></div>'
+            f'</div>'
+            f'<script{nonce_attr}>(function(){{var a=document.getElementById("kspVideoDlBtn");var box=document.getElementById("kspDlProg");var txt=document.getElementById("kspDlText");var pctEl=document.getElementById("kspDlPct");var bar=document.getElementById("kspDlBar");var isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);if(!a||isIOS||typeof ReadableStream==="undefined")return;a.addEventListener("click",function(ev){{if(a.dataset.busy==="1"){{ev.preventDefault();return;}}ev.preventDefault();a.dataset.busy="1";box.style.display="block";txt.textContent="Đang kết nối tải video...";pctEl.textContent="0%";bar.style.width="0%";fetch(a.href).then(function(r){{if(!r.ok)throw new Error("HTTP "+r.status);var tot=parseInt(r.headers.get("content-length")||"0",10);var rdr=r.body&&r.body.getReader?r.body.getReader():null;if(!rdr)return r.blob();var chunks=[],got=0,t0=Date.now();return new Promise(function(res,rej){{function pump(){{rdr.read().then(function(s){{if(s.done){{res(new Blob(chunks,{{type:"video/mp4"}}));return;}}chunks.push(s.value);got+=s.value.byteLength;var mb=(got/1048576).toFixed(1);var spd=(got/1048576)/Math.max(0.2,(Date.now()-t0)/1000);if(tot>0){{var p=Math.min(100,Math.round(got*100/tot));pctEl.textContent=p+"%";bar.style.width=p+"%";txt.textContent="Đang tải "+mb+" / "+(tot/1048576).toFixed(1)+" MB ("+spd.toFixed(1)+" MB/s)";}}else{{txt.textContent="Đang tải "+mb+" MB ("+spd.toFixed(1)+" MB/s)";}}pump();}}).catch(rej);}}pump();}});}}).then(function(blob){{pctEl.textContent="100%";bar.style.width="100%";txt.textContent="✓ Đã tải xong ("+(blob.size/1048576).toFixed(1)+" MB) — đang lưu vào máy...";var u=URL.createObjectURL(blob);var tmp=document.createElement("a");tmp.href=u;tmp.download=a.getAttribute("download")||"video.mp4";document.body.appendChild(tmp);tmp.click();setTimeout(function(){{tmp.remove();URL.revokeObjectURL(u);a.dataset.busy="0";}},1500);}}).catch(function(){{a.dataset.busy="0";box.style.display="none";window.location.href=a.href;}});}});}})();</script>'
+            f'</main>'
+        )
     else:
         inner = (
             f'<header><div class="bar">'
             f'<div class="brand">🖊️ KSP · <h1 class="fn">📄 {filename}</h1></div>'
             f'<div class="acts">'
-            f'<button type="button" class="btn neac" onclick="checkShareNeac()">🏛️ Thẩm định chữ ký số NEAC</button>'
+            f'<button type="button" id="neacVerifyBtn" class="btn neac">🏛️ Thẩm định chữ ký số NEAC</button>'
             f'<a class="btn ghost" href="/api/share/{token}/view" target="_blank">🔍 Xem toàn màn hình</a>'
             f'<a class="btn" href="/api/share/{token}/download">⬇️ Tải xuống</a>'
             f'</div></div><div class="exp">Link có hiệu lực đến {exp} · Chữ ký số pháp nhân hợp chuẩn Quốc gia NEAC (Bộ TTTT)</div></header>'
@@ -3295,64 +3665,162 @@ background:#fff;border-top:1px solid #e6eaef}}
           <div style="font-size:11px;color:#64748b;">Trung tâm Chứng thực điện tử quốc gia (Bộ TTTT)</div>
         </div>
       </div>
-      <button type="button" onclick="document.getElementById('neacModal').style.display='none'" style="background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;font-weight:bold;color:#64748b;">✕</button>
+      <button type="button" data-neac-close="1" style="background:#f1f5f9;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;font-weight:bold;color:#64748b;">✕</button>
     </div>
     <div id="neacModalBody" style="font-size:12.5px;line-height:1.55;color:#334155;"></div>
   </div>
 </div>
-<script>
-async function checkShareNeac() {{
+<script{nonce_attr}>
+(function() {{
   const modal = document.getElementById("neacModal");
   const body = document.getElementById("neacModalBody");
-  modal.style.display = "flex";
-  body.innerHTML = `<div style="text-align:center;padding:24px 0;color:#64748b;"><div style="font-size:32px;margin-bottom:8px;">⏳</div><div style="font-weight:700;color:#0f172a;font-size:13.5px;">Đang kết nối Cổng Quốc gia NEAC (Bộ TTTT)...</div><div style="font-size:11.5px;margin-top:4px;">Thẩm định chữ ký số PAdES, chuỗi chứng thư CA & trạng thái thu hồi CRL/OCSP</div></div>`;
-  try {{
-    const res = await fetch("/api/share/{token}/verify-neac");
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.message || "Không thể thẩm định");
-    const neac = data.neac_result || {{}};
-    const sigList = (neac.signature && neac.signature.data) ? neac.signature.data : [];
-    const firstSig = sigList[0] || {{}};
-    const intSig = (data.internal_verification && data.internal_verification.signatures && data.internal_verification.signatures[0]) || {{}};
-    const signerName = firstSig.signer?.cn || intSig.signer_name || "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT";
-    const issuerName = firstSig.issuer?.cn ? (firstSig.issuer.cn + " (" + (firstSig.issuer.o || "WINGROUP") + ")") : (intSig.certificate_issuer || "WINCA (WINGROUP)");
-    const signedTime = firstSig.signedTime || intSig.signing_time || data.verified_at;
-    const ocspStatus = firstSig.ocsp || "Chứng thư số hợp lệ, chưa bị thu hồi";
-    const intact = firstSig.intact || (intSig.intact ? "Toàn vẹn dữ liệu 100% (Không bị thay đổi)" : "Chưa xác định");
-    body.innerHTML = `
-      <div style="padding:12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;margin-bottom:12px;text-align:center;">
-        <div style="font-size:18px;color:#059669;margin-bottom:2px;">✓</div>
-        <div style="font-weight:800;font-size:13.5px;color:#065f46;">CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN 100%</div>
-        <div style="font-size:11px;color:#047857;margin-top:2px;">Tài liệu: <b>${{data.doc_label}}</b></div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
-        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Chủ thể ký:</span><b style="color:#0f172a;text-align:right;max-width:65%;">${{signerName}}</b></div>
-        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Tổ chức cấp CA:</span><b style="color:#0284c7;">${{issuerName}}</b></div>
-        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Tình trạng dữ liệu:</span><b style="color:#16a34a;">${{intact}}</b></div>
-        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Thời điểm ký số:</span><span style="color:#0f172a;font-weight:600;">${{signedTime}}</span></div>
-        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;"><span style="color:#64748b;">Trạng thái OCSP:</span><span style="color:#059669;font-weight:600;">${{ocspStatus}}</span></div>
-      </div>
-      <div style="margin-top:14px;padding:10px;background:#f8fafc;border-radius:8px;font-size:11px;color:#475569;line-height:1.45;">
-        🏛️ <b>Nguồn thẩm định:</b> Cổng thông tin điện tử Trung tâm Chứng thực điện tử quốc gia (<a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7;font-weight:700;">https://neac.gov.vn/vi</a>) — Bộ Thông tin & Truyền thông.
-      </div>
-      <button type="button" onclick="document.getElementById('neacModal').style.display='none'" style="width:100%;margin-top:12px;padding:9px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Đóng</button>
-    `;
-  }} catch (err) {{
-    body.innerHTML = `<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;text-align:center;color:#991b1b;">⚠️ ${{err.message}}</div>`;
+  function closeModal() {{
+    if (modal) modal.style.display = "none";
   }}
-}}
+  function el(tag, css, text) {{
+    const node = document.createElement(tag);
+    if (css) node.style.cssText = css;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }}
+  function makeRow(label, value, valueCss) {{
+    const row = el("div", "display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #e2e8f0;padding-bottom:5px;");
+    row.appendChild(el("span", "color:#64748b;", label));
+    row.appendChild(el("span", valueCss || "color:#0f172a;font-weight:600;text-align:right;max-width:65%;word-break:break-word;", value));
+    return row;
+  }}
+  async function checkShareNeac() {{
+    if (!modal || !body) return;
+    modal.style.display = "flex";
+    body.replaceChildren();
+    const loading = el("div", "text-align:center;padding:24px 0;color:#64748b;");
+    loading.appendChild(el("div", "font-size:32px;margin-bottom:8px;", "⏳"));
+    loading.appendChild(el("div", "font-weight:700;color:#0f172a;font-size:13.5px;", "Đang thẩm định chữ ký số PAdES & Cổng Quốc gia NEAC..."));
+    loading.appendChild(el("div", "font-size:11.5px;margin-top:4px;", "Kiểm tra toàn vẹn tài liệu, chuỗi chứng thư CA & trạng thái thu hồi CRL/OCSP"));
+    body.appendChild(loading);
+    try {{
+      const res = await fetch("/api/share/{token}/verify-neac");
+      if (!res.ok) {{
+        const errData = await res.json().catch(function() {{ return {{}}; }});
+        throw new Error(errData.detail || ("HTTP " + res.status));
+      }}
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || "Không thể thẩm định");
+      const neac = data.neac_result || {{}};
+      const sigList = (neac.signature && neac.signature.data) ? neac.signature.data : [];
+      const firstSig = sigList[0] || {{}};
+      const iv = data.internal_verification || {{}};
+      const intSigs = Array.isArray(iv.signatures) ? iv.signatures : [];
+      const intSig = intSigs[0] || null;
+
+      const hasSig = Boolean(intSig);
+      const isCryptValid = Boolean(hasSig && intSig.valid && intSig.intact && intSig.trusted && iv.valid);
+      const isRevoked = Boolean(hasSig && intSig.revocation_ok === false);
+      const hasWarning = Boolean(
+        hasSig && (intSig.revocation_ok === null || intSig.revocation_ok === undefined || (Array.isArray(intSig.problems) && intSig.problems.length > 0))
+      );
+
+      let bannerBg = "#fef2f2", bannerBorder = "#fecaca", bannerIcon = "✕", bannerColor = "#991b1b";
+      let bannerTitle = "CHỮ KÝ SỐ KHÔNG HỢP LỆ";
+      if (!hasSig) {{
+        bannerTitle = "TÀI LIỆU CHƯA ĐƯỢC KÝ SỐ HOẶC KHÔNG CÓ CHỮ KÝ";
+      }} else if (isRevoked) {{
+        bannerTitle = "CHỨNG THƯ SỐ ĐÃ BỊ THU HỒI";
+      }} else if (!isCryptValid) {{
+        bannerTitle = (intSig.intact && intSig.valid && !intSig.trusted)
+          ? "CHỮ KÝ KHÔNG THUỘC CA TIN CẬY"
+          : "CHỮ KÝ SỐ KHÔNG HỢP LỆ / TÀI LIỆU ĐÃ BỊ THAY ĐỔI";
+      }} else if (hasWarning) {{
+        bannerBg = "#fffbeb"; bannerBorder = "#fde68a"; bannerIcon = "⚠"; bannerColor = "#92400e";
+        bannerTitle = intSig.summary || "HỢP LỆ (CÓ CẢNH BÁO)";
+      }} else {{
+        bannerBg = "#ecfdf5"; bannerBorder = "#a7f3d0"; bannerIcon = "✓"; bannerColor = "#065f46";
+        bannerTitle = "CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN";
+      }}
+
+      const signerName = (firstSig.signer && firstSig.signer.cn) || (intSig && intSig.signer_name) || "Không xác định";
+      const issuerName = (firstSig.issuer && firstSig.issuer.cn)
+        ? (firstSig.issuer.cn + (firstSig.issuer.o ? (" (" + firstSig.issuer.o + ")") : ""))
+        : ((intSig && intSig.certificate_issuer) || "Không xác định");
+      const signedTime = firstSig.signedTime || (intSig && intSig.signing_time) || "Không xác định";
+      let ocspStatus = firstSig.ocsp || "";
+      if (!ocspStatus) {{
+        if (!hasSig) ocspStatus = "Không có chữ ký";
+        else if (intSig.revocation_ok === true) ocspStatus = "Chứng thư số hợp lệ, chưa bị thu hồi";
+        else if (intSig.revocation_ok === false) ocspStatus = "Chứng thư số đã bị thu hồi";
+        else ocspStatus = "Chưa kiểm tra được OCSP/CRL (ngoại tuyến)";
+      }}
+      const intactText = !hasSig
+        ? "Không có chữ ký số"
+        : (intSig.intact ? "Toàn vẹn dữ liệu (không thay đổi sau khi ký)" : "KHÔNG toàn vẹn — tài liệu đã bị chỉnh sửa");
+
+      body.replaceChildren();
+      const banner = el("div", "padding:12px;background:" + bannerBg + ";border:1px solid " + bannerBorder + ";border-radius:10px;margin-bottom:12px;text-align:center;");
+      banner.appendChild(el("div", "font-size:18px;color:" + bannerColor + ";margin-bottom:2px;", bannerIcon));
+      banner.appendChild(el("div", "font-weight:800;font-size:13.5px;color:" + bannerColor + ";", bannerTitle));
+      const docLine = el("div", "font-size:11px;color:" + bannerColor + ";margin-top:2px;");
+      docLine.appendChild(document.createTextNode("Tài liệu: "));
+      docLine.appendChild(el("b", "", data.doc_label || ""));
+      banner.appendChild(docLine);
+      body.appendChild(banner);
+
+      const rows = el("div", "display:flex;flex-direction:column;gap:8px;font-size:12px;");
+      rows.appendChild(makeRow("Chủ thể ký:", signerName, "color:#0f172a;font-weight:700;text-align:right;max-width:65%;word-break:break-word;"));
+      rows.appendChild(makeRow("Tổ chức cấp CA:", issuerName, "color:#0284c7;font-weight:700;text-align:right;max-width:65%;word-break:break-word;"));
+      rows.appendChild(makeRow("Tình trạng dữ liệu:", intactText, "color:" + (hasSig && intSig.intact ? "#16a34a" : "#b91c1c") + ";font-weight:700;text-align:right;max-width:65%;"));
+      rows.appendChild(makeRow("Thời điểm ký số:", signedTime));
+      rows.appendChild(makeRow("Trạng thái OCSP/CRL:", ocspStatus, "color:" + (isRevoked ? "#b91c1c" : (hasSig && intSig.revocation_ok === true ? "#059669" : "#92400e")) + ";font-weight:600;text-align:right;max-width:65%;"));
+      body.appendChild(rows);
+
+      if (hasSig && Array.isArray(intSig.problems) && intSig.problems.length > 0) {{
+        const warnBox = el("div", "margin-top:10px;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:11.5px;color:#9a3412;");
+        warnBox.appendChild(el("div", "font-weight:700;margin-bottom:4px;", "Chi tiết cảnh báo:"));
+        const ul = el("ul", "margin:0;padding-left:18px;");
+        intSig.problems.forEach(function(p) {{ ul.appendChild(el("li", "", p)); }});
+        warnBox.appendChild(ul);
+        body.appendChild(warnBox);
+      }}
+
+      const srcBox = el("div", "margin-top:14px;padding:10px;background:#f8fafc;border-radius:8px;font-size:11px;color:#475569;line-height:1.45;");
+      srcBox.appendChild(document.createTextNode("🏛️ Nguồn thẩm định: pyHanko (VN Root CA Trust Store) & Cổng NEAC ("));
+      const link = el("a", "color:#0284c7;font-weight:700;", "https://neac.gov.vn/vi");
+      link.href = "https://neac.gov.vn/vi";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      srcBox.appendChild(link);
+      srcBox.appendChild(document.createTextNode(")."));
+      body.appendChild(srcBox);
+
+      const closeBtn = el("button", "width:100%;margin-top:12px;padding:9px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;", "Đóng");
+      closeBtn.type = "button";
+      closeBtn.addEventListener("click", closeModal);
+      body.appendChild(closeBtn);
+    }} catch (err) {{
+      body.replaceChildren();
+      body.appendChild(el("div", "padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;text-align:center;color:#991b1b;", "⚠️ " + (err && err.message ? err.message : "Không thể thẩm định")));
+    }}
+  }}
+  const verifyBtn = document.getElementById("neacVerifyBtn");
+  if (verifyBtn) verifyBtn.addEventListener("click", checkShareNeac);
+  document.querySelectorAll("[data-neac-close]").forEach(function(btn) {{
+    btn.addEventListener("click", closeModal);
+  }});
+}})();
 </script>
-{_telemetry_js(token, nonce, document_id) if token and nonce else ""}
+{_telemetry_js(token, nonce, document_id, csp_nonce=csp_nonce) if token and nonce else ""}
 <footer class="thanks">💙 Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của
-<a href="https://inut.vn" target="_blank">INUT</a></footer>
+<a href="https://inut.vn" target="_blank" rel="noopener noreferrer">INUT</a></footer>
 </body></html>"""
-def _telemetry_js(token: str | None, nonce: str, document_id: int) -> str:
+
+
+def _telemetry_js(token: str | None, nonce: str, document_id: int, *, csp_nonce: str = "") -> str:
     """Client-side telemetry: GeoIP via ipwho.is/Cloudflare + fingerprint + POST to /api/doc-telemetry."""
     if not token or not nonce:
         return ""
     safe_token = html.escape(token, quote=True)
     safe_nonce = html.escape(nonce, quote=True)
-    return f"""<script>
+    nonce_attr = f' nonce="{html.escape(csp_nonce, quote=True)}"' if csp_nonce else ""
+    return f"""<script{nonce_attr}>
 (function(){{
   var _sent = false;
   function fp(){{
@@ -3445,13 +3913,19 @@ def doc_telemetry(
 
     import hashlib as _hl
     ua_hash = _hl.sha256(request.headers.get("user-agent", "").encode()).hexdigest()[:16]
-    ip = body.ip or (request.headers.get("x-forwarded-for", "").split(",")[0].strip()) or (request.headers.get("x-real-ip", "")) or (request.client.host if request.client else "")
+    server_ip = (
+        (request.headers.get("x-real-ip", "").strip())
+        or (request.headers.get("x-forwarded-for", "").split(",")[0].strip())
+        or (request.client.host if request.client else "")
+    )
+    ip = body.ip or server_ip
 
     view = doc_tracking.record_view(
         db, settings,
         document_id=body.document_id,
         action=body.action,
         ip=ip,
+        rate_limit_ip=server_ip or "unknown",
         city=body.city,
         region=body.region,
         isp=body.isp,
@@ -3883,7 +4357,7 @@ async def invoice_parse(
     user: CurrentUser = Depends(require_admin),
     db: Session = Depends(get_session),
 ):
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     head = content.lstrip()[:64]
     try:
         if content[:4] == b"%PDF":
@@ -3895,7 +4369,10 @@ async def invoice_parse(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Không đọc được hóa đơn", e, "ksp.invoice"),
+        )
     data["suggested_customer"] = _suggest_customer(db, data.get("buyer") or {})
     # Ghi nho hang hoa co don gia vao danh muc (autofill bao gia sau nay)
     data["products_learned"] = _upsert_products(
@@ -3950,7 +4427,10 @@ def bbbg_generate(
     try:
         pdf = bbbg.render_bbbg(settings, body.model_dump())
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh BBBG that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh BBBG thất bại", e, "ksp.bbbg"),
+        )
     doc_id = storage.save_upload(pdf)
     customer_id = _upsert_customer(db, body.ben_b)
     _audit(db, user, "bbbg_generate", body.filename, body.ben_b.name)
@@ -3973,7 +4453,10 @@ def factory_certificate_preview(
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh giay xuat xuong that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh giấy xuất xưởng thất bại", e, "ksp.bbbg"),
+        )
     return Response(content=pdf, media_type="application/pdf")
 
 
@@ -3992,7 +4475,10 @@ def factory_certificate_generate(
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh giay xuat xuong that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh giấy xuất xưởng thất bại", e, "ksp.bbbg"),
+        )
 
     doc_id = storage.save_upload(pdf)
     customer_id = _upsert_customer(db, body.ben_b)
@@ -4047,7 +4533,10 @@ def invoice_parse_stored(
     try:
         data = invoice.parse_invoice(storage.read_doc(d.doc_id))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Khong doc duoc hoa don: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Không đọc được hóa đơn", e, "ksp.invoice"),
+        )
     data["suggested_customer"] = (
         {"id": d.customer_id, "name": d.customer.name}
         if d.customer
@@ -4079,7 +4568,10 @@ def quote_preview(
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh PDF that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh PDF báo giá thất bại", e, "ksp.quote"),
+        )
     return Response(content=pdf, media_type="application/pdf")
 
 
@@ -4097,7 +4589,10 @@ def quote_generate(
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh PDF that bai: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh PDF báo giá thất bại", e, "ksp.quote"),
+        )
     doc_id = storage.save_upload(pdf)
     customer_id = _upsert_customer(db, body.ben_b)
     _upsert_products(db, [it.model_dump() for it in body.items])  # hoc danh muc
@@ -4161,8 +4656,8 @@ def billiard_quote_preview(
         date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
     )
     tmpl = bbbg._env.get_template("bao_gia_billiard.html")
-    html = tmpl.render(**data)
-    pdf = HTML(string=html).write_pdf()
+    html_out = tmpl.render(**data)
+    pdf = HTML(string=html_out, url_fetcher=security_utils.safe_weasyprint_url_fetcher).write_pdf()
     return Response(content=pdf, media_type="application/pdf")
 
 
@@ -4187,8 +4682,8 @@ def billiard_quote_generate(
         date_display=body.date_display or datetime.now().strftime("%d/%m/%Y"),
     )
     tmpl = bbbg._env.get_template("bao_gia_billiard.html")
-    html = tmpl.render(**data)
-    pdf = HTML(string=html).write_pdf()
+    html_out = tmpl.render(**data)
+    pdf = HTML(string=html_out, url_fetcher=security_utils.safe_weasyprint_url_fetcher).write_pdf()
     doc_id = storage.save_upload(pdf, suffix=".pdf")
 
     c_name = body.client_name.strip() or f"Billiards {body.num_tables} bàn"
@@ -4383,7 +4878,10 @@ def contract_preview(
     try:
         pdf = bbbg.render_contract(settings, body.model_dump())
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh hợp đồng thất bại: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh hợp đồng thất bại", e, "ksp.contract"),
+        )
     return Response(content=pdf, media_type="application/pdf")
 
 
@@ -4412,7 +4910,10 @@ def contract_generate(
     try:
         pdf = bbbg.render_contract(settings, body.model_dump())
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Sinh hợp đồng thất bại: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Sinh hợp đồng thất bại", e, "ksp.contract"),
+        )
 
     doc_id = storage.save_upload(pdf)
     customer_id = _upsert_customer(db, body.ben_b)
@@ -4502,7 +5003,10 @@ def ai_contract_draft(
     except ai.AINotConfigured as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except ai.AIError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi kết nối dịch vụ AI", e, "ksp.ai"),
+        )
     _validate_contract_terms(text)
     _audit(db, user, "ai_contract", body.ben_b_name, f"model={settings.ai_model}")
     return {"text": text}
@@ -4594,7 +5098,10 @@ def ai_quote_narrative(
     except ai.AINotConfigured as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except ai.AIError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi kết nối dịch vụ AI", e, "ksp.ai"),
+        )
     _audit(db, user, "ai_narrative", body.khach, f"model={settings.ai_model}")
     return {"text": text}
 
@@ -4747,7 +5254,10 @@ def tax_captcha(user: CurrentUser = Depends(require_admin)):
     try:
         return tax.get_captcha()
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"{type(e).__name__}: {e}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi lấy captcha từ Cổng Thuế", e, "ksp.tax"),
+        )
 
 
 @app.get("/api/tax/credentials")
@@ -4851,7 +5361,10 @@ def tax_sync(
         inv = tax.fetch_invoices(token, tu, den)
         result = tax.reconcile(db, inv, tu, den)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Lỗi tải hóa đơn: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi tải hóa đơn từ Cổng Thuế", e, "ksp.tax"),
+        )
     # do_import=True -> nap luon cac HD mua thieu vao he thong dang draft (dung
     # cung token, khong can captcha lai). create_purchase_draft tu chong trung.
     if bool(body.get("do_import")):
@@ -4891,7 +5404,10 @@ def tax_auto_sync(
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            security_utils.error_detail("Lỗi đồng bộ hóa đơn tự động", exc, "ksp.tax"),
+        ) from exc
 
 
 @app.get("/api/tax/auto-sync/status")
@@ -4941,12 +5457,15 @@ async def tax_review_upload(
     name = file.filename or "bct.xlsx"
     if not name.lower().endswith(".xlsx"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chỉ nhận file Excel (.xlsx)")
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     try:
         r = tax_review.review_bytes(content)
         tax_review.crosscheck_sales(db, r)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Không đọc được file: {type(e).__name__}: {e}")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            security_utils.error_detail("Không đọc được file Excel báo cáo thuế", e, "ksp.tax_review"),
+        )
     doc_id = storage.save_upload(content, suffix=".xlsx")
     rec = TaxReviewUpload(
         ky=ky.strip(), ten_file=name, doc_id=doc_id,
@@ -5050,13 +5569,17 @@ def nas_browse(
     except nas.NasDisabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Loi NAS: {e}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi kết nối NAS", e, "ksp.nas"),
+        )
     return {"path": rel, "entries": entries}
 
 
 @app.get("/api/nas/file")
 def nas_file(
     path: str,
+    request: Request,
     inline: bool = False,
     user: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
@@ -5067,23 +5590,28 @@ def nas_file(
     except nas.NasDisabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Loi NAS: {e}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi đọc file từ NAS", e, "ksp.nas"),
+        )
     name = path.replace("/", "\\").rsplit("\\", 1)[-1]
     is_pdf = name.lower().endswith(".pdf")
     is_docx = name.lower().endswith(".docx")
     is_md = name.lower().endswith((".md", ".markdown"))
+    csp_nonce = getattr(request.state, "csp_nonce", "")
     if inline and is_docx and docx_preview.is_valid_docx(data):
         html_out = docx_preview.render_docx_preview_html(
             data,
             title=name,
             download_url=f"/api/nas/file?path={quote(path)}&inline=false",
         )
-        return HTMLResponse(content=html_out)
+        return HTMLResponse(content=_inject_viewer_nonce(html_out, csp_nonce))
     if inline and is_md and markdown_preview.is_valid_markdown(data, name):
         html_out = markdown_preview.render_markdown_preview_html(
             data,
             title=name,
             download_url=f"/api/nas/file?path={quote(path)}&inline=false",
+            csp_nonce=csp_nonce,
         )
         return HTMLResponse(content=html_out)
     media = (
@@ -5096,7 +5624,7 @@ def nas_file(
         )
     )
     kind = "inline" if (inline and is_pdf) else "attachment"
-    disp = f"{kind}; filename*=UTF-8''{quote(name)}"
+    disp = security_utils.safe_content_disposition(name, disposition=kind)
     return StreamingResponse(
         iter([data]), media_type=media, headers={"Content-Disposition": disp}
     )
@@ -5108,7 +5636,10 @@ def nas_sync_all(user: CurrentUser = Depends(require_admin), settings: Settings 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "NAS dang tat")
     ok, msg = nas.test_connection(settings)
     if not ok:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Khong ket noi NAS: {msg}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Không kết nối được NAS", RuntimeError(msg), "ksp.nas"),
+        )
     synced = failed = 0
     for d in db.scalars(select(Document).order_by(Document.id)):
         good, _ = nas.sync_document(settings, db, d)
@@ -5134,7 +5665,7 @@ async def upload_logo(
     user: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
 ):
-    content = await file.read()
+    content = await storage.read_upload_limited(file, max_bytes=5 * 1024 * 1024)
     try:
         img = Image.open(_io.BytesIO(content)).convert("RGBA")
     except Exception:
@@ -5223,7 +5754,10 @@ def email_sync_run_now(
     except email_sync.EmailAuthError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
     except email_sync.EmailConnectionError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            security_utils.error_detail("Lỗi kết nối máy chủ Email", exc, "ksp.email_sync"),
+        )
     except email_sync.EmailSyncError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     _audit(db, user, "email_sync_job", str(run.id), run.status)
@@ -5286,8 +5820,8 @@ def tax_report_compare(rid: int, review_id: int, user: CurrentUser = Depends(req
 # Phuc vu frontend da build (SPA)
 # ---------------------------------------------------------------------------
 @app.get("/md/{doc_slug:path}")
-def public_markdown_viewer(doc_slug: str, format: str = "", raw: int = 0):
-    """Xem trước hoặc tải tài liệu Markdown (.md) trong thư mục docs/ của ksp-pdfsign."""
+def public_markdown_viewer(doc_slug: str, request: Request, format: str = "", raw: int = 0):
+    """Xem trước hoặc tải tài liệu Markdown (.md) công khai trong thư mục docs/public/ của ksp-pdfsign."""
     md_path = markdown_preview.resolve_repo_markdown_path(REPO_ROOT, doc_slug)
     if not md_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tài liệu Markdown (.md)")
@@ -5304,14 +5838,16 @@ def public_markdown_viewer(doc_slug: str, format: str = "", raw: int = 0):
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(pdf_name)}"},
+            headers={"Content-Disposition": security_utils.safe_content_disposition(pdf_name, disposition="inline")},
         )
     slug_enc = quote(doc_slug.lstrip("/"), safe="/")
+    csp_nonce = getattr(request.state, "csp_nonce", "")
     html_out = markdown_preview.render_markdown_preview_html(
         content,
         title=md_path.name,
         download_url=f"/md/{slug_enc}?raw=1",
         pdf_url=f"/md/{slug_enc}?format=pdf",
+        csp_nonce=csp_nonce,
     )
     return HTMLResponse(content=html_out)
 
@@ -5329,28 +5865,21 @@ if (_FRONTEND_DIST / "index.html").exists():
     }
 
     @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str):
+    def spa_fallback(full_path: str, request: Request):
         if full_path.startswith("api/"):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-        # Phuc vu truc tiep file text ho so LinkedIn tu ~/ksp-pdfsign
-        if full_path in ("ksp-likeedin.txt", "ksp-likeedin", "ksp-linkedin.txt", "ksp-linkedin"):
-            txt_path = REPO_ROOT / "ksp-likeedin.txt"
-            if txt_path.exists():
-                return FileResponse(
-                    txt_path,
-                    media_type="text/plain; charset=utf-8",
-                    headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-                )
         if full_path.lower().endswith((".md", ".markdown")):
             md_path = markdown_preview.resolve_repo_markdown_path(REPO_ROOT, full_path)
             if md_path:
                 content = md_path.read_bytes()
                 slug_enc = quote(full_path.lstrip("/"), safe="/")
+                csp_nonce = getattr(request.state, "csp_nonce", "")
                 html_out = markdown_preview.render_markdown_preview_html(
                     content,
                     title=md_path.name,
                     download_url=f"/md/{slug_enc}?raw=1",
                     pdf_url=f"/md/{slug_enc}?format=pdf",
+                    csp_nonce=csp_nonce,
                 )
                 return HTMLResponse(content=html_out)
         # Phuc vu cac file tinh o goc (favicon...) neu co

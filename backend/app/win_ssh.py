@@ -19,8 +19,9 @@ import subprocess
 from pathlib import Path
 
 from .config import Settings
-from .host_discovery import resolve_windows_host
+from .host_discovery import FALLBACK_WINDOWS_IPS, resolve_windows_host
 from .schemas import CertInfo
+from .security_utils import build_powershell_encoded_command, validate_allowed_host
 # digest_algorithm -> (lop hash .NET, OID)
 _HASH_OID = {
     "sha1": ("SHA1", "1.3.14.3.2.26"),
@@ -35,17 +36,55 @@ class WinSshError(RuntimeError):
 
 
 def _encode_ps(script: str) -> str:
-    return base64.b64encode(script.encode("utf-16-le")).decode()
+    return build_powershell_encoded_command(script)
+
+
+def _allowed_windows_hosts(settings: Settings) -> set[str]:
+    hosts = {
+        h.strip()
+        for h in (
+            settings.agent_default_ip,
+            getattr(settings, "ecus_ssh_host", ""),
+            *FALLBACK_WINDOWS_IPS,
+        )
+        if h and h.strip()
+    }
+    extra = getattr(settings, "allowed_ssh_hosts", "") or ""
+    for item in extra.split(","):
+        if item.strip():
+            hosts.add(item.strip())
+    return hosts
+
+
+def _known_hosts_path(settings: Settings) -> Path:
+    kh = settings.data_path / "ssh_known_hosts"
+    if not kh.exists():
+        try:
+            kh.touch(mode=0o600, exist_ok=True)
+        except OSError:
+            pass
+    return kh
+
+
+def _validate_target_host(settings: Settings, host: str) -> str:
+    target_host = (host or settings.agent_default_ip or "").strip()
+    try:
+        return validate_allowed_host(target_host, _allowed_windows_hosts(settings))
+    except ValueError as e:
+        raise WinSshError(str(e)) from e
 
 
 def _run(settings: Settings, host: str, admin_password: str, script: str) -> str:
     """Chay PowerShell tren may Windows qua SSH, tra ve stdout (text)."""
+    validated_host = _validate_target_host(settings, host)
+
     # Tu dong resolve host qua nmap neu IP khong thong
-    resolved_host = resolve_windows_host(host or settings.agent_default_ip, probe_port=445)
+    resolved_host = resolve_windows_host(validated_host, probe_port=445)
     enc = _encode_ps(script)
     key_path = Path(getattr(settings, "ecus_ssh_key_path", "/home/ksp/.ssh/id_ed25519"))
     if not key_path.is_file():
         key_path = Path.home() / ".ssh" / "id_ed25519"
+    known_hosts = _known_hosts_path(settings)
 
     if key_path.is_file():
         cmd = [
@@ -56,9 +95,9 @@ def _run(settings: Settings, host: str, admin_password: str, script: str) -> str
             "-o",
             "BatchMode=yes",
             "-o",
-            "StrictHostKeyChecking=no",
+            "StrictHostKeyChecking=accept-new",
             "-o",
-            "UserKnownHostsFile=/dev/null",
+            f"UserKnownHostsFile={known_hosts}",
             "-o",
             "ProxyCommand=none",
             "-o",
@@ -74,9 +113,11 @@ def _run(settings: Settings, host: str, admin_password: str, script: str) -> str
             "ssh",
             "-n",
             "-o",
-            "StrictHostKeyChecking=no",
+            "StrictHostKeyChecking=accept-new",
             "-o",
-            "UserKnownHostsFile=/dev/null",
+            f"UserKnownHostsFile={known_hosts}",
+            "-o",
+            "ProxyCommand=none",
             "-o",
             f"ConnectTimeout={settings.ssh_connect_timeout}",
             f"{settings.ssh_user}@{resolved_host}",
@@ -155,7 +196,8 @@ $bytes=[System.Text.Encoding]::UTF8.GetBytes($json)
 
 
 def list_certs(settings: Settings, host: str, admin_password: str) -> list[CertInfo]:
-    data = _out_json(_run(settings, host, admin_password, _LIST_PS))
+    validated_host = _validate_target_host(settings, host)
+    data = _out_json(_run(settings, validated_host, admin_password, _LIST_PS))
     if isinstance(data, dict):  # ConvertTo-Json tra object don khi chi 1 phan tu
         data = [data]
     return [CertInfo(**c) for c in data]
@@ -190,8 +232,9 @@ $bytes=[System.Text.Encoding]::UTF8.GetBytes($json)
 def get_cert_chain(
     settings: Settings, host: str, admin_password: str, thumbprint: str
 ) -> list[bytes]:
+    validated_host = _validate_target_host(settings, host)
     tp = "".join(c for c in thumbprint if c.isalnum())
-    data = _out_json(_run(settings, host, admin_password, _CHAIN_PS.replace("__TP__", tp)))
+    data = _out_json(_run(settings, validated_host, admin_password, _CHAIN_PS.replace("__TP__", tp)))
     if isinstance(data, str):
         data = [data]
     return [base64.b64decode(b) for b in data]
@@ -202,7 +245,8 @@ def get_cert_chain(
 # ---------------------------------------------------------------------------
 _SIGN_PS = _SYNC_CERTS_PS + r"""
 $ErrorActionPreference="Stop"; $ProgressPreference="SilentlyContinue"
-$tp="__TP__"; $pin="__PIN__"; $oid="__OID__"; $hashName="__HASH__"
+$tp="__TP__"; $oid="__OID__"; $hashName="__HASH__"
+$pin=[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("__PIN_B64__"))
 $data=[Convert]::FromBase64String("__DATA__")
 $cert=Get-Item ("Cert:\CurrentUser\My\" + $tp)
 $info=$cert.PrivateKey.CspKeyContainerInfo
@@ -231,16 +275,18 @@ def sign_raw(
     data: bytes,
     digest_algorithm: str,
 ) -> bytes:
+    validated_host = _validate_target_host(settings, host)
     if digest_algorithm not in _HASH_OID:
         raise WinSshError(f"digest_algorithm khong ho tro: {digest_algorithm}")
     hash_name, oid = _HASH_OID[digest_algorithm]
     tp = "".join(c for c in thumbprint if c.isalnum())
+    pin_b64 = base64.b64encode((pin or "").encode("utf-8")).decode("ascii")
     script = (
         _SIGN_PS.replace("__TP__", tp)
-        .replace("__PIN__", pin)
+        .replace("__PIN_B64__", pin_b64)
         .replace("__OID__", oid)
         .replace("__HASH__", hash_name)
         .replace("__DATA__", base64.b64encode(data).decode())
     )
-    out = _run(settings, host, admin_password, script)
+    out = _run(settings, validated_host, admin_password, script)
     return base64.b64decode(_extract("SIG=", out))

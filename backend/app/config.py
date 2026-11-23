@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-to-a-long-random-string"
     jwt_ttl_minutes: int = 480
 
+    # CORS / Security hardening
+    app_dev_cors: bool = False
+    mail_api_token: str = ""
+    mail_hmac_secret: str = ""
+    loopback_service_token_file: str = ""
+    inut_crm_backend_token_file: str = ""
+    agent_ca_bundle: str = ""
+    allow_software_piecework_sign: bool = False
+    allowed_ssh_hosts: str = ""
+    token_pin: str = ""
+
     # Ky so - mac dinh
     default_location: str = "Đắk Lắk"
 
@@ -105,7 +116,7 @@ class Settings(BaseSettings):
     nas_host: str = "172.32.0.100"
     nas_share: str = "inut"
     nas_user: str = "ksp"
-    nas_password: str = "Nhaphang123"
+    nas_password: str = ""
     nas_base_path: str = "ho-so"
     nas_timeout: int = 10
 
@@ -196,6 +207,15 @@ class Settings(BaseSettings):
     # Kiem tra chu ky: co thu tai OCSP/CRL khi kiem tra khong (can Internet).
     verify_allow_fetching: bool = False
 
+    # LIO Signer API (ky so tu xa HKD Cong nghe LIO - CAS CERT / CMC-CA)
+    lio_signer_enabled: bool = True
+    lio_signer_base_url: str = "https://signer.liotech.vn"
+    lio_signer_api_key: str = ""
+    lio_signer_webhook_secret: str = ""
+    lio_signer_webhook_url: str = "https://ksp-pdf-signer.p2p.inut.io.vn/api/lio-signer/webhook"
+    lio_signer_poll_interval_seconds: int = 20
+    lio_signer_timeout: float = 60.0
+
     # BLE Gateway (inut-ble) & May in nhan Clabel CT221B
     ble_gateway_host: str = "77.88.207.23"
     ble_gateway_user: str = "root"
@@ -213,9 +233,9 @@ class Settings(BaseSettings):
     # TTS Tieng Viet (Kokoro / VNMap TTS + AppHub 9Router Google & Microsoft fallback) & Loa BLE (77.88.207.23:8080)
     tts_enabled: bool = True
     tts_kokoro_base_url: str = "https://kokoro.p2p.inut.io.vn"
-    tts_kokoro_api_key: str = "71d74094bb4aee46a0c7b19003f2052a94068eda9c5302b5"
+    tts_kokoro_api_key: str = ""
     tts_vnmap_base_url: str = "https://vnmap-tts.a.inut.vn"
-    tts_vnmap_api_key: str = "175f61e9773a44344c01fd475be82dc745b556c50d64c58d"
+    tts_vnmap_api_key: str = ""
     tts_default_provider: str = "auto"
     tts_default_voice: str = "diem_trinh"
     tts_default_speed: int = 0
@@ -279,13 +299,24 @@ class Settings(BaseSettings):
 
     @property
     def using_default_secrets(self) -> bool:
-        """True neu con dung mat khau/bi mat mac dinh (de canh bao tren UI)."""
+        """True neu con dung mat khau/bi mat yeu hoac chua cau hinh (de canh bao tren UI)."""
         # JWT secret duoc tu sinh (effective_jwt_secret) nen khong tinh vao day.
+        import hashlib
+
+        _legacy_weak_hashes = {
+            "e7a3478b8144fb5318fb51d1bd5b28c5c19973240f194b49a9c8e6cf7e59326a",
+            "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+        }
+        adm_hash = hashlib.sha256(self.app_admin_password.encode("utf-8")).hexdigest() if self.app_admin_password else ""
+        agt_hash = hashlib.sha256(self.agent_admin_password.encode("utf-8")).hexdigest() if self.agent_admin_password else ""
         return (
             not self.app_admin_password
+            or len(self.app_admin_password) < 10
             or not self.agent_admin_password
-            or self.app_admin_password == "NhapHang123@"
-            or self.agent_admin_password == "NhapHang123"
+            or adm_hash in _legacy_weak_hashes
+            or agt_hash in _legacy_weak_hashes
+            or "change-me" in self.app_admin_password.lower()
+            or "change-me" in self.agent_admin_password.lower()
         )
 
 

@@ -6,16 +6,22 @@ va Luat BHXH 2024 / Bo luat Lao dong 2019 ve quan he giao khoan dan su.
 from __future__ import annotations
 
 import base64
+import copy
+import html as html_mod
 import io
 import json
 import logging
+import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import re
@@ -43,9 +49,10 @@ from sqlalchemy.orm import Session
 from weasyprint import HTML
 
 from . import money, storage, verify
-from .auth import CurrentUser, require_admin
+from .auth import COOKIE_NAME, CurrentUser, authenticate_loopback_bearer, require_admin, require_user
 from .config import Settings, get_settings
 from .db import Document, PieceworkContract, PieceworkContractor, Share, get_session
+from .security_utils import error_detail, safe_content_disposition, safe_weasyprint_url_fetcher
 from .trust import load_trust_roots
 router = APIRouter(tags=["piecework"])
 
@@ -54,6 +61,126 @@ _env = Environment(
     loader=FileSystemLoader(_TPL_DIR),
     autoescape=select_autoescape(["html"]),
 )
+
+_DATA_IMAGE_RE = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$")
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_DOC_BYTES = 25 * 1024 * 1024
+_ALLOWED_UPLOAD_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".docx"}
+_NEAC_RATE_WINDOW_SEC = 60.0
+_NEAC_RATE_MAX_CALLS = 10
+_NEAC_RATE_BUCKETS: dict[tuple[str, str], list[float]] = {}
+
+
+def _validate_data_image_url(
+    data_url: str | None, *, max_bytes: int = _MAX_IMAGE_BYTES
+) -> tuple[str, bytes, str]:
+    """Validate a base64 data:image/(png|jpeg|webp) URI and return (clean_uri, raw_bytes, suffix)."""
+    val = (data_url or "").strip()
+    m = _DATA_IMAGE_RE.match(val)
+    if not m:
+        raise ValueError("Định dạng dữ liệu ảnh không hợp lệ (chỉ chấp nhận PNG/JPEG/WEBP base64)")
+    fmt, enc = m.group(1), m.group(2)
+    # Quick upper-bound check before base64 decoding
+    if len(enc) > ((max_bytes * 4) // 3) + 16:
+        raise ValueError("Dung lượng ảnh vượt quá giới hạn 10MB")
+    try:
+        raw = base64.b64decode(enc, validate=True)
+    except Exception as exc:
+        raise ValueError("Dữ liệu base64 của ảnh bị hỏng") from exc
+    if not raw:
+        raise ValueError("Dữ liệu ảnh rỗng")
+    if len(raw) > max_bytes:
+        raise ValueError("Dung lượng ảnh vượt quá giới hạn 10MB")
+    suffix = ".png" if fmt == "png" else (".webp" if fmt == "webp" else ".jpg")
+    return val, raw, suffix
+
+
+def _safe_img_src(data_url: str | None) -> str:
+    """Return data_url only if it strictly matches safe PNG/JPEG/WEBP base64 data URI."""
+    val = (data_url or "").strip()
+    return val if _DATA_IMAGE_RE.match(val) else ""
+
+
+def _contract_doc_ids(c: PieceworkContract) -> set[str]:
+    """Return the exact set of storage doc_ids explicitly linked to a piecework contract."""
+    ids: set[str] = set()
+    for field_name in (
+        "id_card_front_doc_id",
+        "id_card_back_doc_id",
+        "acceptance_doc_id",
+        "tax_commitment_doc_id",
+        "bank_proof_doc_id",
+        "worker_face_doc_id",
+        "contract_pdf_doc_id",
+    ):
+        val = getattr(c, field_name, None)
+        if val:
+            ids.add(str(val).strip())
+    if c.site_photos_json:
+        try:
+            for pid in json.loads(c.site_photos_json):
+                if pid:
+                    ids.add(str(pid).strip())
+        except Exception:
+            pass
+    return ids
+
+
+def _authorize_piecework_doc(
+    doc_id: str,
+    request: Request,
+    token: str | None,
+    db: Session,
+) -> None:
+    """Require either an authenticated admin/loopback service OR a matching contract portal_token."""
+    if authenticate_loopback_bearer(request, db) is not None:
+        return
+
+    has_cookie = COOKIE_NAME in request.cookies
+    if has_cookie:
+        try:
+            user = require_user(request=request, settings=get_settings(), db=db)
+            if user.is_admin:
+                return
+            if not token:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Chỉ quản trị viên hoặc liên kết hợp đồng hợp lệ mới được xem tệp này",
+                )
+        except HTTPException:
+            if not token:
+                raise
+
+    if token:
+        c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
+        if c and doc_id in _contract_doc_ids(c):
+            return
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Mã truy cập không hợp lệ hoặc tệp không thuộc hợp đồng này",
+        )
+
+    raise HTTPException(
+        status.HTTP_401_UNAUTHORIZED,
+        "Yêu cầu đăng nhập quản trị hoặc mã cổng hợp đồng hợp lệ",
+    )
+
+
+def _check_neac_rate_limit(request: Request, token: str) -> None:
+    """Per-(IP, token) sliding-window rate limit for outbound NEAC verification proxy."""
+    ip = (request.client.host if request.client else "") or "unknown"
+    key = (ip, token)
+    now = time.monotonic()
+    cutoff = now - _NEAC_RATE_WINDOW_SEC
+    bucket = [t for t in _NEAC_RATE_BUCKETS.get(key, []) if t > cutoff]
+    if len(bucket) >= _NEAC_RATE_MAX_CALLS:
+        _NEAC_RATE_BUCKETS[key] = bucket
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Bạn thao tác kiểm tra NEAC quá nhanh, vui lòng thử lại sau ít phút",
+        )
+    bucket.append(now)
+    _NEAC_RATE_BUCKETS[key] = bucket
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +284,7 @@ class PieceworkContractUpdate(BaseModel):
 class SignInutPayload(BaseModel):
     sign_date: str | None = None
     cert_id: str | None = None
-    pin: str | None = "12345678"
+    pin: str | None = None
     signer_name: str | None = None
     allow_unsigned_worker: bool = False
 
@@ -258,6 +385,7 @@ def _get_inut_signer() -> SimpleSigner:
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         ))
+        os.chmod(key_path, 0o600)
     except Exception:
         pass
 
@@ -311,7 +439,7 @@ def sign_piecework_pdf_pyhanko(
     location: str = "Đắk Lắk",
     reason: str = "Ký số điện tử Hợp đồng giao khoán INUT",
     cert_id: str | None = None,
-    pin: str = "12345678",
+    pin: str | None = None,
 ) -> bytes:
     from pyhanko.pdf_utils.images import PdfImage
     from pyhanko.pdf_utils.layout import AxisAlignment, InnerScaling, SimpleBoxLayoutRule
@@ -320,6 +448,7 @@ def sign_piecework_pdf_pyhanko(
     from .schemas import AgentTarget, Rect, SignRequest
 
     settings = get_settings()
+    effective_pin = (pin or "").strip() or (settings.token_pin or "").strip()
     vn_tz = timezone(timedelta(hours=7))
     if sign_dt.tzinfo is None:
         sign_dt = sign_dt.replace(tzinfo=vn_tz)
@@ -336,25 +465,28 @@ def sign_piecework_pdf_pyhanko(
     field_name = "Signature_INUT"
 
     if cert_id:
-        try:
-            chain = token_backend.get_cert_chain(settings, settings.agent_default_ip, "", cert_id)
-            signing_cert, registry = signing._build_cert_registry(chain)
-            req_obj = SignRequest(
-                doc_id="piecework",
-                rect=Rect(page=page_idx, x1=x1, y1=y1, x2=x2, y2=y2),
-                cert_id=cert_id,
-                agent=AgentTarget(ip=settings.agent_default_ip, admin_password="", pin=pin or "12345678"),
-                reason=reason,
-                location=location or "Đắk Lắk",
-                signer_name=signer_name,
-            )
-            signer = signing.ExternalTokenSigner(settings, req_obj, signing_cert, registry)
-            signer_name = signing._subject_common_name(signing_cert) or signer_name
-            mst = signing._subject_mst(signing_cert) or mst
-        except Exception as e:
-            logger.warning("USB Token signing unavailable (%s), falling back to software signer", e)
+        if not effective_pin:
+            raise RuntimeError("Thiếu mã PIN USB Token (vui lòng nhập PIN hoặc cấu hình TOKEN_PIN)")
+        chain = token_backend.get_cert_chain(settings, settings.agent_default_ip, "", cert_id)
+        signing_cert, registry = signing._build_cert_registry(chain)
+        req_obj = SignRequest(
+            doc_id="piecework",
+            rect=Rect(page=page_idx, x1=x1, y1=y1, x2=x2, y2=y2),
+            cert_id=cert_id,
+            agent=AgentTarget(ip=settings.agent_default_ip, admin_password="", pin=effective_pin),
+            reason=reason,
+            location=location or "Đắk Lắk",
+            signer_name=signer_name,
+        )
+        signer = signing.ExternalTokenSigner(settings, req_obj, signing_cert, registry)
+        signer_name = signing._subject_common_name(signing_cert) or signer_name
+        mst = signing._subject_mst(signing_cert) or mst
 
     if signer is None:
+        if not getattr(settings, "allow_software_piecework_sign", False):
+            raise RuntimeError(
+                "Chưa chọn chứng thư USB Token hợp lệ và chế độ ký phần mềm (ALLOW_SOFTWARE_PIECEWORK_SIGN) đang tắt"
+            )
         signer = _get_inut_signer()
         field_name = _next_sig_field_name(pdf_bytes)
 
@@ -415,8 +547,15 @@ def inspect_uploaded_content(content: bytes, suffix: str) -> dict[str, Any]:
     if len(content) == 0:
         return {"valid": False, "error": "Tệp rỗng (0 bytes)", "size_kb": 0}
 
-    s_low = suffix.lower()
-    if s_low in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+    s_low = (suffix or "").lower()
+    if s_low not in _ALLOWED_UPLOAD_SUFFIXES:
+        return {
+            "valid": False,
+            "error": f"Định dạng tệp '{s_low or 'không xác định'}' không được phép tải lên (chỉ chấp nhận PDF, JPG, PNG, WEBP, DOCX)",
+            "size_kb": size_kb,
+        }
+
+    if s_low in (".jpg", ".jpeg", ".png", ".webp"):
         try:
             from PIL import Image
             img = Image.open(io.BytesIO(content))
@@ -448,14 +587,22 @@ def inspect_uploaded_content(content: bytes, suffix: str) -> dict[str, Any]:
             }
         except Exception as e:
             return {"valid": False, "error": f"Tệp PDF bị lỗi hoặc hỏng cấu trúc: {e}", "size_kb": size_kb}
-    else:
+    elif s_low == ".docx":
+        from . import docx_preview
+        if not docx_preview.is_valid_docx(content):
+            return {"valid": False, "error": "Tệp DOCX không hợp lệ hoặc hỏng cấu trúc", "size_kb": size_kb}
         return {
             "valid": True,
-            "kind": "other",
-            "format": s_low[1:].upper(),
+            "kind": "docx",
+            "format": "DOCX",
             "size_kb": size_kb,
-            "note": f"Tệp đính kèm {s_low[1:].upper()} ({size_kb} KB)",
+            "note": f"Tài liệu DOCX ({size_kb} KB) hợp lệ",
         }
+    return {
+        "valid": False,
+        "error": f"Định dạng tệp '{s_low}' không được phép tải lên",
+        "size_kb": size_kb,
+    }
 
 
 def inspect_document_file(doc_id: str) -> dict[str, Any]:
@@ -641,6 +788,58 @@ def parse_contractor_text(text: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
     """Danh gia toan dien ho so thieu theo Nghi dinh 253/2026/ND-CP & Luat BHXH 2024."""
+    if c.contract_type == "mua_ban_ca_nhan":
+        has_id = bool(c.has_id_card_front and c.has_id_card_back and c.worker_id_card)
+        checklist = [
+            {
+                "key": "id_card",
+                "label": "CCCD 2 mặt & Số định danh (Khách hàng)",
+                "ok": has_id,
+                "detail": f"Số CCCD: {c.worker_id_card} (Đã có ảnh 2 mặt)" if has_id else "Thiếu ảnh CCCD 2 mặt",
+            },
+            {
+                "key": "worker_sign",
+                "label": "Chữ ký Online & eKYC (Khách hàng)",
+                "ok": c.is_signed_by_worker,
+                "detail": f"Đã ký lúc {c.worker_signed_at.strftime('%d/%m/%Y %H:%M')}" if (c.is_signed_by_worker and c.worker_signed_at) else "Chờ khách hàng ký online & eKYC",
+                "has_signature_data": bool(c.worker_signature_data),
+            },
+            {
+                "key": "inut_sign",
+                "label": "Chữ ký số Bên Bán (Công ty iNut)",
+                "ok": c.is_signed_by_inut,
+                "detail": f"Đã ký số lúc {c.inut_signed_at.strftime('%d/%m/%Y %H:%M')}" if (c.is_signed_by_inut and c.inut_signed_at) else "Chờ iNut ký số đóng dấu",
+                "doc_id": c.contract_pdf_doc_id,
+            },
+        ]
+        missing_keys = [item["key"] for item in checklist if not item["ok"]]
+        can_pay = bool(has_id and c.is_signed_by_worker)
+        if c.is_signed_by_inut and c.is_signed_by_worker:
+            status_code = "completed"
+            status_label = "Đã hoàn tất ký 2 bên"
+            status_color = "emerald"
+        elif c.is_signed_by_worker:
+            status_code = "ready_to_pay"
+            status_label = "Khách đã ký — Chờ iNut ký số"
+            status_color = "green"
+        else:
+            status_code = "pending_docs"
+            status_label = "Chờ khách hàng ký online"
+            status_color = "amber"
+            
+        return {
+            "checklist": checklist,
+            "missing_count": len(missing_keys),
+            "missing_keys": missing_keys,
+            "can_pay": can_pay,
+            "status_code": status_code,
+            "status_label": status_label,
+            "status_color": status_color,
+            "is_sub_5m": True,
+            "payment_method": "bank_transfer",
+            "is_cash": False,
+        }
+
     checklist = []
     
     # 1. CCCD 2 mat & Dinh danh ca nhan
@@ -685,7 +884,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
             "detail": f"{c.worker_bank_account} ({c.worker_bank_name}) · Chính chủ: {c.worker_name}" if has_bank else "Chưa có số tài khoản hoặc ngân hàng thụ hưởng",
             "validation": bank_val,
         })
-    
+
     # 3. Nghiem thu & Anh hien truong
     is_viethung = "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6
     photos = []
@@ -712,7 +911,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         },
         "doc_id": c.acceptance_doc_id,
     })
-    
+
     # 4. Chinh sach thue TNCN (Nghi dinh 253/2026/ND-CP nguong 5 trieu)
     is_sub_5m = c.total_amount < 5_000_000
     tax_ok = True
@@ -731,7 +930,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         else:
             tax_ok = False
             tax_detail = f"Từ 5 triệu trở lên ({c.total_amount:,.0f}đ): Cần trích 10% thuế TNCN hoặc kẹp Bản cam kết 08/CK-TNCN"
-            
+
     checklist.append({
         "key": "tax_tncn",
         "label": "Hồ sơ Thuế TNCN (NĐ 253/2026)",
@@ -740,7 +939,6 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "validation": tax_val,
         "doc_id": c.tax_commitment_doc_id,
     })
-    
     # 5. Chu ky thợ
     checklist.append({
         "key": "worker_sign",
@@ -749,7 +947,6 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "detail": f"Đã ký lúc {c.worker_signed_at.strftime('%d/%m/%Y %H:%M')}" if (c.is_signed_by_worker and c.worker_signed_at) else "Thợ chưa ký qua cổng Portal",
         "has_signature_data": bool(c.worker_signature_data),
     })
-    
     # 6. Ky so INUT
     checklist.append({
         "key": "inut_sign",
@@ -758,7 +955,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
         "detail": f"Đã ký số lúc {c.inut_signed_at.strftime('%d/%m/%Y %H:%M')}" if (c.is_signed_by_inut and c.inut_signed_at) else "Chưa ký số bên A",
         "doc_id": c.contract_pdf_doc_id,
     })
-    
+
     # 7. Chung tu thanh toan (UNC Ngan hang hoac Xac nhan tien mat tai chan cong trinh)
     unc_val = inspect_document_file(c.bank_proof_doc_id) if c.bank_proof_doc_id else None
     if is_cash:
@@ -783,7 +980,7 @@ def evaluate_deficiencies(c: PieceworkContract) -> dict[str, Any]:
             "validation": unc_val,
             "doc_id": c.bank_proof_doc_id,
         })
-    
+
     missing_keys = [item["key"] for item in checklist if not item["ok"] and item["key"] not in ("bank_unc",)]
     can_pay = (has_id and has_bank and (has_acc or is_viethung) and tax_ok and c.is_signed_by_worker)
     # Status badges
@@ -879,14 +1076,38 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
     vietqr_data_uri = ""
     transfer_memo = ""
     is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
-    if not is_cash and c.worker_bank_account and c.worker_name:
+    is_mua_ban = (c.contract_type == "mua_ban_ca_nhan")
+    if is_mua_ban and not is_cash:
+        from .standards import _strip_accents
+        import httpx
+        clean_name = _strip_accents(c.worker_name or "KHACH").upper().strip()[:35]
+        transfer_memo = f"INUT tt HD 30NGUYENHUE {clean_name}"[:50]
+        amount = int(c.total_amount or 9000000)
+        payload = {
+            'accountNo': '79713',
+            'accountName': 'CONG TY CP DT VA PT CONG NGHE INUT',
+            'acqId': '970407',
+            'amount': amount,
+            'addInfo': transfer_memo,
+            'format': 'text',
+            'template': 'compact2'
+        }
+        try:
+            with httpx.Client(timeout=4.0) as client:
+                r = client.post('https://api.vietqr.io/v2/generate', json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("code") == "00" and data.get("data"):
+                        vietqr_data_uri = data["data"].get("qrDataURL") or ""
+        except Exception as e:
+            logger.warning("VietQR API generate error for INUT: %s", e)
+    elif not is_cash and c.worker_bank_account and c.worker_name:
         from .standards import _strip_accents
         import httpx
         clean_name = _strip_accents(c.worker_name).upper().strip()[:46]
         day_str = f"{date_obj.day:02d}.{date_obj.month:02d}"
         code_part = c.contract_code.split("/")[0] if "/" in c.contract_code else c.contract_code[:12]
         transfer_memo = f"INUT tt HDGK {code_part} ky {day_str} {clean_name}"[:50]
-        
         b_name = (c.worker_bank_name or "").lower()
         acq_id = "970407" # default Techcombank
         if "techcombank" in b_name or "tcb" in b_name or "ky thuong" in b_name:
@@ -977,15 +1198,18 @@ def render_piecework_pdf(c: PieceworkContract) -> bytes:
         "vietqr_data_uri": vietqr_data_uri,
         "transfer_memo": transfer_memo,
         "contract_type": c.contract_type or "thi_cong",
+        "is_mua_ban": (c.contract_type == "mua_ban_ca_nhan"),
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
-        "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
+        "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or "NGUYENHUE" in (c.contract_code or "").upper() or c.id == 5,
         "is_viethung": "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6,
+        "is_nebi": "NEBI" in (c.contract_code or "").upper() or "PYMID" in (c.contract_code or "").upper() or c.id == 7,
         "payment_method": "cash" if is_cash else "bank_transfer",
         "is_cash": is_cash,
     }
     
-    html_text = _env.get_template("hop_dong_giao_khoan.html").render(**ctx)
-    return HTML(string=html_text).write_pdf()
+    tpl_name = "hop_dong_mua_ban_ca_nhan.html" if (c.contract_type == "mua_ban_ca_nhan") else "hop_dong_giao_khoan.html"
+    html_text = _env.get_template(tpl_name).render(**ctx)
+    return HTML(string=html_text, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
 
 def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]:
     """Tinh toan ngay ky Phu luc 2 (nghiem thu) va Phu luc 3 (thanh toan)."""
@@ -994,6 +1218,8 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
     is_mkt = "MKT" in code_up or c.id == 3
     is_rk = "RK3528" in code_up or "RK3518" in code_up or c.id == 4
     is_pickleball = "PICKLE" in code_up or c.id == 5
+    is_viethung = "VIETHUNG" in code_up or "VHP" in code_up or c.id == 6
+    is_nebi = "NEBI" in code_up or "PYMID" in code_up or c.id == 7
     if is_fuji:
         app2_dt = datetime(2026, 8, 27, 16, 38, 45)
         app3_dt = datetime(2026, 10, 10, 11, 2, 47)
@@ -1009,6 +1235,14 @@ def _calculate_appendix_dates(c: PieceworkContract) -> tuple[datetime, datetime]
         # HĐ Khoán lắp đặt, bảo hành & bảo trì KN Pickleball Club ký 01/10/2026, nghiệm thu 16/10/2026, thanh toán Tháng 10/2026
         app2_dt = datetime(2026, 10, 16, 16, 28, 34)
         app3_dt = datetime(2026, 10, 18, 15, 18, 27)
+    elif is_viethung:
+        # HĐ Khoán Remote Setup & Maintain 16 trạm ĐMT Việt Hùng Power ký 31/10/2026, thanh toán trước UNC 07/11/2026 08:49 SA, nghiệm thu cấu hình inut-solar 07/11/2026
+        app2_dt = datetime(2026, 11, 7, 9, 8, 23)
+        app3_dt = datetime(2026, 11, 7, 9, 14, 37)
+    elif is_nebi:
+        # HĐ Khoán hỗ trợ kỹ thuật từ xa 2 nhà yến (HĐĐT số 59 C26TPK ngày 10/11/2026), nghiệm thu cuối tháng 11, thanh toán ngày 01/12/2026
+        app2_dt = datetime(2026, 11, 30, 16, 15, 0)
+        app3_dt = datetime(2026, 12, 1, 9, 30, 0)
     else:
         app2_dt = datetime(2026, 9, 24, 16, 37, 42)
         now = datetime.now()
@@ -1070,6 +1304,7 @@ def render_appendix2_pdf(c: PieceworkContract) -> bytes:
         "worker_signature_data": c.worker_signature_data,
         "worker_face_photo_data": c.worker_face_photo_data,
         "contract_type": c.contract_type or "thi_cong",
+        "is_mua_ban": (c.contract_type == "mua_ban_ca_nhan"),
         "is_software": "RK3528" in (c.contract_code or "").upper() or "PM" in (c.contract_code or "").upper() or (c.contract_type or "") == "gia_cong",
         "is_pickleball": "PICKLE" in (c.contract_code or "").upper() or c.id == 5,
         "is_viethung": "VIETHUNG" in (c.contract_code or "").upper() or "VHP" in (c.contract_code or "").upper() or c.id == 6,
@@ -1077,7 +1312,7 @@ def render_appendix2_pdf(c: PieceworkContract) -> bytes:
         "is_cash": (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash",
     }
     html_text = _env.get_template("phu_luc_2_nghiem_thu.html").render(**ctx)
-    return HTML(string=html_text).write_pdf()
+    return HTML(string=html_text, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
 
 
 def render_appendix3_pdf(c: PieceworkContract) -> bytes:
@@ -1124,11 +1359,12 @@ def render_appendix3_pdf(c: PieceworkContract) -> bytes:
         "worker_signature_data": c.worker_signature_data,
         "worker_face_photo_data": c.worker_face_photo_data,
         "location": c.location or "Hiện trường công trình",
+        "is_mua_ban": (c.contract_type == "mua_ban_ca_nhan"),
         "payment_method": "cash" if (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash" else "bank_transfer",
         "is_cash": (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash",
     }
     html_text = _env.get_template("phu_luc_3_thanh_toan.html").render(**ctx)
-    return HTML(string=html_text).write_pdf()
+    return HTML(string=html_text, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
 
 
 # ---------------------------------------------------------------------------
@@ -1277,7 +1513,7 @@ def _inspect_doc(doc_id: str, label: str) -> dict[str, Any] | None:
     val = inspect_document_file(doc_id)
     res = storage.find_doc_path(doc_id)
     suffix = res[1] if res else ".bin"
-    is_pdf = bool(suffix.lower() == ".pdf" or val.get("kind") == "pdf")
+    is_pdf = bool(suffix.lower() in (".pdf", ".docx") or val.get("kind") == "pdf")
     return {
         "doc_id": doc_id,
         "label": label,
@@ -1308,7 +1544,9 @@ def create_piecework_contract(
         
     c_date = body.contract_date or datetime.now().strftime("%Y-%m-%d")
     date_digits = "".join(c_date.split("-")[::-1])
-    code = body.contract_code.strip() or f"{date_digits}-01/HĐGK-INUT"
+    is_mb_create = (body.contract_type == "mua_ban_ca_nhan")
+    default_prefix = "HĐMB" if is_mb_create else "HĐGK"
+    code = body.contract_code.strip() or f"{date_digits}-01/{default_prefix}-INUT"
     token = secrets.token_urlsafe(16)
     
     contractor = None
@@ -1341,20 +1579,22 @@ def create_piecework_contract(
             address=body.worker_address.strip(),
             bank_account=body.worker_bank_account.strip(),
             bank_name=body.worker_bank_name.strip() or "Techcombank",
-            skills=body.project_name.strip() or "Thi công giao khoán",
+            skills=body.project_name.strip() or ("Mua bán hàng hóa / thiết bị cá nhân" if is_mb_create else "Thi công giao khoán"),
         )
         db.add(contractor)
         db.flush()
 
+    default_c_title = (
+        f"Hợp đồng mua bán cá nhân - {body.project_name or 'Hàng hóa / Thiết bị'}"
+        if is_mb_create
+        else f"Hợp đồng giao khoán {body.project_name}"
+    )
     c = PieceworkContract(
         contractor_id=contractor.id if contractor else None,
         contract_code=code,
         contract_type=body.contract_type or "thi_cong",
-        title=body.title or f"Hợp đồng giao khoán {body.project_name}",
+        title=body.title or default_c_title,
         project_name=body.project_name,
-        location=body.location,
-        contract_date=body.contract_date or datetime.now().strftime("%Y-%m-%d"),
-        worker_name=body.worker_name,
         worker_id_card=body.worker_id_card,
         worker_id_card_date=body.worker_id_card_date,
         worker_id_card_place=body.worker_id_card_place,
@@ -1515,10 +1755,16 @@ async def upload_piecework_doc(
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng khoán")
 
-    content = await file.read()
+    suffix = Path(file.filename or "").suffix.lower() or ".bin"
+    if suffix not in _ALLOWED_UPLOAD_SUFFIXES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Định dạng tệp '{suffix}' không được phép tải lên (chỉ chấp nhận PDF, JPG, PNG, WEBP, DOCX)",
+        )
+    max_b = _MAX_IMAGE_BYTES if suffix in (".jpg", ".jpeg", ".png", ".webp") else _MAX_DOC_BYTES
+    content = await storage.read_upload_limited(file, max_bytes=max_b)
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tệp tải lên rỗng (0 bytes)")
-    suffix = Path(file.filename or "").suffix.lower() or ".bin"
     inspection = inspect_uploaded_content(content, suffix)
     if not inspection.get("valid"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Tệp không hợp lệ: {inspection.get('error', 'Hỏng cấu trúc tệp')}")
@@ -1593,9 +1839,10 @@ def sign_piecework_contract_inut(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng khoán")
 
     if not c.is_signed_by_worker and not (body and body.allow_unsigned_worker):
+        party_b_label = "Cá nhân (Bên B)" if (c.contract_type == "mua_ban_ca_nhan") else "Người nhận khoán (Bên B)"
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Người nhận khoán (Bên B) chưa ký điện tử trên cổng Portal! Quy trình chuẩn: phải chờ người lao động nhận khoán điền thông tin và ký tên trước rồi Bên A (INUT) mới thực hiện ký số đóng dấu.",
+            f"{party_b_label} chưa ký điện tử trên cổng Portal! Quy trình chuẩn: phải chờ Bên B điền thông tin và ký tên trước rồi Bên A (INUT) mới thực hiện ký số đóng dấu.",
         )
     sign_dt = None
     if body and body.sign_date:
@@ -1626,34 +1873,41 @@ def sign_piecework_contract_inut(
             import random
             now = now.replace(second=random.randint(13, 57))
         sign_dt = now
-    c.is_signed_by_inut = True
-    c.inut_signed_at = sign_dt
     cert_id = (body.cert_id if body and body.cert_id else None)
-    pin = (body.pin if body and body.pin else "12345678")
+    pin = ((body.pin if body and body.pin else None) or settings.token_pin or "").strip() or None
 
-    # Render PDF with INUT signature stamp
-    pdf_bytes = render_piecework_pdf(c)
+    # Render PDF with INUT signature stamp on a non-persistent copy first (fail closed on signing error)
+    c_render = copy.copy(c)
+    c_render.is_signed_by_inut = True
+    c_render.inut_signed_at = sign_dt
+    pdf_bytes = render_piecework_pdf(c_render)
 
-    # Embed cryptographic digital signature using PyHanko with system_time
+    # Embed cryptographic digital signature using PyHanko with system_time (FAIL CLOSED!)
     try:
         pdf_bytes = sign_piecework_pdf_pyhanko(
             pdf_bytes,
             sign_dt,
             location=settings.default_location,
-            reason=c.title or "Ký số điện tử Hợp đồng giao khoán INUT",
+            reason=c.title or ("Ký số điện tử Hợp đồng mua bán cá nhân INUT" if (c.contract_type == "mua_ban_ca_nhan") else "Ký số điện tử Hợp đồng giao khoán INUT"),
             cert_id=cert_id,
             pin=pin,
         )
     except Exception as e:
-        logger.exception("Lỗi ký số PyHanko cho hợp đồng khoán: %s", e)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=error_detail("Không thể ký số điện tử cho hợp đồng khoán", e, "ksp.piecework"),
+        ) from e
 
+    c.is_signed_by_inut = True
+    c.inut_signed_at = sign_dt
     doc_id = storage.save_upload(pdf_bytes, suffix=".pdf")
     c.contract_pdf_doc_id = doc_id
 
     # Save into Document storage
     code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
     safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
-    doc_name = f"Hop_dong_giao_khoan_{safe_code}_DA_KY.pdf"
+    prefix = "Hop_dong_mua_ban_ca_nhan" if (c.contract_type == "mua_ban_ca_nhan") else "Hop_dong_giao_khoan"
+    doc_name = f"{prefix}_{safe_code}_DA_KY.pdf"
     doc = db.scalar(select(Document).where(Document.source_external_id == str(c.id), Document.source_system == "piecework"))
     if doc:
         doc.doc_id = doc_id
@@ -1667,97 +1921,98 @@ def sign_piecework_contract_inut(
             signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
             signed=True,
             doc_type="hop_dong",
-            note=f"Hợp đồng giao khoán {c.contract_code} · {c.worker_name} · {c.total_amount:,.0f}đ · Đã ký số Bên A INUT",
+            note=f"{'Hợp đồng mua bán cá nhân' if (c.contract_type == 'mua_ban_ca_nhan') else 'Hợp đồng giao khoán'} {c.contract_code} · {c.worker_name} · {c.total_amount:,.0f}đ · Đã ký số Bên A INUT",
             source_system="piecework",
             source_external_id=str(c.id),
             source_synced_at=datetime.now(timezone.utc),
         )
         db.add(doc)
 
-    # Ký số đồng bộ Phụ lục II (Nghiệm thu) và Phụ lục III (Thanh toán & UNC) nếu đã có nghiệm thu / UNC
-    vn_tz = timezone(timedelta(hours=7))
-    app2_dt, app3_dt = _calculate_appendix_dates(c)
-    app2_dt = app2_dt.replace(tzinfo=vn_tz) if app2_dt.tzinfo is None else app2_dt
-    app3_dt = app3_dt.replace(tzinfo=vn_tz) if app3_dt.tzinfo is None else app3_dt
+    # Ký số đồng bộ Phụ lục II và III (chỉ áp dụng cho hợp đồng giao khoán công việc)
+    if c.contract_type != "mua_ban_ca_nhan":
+        vn_tz = timezone(timedelta(hours=7))
+        app2_dt, app3_dt = _calculate_appendix_dates(c)
+        app2_dt = app2_dt.replace(tzinfo=vn_tz) if app2_dt.tzinfo is None else app2_dt
+        app3_dt = app3_dt.replace(tzinfo=vn_tz) if app3_dt.tzinfo is None else app3_dt
 
-    if c.has_acceptance:
-        try:
-            b_pl2 = render_appendix2_pdf(c)
-            b_pl2 = sign_piecework_pdf_pyhanko(
-                b_pl2,
-                app2_dt,
-                location=settings.default_location,
-                reason="Nghiệm thu hoàn thành công việc giao khoán",
-                cert_id=cert_id,
-                pin=pin,
-            )
-            pl2_id = storage.save_upload(b_pl2, suffix=".pdf")
-            doc2 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL02"))
-            if doc2:
-                doc2.doc_id = pl2_id
-                doc2.signed = True
-                doc2.source_synced_at = datetime.now(timezone.utc)
-            else:
-                doc2 = Document(
-                    doc_id=pl2_id,
-                    filename=f"Phu_luc_02_Nghiem_thu_{safe_code}.pdf",
-                    signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
-                    signed=True,
-                    doc_type="bbnt",
-                    note=f"Phụ lục II: Biên bản nghiệm thu công việc ({c.total_amount:,.0f}đ) · HĐ {c.contract_code} · Ký ngày {app2_dt.strftime('%d/%m/%Y %H:%M:%S')}",
-                    source_system="piecework_appendix",
-                    source_external_id=f"{c.id}_PL02",
-                    source_synced_at=datetime.now(timezone.utc),
+        if c.has_acceptance:
+            try:
+                b_pl2 = render_appendix2_pdf(c)
+                b_pl2 = sign_piecework_pdf_pyhanko(
+                    b_pl2,
+                    app2_dt,
+                    location=settings.default_location,
+                    reason="Nghiệm thu hoàn thành công việc giao khoán",
+                    cert_id=cert_id,
+                    pin=pin,
                 )
-                db.add(doc2)
-        except Exception as e:
-            logger.warning("Could not sign Appendix 2 for contract %s: %s", c.id, e)
+                pl2_id = storage.save_upload(b_pl2, suffix=".pdf")
+                doc2 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL02"))
+                if doc2:
+                    doc2.doc_id = pl2_id
+                    doc2.signed = True
+                    doc2.source_synced_at = datetime.now(timezone.utc)
+                else:
+                    doc2 = Document(
+                        doc_id=pl2_id,
+                        filename=f"Phu_luc_02_Nghiem_thu_{safe_code}.pdf",
+                        signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+                        signed=True,
+                        doc_type="bbnt",
+                        note=f"Phụ lục II: Biên bản nghiệm thu công việc ({c.total_amount:,.0f}đ) · HĐ {c.contract_code} · Ký ngày {app2_dt.strftime('%d/%m/%Y %H:%M:%S')}",
+                        source_system="piecework_appendix",
+                        source_external_id=f"{c.id}_PL02",
+                        source_synced_at=datetime.now(timezone.utc),
+                    )
+                    db.add(doc2)
+            except Exception as e:
+                logger.warning("Could not sign Appendix 2 for contract %s: %s", c.id, e)
 
-    is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
-    if (c.has_bank_proof and c.bank_proof_doc_id) or (is_cash and c.has_acceptance):
-        try:
-            if is_cash:
-                c.has_bank_proof = True
-            b_pl3 = render_appendix3_pdf(c)
-            b_pl3 = sign_piecework_pdf_pyhanko(
-                b_pl3,
-                app3_dt,
-                location=settings.default_location,
-                reason="Xác nhận nhận tiền mặt tại chân công trình & thanh lý hợp đồng" if is_cash else "Xác nhận chi trả thù lao & thanh lý hợp đồng",
-                cert_id=cert_id,
-                pin=pin,
-            )
-            pl3_id = storage.save_upload(b_pl3, suffix=".pdf")
-            if is_cash and not c.bank_proof_doc_id:
-                c.bank_proof_doc_id = pl3_id
-            doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
-            pl3_fn = f"Phu_luc_03_Thanh_toan_Tien_mat_{safe_code}.pdf" if is_cash else f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
-            pl3_note = (
-                f"Phụ lục III: Biên bản xác nhận nhận tiền mặt tại chân công trình & Thanh lý HĐ · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
-                if is_cash
-                else f"Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý HĐ (kèm UNC Techcombank) · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
-            )
-            if doc3:
-                doc3.doc_id = pl3_id
-                doc3.filename = pl3_fn
-                doc3.note = pl3_note
-                doc3.signed = True
-                doc3.source_synced_at = datetime.now(timezone.utc)
-            else:
-                doc3 = Document(
-                    doc_id=pl3_id,
-                    filename=pl3_fn,
-                    signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
-                    signed=True,
-                    doc_type="thanh_ly",
-                    note=pl3_note,
-                    source_system="piecework_appendix",
-                    source_external_id=f"{c.id}_PL03",
-                    source_synced_at=datetime.now(timezone.utc),
+        is_cash = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+        if (c.has_bank_proof and c.bank_proof_doc_id) or (is_cash and c.has_acceptance):
+            try:
+                if is_cash:
+                    c.has_bank_proof = True
+                b_pl3 = render_appendix3_pdf(c)
+                b_pl3 = sign_piecework_pdf_pyhanko(
+                    b_pl3,
+                    app3_dt,
+                    location=settings.default_location,
+                    reason="Xác nhận nhận tiền mặt tại chân công trình & thanh lý hợp đồng" if is_cash else "Xác nhận chi trả thù lao & thanh lý hợp đồng",
+                    cert_id=cert_id,
+                    pin=pin,
                 )
-                db.add(doc3)
-        except Exception as e:
-            logger.warning("Could not sign Appendix 3 for contract %s: %s", c.id, e)
+                pl3_id = storage.save_upload(b_pl3, suffix=".pdf")
+                if is_cash and not c.bank_proof_doc_id:
+                    c.bank_proof_doc_id = pl3_id
+                doc3 = db.scalar(select(Document).where(Document.source_external_id == f"{c.id}_PL03"))
+                pl3_fn = f"Phu_luc_03_Thanh_toan_Tien_mat_{safe_code}.pdf" if is_cash else f"Phu_luc_03_Thanh_toan_UNC_{safe_code}.pdf"
+                pl3_note = (
+                    f"Phụ lục III: Biên bản xác nhận nhận tiền mặt tại chân công trình & Thanh lý HĐ · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
+                    if is_cash
+                    else f"Phụ lục III: Biên bản xác nhận thanh toán & Thanh lý HĐ (kèm UNC Techcombank) · HĐ {c.contract_code} · Ký ngày {app3_dt.strftime('%d/%m/%Y %H:%M:%S')}"
+                )
+                if doc3:
+                    doc3.doc_id = pl3_id
+                    doc3.filename = pl3_fn
+                    doc3.note = pl3_note
+                    doc3.signed = True
+                    doc3.source_synced_at = datetime.now(timezone.utc)
+                else:
+                    doc3 = Document(
+                        doc_id=pl3_id,
+                        filename=pl3_fn,
+                        signer_name="CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+                        signed=True,
+                        doc_type="hop_dong",
+                        note=pl3_note,
+                        source_system="piecework_appendix",
+                        source_external_id=f"{c.id}_PL03",
+                        source_synced_at=datetime.now(timezone.utc),
+                    )
+                    db.add(doc3)
+            except Exception as e:
+                logger.warning("Could not sign Appendix 3 for contract %s: %s", c.id, e)
 
     deficiency = evaluate_deficiencies(c)
     c.status = deficiency["status_code"]
@@ -1850,37 +2105,42 @@ def sync_piecework_contract_to_drive(
             uploaded_files.append(fn_docx)
 
         # 5. Các chứng từ đính kèm (CCCD, Selfie, UNC, Ảnh hiện trường)
-        if c.id_card_front_doc_id and storage.exists(c.id_card_front_doc_id, suffix=".jpg"):
-            fn_f = f"CCCD_Mat_truoc_{clean_name}.jpg"
-            (pkg_dir / fn_f).write_bytes(storage.read_doc(c.id_card_front_doc_id, suffix=".jpg"))
-            uploaded_files.append(fn_f)
-        if c.id_card_back_doc_id and storage.exists(c.id_card_back_doc_id, suffix=".jpg"):
-            fn_b = f"CCCD_Mat_sau_{clean_name}.jpg"
-            (pkg_dir / fn_b).write_bytes(storage.read_doc(c.id_card_back_doc_id, suffix=".jpg"))
-            uploaded_files.append(fn_b)
-        if c.worker_face_doc_id and storage.exists(c.worker_face_doc_id, suffix=".jpg"):
-            fn_fc = f"Anh_eKYC_{clean_name}.jpg"
-            (pkg_dir / fn_fc).write_bytes(storage.read_doc(c.worker_face_doc_id, suffix=".jpg"))
-            uploaded_files.append(fn_fc)
-        if c.bank_proof_doc_id and storage.exists(c.bank_proof_doc_id, suffix=".png"):
-            fn_bk = f"Chung_tu_UNC_Techcombank_{clean_name}.png"
-            (pkg_dir / fn_bk).write_bytes(storage.read_doc(c.bank_proof_doc_id, suffix=".png"))
-            uploaded_files.append(fn_bk)
+        def _stage_doc_any(did: str | None, stem: str) -> None:
+            if not did:
+                return
+            try:
+                raw_b, suf = storage.read_doc_any(did)
+                fn_out = f"{stem}{suf}"
+                (pkg_dir / fn_out).write_bytes(raw_b)
+                uploaded_files.append(fn_out)
+            except Exception as exc:
+                logger.warning("Could not stage %s (%s) for Drive: %s", stem, did, exc)
+
+        _stage_doc_any(c.id_card_front_doc_id, f"CCCD_Mat_truoc_{clean_name}")
+        _stage_doc_any(c.id_card_back_doc_id, f"CCCD_Mat_sau_{clean_name}")
+        _stage_doc_any(c.worker_face_doc_id, f"Anh_eKYC_{clean_name}")
+        _stage_doc_any(c.bank_proof_doc_id, f"Chung_tu_UNC_Techcombank_{clean_name}")
         if c.site_photos_json:
             try:
                 for idx, pid in enumerate(json.loads(c.site_photos_json), 1):
-                    if pid and storage.exists(pid, suffix=".jpg"):
-                        fn_p = f"Anh_hien_truong_{idx}_{clean_name}.jpg"
-                        (pkg_dir / fn_p).write_bytes(storage.read_doc(pid, suffix=".jpg"))
-                        uploaded_files.append(fn_p)
+                    _stage_doc_any(pid, f"Anh_hien_truong_{idx}_{clean_name}")
             except Exception as e:
                 logger.warning("Could not stage site photos for Drive: %s", e)
+
+        bind_addr = (settings.accountant_drive_bind or "").strip()
+        if not bind_addr or bind_addr == "0.0.0.0":
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as _s:
+                    _s.connect(("8.8.8.8", 80))
+                    bind_addr = _s.getsockname()[0]
+            except Exception:
+                bind_addr = "0.0.0.0"
 
         rclone_bin = shutil.which("rclone") or str(Path.home() / ".local" / "bin" / "rclone")
         cmd = [
             rclone_bin, "copy", str(pkg_dir), remote_dest,
             "--drive-root-folder-id", settings.accountant_drive_root_folder_id,
-            "--bind", settings.accountant_drive_bind,
+            "--bind", bind_addr,
             "--fast-list",
             "-v",
         ]
@@ -1894,7 +2154,7 @@ def sync_piecework_contract_to_drive(
         link_cmd = [
             rclone_bin, "link", remote_dest,
             "--drive-root-folder-id", settings.accountant_drive_root_folder_id,
-            "--bind", settings.accountant_drive_bind
+            "--bind", bind_addr,
         ]
         res_link = subprocess.run(link_cmd, capture_output=True, text=True, timeout=30)
         if res_link.returncode == 0:
@@ -2334,16 +2594,27 @@ def get_contractor_tax_summary(
 
 
 @router.get("/api/piecework/docs/{doc_id}/file")
-def get_piecework_doc_file(doc_id: str, db: Session = Depends(get_session)):
-    """Trả về tệp chứng từ đính kèm (ảnh hoặc PDF) để xem trực tiếp trên trình duyệt."""
+def get_piecework_doc_file(
+    doc_id: str,
+    request: Request,
+    token: str | None = Query(None),
+    db: Session = Depends(get_session),
+):
+    """Trả về tệp chứng từ đính kèm (ảnh hoặc PDF) cho quản trị viên hoặc portal_token hợp lệ."""
+    _authorize_piecework_doc(doc_id, request, token, db)
     try:
         content, suffix = storage.read_doc_any(doc_id)
     except FileNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tệp đính kèm")
 
     mime = "application/octet-stream"
+    disposition = "inline"
     s_low = suffix.lower()
-    if content.startswith(b"%PDF") or s_low == ".pdf":
+    if s_low == ".svg":
+        # Never serve SVG inline (prevents scriptable SVG XSS); force download
+        mime = "application/octet-stream"
+        disposition = "attachment"
+    elif content.startswith(b"%PDF") or s_low == ".pdf":
         mime = "application/pdf"
     elif content.startswith(b"\xff\xd8\xff") or s_low in (".jpg", ".jpeg"):
         mime = "image/jpeg"
@@ -2351,18 +2622,40 @@ def get_piecework_doc_file(doc_id: str, db: Session = Depends(get_session)):
         mime = "image/png"
     elif (content.startswith(b"RIFF") and b"WEBP" in content[:16]) or s_low == ".webp":
         mime = "image/webp"
-    elif s_low == ".svg":
-        mime = "image/svg+xml"
+    elif s_low == ".docx":
+        from . import docx_preview
+        if docx_preview.is_valid_docx(content):
+            dl_url = f"/api/piecework/docs/{quote(doc_id, safe='')}/download"
+            if token:
+                dl_url += f"?token={quote(token, safe='')}"
+            html_out = docx_preview.render_docx_preview_html(
+                content,
+                title=f"doc_{doc_id}.docx",
+                download_url=dl_url,
+            )
+            return HTMLResponse(
+                content=html_out,
+                headers={"Cache-Control": "private, no-store"},
+            )
 
     return Response(
         content=content,
         media_type=mime,
-        headers={"Content-Disposition": f'inline; filename="doc_{doc_id}{suffix}"', "Cache-Control": "public, max-age=3600"},
+        headers={
+            "Content-Disposition": safe_content_disposition(f"doc_{doc_id}{suffix}", disposition=disposition),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
 @router.get("/api/piecework/docs/{doc_id}/download")
-def download_piecework_doc_file(doc_id: str, db: Session = Depends(get_session)):
+def download_piecework_doc_file(
+    doc_id: str,
+    request: Request,
+    token: str | None = Query(None),
+    db: Session = Depends(get_session),
+):
+    _authorize_piecework_doc(doc_id, request, token, db)
     try:
         content, suffix = storage.read_doc_any(doc_id)
     except FileNotFoundError:
@@ -2371,7 +2664,10 @@ def download_piecework_doc_file(doc_id: str, db: Session = Depends(get_session))
     return Response(
         content=content,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="doc_{doc_id}{suffix}"'},
+        headers={
+            "Content-Disposition": safe_content_disposition(f"doc_{doc_id}{suffix}", disposition="attachment"),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -2520,16 +2816,17 @@ def verify_piecework_signature(
 
         sig = reader.embedded_signatures[0]
         roots = load_trust_roots(settings)
-        if getattr(sig, "signer_cert", None) and sig.signer_cert not in roots:
-            roots.append(sig.signer_cert)
         vc = ValidationContext(trust_roots=roots, allow_fetching=False)
         status_val = validate_pdf_signature(sig, signer_validation_context=vc)
 
         intact = bool(getattr(status_val, "intact", False))
         valid = bool(getattr(status_val, "valid", False))
+        trusted = bool(getattr(status_val, "trusted", False))
 
         cert = getattr(status_val, "signing_cert", None)
         signer_name = None
+        signer_org = None
+        signer_mst = None
         ca_issuer = None
         cert_serial = None
         valid_from = None
@@ -2538,7 +2835,13 @@ def verify_piecework_signature(
 
         if cert:
             try:
-                signer_name = cert.subject.native.get("common_name") or cert.subject.native.get("organization_name")
+                subj = cert.subject.native
+                signer_name = subj.get("common_name") or subj.get("organization_name")
+                signer_org = subj.get("organization_name") or signer_name
+                raw_uid = str(subj.get("serial_number") or subj.get("user_id") or "")
+                m_mst = re.search(r"(\d{10,13})", raw_uid)
+                if m_mst:
+                    signer_mst = m_mst.group(1)
             except Exception:
                 pass
             try:
@@ -2564,14 +2867,11 @@ def verify_piecework_signature(
 
         if not signer_name:
             try:
-                signer_name = str(sig.sig_object.get("/Name") or "")
+                signer_name = str(sig.sig_object.get("/Name") or "") or None
             except Exception:
                 pass
-        if not signer_name:
-            signer_name = "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT"
-
-        if not ca_issuer:
-            ca_issuer = "WINCA / WINGROUP CA"
+        if not signer_mst and signer_name and "INUT" in signer_name.upper():
+            signer_mst = "4401053694"
 
         raw_m = sig.sig_object.get("/M")
         sign_date_m = str(raw_m) if raw_m is not None else None
@@ -2587,17 +2887,29 @@ def verify_piecework_signature(
                 pass
 
         subfilter = str(sig.sig_object.get("/SubFilter") or "/ETSI.CAdES.detached").lstrip("/")
+        is_fully_compliant = bool(intact and valid and trusted)
+
+        if is_fully_compliant:
+            foxit_verdict = "Valid signature, trusted CA chain, document was not modified after this signature was applied"
+            tax_status = "ĐỦ ĐIỀU KIỆN PHÁP LÝ HỒ SƠ QUYẾT TOÁN THUẾ & GIẢI TRÌNH THANH TRA"
+        elif intact and valid:
+            foxit_verdict = "Cryptographically intact signature, but signing certificate is NOT trusted by Vietnam Root CA"
+            tax_status = "CHƯA ĐỦ ĐIỀU KIỆN (Chứng thư chưa được chuỗi CA tin cậy xác thực)"
+        else:
+            foxit_verdict = "Signature invalid or document modified"
+            tax_status = "CHƯA ĐỦ ĐIỀU KIỆN"
 
         tax_compliance = {
-            "compliant": bool(intact and valid),
-            "signer_mst": "4401053694",
-            "signer_org": "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT",
+            "compliant": is_fully_compliant,
+            "trusted": trusted,
+            "signer_mst": signer_mst,
+            "signer_org": signer_org or signer_name,
             "ca_issuer": ca_issuer,
-            "cert_serial": cert_serial or "540116541CB8...60DD8CD",
-            "valid_from": valid_from or "2024-06-15T00:00:00Z",
-            "valid_to": valid_to or "2027-06-15T23:59:59Z",
+            "cert_serial": cert_serial,
+            "valid_from": valid_from,
+            "valid_to": valid_to,
             "digest_algorithm": "SHA-256",
-            "signature_algorithm": "RSA (2048 bits) with SHA-256",
+            "signature_algorithm": sig_algo or "RSA (2048 bits) with SHA-256",
             "subfilter": subfilter,
             "document_integrity": "Toàn vẹn (Không bị thay đổi, chỉnh sửa sau khi ký)" if intact else "Bị thay đổi",
             "legal_bases": [
@@ -2606,8 +2918,8 @@ def verify_piecework_signature(
                 "Nghị định 123/2020/NĐ-CP & Thông tư 78/2021/TT-BTC về hóa đơn, chứng từ điện tử",
                 "Thông tư 133/2016/TT-BTC & Nghị định 253/2026/NĐ-CP về chứng từ kế toán chi phí hợp lý hợp lệ"
             ],
-            "foxit_reader_verdict": "Valid signature, document was not modified after this signature was applied" if (intact and valid) else "Signature invalid or document modified",
-            "tax_authority_status": "ĐỦ ĐIỀU KIỆN PHÁP LÝ HỒ SƠ QUYẾT TOÁN THUẾ & GIẢI TRÌNH THANH TRA" if (intact and valid) else "CHƯA ĐỦ ĐIỀU KIỆN",
+            "foxit_reader_verdict": foxit_verdict,
+            "tax_authority_status": tax_status,
         }
 
         return {
@@ -2615,8 +2927,9 @@ def verify_piecework_signature(
             "has_signature": True,
             "intact": intact,
             "valid": valid,
+            "trusted": trusted,
             "signer_name": signer_name,
-            "signer_tax_code": "4401053694",
+            "signer_tax_code": signer_mst,
             "ca_issuer": ca_issuer,
             "cert_serial": cert_serial,
             "valid_from": valid_from,
@@ -2625,27 +2938,28 @@ def verify_piecework_signature(
             "signing_time": signing_time,
             "subfilter": subfilter,
             "digest_algorithm": "SHA-256",
-            "signature_algorithm": "RSA (2048 bits) with SHA-256",
+            "signature_algorithm": sig_algo or "RSA (2048 bits) with SHA-256",
             "tax_compliance": tax_compliance,
         }
     except Exception as e:
-        logger.exception("Lỗi kiểm tra chữ ký số hợp đồng khoán: %s", e)
         return {
             "ok": False,
             "has_signature": False,
             "intact": False,
             "valid": False,
+            "trusted": False,
             "signer_name": None,
             "sign_date_m": None,
             "signing_time": None,
-            "message": f"Lỗi kiểm tra chữ ký số: {e}",
+            "message": error_detail("Lỗi kiểm tra chữ ký số hợp đồng khoán", e, "ksp.piecework"),
         }
 
 # ---------------------------------------------------------------------------
 # Public Worker Mobile Portal (/khoan/{token})
 # ---------------------------------------------------------------------------
 @router.get("/khoan/{token}", response_class=HTMLResponse)
-def worker_portal_html(token: str, db: Session = Depends(get_session)):
+@router.get("/hop-dong-ca-nhan/{token}", response_class=HTMLResponse)
+def worker_portal_html(token: str, request: Request, db: Session = Depends(get_session)):
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         return HTMLResponse(
@@ -2656,7 +2970,13 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             <body><h2>⚠️ Liên kết không hợp lệ hoặc đã hết hạn</h2><p>Vui lòng liên hệ Công ty iNut qua Hotline 0972 768 491 để nhận lại liên kết mới.</p></body></html>""",
             status_code=404,
         )
-        
+
+    esc = lambda v: html_mod.escape(str(v if v is not None else ""), quote=True)
+    csp_nonce = getattr(request.state, "csp_nonce", "") or ""
+    token_url = quote(c.portal_token or "", safe="")
+    is_cash_portal = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+    is_mb_portal = (c.contract_type == "mua_ban_ca_nhan")
+
     deficiency = evaluate_deficiencies(c)
     items = []
     try:
@@ -2669,8 +2989,8 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
     items_html = "".join(f"""
         <tr>
-            <td style="padding:10px 8px; border-bottom:1px solid #e2e8f0; font-size:13px;">{it.get('ten', '')}</td>
-            <td style="padding:10px 8px; border-bottom:1px solid #e2e8f0; text-align:center; font-size:13px;">{it.get('so_luong', 1)} {it.get('dvt', '')}</td>
+            <td style="padding:10px 8px; border-bottom:1px solid #e2e8f0; font-size:13px;">{esc(it.get('ten', ''))}</td>
+            <td style="padding:10px 8px; border-bottom:1px solid #e2e8f0; text-align:center; font-size:13px;">{esc(it.get('so_luong', 1))} {esc(it.get('dvt', ''))}</td>
             <td style="padding:10px 8px; border-bottom:1px solid #e2e8f0; text-align:right; font-weight:600; font-size:13px;">{float(it.get('thanh_tien', 0)):,.0f} đ</td>
         </tr>
     """ for it in items)
@@ -2679,8 +2999,8 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         <div style="display:flex; align-items:flex-start; gap:12px; padding:10px 14px; background:{'#f0fdf4' if item['ok'] else '#fef2f2'}; border-radius:10px; margin-bottom:8px; border:1px solid {'#bbf7d0' if item['ok'] else '#fecaca'};">
             <span style="font-size:18px;">{'✅' if item['ok'] else '⚠️'}</span>
             <div style="flex:1;">
-                <div style="font-weight:600; font-size:13.5px; color:{'#166534' if item['ok'] else '#991b1b'};">{item['label']}</div>
-                <div style="font-size:12px; color:#64748b; margin-top:2px;">{item['detail']}</div>
+                <div style="font-weight:600; font-size:13.5px; color:{'#166534' if item['ok'] else '#991b1b'};">{esc(item['label'])}</div>
+                <div style="font-size:12px; color:#64748b; margin-top:2px;">{esc(item['detail'])}</div>
             </div>
         </div>
     """ for item in deficiency["checklist"])
@@ -2688,7 +3008,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     if c.id_card_front_doc_id:
         try:
             raw_b, suf = storage.read_doc_any(c.id_card_front_doc_id)
-            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            m = "image/png" if suf.lower() == ".png" else ("image/webp" if suf.lower() == ".webp" else "image/jpeg")
             front_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
         except Exception:
             pass
@@ -2697,7 +3017,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     if c.id_card_back_doc_id:
         try:
             raw_b, suf = storage.read_doc_any(c.id_card_back_doc_id)
-            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            m = "image/png" if suf.lower() == ".png" else ("image/webp" if suf.lower() == ".webp" else "image/jpeg")
             back_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
         except Exception:
             pass
@@ -2708,7 +3028,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             for pid in json.loads(c.site_photos_json):
                 if pid:
                     raw_b, suf = storage.read_doc_any(pid)
-                    m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+                    m = "image/png" if suf.lower() == ".png" else ("image/webp" if suf.lower() == ".webp" else "image/jpeg")
                     site_photos_thumbs.append(f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}")
         except Exception:
             pass
@@ -2717,7 +3037,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     if c.bank_proof_doc_id:
         try:
             raw_b, suf = storage.read_doc_any(c.bank_proof_doc_id)
-            m = "image/png" if suf.lower() == ".png" else "image/jpeg"
+            m = "image/png" if suf.lower() == ".png" else ("image/webp" if suf.lower() == ".webp" else "image/jpeg")
             bank_proof_thumb = f"data:{m};base64,{base64.b64encode(raw_b).decode('ascii')}"
         except Exception:
             pass
@@ -2736,27 +3056,18 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             </div>
             """
         site_photos_preview_signed = ""
-        imgs = "".join(f'<img src="{th}" style="width:48%; height:110px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Ảnh hiện trường">' for th in site_photos_thumbs)
-        site_photos_preview_signed = f"""
-        <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-                <div style="font-size:12px; font-weight:600; color:#334155;">Ảnh nghiệm thu hiện trường ({len(site_photos_thumbs)} ảnh):</div>
-                <div style="display:flex; gap:6px;">
-                    <label style="font-size:11px; font-weight:700; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; padding:4px 8px; border-radius:6px; cursor:pointer;">
-                        📷 Chụp thêm
-                        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleUploadMoreSitePhotos(event)">
-                    </label>
-                    <label style="font-size:11px; font-weight:700; color:#0f766e; background:#f0fdfa; border:1px solid #99f6e4; padding:4px 8px; border-radius:6px; cursor:pointer;">
-                        🖼️ Thêm từ thư viện
-                        <input type="file" accept="image/*" multiple style="display:none;" onchange="handleUploadMoreSitePhotos(event)">
-                    </label>
+        if not is_mb_portal:
+            imgs = "".join(f'<img src="{th}" style="width:48%; height:110px; object-fit:contain; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" alt="Ảnh hiện trường">' for th in site_photos_thumbs)
+            site_photos_preview_signed = f"""
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #e2e8f0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                    <div style="font-size:12px; font-weight:600; color:#334155;">Ảnh nghiệm thu hiện trường ({len(site_photos_thumbs)} ảnh):</div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    {imgs if imgs else '<div style="font-size:11.5px; color:#94a3b8; font-style:italic;">Chưa có ảnh hiện trường</div>'}
                 </div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                {imgs if imgs else '<div style="font-size:11.5px; color:#94a3b8; font-style:italic;">Chưa có ảnh hiện trường</div>'}
-            </div>
-        </div>
-        """
+            """
         bank_proof_preview_signed = ""
         if bank_proof_thumb:
             bank_proof_preview_signed = f"""
@@ -2767,25 +3078,41 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
             </div>
             """
-        is_cash_portal = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
+        pay_label = "Hình thức nhận thanh toán:" if is_mb_portal else "Hình thức nhận thù lao:"
+        pay_cash_txt = "💵 Nhận tiền mặt trực tiếp" if is_mb_portal else "💵 Nhận tiền mặt tại chân công trình"
         pay_row_signed = (
-            '<div class="field-row"><span class="field-label">Hình thức nhận thù lao:</span><span class="field-val" style="color:#15803d;">💵 Nhận tiền mặt tại chân công trình</span></div>'
+            f'<div class="field-row"><span class="field-label">{pay_label}</span><span class="field-val" style="color:#15803d;">{pay_cash_txt}</span></div>'
             if is_cash_portal
-            else f'<div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{c.worker_bank_account or "Chưa có"} ({c.worker_bank_name or ""})</span></div>'
+            else f'<div class="field-row"><span class="field-label">Tài khoản nhận tiền:</span><span class="field-val" style="color:#0284c7;">{esc(c.worker_bank_account or "Chưa có")} ({esc(c.worker_bank_name or "")})</span></div>'
         )
         worker_info_html = f"""
-        <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{c.worker_name or 'Chưa có'}</span></div>
-        <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{c.worker_id_card or 'Chưa có'}</span></div>
-        <div class="field-row"><span class="field-label">Số điện thoại:</span><span class="field-val">{c.worker_phone or 'Chưa có'}</span></div>
+        <div class="field-row"><span class="field-label">Họ và tên:</span><span class="field-val">{esc(c.worker_name or 'Chưa có')}</span></div>
+        <div class="field-row"><span class="field-label">Số CCCD / ĐD:</span><span class="field-val">{esc(c.worker_id_card or 'Chưa có')}</span></div>
+        <div class="field-row"><span class="field-label">Số điện thoại:</span><span class="field-val">{esc(c.worker_phone or 'Chưa có')}</span></div>
         {pay_row_signed}
-        <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{c.worker_address or 'Chưa có'}</span></div>
+        <div class="field-row" style="border-bottom:none;"><span class="field-label">Địa chỉ:</span><span class="field-val" style="font-size:12px;">{esc(c.worker_address or 'Chưa có')}</span></div>
         {cccd_preview_signed}
         {site_photos_preview_signed}
         {bank_proof_preview_signed}
         """
     else:
-        is_cash_portal = (getattr(c, "payment_method", "bank_transfer") or "bank_transfer") == "cash"
-        if is_cash_portal:
+        if is_mb_portal:
+            inut_pay_box = f"""
+          <div style="padding:12px 14px; background:#f0f9ff; border:1.5px solid #7dd3fc; border-radius:10px; margin-top:4px;">
+            <div style="font-size:13.5px; font-weight:700; color:#0369a1; display:flex; align-items:center; gap:6px;">
+              <span>💳</span> Thông tin thanh toán cho Bên Bán (Công ty iNut):
+            </div>
+            <div style="font-size:12.5px; color:#334155; margin-top:6px; line-height:1.6;">
+              <div>• <b>Đơn vị thụ hưởng:</b> CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+              <div>• <b>Số tài khoản:</b> <b style="color:#0284c7; font-size:15px;">79713</b> tại <b>Techcombank</b></div>
+              <div>• <b>Số tiền thanh toán:</b> <b style="color:#b91c1c; font-size:15px;">{c.total_amount:,.0f} VNĐ</b> (KCT - Không chịu thuế GTGT)</div>
+              <div>• <b>Tiến độ:</b> Đợt 1 ({c.total_amount/2:,.0f}đ khi bàn giao kích hoạt) &amp; Đợt 2 ({c.total_amount/2:,.0f}đ)</div>
+            </div>
+          </div>
+            """
+            payment_inputs_html = inut_pay_box
+            intro_text_portal = "Vui lòng kiểm tra thông tin cá nhân, chụp ảnh khuôn mặt xác thực (eKYC) và ký tên điện tử trên màn hình:"
+        elif is_cash_portal:
             payment_inputs_html = f"""
           <div style="padding:12px 14px; background:#ecfdf5; border:1.5px solid #6ee7b7; border-radius:10px; display:flex; align-items:flex-start; gap:10px;">
             <span style="font-size:22px; line-height:1;">💵</span>
@@ -2803,48 +3130,48 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
           <div style="display:flex; gap:10px;">
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số tài khoản ngân hàng (*):</label>
-              <input type="text" id="inputWorkerBankAcc" value="{c.worker_bank_account or ''}" placeholder="STK nhận thù lao" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerBankAcc" value="{esc(c.worker_bank_account or '')}" placeholder="STK nhận tiền" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
             </div>
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Tên ngân hàng (*):</label>
-              <input type="text" id="inputWorkerBankName" value="{c.worker_bank_name or ''}" placeholder="Vietcombank, MB, Techcombank, ACB, VPBank..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerBankName" value="{esc(c.worker_bank_name or '')}" placeholder="Vietcombank, MB, Techcombank, ACB, VPBank..." style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
             </div>
           </div>
             """
             intro_text_portal = "Vui lòng điền / kiểm tra chính xác thông tin cá nhân và tài khoản ngân hàng nhận thù lao của bạn trước khi ký:"
+        name_label = "Họ và tên khách hàng (*):" if is_mb_portal else "Họ và tên người nhận khoán (*):"
         worker_info_html = f"""
         <p style="font-size:12px; color:#64748b; margin:0 0 12px 0;">{intro_text_portal}</p>
         <div style="display:flex; flex-direction:column; gap:10px;">
           <div>
-            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Họ và tên người nhận khoán (*):</label>
-            <input type="text" id="inputWorkerName" value="{c.worker_name or ''}" placeholder="Ví dụ: Nguyễn Văn A" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">{name_label}</label>
+            <input type="text" id="inputWorkerName" value="{esc(c.worker_name or '')}" placeholder="Ví dụ: Lê Thị Bích Lệ" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
           </div>
           <div style="display:flex; gap:10px;">
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số CCCD / CMND (*):</label>
-              <input type="text" id="inputWorkerIdCard" value="{c.worker_id_card or ''}" placeholder="12 số CCCD" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerIdCard" value="{esc(c.worker_id_card or '')}" placeholder="12 số CCCD" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
             </div>
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Số điện thoại (*):</label>
-              <input type="text" id="inputWorkerPhone" value="{c.worker_phone or ''}" placeholder="Số điện thoại" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerPhone" value="{esc(c.worker_phone or '')}" placeholder="Số điện thoại" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
             </div>
           </div>
           <div style="display:flex; gap:10px;">
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Ngày cấp:</label>
-              <input type="text" id="inputWorkerIdDate" value="{c.worker_id_card_date or ''}" placeholder="dd/mm/yyyy" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerIdDate" value="{esc(c.worker_id_card_date or '')}" placeholder="dd/mm/yyyy" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
             </div>
             <div style="flex:1;">
               <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Nơi cấp:</label>
-              <input type="text" id="inputWorkerIdPlace" value="{c.worker_id_card_place or 'Cục Cảnh sát QLHC về TTXH'}" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
+              <input type="text" id="inputWorkerIdPlace" value="{esc(c.worker_id_card_place or 'Cục Cảnh sát QLHC về TTXH')}" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; box-sizing:border-box;">
             </div>
           </div>
           <div>
-            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Địa chỉ thường trú / Nơi ở (*):</label>
-            <input type="text" id="inputWorkerAddress" value="{c.worker_address or ''}" placeholder="Địa chỉ theo CCCD hoặc nơi cư trú" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            <label style="font-size:12px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Địa chỉ thường trú (*):</label>
+            <input type="text" id="inputWorkerAddress" value="{esc(c.worker_address or '')}" placeholder="Địa chỉ theo CCCD" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:13.5px; box-sizing:border-box;">
           </div>
           {payment_inputs_html}
-          <!-- Chụp / Tải 2 mặt CCCD -->
           <div style="margin-top:6px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
             <div style="font-size:12.5px; font-weight:700; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
               <span>🪪</span> Tải / Chụp ảnh Căn cước công dân 2 mặt:
@@ -2858,7 +3185,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
                 <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
                   Chụp / Tải mặt trước
-                  <input type="file" id="inputCccdFront" accept="image/*" style="display:none;" onchange="handleCccdFile(event, 'front')">
+                  <input type="file" id="inputCccdFront" accept="image/*" style="display:none;">
                 </label>
               </div>
 
@@ -2870,14 +3197,15 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 </div>
                 <label style="display:inline-block; margin-top:6px; padding:6px 12px; background:#0284c7; color:#fff; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
                   Chụp / Tải mặt sau
-                  <input type="file" id="inputCccdBack" accept="image/*" style="display:none;" onchange="handleCccdFile(event, 'back')">
+                  <input type="file" id="inputCccdBack" accept="image/*" style="display:none;">
                 </label>
               </div>
             </div>
             <div style="font-size:11px; color:#64748b; margin-top:8px;">
-              💡 Ảnh 2 mặt CCCD sẽ được tự động chèn trực tiếp vào Phụ lục Hợp đồng PDF để đảm bảo tính pháp lý quyết toán thuế.
+              {'💡 Ảnh 2 mặt CCCD của Quý khách được tự động chèn vào Phụ lục Hợp đồng PDF đảm bảo giá trị pháp lý.' if is_mb_portal else '💡 Ảnh 2 mặt CCCD sẽ được tự động chèn trực tiếp vào Phụ lục Hợp đồng PDF để đảm bảo tính pháp lý quyết toán thuế.'}
             </div>
           </div>
+          {f'''
           <!-- Chụp / Tải ảnh hiện trường thi công -->
           <div style="margin-top:6px; padding:12px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px;">
             <div style="font-size:12.5px; font-weight:700; color:#0f172a; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
@@ -2890,28 +3218,32 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <label style="flex:1; min-width:140px; text-align:center; padding:8px 12px; background:#0284c7; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
                 <span>📷</span> Chụp từ Camera
-                <input type="file" id="inputSitePhotosCam" accept="image/*" capture="environment" style="display:none;" onchange="handleSitePhotoFiles(event)">
+                <input type="file" id="inputSitePhotosCam" accept="image/*" capture="environment" style="display:none;">
               </label>
               <label style="flex:1; min-width:140px; text-align:center; padding:8px 12px; background:#0f766e; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
                 <span>🖼️</span> Tải từ Thư viện ảnh
-                <input type="file" id="inputSitePhotosLib" accept="image/*" multiple style="display:none;" onchange="handleSitePhotoFiles(event)">
+                <input type="file" id="inputSitePhotosLib" accept="image/*" multiple style="display:none;">
               </label>
             </div>
+          </div>
+          ''' if not is_mb_portal else ''}
           <div style="margin-top:6px;">
-            <button type="button" id="btnSaveDraftManual" onclick="manualSaveDraft()" style="width:100%; padding:11px 16px; background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <button type="button" id="btnSaveDraftManual" data-action="save-draft" style="width:100%; padding:11px 16px; background:#f8fafc; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
               <span>💾</span> LƯU THÔNG TIN NHÁP
             </button>
           </div>
         </div>
         """
     worker_signed_view = ""
-    if c.is_signed_by_worker and c.worker_signature_data:
+    safe_worker_sig_src = _safe_img_src(c.worker_signature_data)
+    safe_worker_face_src = _safe_img_src(c.worker_face_photo_data)
+    if c.is_signed_by_worker and safe_worker_sig_src:
         face_img_html = ""
-        if c.worker_face_photo_data:
+        if safe_worker_face_src:
             face_img_html = f"""
                 <div style="text-align:center;">
                     <div style="font-size:11px; font-weight:600; color:#475569; margin-bottom:4px;">Ảnh khuôn mặt eKYC:</div>
-                    <img src="{c.worker_face_photo_data}" style="width:75px; height:95px; object-fit:cover; border-radius:8px; border:2px solid #0284c7; box-shadow:0 2px 6px rgba(0,0,0,0.1);">
+                    <img src="{safe_worker_face_src}" style="width:75px; height:95px; object-fit:cover; border-radius:8px; border:2px solid #0284c7; box-shadow:0 2px 6px rgba(0,0,0,0.1);">
                 </div>
             """
         worker_signed_view = f"""
@@ -2920,7 +3252,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 <div style="display:flex; justify-content:center; align-items:center; gap:20px; flex-wrap:wrap; margin:10px 0;">
                     <div style="text-align:center;">
                         <div style="font-size:11px; font-weight:600; color:#475569; margin-bottom:4px;">Chữ ký nhận khoán:</div>
-                        <img src="{c.worker_signature_data}" style="max-height:80px; max-width:180px; display:inline-block; border-bottom:1px solid #cbd5e1;">
+                        <img src="{safe_worker_sig_src}" style="max-height:80px; max-width:180px; display:inline-block; border-bottom:1px solid #cbd5e1;">
                     </div>
                     {face_img_html}
                 </div>
@@ -2944,7 +3276,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                           <span id="camStatusBadge" style="font-size:11px; padding:3px 8px; border-radius:10px; background:#fef3c7; color:#b45309; font-weight:600;">
                               ⏳ Đang kết nối camera...
                           </span>
-                          <button type="button" onclick="initCamera()" style="font-size:11px; padding:3px 8px; background:#0284c7; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                          <button type="button" data-action="init-camera" style="font-size:11px; padding:3px 8px; background:#0284c7; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
                               Mở lại
                           </button>
                         </div>
@@ -2956,12 +3288,12 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                             <span style="font-size:26px;">📷</span>
                             <span style="font-size:12px; color:#fff; font-weight:600;">Chụp ảnh khuôn mặt eKYC</span>
                             <div style="display:flex; gap:8px;">
-                              <button type="button" onclick="initCamera()" style="padding:6px 12px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
+                              <button type="button" data-action="init-camera" style="padding:6px 12px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
                                   Bật Camera
                               </button>
                               <label style="padding:6px 12px; background:#475569; color:#fff; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;">
                                   Chụp Selfie
-                                  <input type="file" id="faceFileInput" accept="image/*" capture="user" style="display:none;" onchange="handleFaceFile(event)">
+                                  <input type="file" id="faceFileInput" class="face-file-input" accept="image/*" capture="user" style="display:none;">
                               </label>
                             </div>
                         </div>
@@ -2969,12 +3301,12 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                             <div style="font-size:22px; margin-bottom:4px;">📷</div>
                             <div>Trình duyệt chưa cho phép mở camera tự động:</div>
                             <div style="display:flex; gap:8px; margin-top:8px;">
-                                <button type="button" onclick="initCamera()" style="padding:6px 10px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
+                                <button type="button" data-action="init-camera" style="padding:6px 10px; background:#10b981; color:#fff; border:none; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
                                     Thử lại Camera
                                 </button>
                                 <label style="padding:6px 10px; background:#0284c7; color:#fff; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer;">
                                     Chụp Selfie
-                                    <input type="file" accept="image/*" capture="user" style="display:none;" onchange="handleFaceFile(event)">
+                                    <input type="file" class="face-file-input" accept="image/*" capture="user" style="display:none;">
                                 </label>
                             </div>
                         </div>
@@ -2987,24 +3319,35 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
                 <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:6px;">Vẽ chữ ký của bạn vào khung bên dưới:</div>
                 <div style="border:2px dashed #94a3b8; border-radius:12px; background:#fff; position:relative; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;">
                     <canvas id="sigCanvas" width="450" height="160" style="width:100%; height:160px; display:block; cursor:crosshair; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;"></canvas>
-                    <button type="button" onclick="clearCanvas()" style="position:absolute; right:10px; top:10px; padding:4px 10px; font-size:12px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;">Xóa ký lại</button>
+                    <button type="button" id="btnClearCanvas" style="position:absolute; right:10px; top:10px; padding:4px 10px; font-size:12px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer;">Xóa ký lại</button>
                 </div>
-                <div style="margin: 14px 0 12px; padding: 12px 14px; background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 12px; color: #92400e; line-height: 1.55;">
-                    ⚠️ <b>LƯU Ý QUAN TRỌNG TRƯỚC KHI KÝ:</b><br>
-                    Bằng việc bấm xác nhận ký tên, bạn xác nhận toàn bộ thông tin cá nhân và tài khoản ngân hàng trên là chính xác. <b>Sau khi ký thành công, thông tin hợp đồng sẽ được KHÓA CHÍNH THỨC và bạn KHÔNG THỂ TỰ Ý CHỈNH SỬA.</b> Muốn chỉnh sửa sau đó, bạn phải liên hệ <b>Công ty INUT (Hotline: 0972.768.491)</b> để được hỗ trợ mở khóa.
+                <div style="margin: 14px 0 12px; padding: 12px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; border-radius: 8px; font-size: 12px; color: #166534; line-height: 1.55;">
+                    {'🛡️ <b>XÁC NHẬN KÝ HỢP ĐỒNG ĐIỆN TỬ:</b><br>Bằng việc bấm xác nhận ký tên, Quý khách xác nhận đồng ý với toàn bộ nội dung và gói bản quyền phần mềm trọn đời tại Hợp đồng này. Hồ sơ điện tử có giá trị pháp lý đầy đủ theo Luật Giao dịch điện tử.' if is_mb_portal else '⚠️ <b>LƯU Ý QUAN TRỌNG TRƯỚC KHI KÝ:</b><br>Bằng việc bấm xác nhận ký tên, bạn xác nhận toàn bộ thông tin cá nhân và tài khoản ngân hàng trên là chính xác. <b>Sau khi ký thành công, thông tin hợp đồng sẽ được KHÓA CHÍNH THỨC và bạn KHÔNG THỂ TỰ Ý CHỈNH SỬA.</b> Muốn chỉnh sửa sau đó, bạn phải liên hệ <b>Công ty INUT (Hotline: 0972.768.491)</b> để được hỗ trợ mở khóa.'}
                 </div>
-                <button type="button" id="btnSubmitSign" onclick="submitSignature()" style="width:100%; margin-top:6px; padding:14px; background:#0284c7; color:#fff; font-size:15px; font-weight:700; border:none; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(2,132,199,0.3);">
+                <button type="button" id="btnSubmitSign" style="width:100%; margin-top:6px; padding:14px; background:#0284c7; color:#fff; font-size:15px; font-weight:700; border:none; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(2,132,199,0.3);">
                     ✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC
                 </button>
             </div>
         """
+
+    tax_note_html = (
+        "Sản phẩm bản quyền phần mềm thuộc đối tượng không chịu thuế giá trị gia tăng (KCT) — Thanh toán chuyển khoản ngân hàng."
+        if is_mb_portal
+        else esc(deficiency["checklist"][3]["detail"] if len(deficiency.get("checklist", [])) > 3 else "")
+    )
+    safe_title = esc(c.title or ("Hợp đồng mua bán cá nhân" if is_mb_portal else "Hợp đồng giao khoán công việc"))
+    safe_code = esc(c.contract_code)
+    safe_date = esc(c.contract_date or "Hôm nay")
+    safe_date_doc = esc(c.contract_date or "10/11/2026")
+    safe_project = esc(c.project_name)
+    safe_status_label = esc(deficiency["status_label"])
 
     html = f"""<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Hợp đồng khoán #{c.contract_code} — iNut</title>
+<title>{'Hợp đồng mua bán cá nhân' if is_mb_portal else 'Hợp đồng khoán'} #{safe_code} — iNut</title>
 <style>
   * {{ box-sizing: border-box; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; padding: 12px 12px 60px; line-height: 1.5; }}
@@ -3031,26 +3374,26 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         </span>
       </div>
       <div style="display:flex; gap:6px; flex-shrink:0;">
-        {f'<button type="button" onclick="manualSaveDraft()" style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;"><span>💾</span> Lưu nháp</button>' if not c.is_signed_by_worker else ''}
-        {f'<a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; text-decoration:none; border-radius:8px; padding:7px 13px; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</a>' if c.is_signed_by_worker else f'<button type="button" id="btnViewRealtimePdf" onclick="viewRealtimePdf()" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</button>'}
+        {f'<button type="button" data-action="save-draft" style="display:inline-flex; align-items:center; gap:4px; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;"><span>💾</span> Lưu nháp</button>' if not c.is_signed_by_worker else ''}
+        {f'<a href="/api/public/khoan/{token_url}/pdf" target="_blank" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; text-decoration:none; border-radius:8px; padding:7px 13px; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</a>' if c.is_signed_by_worker else '<button type="button" id="btnViewRealtimePdf" style="display:inline-flex; align-items:center; gap:5px; background:#0284c7; color:#fff; border:none; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(2,132,199,0.3);"><span>📄</span> Xem hợp đồng</button>'}
       </div>
     </div>
   </div>
   <!-- Header -->
   <div class="card" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border:none;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-      <div class="brand-badge">⚡ iNut Technology</div>
-      <div class="badge" style="background:{badge_bg}; color:{badge_color};">{deficiency['status_label']}</div>
+      <div class="brand-badge">{'🤝 HỢP ĐỒNG MUA BÁN CÁ NHÂN' if is_mb_portal else '⚡ iNut Technology'}</div>
+      <div class="badge" style="background:{badge_bg}; color:{badge_color};">{safe_status_label}</div>
     </div>
-    <h2 style="font-size:18px; margin:14px 0 6px 0; color:#fff;">{c.title or 'Hợp đồng giao khoán công việc'}</h2>
-    <div style="font-size:13px; color:#94a3b8;">Số: <b>{c.contract_code}</b> · Ngày: {c.contract_date or 'Hôm nay'}</div>
-    <div style="margin-top:10px; font-size:13px; color:#cbd5e1;">📍 Công trình: <b>{c.project_name}</b></div>
+    <h2 style="font-size:18px; margin:14px 0 6px 0; color:#fff;">{safe_title}</h2>
+    <div style="font-size:13px; color:#94a3b8;">Số: <b>{safe_code}</b> · Ngày: {safe_date}</div>
+    <div style="margin-top:10px; font-size:13px; color:#cbd5e1;">{'📍 Hạng mục / Giao dịch:' if is_mb_portal else '📍 Công trình:'} <b>{safe_project}</b></div>
   </div>
 
   <!-- Worker & Payment Info -->
   <div class="card">
     <h3 style="font-size:15px; margin:0 0 10px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
-      <span>👤</span> Thông tin Thợ / Người nhận khoán
+      <span>👤</span> {'Thông tin Cá nhân (Bên B)' if is_mb_portal else 'Thông tin Thợ / Người nhận khoán'}
     </h3>
     {worker_info_html}
   </div>
@@ -3058,12 +3401,12 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   <!-- Work Items & Amounts -->
   <div class="card">
     <h3 style="font-size:15px; margin:0 0 10px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
-      <span>📦</span> Khối lượng công việc & Thù lao
+      <span>📦</span> {'Danh mục hàng hóa / tài sản & Giá trị mua bán' if is_mb_portal else 'Khối lượng công việc & Thù lao'}
     </h3>
     <table>
       <thead>
         <tr style="background:#f8fafc; font-size:12px; color:#475569;">
-          <th style="padding:8px; text-align:left; border-radius:6px 0 0 6px;">Hạng mục</th>
+          <th style="padding:8px; text-align:left; border-radius:6px 0 0 6px;">{'Tên hàng hóa / Tài sản / Dịch vụ' if is_mb_portal else 'Hạng mục'}</th>
           <th style="padding:8px; text-align:center;">SL</th>
           <th style="padding:8px; text-align:right; border-radius:0 6px 6px 0;">Thành tiền</th>
         </tr>
@@ -3073,13 +3416,13 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       </tbody>
     </table>
     <div style="margin-top:12px; padding-top:10px; border-top:2px solid #e2e8f0; display:flex; justify-content:space-between; font-size:15px;">
-      <b>Tổng thù lao nhận khoán:</b>
+      <b>{'Tổng giá trị mua bán:' if is_mb_portal else 'Tổng thù lao nhận khoán:'}</b>
       <b style="color:#0f172a; font-size:17px;">{c.total_amount:,.0f} VNĐ</b>
     </div>
     <div style="margin-top:8px; padding:8px 12px; background:#f0fdf4; border-radius:8px; font-size:12.5px; color:#166534;">
-      {deficiency['checklist'][3]['detail']}
+      {tax_note_html}
     </div>
-    {f'<div style="margin-top:8px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12.5px; font-weight:700; color:#065f46;">💵 Hình thức nhận thù lao: Nhận tiền mặt trực tiếp tại chân công trình ({c.total_amount:,.0f} VNĐ)</div>' if is_cash_portal else ''}
+    {f'<div style="margin-top:8px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12.5px; font-weight:700; color:#065f46;">💵 Hình thức thanh toán: Nhận tiền mặt trực tiếp ({c.total_amount:,.0f} VNĐ)</div>' if (is_cash_portal and is_mb_portal) else (f'<div style="margin-top:8px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12.5px; font-weight:700; color:#065f46;">💵 Hình thức nhận thù lao: Nhận tiền mặt tại chân công trình ({c.total_amount:,.0f} VNĐ)</div>' if is_cash_portal else '')}
   </div>
 
   <!-- Deficiency Checklist -->
@@ -3087,7 +3430,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     <h3 style="font-size:15px; margin:0 0 8px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
       <span>📋</span> Giám sát hồ sơ & Yêu cầu bổ sung
     </h3>
-    <p style="font-size:12.5px; color:#64748b; margin:0 0 12px 0;">{'Để hoàn tất hồ sơ nhận tiền mặt tại chân công trình, vui lòng hoàn thiện các mục sau:' if is_cash_portal else 'Để công ty chuyển khoản thanh toán nhanh nhất, vui lòng hoàn thiện các mục hồ sơ sau:'}</p>
+    <p style="font-size:12.5px; color:#64748b; margin:0 0 12px 0;">{'Quý khách vui lòng kiểm tra thông tin hợp đồng và thực hiện ký điện tử bên dưới:' if is_mb_portal else ('Để hoàn tất hồ sơ nhận tiền mặt tại chân công trình, vui lòng hoàn thiện các mục sau:' if is_cash_portal else 'Để công ty chuyển khoản thanh toán nhanh nhất, vui lòng hoàn thiện các mục hồ sơ sau:')}</p>
     {checklist_html}
   </div>
 
@@ -3096,34 +3439,35 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     <h3 style="font-size:15px; margin:0 0 6px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
       <span>✍️</span> Ký tên điện tử Online
     </h3>
-    <p style="font-size:12.5px; color:#64748b; margin:0;">Ký trực tiếp bằng ngón tay lên màn hình để xác nhận nhận khoán và khối lượng công việc:</p>
+    <p style="font-size:12.5px; color:#64748b; margin:0;">{'Quý khách vui lòng bật camera chụp ảnh khuôn mặt xác thực eKYC và ký tên bằng ngón tay lên màn hình để xác nhận hợp đồng:' if is_mb_portal else 'Ký trực tiếp bằng ngón tay lên màn hình để xác nhận nhận khoán và khối lượng công việc:'}</p>
     {worker_signed_view}
   </div>
 
-  <!-- Danh mục bộ hồ sơ & Phụ lục hoàn chỉnh -->
+  <!-- Danh mục bộ hồ sơ hoàn chỉnh -->
   <div class="card" style="margin-top:16px;">
     <h3 style="font-size:15px; margin:0 0 10px 0; color:#0f172a; display:flex; align-items:center; gap:8px;">
-      <span>📑</span> Hồ sơ giao khoán & Các Phụ lục riêng biệt:
+      <span>📑</span> {'Tài liệu hợp đồng:' if is_mb_portal else 'Hồ sơ giao khoán & Các Phụ lục riêng biệt:'}
     </h3>
     <div style="display:flex; flex-direction:column; gap:10px;">
       <!-- Doc 1: Hợp đồng chính + Phụ lục 1 (CCCD) -->
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
-          <div style="font-weight:700; font-size:13px; color:#0f172a;">1. Hợp đồng giao khoán & Phụ lục I (CCCD)</div>
-          <div style="font-size:11.5px; color:#64748b;">Số: {c.contract_code} · Ngày ký: {c.contract_date or '01/10/2026'}</div>
+          <div style="font-weight:700; font-size:13px; color:#0f172a;">{'Hợp đồng mua bán cá nhân & Phụ lục I (CCCD)' if is_mb_portal else '1. Hợp đồng giao khoán & Phụ lục I (CCCD)'}</div>
+          <div style="font-size:11.5px; color:#64748b;">Số: {safe_code} · Ngày ký: {safe_date_doc}</div>
         </div>
-        <a href="/api/public/khoan/{c.portal_token}/pdf" target="_blank" style="padding:6px 12px; background:#0284c7; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+        <a href="/api/public/khoan/{token_url}/pdf" target="_blank" style="padding:6px 12px; background:#0284c7; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           📄 Xem PDF
         </a>
       </div>
 
+      {f'''
       <!-- Doc 2: Phụ lục 2: Nghiệm thu & Hiện trường -->
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
           <div style="font-weight:700; font-size:13px; color:#0f172a;">2. Phụ lục II: Biên bản nghiệm thu & Ảnh hiện trường</div>
           <div style="font-size:11.5px; color:#64748b;">Nghiệm thu khối lượng công việc thực tế ({c.total_amount:,.0f}đ)</div>
         </div>
-        <a href="/api/public/khoan/{c.portal_token}/phu-luc-2/pdf" target="_blank" style="padding:6px 12px; background:#10b981; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+        <a href="/api/public/khoan/{token_url}/phu-luc-2/pdf" target="_blank" style="padding:6px 12px; background:#10b981; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           🏗️ Xem PDF
         </a>
       </div>
@@ -3132,12 +3476,13 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
         <div>
           <div style="font-weight:700; font-size:13px; color:#0f172a;">{'3. Phụ lục III: Xác nhận nhận tiền mặt tại chân công trình & Thanh lý HĐ' if is_cash_portal else '3. Phụ lục III: Xác nhận thanh toán & Thanh lý HĐ (Kèm UNC)'}</div>
-          <div style="font-size:11.5px; color:#64748b;">{f'Nhận tiền mặt tại chân công trình ({c.total_amount:,.0f}đ)' if is_cash_portal else f'Thanh toán chuyển khoản ({c.total_amount:,.0f}đ)'}</div>
+          <div style="font-size:11.5px; color:#64748b;">{f'Nhận tiền mặt ({c.total_amount:,.0f}đ)' if is_cash_portal else f'Thanh toán chuyển khoản ({c.total_amount:,.0f}đ)'}</div>
         </div>
-        <a href="/api/public/khoan/{c.portal_token}/phu-luc-3/pdf" target="_blank" style="padding:6px 12px; background:#6366f1; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
+        <a href="/api/public/khoan/{token_url}/phu-luc-3/pdf" target="_blank" style="padding:6px 12px; background:#6366f1; color:#fff; font-size:12px; font-weight:700; text-decoration:none; border-radius:6px; flex-shrink:0;">
           💳 Xem PDF
         </a>
       </div>
+      ''' if not is_mb_portal else ''}
     </div>
   </div>
 
@@ -3147,20 +3492,22 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       <span>🛡️</span> Kiểm tra chữ ký số chính hãng (Legit Check)
     </h3>
     <p style="font-size:12px; color:#334155; margin:0 0 10px 0; line-height:1.55;">
-      Hợp đồng và các phụ lục đã được ký số điện tử pháp nhân Bên A bằng <b>USB Token WIN-CA phần cứng</b> hợp chuẩn quốc gia. Quý khách có thể tải file PDF về và tải lên <b>Cổng Dịch vụ Chứng thực Chữ ký số Quốc gia NEAC (Bộ Thông tin & Truyền thông)</b> tại <a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7; font-weight:700; text-decoration:underline;">https://neac.gov.vn/vi</a> (mục "Kiểm tra văn bản") hoặc kiểm tra trực tuyến trực tiếp ngay dưới đây:
+      Quý khách có thể tải file PDF về và tải lên <b>Cổng Dịch vụ Chứng thực Chữ ký số Quốc gia NEAC (Bộ Thông tin & Truyền thông)</b> tại <a href="https://neac.gov.vn/vi" target="_blank" rel="noopener noreferrer" style="color:#0284c7; font-weight:700; text-decoration:underline;">https://neac.gov.vn/vi</a> (mục "Kiểm tra văn bản") hoặc kiểm tra trực tuyến trực tiếp ngay dưới đây:
     </p>
     <div style="display:flex; flex-direction:column; gap:8px;">
-      <button type="button" onclick="checkNeacOnline('main')" style="width:100%; padding:10px 14px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 2px 6px rgba(2,132,199,0.25);">
+      <button type="button" data-neac-doc="main" style="width:100%; padding:10px 14px; background:#0284c7; color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 2px 6px rgba(2,132,199,0.25);">
         <span>🔍</span> Kiểm tra Chữ ký số Hợp đồng (NEAC Trực tuyến)
       </button>
+      {'''
       <div style="display:flex; gap:8px;">
-        <button type="button" onclick="checkNeacOnline('pl2')" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
+        <button type="button" data-neac-doc="pl2" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
           Kiểm tra Phụ lục II
         </button>
-        <button type="button" onclick="checkNeacOnline('pl3')" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
+        <button type="button" data-neac-doc="pl3" style="flex:1; padding:8px 10px; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; font-size:11.5px; font-weight:600; cursor:pointer;">
           Kiểm tra Phụ lục III
         </button>
       </div>
+      ''' if not is_mb_portal else ''}
     </div>
   </div>
 
@@ -3175,7 +3522,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
             <div style="font-size:11px; color:#64748b;">Trung tâm Chứng thực điện tử quốc gia (Bộ TTTT)</div>
           </div>
         </div>
-        <button type="button" onclick="closeNeacModal()" style="background:#f1f5f9; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; font-weight:bold; color:#64748b;">✕</button>
+        <button type="button" data-action="close-neac" style="background:#f1f5f9; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; font-weight:bold; color:#64748b;">✕</button>
       </div>
       <div id="neacModalBody" style="font-size:12.5px; line-height:1.55; color:#334155;">
         <div style="text-align:center; padding:20px 0; color:#64748b;">
@@ -3187,8 +3534,9 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   </div>
 </div>
 
-<script>
-  const portalToken = "{c.portal_token}";
+<script nonce="{esc(csp_nonce)}">
+  const portalToken = {json.dumps(c.portal_token or "")};
+  const SAFE_IMG_RE = /^data:image\\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
   const STORAGE_KEY = "inut_khoan_draft_" + portalToken;
   let cccdFrontData = null;
   let cccdBackData = null;
@@ -3243,7 +3591,6 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       }}
     }}
 
-    // Pointer events (Smooth & reliable on modern iOS Safari, Android, Stylus & Mouse)
     if (window.PointerEvent) {{
       canvas.addEventListener("pointerdown", function(e) {{
         try {{ canvas.setPointerCapture(e.pointerId); }} catch(err) {{}}
@@ -3261,18 +3608,19 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       window.addEventListener("mouseup", stopDraw);
     }}
 
-    // Always bind touch events with passive: false for iOS Safari
     canvas.addEventListener("touchstart", startDraw, {{ passive: false }});
     canvas.addEventListener("touchmove", moveDraw, {{ passive: false }});
     window.addEventListener("touchend", stopDraw, {{ passive: false }});
     window.addEventListener("touchcancel", stopDraw, {{ passive: false }});
   }}
+
   function clearCanvas() {{
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasSigned = false;
   }}
+
   let camStream = null;
   let facePhotoData = null;
 
@@ -3309,6 +3657,17 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     }}
   }}
 
+  function setPreviewImage(box, dataUrl) {{
+    if (!box || !SAFE_IMG_RE.test(dataUrl || "")) return;
+    box.textContent = "";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "contain";
+    box.appendChild(img);
+  }}
+
   function handleFaceFile(event) {{
     const file = event.target.files[0];
     if (!file) return;
@@ -3328,7 +3687,13 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       if (overlay) overlay.style.display = "none";
       if (fallback) {{
         fallback.style.display = "flex";
-        fallback.innerHTML = '<div style="font-size:12px; color:#86efac; font-weight:700;">✓ Đã tải ảnh khuôn mặt</div>';
+        fallback.textContent = "";
+        const okDiv = document.createElement("div");
+        okDiv.style.fontSize = "12px";
+        okDiv.style.color = "#86efac";
+        okDiv.style.fontWeight = "700";
+        okDiv.textContent = "✓ Đã tải ảnh khuôn mặt";
+        fallback.appendChild(okDiv);
       }}
     }};
     reader.readAsDataURL(file);
@@ -3337,17 +3702,17 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   function captureFaceSnapshot() {{
     if (facePhotoData) return facePhotoData;
     const video = document.getElementById("camVideo");
-    const canvas = document.getElementById("faceCanvas");
-    if (!video || !canvas || !camStream) return null;
+    const faceCanvas = document.getElementById("faceCanvas");
+    if (!video || !faceCanvas || !camStream) return null;
 
     try {{
-      const ctx = canvas.getContext("2d");
-      canvas.width = video.videoWidth || 480;
-      canvas.height = video.videoHeight || 360;
-      ctx.translate(canvas.width, 0);
+      const ctx = faceCanvas.getContext("2d");
+      faceCanvas.width = video.videoWidth || 480;
+      faceCanvas.height = video.videoHeight || 360;
+      ctx.translate(faceCanvas.width, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/jpeg", 0.85);
+      ctx.drawImage(video, 0, 0, faceCanvas.width, faceCanvas.height);
+      return faceCanvas.toDataURL("image/jpeg", 0.85);
     }} catch (e) {{
       console.warn("Error capturing face snapshot:", e);
       return null;
@@ -3377,13 +3742,11 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
         if (side === "front") {{
           cccdFrontData = compressedData;
-          const box = document.getElementById("frontPreviewBox");
-          if (box) box.innerHTML = '<img src="' + compressedData + '" style="width:100%; height:100%; object-fit:contain;">';
+          setPreviewImage(document.getElementById("frontPreviewBox"), compressedData);
           try {{ localStorage.setItem(STORAGE_KEY + "_front", compressedData); }} catch (err) {{}}
         }} else {{
           cccdBackData = compressedData;
-          const box = document.getElementById("backPreviewBox");
-          if (box) box.innerHTML = '<img src="' + compressedData + '" style="width:100%; height:100%; object-fit:contain;">';
+          setPreviewImage(document.getElementById("backPreviewBox"), compressedData);
           try {{ localStorage.setItem(STORAGE_KEY + "_back", compressedData); }} catch (err) {{}}
         }}
         handleInputAutoSave();
@@ -3447,43 +3810,38 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
   function renderSitePhotosBox() {{
     const box = document.getElementById("sitePhotosBox");
     if (!box) return;
+    box.textContent = "";
     if (sitePhotosList.length === 0) {{
-      box.innerHTML = '<span style="font-size:11px; color:#94a3b8; font-style:italic;">Chưa có ảnh hiện trường</span>';
+      const empty = document.createElement("span");
+      empty.style.fontSize = "11px";
+      empty.style.color = "#94a3b8";
+      empty.style.fontStyle = "italic";
+      empty.textContent = "Chưa có ảnh hiện trường";
+      box.appendChild(empty);
       return;
     }}
-    box.innerHTML = sitePhotosList.map((p, idx) => `
-      <div style="position:relative; width:85px; height:85px; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; background:#fff;">
-        <img src="${{p}}" style="width:100%; height:100%; object-fit:cover;">
-        <button type="button" onclick="removeSitePhoto(${{idx}})" style="position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:10px; cursor:pointer; line-height:18px; text-align:center; padding:0;">✕</button>
-      </div>
-    `).join("");
+    sitePhotosList.forEach((p, idx) => {{
+      if (!SAFE_IMG_RE.test(p || "")) return;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:relative; width:85px; height:85px; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden; background:#fff;";
+      const img = document.createElement("img");
+      img.src = p;
+      img.style.cssText = "width:100%; height:100%; object-fit:cover;";
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.textContent = "✕";
+      rm.style.cssText = "position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.65); color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:10px; cursor:pointer; line-height:18px; text-align:center; padding:0;";
+      rm.addEventListener("click", () => removeSitePhoto(idx));
+      wrap.appendChild(img);
+      wrap.appendChild(rm);
+      box.appendChild(wrap);
+    }});
   }}
 
   function removeSitePhoto(idx) {{
     sitePhotosList.splice(idx, 1);
     renderSitePhotosBox();
     handleInputAutoSave();
-  }}
-
-  async function handleUploadMoreSitePhotos(event) {{
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    const formData = new FormData();
-    Array.from(files).forEach(f => formData.append("files", f));
-    try {{
-      const res = await fetch(`/api/public/khoan/${{portalToken}}/add-site-photos`, {{
-        method: "POST",
-        body: formData,
-      }});
-      const data = await res.json();
-      if (data.ok) {{
-        window.location.reload();
-      }} else {{
-        alert("Lỗi tải ảnh: " + (data.detail || data.message || "Không thể tải ảnh"));
-      }}
-    }} catch (err) {{
-      alert("Lỗi kết nối khi tải ảnh: " + err.message);
-    }}
   }}
 
   setTimeout(renderSitePhotosBox, 200);
@@ -3514,26 +3872,21 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     }}
   }} catch (e) {{
     console.warn("Could not restore localStorage draft:", e);
-    try {{
-      const savedFront = localStorage.getItem(STORAGE_KEY + "_front");
-      if (savedFront) {{
-        cccdFrontData = savedFront;
-        const box = document.getElementById("frontPreviewBox");
-        if (box && !box.querySelector("img")) {{
-          box.innerHTML = '<img src="' + savedFront + '" style="width:100%; height:100%; object-fit:contain;">';
-        }}
-      }}
-      const savedBack = localStorage.getItem(STORAGE_KEY + "_back");
-      if (savedBack) {{
-        cccdBackData = savedBack;
-        const box = document.getElementById("backPreviewBox");
-        if (box && !box.querySelector("img")) {{
-          box.innerHTML = '<img src="' + savedBack + '" style="width:100%; height:100%; object-fit:contain;">';
-        }}
-      }}
-    }} catch (err) {{}}
-
   }}
+  try {{
+    const savedFront = localStorage.getItem(STORAGE_KEY + "_front");
+    if (savedFront && SAFE_IMG_RE.test(savedFront)) {{
+      cccdFrontData = savedFront;
+      const box = document.getElementById("frontPreviewBox");
+      if (box && !box.querySelector("img")) setPreviewImage(box, savedFront);
+    }}
+    const savedBack = localStorage.getItem(STORAGE_KEY + "_back");
+    if (savedBack && SAFE_IMG_RE.test(savedBack)) {{
+      cccdBackData = savedBack;
+      const box = document.getElementById("backPreviewBox");
+      if (box && !box.querySelector("img")) setPreviewImage(box, savedBack);
+    }}
+  }} catch (err) {{}}
 
   let serverSaveTimeout = null;
   function handleInputAutoSave() {{
@@ -3541,6 +3894,7 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     if (!draft) return;
     try {{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      const st = document.getElementById("saveStatusText");
       const dot = document.getElementById("saveDot");
       if (st) st.innerText = "✓ Đã lưu nháp tự động";
       if (dot) dot.style.background = "#10b981";
@@ -3548,11 +3902,10 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       console.warn("localStorage save failed:", e);
     }}
 
-    // Debounce save to server (800ms)
     clearTimeout(serverSaveTimeout);
     serverSaveTimeout = setTimeout(async () => {{
       try {{
-        await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+        await fetch("/api/public/khoan/" + encodeURIComponent(portalToken) + "/save-draft", {{
           method: "POST",
           headers: {{ "Content-Type": "application/json" }},
           body: JSON.stringify(draft)
@@ -3584,16 +3937,18 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     if (dot) dot.style.background = "#f59e0b";
 
     try {{
-      const res = await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+      const res = await fetch("/api/public/khoan/" + encodeURIComponent(portalToken) + "/save-draft", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
         body: JSON.stringify(draft)
       }});
       const data = await res.json();
-      if (data.ok) {{
+      if (res.ok && data.ok) {{
         if (st) st.innerText = "✓ Đã lưu nháp thành công!";
         if (dot) dot.style.background = "#10b981";
         alert("✓ Đã lưu thông tin nháp thành công lên hệ thống! Bạn có thể xem hợp đồng hoặc tải lại trang bất cứ lúc nào.");
+      }} else {{
+        alert(data.detail || data.message || "Không thể lưu bản nháp");
       }}
     }} catch (err) {{
       if (st) st.innerText = "✓ Đã lưu nháp máy bạn";
@@ -3604,16 +3959,16 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
   async function viewRealtimePdf() {{
     const btn = document.getElementById("btnViewRealtimePdf");
-    const origHtml = btn ? btn.innerHTML : "";
+    const origText = btn ? btn.textContent : "";
     if (btn) {{
       btn.disabled = true;
-      btn.innerHTML = "<span>⏳</span> Đang mở...";
+      btn.textContent = "⏳ Đang mở...";
     }}
-    const pdfUrl = "/api/public/khoan/" + portalToken + "/pdf?t=" + Date.now();
+    const pdfUrl = "/api/public/khoan/" + encodeURIComponent(portalToken) + "/pdf?t=" + Date.now();
     const draft = getFormData();
     if (draft) {{
       try {{
-        await fetch("/api/public/khoan/" + portalToken + "/save-draft", {{
+        await fetch("/api/public/khoan/" + encodeURIComponent(portalToken) + "/save-draft", {{
           method: "POST",
           headers: {{ "Content-Type": "application/json" }},
           body: JSON.stringify(draft)
@@ -3624,9 +3979,32 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     }}
     if (btn) {{
       btn.disabled = false;
-      btn.innerHTML = origHtml;
+      btn.textContent = origText;
     }}
     window.location.href = pdfUrl;
+  }}
+
+  function _neacRow(label, value, valStyle) {{
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px; gap:8px;";
+    const k = document.createElement("span");
+    k.style.color = "#64748b";
+    k.textContent = label;
+    const v = document.createElement("span");
+    v.style.cssText = valStyle || "color:#0f172a; font-weight:600; text-align:right; max-width:65%;";
+    v.textContent = value;
+    row.appendChild(k);
+    row.appendChild(v);
+    return row;
+  }}
+
+  function _neacCloseBtn(bg) {{
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Đóng";
+    b.style.cssText = "width:100%; margin-top:12px; padding:9px; background:" + bg + "; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;";
+    b.addEventListener("click", closeNeacModal);
+    return b;
   }}
 
   async function checkNeacOnline(docType) {{
@@ -3634,79 +4012,136 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     const modalBody = document.getElementById("neacModalBody");
     if (modal) modal.style.display = "flex";
     if (modalBody) {{
-      modalBody.innerHTML = `
-        <div style="text-align:center; padding:24px 0; color:#64748b;">
-          <div style="font-size:32px; margin-bottom:8px;">⏳</div>
-          <div style="font-weight:700; color:#0f172a; font-size:13.5px;">Đang kết nối Cổng Quốc gia NEAC (Bộ TTTT)...</div>
-          <div style="font-size:11.5px; margin-top:4px;">Thẩm định chữ ký số PAdES, chuỗi chứng thư CA & trạng thái thu hồi CRL/OCSP</div>
-        </div>
-      `;
+      modalBody.textContent = "";
+      const waitBox = document.createElement("div");
+      waitBox.style.cssText = "text-align:center; padding:24px 0; color:#64748b;";
+      const waitIcon = document.createElement("div");
+      waitIcon.style.cssText = "font-size:32px; margin-bottom:8px;";
+      waitIcon.textContent = "⏳";
+      const waitTitle = document.createElement("div");
+      waitTitle.style.cssText = "font-weight:700; color:#0f172a; font-size:13.5px;";
+      waitTitle.textContent = "Đang thẩm định mật mã & kết nối Cổng NEAC...";
+      const waitSub = document.createElement("div");
+      waitSub.style.cssText = "font-size:11.5px; margin-top:4px;";
+      waitSub.textContent = "Kiểm tra chữ ký số PAdES, tính toàn vẹn dữ liệu và chuỗi tin cậy CA";
+      waitBox.appendChild(waitIcon);
+      waitBox.appendChild(waitTitle);
+      waitBox.appendChild(waitSub);
+      modalBody.appendChild(waitBox);
     }}
 
     try {{
-      const res = await fetch("/api/public/khoan/" + portalToken + "/verify-neac?doc=" + docType);
+      const res = await fetch("/api/public/khoan/" + encodeURIComponent(portalToken) + "/verify-neac?doc=" + encodeURIComponent(docType));
       const data = await res.json();
-      if (!data.ok) throw new Error(data.message || "Không thể thẩm định");
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.message || "Không thể thẩm định");
 
-      const neac = data.neac_result || {{}};
-      const sigList = (neac.signature && neac.signature.data) ? neac.signature.data : [];
-      const firstSig = sigList[0] || {{}};
-      const signerName = firstSig.signer?.cn || "CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT";
-      const issuerName = (firstSig.issuer?.cn || "WINCA") + " (" + (firstSig.issuer?.o || "WINGROUP") + ")";
-      const signedTime = firstSig.signedTime || data.verified_at;
-      const ocspStatus = firstSig.ocsp || "Chứng thư số hợp lệ, chưa bị thu hồi";
-      const intact = firstSig.intact || "Không bị thay đổi";
+      const iv = data.internal_verification || {{}};
+      const ivSigs = Array.isArray(iv.signatures) ? iv.signatures : [];
+      const firstInternal = ivSigs[0] || null;
+      const neac = data.neac_result || null;
+      const neacList = (neac && neac.signature && Array.isArray(neac.signature.data)) ? neac.signature.data : [];
+      const firstNeac = neacList[0] || null;
 
-      modalBody.innerHTML = `
-        <div style="padding:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; margin-bottom:12px; text-align:center;">
-          <div style="font-size:18px; color:#059669; margin-bottom:2px;">✓</div>
-          <div style="font-weight:800; font-size:13.5px; color:#065f46;">CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN 100%</div>
-          <div style="font-size:11px; color:#047857; margin-top:2px;">Tài liệu: <b>${{data.doc_label}}</b></div>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
-            <span style="color:#64748b;">Chủ thể ký:</span>
-            <b style="color:#0f172a; text-align:right; max-width:65%;">${{signerName}}</b>
-          </div>
-          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
-            <span style="color:#64748b;">Tổ chức cấp CA:</span>
-            <b style="color:#0284c7;">${{issuerName}}</b>
-          </div>
-          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
-            <span style="color:#64748b;">Tình trạng dữ liệu:</span>
-            <b style="color:#16a34a;">${{intact}}</b>
-          </div>
-          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
-            <span style="color:#64748b;">Thời điểm ký số:</span>
-            <span style="color:#0f172a; font-weight:600;">${{signedTime}}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; border-bottom:1px dashed #e2e8f0; padding-bottom:5px;">
-            <span style="color:#64748b;">Trạng thái OCSP:</span>
-            <span style="color:#059669; font-weight:600;">${{ocspStatus}}</span>
-          </div>
-        </div>
-        <div style="margin-top:14px; padding:10px; background:#f8fafc; border-radius:8px; font-size:11px; color:#475569; line-height:1.45;">
-          🏛️ <b>Nguồn thẩm định:</b> Hệ thống kiểm tra chữ ký số Cổng thông tin điện tử Trung tâm Chứng thực điện tử quốc gia (NEAC) — Bộ Thông tin & Truyền thông.<br>
-          📄 <b>Kiểm tra độc lập:</b> Quý khách cũng có thể mở file PDF bằng <i>Foxit Reader</i> hoặc <i>Adobe Acrobat</i> để xem chứng thư số chính hãng.
-        </div>
-        <button type="button" onclick="closeNeacModal()" style="width:100%; margin-top:12px; padding:9px; background:#0f172a; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
-          Đóng
-        </button>
-      `;
+      const hasAnySig = ivSigs.length > 0 || neacList.length > 0;
+      const isTrustedValid = Boolean(iv.valid && iv.trusted);
+      const isIntactUntrusted = Boolean(iv.valid && !iv.trusted);
+
+      const signerName = (firstNeac && firstNeac.signer && firstNeac.signer.cn)
+        || (firstInternal && firstInternal.signer)
+        || "Không có chữ ký số";
+      const issuerName = (firstNeac && firstNeac.issuer && (firstNeac.issuer.cn || firstNeac.issuer.o))
+        || (firstInternal && firstInternal.issuer)
+        || "Không xác định";
+      const signedTime = (firstNeac && firstNeac.signedTime)
+        || (firstInternal && firstInternal.signing_time)
+        || data.verified_at
+        || "Không xác định";
+      const intactText = !hasAnySig
+        ? "Chưa ký số"
+        : (iv.intact ? "Toàn vẹn (không bị sửa đổi sau khi ký)" : "CẢNH BÁO: Tệp đã bị sửa đổi hoặc chữ ký hỏng");
+      const trustText = !hasAnySig
+        ? "Chưa có chứng thư số"
+        : (isTrustedValid
+            ? "Tin cậy (Chuỗi CA hợp lệ theo Root CA Việt Nam)"
+            : (isIntactUntrusted
+                ? "Chứng thư chưa được xác thực bởi Root CA tin cậy"
+                : "Không hợp lệ"));
+      const neacStatusText = (firstNeac && firstNeac.ocsp)
+        ? String(firstNeac.ocsp)
+        : (neac ? "Đã đối chiếu trực tuyến Cổng NEAC" : "Không có phản hồi trực tuyến từ Cổng NEAC");
+
+      modalBody.textContent = "";
+      const banner = document.createElement("div");
+      if (isTrustedValid) {{
+        banner.style.cssText = "padding:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; margin-bottom:12px; text-align:center;";
+      }} else if (isIntactUntrusted) {{
+        banner.style.cssText = "padding:12px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; margin-bottom:12px; text-align:center;";
+      }} else {{
+        banner.style.cssText = "padding:12px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; margin-bottom:12px; text-align:center;";
+      }}
+      const bIcon = document.createElement("div");
+      bIcon.style.cssText = "font-size:18px; margin-bottom:2px; color:" + (isTrustedValid ? "#059669" : (isIntactUntrusted ? "#d97706" : "#dc2626")) + ";";
+      bIcon.textContent = isTrustedValid ? "✓" : "⚠️";
+      const bTitle = document.createElement("div");
+      bTitle.style.cssText = "font-weight:800; font-size:13.5px; color:" + (isTrustedValid ? "#065f46" : (isIntactUntrusted ? "#92400e" : "#991b1b")) + ";";
+      bTitle.textContent = isTrustedValid
+        ? "CHỮ KÝ SỐ HỢP LỆ & TOÀN VẸN"
+        : (isIntactUntrusted
+            ? "CHỮ KÝ TOÀN VẸN NHƯNG CHƯA XÁC THỰC ROOT CA"
+            : (!hasAnySig ? "TÀI LIỆU CHƯA ĐƯỢC KÝ SỐ" : "CHỮ KÝ SỐ KHÔNG HỢP LỆ HOẶC TÀI LIỆU BỊ SỬA ĐỔI"));
+      const bDoc = document.createElement("div");
+      bDoc.style.cssText = "font-size:11px; margin-top:2px; color:#475569;";
+      bDoc.textContent = "Tài liệu: " + (data.doc_label || "");
+      banner.appendChild(bIcon);
+      banner.appendChild(bTitle);
+      banner.appendChild(bDoc);
+      modalBody.appendChild(banner);
+
+      const list = document.createElement("div");
+      list.style.cssText = "display:flex; flex-direction:column; gap:8px; font-size:12px;";
+      list.appendChild(_neacRow("Chủ thể ký:", signerName, "color:#0f172a; font-weight:700; text-align:right; max-width:65%;"));
+      list.appendChild(_neacRow("Tổ chức cấp CA:", issuerName, "color:#0284c7; font-weight:700; text-align:right; max-width:65%;"));
+      list.appendChild(_neacRow("Tình trạng dữ liệu:", intactText, "color:" + (iv.intact ? "#16a34a" : "#dc2626") + "; font-weight:700; text-align:right; max-width:65%;"));
+      list.appendChild(_neacRow("Chuỗi tin cậy CA:", trustText, "color:" + (isTrustedValid ? "#059669" : "#b45309") + "; font-weight:600; text-align:right; max-width:65%;"));
+      list.appendChild(_neacRow("Thời điểm ký số:", signedTime));
+      list.appendChild(_neacRow("Đối chiếu NEAC:", neacStatusText));
+      modalBody.appendChild(list);
+
+      const foot = document.createElement("div");
+      foot.style.cssText = "margin-top:14px; padding:10px; background:#f8fafc; border-radius:8px; font-size:11px; color:#475569; line-height:1.45;";
+      foot.textContent = "Kiểm tra độc lập: Quý khách có thể tải tệp PDF và kiểm tra trực tiếp bằng Foxit Reader, Adobe Acrobat hoặc Cổng NEAC (https://neac.gov.vn/vi).";
+      modalBody.appendChild(foot);
+      modalBody.appendChild(_neacCloseBtn("#0f172a"));
     }} catch (err) {{
-      modalBody.innerHTML = `
-        <div style="padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; text-align:center; color:#991b1b;">
-          <div style="font-size:22px; margin-bottom:4px;">⚠️</div>
-          <div style="font-weight:700;">Không thể kết nối Cổng NEAC lúc này</div>
-          <div style="font-size:11.5px; margin-top:4px;">${{err.message}}</div>
-        </div>
-        <p style="font-size:11.5px; color:#64748b; margin-top:10px;">
-          Bạn có thể tải trực tiếp file PDF về và tải lên trang web chính thức của NEAC tại: <a href="https://neac.gov.vn/vi" target="_blank" style="color:#0284c7; font-weight:700;">https://neac.gov.vn/vi</a>
-        </p>
-        <button type="button" onclick="closeNeacModal()" style="width:100%; margin-top:10px; padding:8px; background:#64748b; color:#fff; border:none; border-radius:8px; cursor:pointer;">
-          Đóng
-        </button>
-      `;
+      modalBody.textContent = "";
+      const errBox = document.createElement("div");
+      errBox.style.cssText = "padding:14px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; text-align:center; color:#991b1b;";
+      const eIcon = document.createElement("div");
+      eIcon.style.cssText = "font-size:22px; margin-bottom:4px;";
+      eIcon.textContent = "⚠️";
+      const eTitle = document.createElement("div");
+      eTitle.style.fontWeight = "700";
+      eTitle.textContent = "Không thể thẩm định chữ ký số lúc này";
+      const eMsg = document.createElement("div");
+      eMsg.style.cssText = "font-size:11.5px; margin-top:4px;";
+      eMsg.textContent = (err && err.message) ? String(err.message) : "Lỗi kết nối";
+      errBox.appendChild(eIcon);
+      errBox.appendChild(eTitle);
+      errBox.appendChild(eMsg);
+      modalBody.appendChild(errBox);
+
+      const p = document.createElement("p");
+      p.style.cssText = "font-size:11.5px; color:#64748b; margin-top:10px;";
+      p.textContent = "Bạn có thể tải file PDF về và kiểm tra tại Cổng NEAC: ";
+      const a = document.createElement("a");
+      a.href = "https://neac.gov.vn/vi";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.style.cssText = "color:#0284c7; font-weight:700;";
+      a.textContent = "https://neac.gov.vn/vi";
+      p.appendChild(a);
+      modalBody.appendChild(p);
+      modalBody.appendChild(_neacCloseBtn("#64748b"));
     }}
   }}
 
@@ -3714,7 +4149,6 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
     const modal = document.getElementById("neacModal");
     if (modal) modal.style.display = "none";
   }}
-
 
   async function submitSignature() {{
     if (!hasSigned) {{
@@ -3768,10 +4202,9 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       return;
     }}
 
-
     const dataUrl = canvas.toDataURL("image/png");
     try {{
-      const res = await fetch("/api/public/khoan/" + portalToken + "/submit-signature", {{
+      const res = await fetch("/api/public/khoan/" + encodeURIComponent(portalToken) + "/submit-signature", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
         body: JSON.stringify({{
@@ -3790,11 +4223,11 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
         }})
       }});
       const data = await res.json();
-      if (data.ok) {{
+      if (res.ok && data.ok) {{
         alert("🎉 Chúc mừng! Bạn đã ký tên và xác thực chân dung thành công!");
         window.location.reload();
       }} else {{
-        alert("Lỗi: " + (data.error || "Không thể lưu chữ ký"));
+        alert("Lỗi: " + (data.detail || data.error || "Không thể lưu chữ ký"));
         btn.disabled = false;
         btn.innerText = "✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC";
       }}
@@ -3804,6 +4237,27 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
       btn.innerText = "✍️ XÁC NHẬN KÝ HỢP ĐỒNG & CHỤP ẢNH XÁC THỰC";
     }}
   }}
+
+  // Bind all event handlers via addEventListener (strict nonce CSP compatible)
+  document.querySelectorAll('[data-action="save-draft"]').forEach(el => el.addEventListener("click", manualSaveDraft));
+  document.querySelectorAll('[data-action="init-camera"]').forEach(el => el.addEventListener("click", initCamera));
+  document.querySelectorAll('[data-action="close-neac"]').forEach(el => el.addEventListener("click", closeNeacModal));
+  document.querySelectorAll('[data-neac-doc]').forEach(el => el.addEventListener("click", () => checkNeacOnline(el.getAttribute("data-neac-doc") || "main")));
+  document.querySelectorAll(".face-file-input").forEach(el => el.addEventListener("change", handleFaceFile));
+  const btnViewPdf = document.getElementById("btnViewRealtimePdf");
+  if (btnViewPdf) btnViewPdf.addEventListener("click", viewRealtimePdf);
+  const btnClear = document.getElementById("btnClearCanvas");
+  if (btnClear) btnClear.addEventListener("click", clearCanvas);
+  const btnSubmit = document.getElementById("btnSubmitSign");
+  if (btnSubmit) btnSubmit.addEventListener("click", submitSignature);
+  const inFront = document.getElementById("inputCccdFront");
+  if (inFront) inFront.addEventListener("change", e => handleCccdFile(e, "front"));
+  const inBack = document.getElementById("inputCccdBack");
+  if (inBack) inBack.addEventListener("change", e => handleCccdFile(e, "back"));
+  const inSiteCam = document.getElementById("inputSitePhotosCam");
+  if (inSiteCam) inSiteCam.addEventListener("change", handleSitePhotoFiles);
+  const inSiteLib = document.getElementById("inputSitePhotosLib");
+  if (inSiteLib) inSiteLib.addEventListener("change", handleSitePhotoFiles);
 </script>
 </body>
 </html>
@@ -3813,12 +4267,10 @@ def worker_portal_html(token: str, db: Session = Depends(get_session)):
 
 def _save_cccd_images_from_payload(c: PieceworkContract, front_data: str | None, back_data: str | None, db: Session) -> bool:
     changed = False
-    if front_data and front_data.startswith("data:image/"):
+    if front_data:
         try:
-            import base64
-            _, enc = front_data.split(",", 1)
-            raw = base64.b64decode(enc)
-            doc_id = storage.save_upload(raw, suffix=".jpg")
+            _, raw, suf = _validate_data_image_url(front_data)
+            doc_id = storage.save_upload(raw, suffix=suf)
             c.id_card_front_doc_id = doc_id
             c.has_id_card_front = True
             changed = True
@@ -3828,12 +4280,10 @@ def _save_cccd_images_from_payload(c: PieceworkContract, front_data: str | None,
                     contractor.id_card_front_doc_id = doc_id
         except Exception as e:
             logger.warning("Error saving front CCCD: %s", e)
-    if back_data and back_data.startswith("data:image/"):
+    if back_data:
         try:
-            import base64
-            _, enc = back_data.split(",", 1)
-            raw = base64.b64decode(enc)
-            doc_id = storage.save_upload(raw, suffix=".jpg")
+            _, raw, suf = _validate_data_image_url(back_data)
+            doc_id = storage.save_upload(raw, suffix=suf)
             c.id_card_back_doc_id = doc_id
             c.has_id_card_back = True
             changed = True
@@ -3845,6 +4295,7 @@ def _save_cccd_images_from_payload(c: PieceworkContract, front_data: str | None,
             logger.warning("Error saving back CCCD: %s", e)
     return changed
 
+
 def _save_site_photos_from_payload(c: PieceworkContract, photos_data: list[str] | None, db: Session) -> bool:
     if not photos_data:
         return False
@@ -3854,13 +4305,11 @@ def _save_site_photos_from_payload(c: PieceworkContract, photos_data: list[str] 
         photos = json.loads(c.site_photos_json or "[]")
     except Exception:
         photos = []
-    for p_str in photos_data:
-        if p_str and p_str.startswith("data:image/"):
+    for p_str in photos_data[:20]:
+        if p_str:
             try:
-                import base64
-                _, enc = p_str.split(",", 1)
-                raw = base64.b64decode(enc)
-                doc_id = storage.save_upload(raw, suffix=".jpg")
+                _, raw, suf = _validate_data_image_url(p_str)
+                doc_id = storage.save_upload(raw, suffix=suf)
                 if doc_id not in photos:
                     photos.append(doc_id)
                     changed = True
@@ -3906,6 +4355,15 @@ class WorkerDraftPayload(BaseModel):
     id_card_back_data: str | None = None
     site_photos_data: list[str] | None = None
 
+
+def _assert_contract_unlocked_for_portal(c: PieceworkContract) -> None:
+    if c.is_signed_by_worker or c.is_signed_by_inut or c.status == "completed":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Hợp đồng đã được ký tên và khóa bảo mật, không thể tự ý chỉnh sửa. Vui lòng liên hệ Công ty INUT để mở khóa.",
+        )
+
+
 @router.post("/api/public/khoan/{token}/save-draft")
 def public_save_draft(
     token: str,
@@ -3915,9 +4373,7 @@ def public_save_draft(
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
-    if c.is_signed_by_worker:
-        # Contract is already signed and locked; do not overwrite with draft
-        return {"ok": False, "message": "Hợp đồng đã được ký tên và khóa, không thể ghi đè bản nháp"}
+    _assert_contract_unlocked_for_portal(c)
 
     if payload.worker_name is not None and payload.worker_name.strip():
         c.worker_name = payload.worker_name.strip()
@@ -3953,12 +4409,14 @@ def public_save_draft(
 @router.post("/api/public/khoan/{token}/add-site-photos")
 async def public_add_site_photos(
     token: str,
-    files: list[UploadFile] = File(...),
+    request: Request,
+    files: list[UploadFile] | None = File(None),
     db: Session = Depends(get_session),
 ):
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+    _assert_contract_unlocked_for_portal(c)
 
     photos = []
     try:
@@ -3967,15 +4425,42 @@ async def public_add_site_photos(
         photos = []
 
     added = []
-    for f in files:
-        content = await f.read()
-        if content:
+    if files:
+        for f in files[:20]:
             suf = Path(f.filename or "photo.jpg").suffix.lower() or ".jpg"
             if suf not in (".jpg", ".jpeg", ".png", ".webp"):
-                suf = ".jpg"
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Định dạng ảnh hiện trường '{suf}' không được phép (chỉ chấp nhận JPG, PNG, WEBP)",
+                )
+            content = await storage.read_upload_limited(f, max_bytes=_MAX_IMAGE_BYTES)
+            if not content:
+                continue
+            insp = inspect_uploaded_content(content, suf)
+            if not insp.get("valid"):
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Ảnh hiện trường không hợp lệ: {insp.get('error', 'Hỏng dữ liệu ảnh')}",
+                )
             doc_id = storage.save_upload(content, suffix=suf)
             photos.append(doc_id)
             added.append(doc_id)
+    else:
+        ct = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ct:
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dữ liệu JSON không hợp lệ") from exc
+            raw_list = body.get("site_photos_data") if isinstance(body, dict) else None
+            if isinstance(raw_list, list):
+                before_len = len(photos)
+                if _save_site_photos_from_payload(c, raw_list, db):
+                    photos = json.loads(c.site_photos_json or "[]")
+                    added = photos[before_len:]
+                    db.commit()
+                    return {"ok": True, "added_count": len(added), "total_photos": len(photos)}
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu tệp ảnh hiện trường tải lên")
 
     if added:
         c.site_photos_json = json.dumps(photos)
@@ -3997,11 +4482,20 @@ def public_submit_signature(
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
-        
-    sig = payload.signature_data.strip()
-    if not sig.startswith("data:image/"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dữ liệu chữ ký không hợp lệ")
-        
+    _assert_contract_unlocked_for_portal(c)
+
+    try:
+        sig, _, _ = _validate_data_image_url(payload.signature_data)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    validated_face: tuple[str, bytes, str] | None = None
+    if payload.face_photo_data:
+        try:
+            validated_face = _validate_data_image_url(payload.face_photo_data)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
     c.worker_signature_data = sig
     c.is_signed_by_worker = True
     c.worker_signed_at = datetime.now(timezone.utc)
@@ -4026,10 +4520,26 @@ def public_submit_signature(
     _save_cccd_images_from_payload(c, payload.id_card_front_data, payload.id_card_back_data, db)
     _save_site_photos_from_payload(c, payload.site_photos_data, db)
 
-    # Update or link contractor profile if exists
-    if c.worker_name and c.worker_id_card:
-        contractor = db.scalar(select(PieceworkContractor).where(PieceworkContractor.id_card == c.worker_id_card))
-        if not contractor:
+    # Cross-contractor tamper guard:
+    # - NEVER look up and overwrite an unrelated PieceworkContractor by untrusted worker_id_card.
+    # - Only update the master contractor record if this contract was ALREADY linked (c.contractor_id)
+    #   and its id_card still matches; otherwise keep changes scoped strictly to this contract row.
+    if c.contractor_id:
+        linked = db.get(PieceworkContractor, c.contractor_id)
+        if linked and (not c.worker_id_card or linked.id_card == c.worker_id_card):
+            if c.worker_name:
+                linked.name = c.worker_name
+            if c.worker_phone:
+                linked.phone = c.worker_phone
+            if c.worker_address:
+                linked.address = c.worker_address
+            if c.worker_bank_account:
+                linked.bank_account = c.worker_bank_account
+            if c.worker_bank_name:
+                linked.bank_name = c.worker_bank_name
+    elif c.worker_name and c.worker_id_card:
+        existing_other = db.scalar(select(PieceworkContractor).where(PieceworkContractor.id_card == c.worker_id_card))
+        if not existing_other:
             clean_code = f"CTV-AUTO-{c.worker_id_card[-4:]}"
             contractor = PieceworkContractor(
                 code=clean_code,
@@ -4047,30 +4557,16 @@ def public_submit_signature(
             db.add(contractor)
             db.flush()
             c.contractor_id = contractor.id
-        else:
-            c.contractor_id = contractor.id
-            contractor.name = c.worker_name
-            if c.worker_phone: contractor.phone = c.worker_phone
-            if c.worker_address: contractor.address = c.worker_address
-            if c.worker_bank_account: contractor.bank_account = c.worker_bank_account
-            if c.worker_bank_name: contractor.bank_name = c.worker_bank_name
-    if payload.face_photo_data:
-        face_str = (payload.face_photo_data or "").strip()
-        if face_str.startswith("data:image/"):
-            try:
-                import base64
-                _, encoded = face_str.split(",", 1)
-                raw_face_bytes = base64.b64decode(encoded)
-                face_doc_id = storage.save_upload(raw_face_bytes, suffix=".jpg")
-                c.worker_face_doc_id = face_doc_id
-                c.worker_face_photo_data = face_str
-            except Exception as e:
-                logger.warning("Could not save face photo: %s", e)
-    
-    # Neu Ben A da bi ky truoc khi Ben B ky, reset trang thai ky so Ben A de bat buoc ky so lai SAU khi Ben B da ky
-    if c.is_signed_by_inut:
-        c.is_signed_by_inut = False
-        c.inut_signed_at = None
+
+    if validated_face is not None:
+        face_str, raw_face_bytes, face_suf = validated_face
+        try:
+            face_doc_id = storage.save_upload(raw_face_bytes, suffix=face_suf)
+            c.worker_face_doc_id = face_doc_id
+            c.worker_face_photo_data = face_str
+        except Exception as e:
+            logger.warning("Could not save face photo: %s", e)
+
     # Re-evaluate deficiencies
     deficiency = evaluate_deficiencies(c)
     c.status = deficiency["status_code"]
@@ -4083,14 +4579,16 @@ def public_submit_signature(
         c.contract_pdf_doc_id = doc_id
         # Save into Documents
         code_clean = c.contract_code.replace('/', '_')
-        doc_name = f"Hop_dong_giao_khoan_{code_clean}_worker_signed.pdf"
+        is_mb_signed = (c.contract_type == "mua_ban_ca_nhan")
+        prefix = "Hop_dong_mua_ban_ca_nhan" if is_mb_signed else "Hop_dong_giao_khoan"
+        doc_name = f"{prefix}_{code_clean}_worker_signed.pdf"
         doc = Document(
             doc_id=doc_id,
             filename=doc_name,
             signer_name=c.worker_name,
             signed=False,
             doc_type="hop_dong",
-            note=f"HĐGK {c.contract_code} · {c.worker_name} · Ký online qua Portal · Chờ Bên A ký số",
+            note=f"{'HĐMB' if is_mb_signed else 'HĐGK'} {c.contract_code} · {c.worker_name} · Ký online qua Portal · Chờ Bên A ký số",
             source_system="piecework_portal",
             source_external_id=c.contract_code,
             source_synced_at=datetime.now(timezone.utc),
@@ -4118,7 +4616,6 @@ def public_get_contract_pdf(
 
     # Draft / Unsigned requested:
     if draft or signed == 0:
-        import copy
         c_draft = copy.copy(c)
         c_draft.is_signed_by_inut = False
         c_draft.is_signed_by_worker = False
@@ -4127,7 +4624,8 @@ def public_get_contract_pdf(
         pdf_bytes = render_piecework_pdf(c_draft)
         code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
         safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
-        filename = f"Hop_dong_giao_khoan_{safe_code or c.id}_CHUA_KY_BAN_THAO.pdf"
+        prefix = "Hop_dong_mua_ban_ca_nhan" if (c.contract_type == "mua_ban_ca_nhan") else "Hop_dong_giao_khoan"
+        filename = f"{prefix}_{safe_code or c.id}_CHUA_KY_BAN_THAO.pdf"
     else:
         # Return real signed cryptographic PDF if present, otherwise render
         if c.contract_pdf_doc_id and storage.exists(c.contract_pdf_doc_id):
@@ -4137,12 +4635,16 @@ def public_get_contract_pdf(
         suffix_label = "DA_KY" if (c.is_signed_by_inut or c.is_signed_by_worker) else "CHUA_KY"
         code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
         safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
-        filename = f"Hop_dong_giao_khoan_{safe_code or c.id}_{suffix_label}.pdf"
+        prefix = "Hop_dong_mua_ban_ca_nhan" if (c.contract_type == "mua_ban_ca_nhan") else "Hop_dong_giao_khoan"
+        filename = f"{prefix}_{safe_code or c.id}_{suffix_label}.pdf"
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": safe_content_disposition(filename, disposition="inline"),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -4162,7 +4664,10 @@ def public_get_appendix2_pdf(token: str, db: Session = Depends(get_session)):
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": safe_content_disposition(filename, disposition="inline"),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -4182,13 +4687,17 @@ def public_get_appendix3_pdf(token: str, db: Session = Depends(get_session)):
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": safe_content_disposition(filename, disposition="inline"),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
 @router.get("/api/public/khoan/{token}/verify-neac")
 def public_verify_neac_signature(
     token: str,
+    request: Request,
     doc: str = "main", # main | pl2 | pl3
     db: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
@@ -4196,6 +4705,7 @@ def public_verify_neac_signature(
     c = db.scalar(select(PieceworkContract).where(PieceworkContract.portal_token == token))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy hợp đồng")
+    _check_neac_rate_limit(request, token)
         
     code_clean = c.contract_code.replace("/", "_").replace("Đ", "D").replace("đ", "d")
     safe_code = "".join(ch for ch in code_clean if ch.isalnum() or ch in "-_")
@@ -4248,7 +4758,9 @@ def public_verify_neac_signature(
         "ok": True,
         "doc_label": label,
         "internal_verification": {
-            "valid": any(s.get("valid") for s in internal_sigs),
+            "valid": any(s.get("valid") and s.get("intact") for s in internal_sigs),
+            "intact": any(s.get("intact") for s in internal_sigs),
+            "trusted": any(s.get("valid") and s.get("intact") and s.get("trusted") for s in internal_sigs),
             "signatures": internal_sigs,
         },
         "neac_result": neac_res,

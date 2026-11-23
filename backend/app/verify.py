@@ -75,15 +75,54 @@ def _one_signature(embedded_sig, vc: ValidationContext) -> SignatureReport:
         problems.append("Tai lieu da bi sua sau khi ky (byte-range khong khop).")
     if not trusted:
         problems.append("Chuoi chung thu khong dan ve root CA tin cay (kiem tra trust store VN CA).")
+
+    weak_algo = False
     try:
         bits = status.signing_cert.public_key.bit_size
         if bits and bits < 2048:
+            weak_algo = True
             problems.append(f"Khoa RSA {bits}-bit (yeu, duoi 2048) - chung thu doi cu.")
     except Exception:
         pass
 
+    try:
+        md_algo = str(
+            getattr(status, "md_algorithm", "")
+            or getattr(embedded_sig, "md_algorithm", "")
+            or ""
+        ).lower().replace("-", "")
+        if md_algo in {"md5", "sha1"}:
+            weak_algo = True
+            problems.append(
+                f"Thuat toan bam {md_algo.upper()} (yeu/cu) - khuyen nghi dung SHA-256 tro len."
+            )
+    except Exception:
+        pass
+
+    try:
+        cert_hash = str(getattr(status.signing_cert, "hash_algo", "") or "").lower().replace("-", "")
+        if cert_hash in {"md5", "sha1"} and not any("bam" in p.lower() for p in problems):
+            weak_algo = True
+            problems.append(
+                f"Chung thu ky bang thuat toan bam {cert_hash.upper()} (yeu/cu)."
+            )
+    except Exception:
+        pass
+
+    if revocation_ok is False:
+        problems.append("Chung thu so da bi thu hoi (OCSP/CRL).")
+    elif revocation_ok is None:
+        problems.append(
+            "Chua kiem tra duoc trang thai thu hoi OCSP/CRL (che do ngoai tuyen/soft-fail)."
+        )
+
     if intact and valid and trusted:
-        summary = "HOP LE"
+        if revocation_ok is False:
+            summary = "KHONG HOP LE"
+        elif weak_algo or revocation_ok is None:
+            summary = "Hợp lệ (cảnh báo: thuật toán cũ hoặc chưa kiểm tra thu hồi)"
+        else:
+            summary = "HOP LE"
     elif intact and valid and not trusted:
         summary = "Chu ky dung nhung CA chua tin cay"
     else:

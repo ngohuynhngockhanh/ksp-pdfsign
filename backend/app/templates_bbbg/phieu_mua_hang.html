@@ -338,10 +338,10 @@
     {% if timeline %}
       {% for step in timeline %}
       <div class="timeline-step {% if step.completed %}completed{% endif %}">
-        <div class="step-time">{{ step.time|safe }}</div>
+        <div class="step-time">{{ step.time|e|replace('\n', '<br>')|safe }}</div>
         <div class="step-content">
           <div class="step-title">{{ step.title }}</div>
-          <div class="step-desc">{{ step.desc|safe }}</div>
+          <div class="step-desc">{{ step.desc|e|replace('\n', '<br>')|safe }}</div>
         </div>
       </div>
       {% endfor %}
@@ -430,7 +430,7 @@
     <ul>
       {% if chinh_sach %}
         {% for cs in chinh_sach %}
-          <li>{{ cs|safe }}</li>
+          <li>{{ cs|e|replace('\n', '<br>')|safe }}</li>
         {% endfor %}
       {% else %}
         <li><b>Cam kết chất lượng:</b> Thiết bị mới 100%, bảo hành chính hãng <b>1 năm (1 đổi 1)</b> đối với toàn bộ lỗi kỹ thuật do nhà sản xuất.</li>

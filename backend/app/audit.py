@@ -76,6 +76,9 @@ ACTION_LABELS = {
     "payroll_payment_cancel": "Hủy thanh toán lương",
     "ecus_drive_sync": "Đồng bộ PDF ECUS lên Google Drive",
     "tqc_import": "Nhập chỉ mục chứng nhận TQC",
+    "lio_sign": "Gửi LIO ký số từ xa",
+    "lio_signed": "LIO đã ký số hoàn tất",
+    "lio_countersigned": "Gửi bản ký hai bên về LIO",
 }
 
 

@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from . import tax_defense
 from .auth import CurrentUser, require_admin
 from .db import get_session
+from .security_utils import error_detail, safe_content_disposition
+from .storage import read_upload_limited
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,10 @@ def get_overview(
     try:
         return tax_defense.get_tax_defense_overview(db, year_list)
     except Exception as e:
-        logger.exception("Lỗi tính ma trận giải trình thuế: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi tính toán: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi tính ma trận giải trình thuế", e, "ksp.tax_defense"),
+        )
 
 
 @router.get("/justification-dossier")
@@ -43,8 +47,10 @@ def get_justification_dossier(
     try:
         return tax_defense.generate_tax_justification_dossier(db, year_list)
     except Exception as e:
-        logger.exception("Lỗi sinh bản thuyết minh giải trình thuế: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi sinh thuyết minh: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi sinh bản thuyết minh giải trình thuế", e, "ksp.tax_defense"),
+        )
 
 
 @router.get("/export-excel")
@@ -61,11 +67,13 @@ def export_excel(
         return StreamingResponse(
             buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+            headers={"Content-Disposition": safe_content_disposition(filename)},
         )
     except Exception as e:
-        logger.exception("Lỗi xuất Excel giải trình thuế: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi xuất Excel: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi xuất Excel giải trình thuế", e, "ksp.tax_defense"),
+        )
 
 
 @router.post("/import-historical-purchase")
@@ -76,15 +84,19 @@ async def import_historical_purchase(
     db: Session = Depends(get_session),
 ):
     """Nạp Bảng kê mua vào Excel (Mẫu 01-2/GTGT) cho các năm cũ để bổ sung cơ sở dữ liệu giải trình."""
-    content = await file.read()
+    content = await read_upload_limited(file, max_bytes=25 * 1024 * 1024)
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File tải lên rỗng")
     try:
         res = tax_defense.import_purchase_ledger_xlsx(db, content, year.strip())
         return res
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     except Exception as e:
-        logger.exception("Lỗi import bảng kê mua vào: %s", e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Không thể đọc file: {e}")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            error_detail("Không thể đọc file bảng kê mua vào", e, "ksp.tax_defense"),
+        )
 
 
 @router.get("/partner-status")
@@ -99,8 +111,10 @@ def get_partner_status(
     try:
         return tax_defense.batch_check_partners_status(db, year_list, limit)
     except Exception as e:
-        logger.exception("Lỗi rà soát tình trạng đối tác: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi rà soát đối tác: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi rà soát tình trạng đối tác", e, "ksp.tax_defense"),
+        )
 
 
 @router.get("/check-mst")
@@ -123,8 +137,10 @@ def get_investigation_report(
     try:
         return tax_defense.get_invoice_trading_investigation_report(db)
     except Exception as e:
-        logger.exception("Lỗi báo cáo chuyên đề điều tra hóa đơn: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi báo cáo: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi báo cáo chuyên đề điều tra hóa đơn", e, "ksp.tax_defense"),
+        )
 
 
 @router.post("/sync-gdt-purchases")
@@ -138,8 +154,10 @@ def sync_gdt_purchases(
     try:
         return tax_defense.sync_historical_purchases_from_gdt(db, from_year, to_year)
     except Exception as e:
-        logger.exception("Lỗi đồng bộ hóa đơn mua từ Cổng Thuế: %s", e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi đồng bộ: {e}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            error_detail("Lỗi đồng bộ hóa đơn mua từ Cổng Thuế", e, "ksp.tax_defense"),
+        )
 
 
 @router.get("/accounting-fee-monitor")

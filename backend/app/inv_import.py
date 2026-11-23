@@ -1427,11 +1427,16 @@ def reconcile_bang_ke(db: Session, rows: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 def fetch_from_url(url: str, max_files: int = 50) -> list[tuple[str, bytes]]:
     """Tai file/thu muc tu URL -> [(ten file, noi dung)]. Ho tro Google Drive + link file truc tiep."""
+    from .security_utils import safe_http_get, validate_outbound_url
+
     url = (url or "").strip()
     if not url:
         raise ValueError("Thiếu URL")
 
-    if "drive.google.com" in url:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if host in {"drive.google.com", "docs.google.com"}:
+        validate_outbound_url(url, allowed_hosts=("drive.google.com", "docs.google.com"))
         import gdown
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1454,36 +1459,73 @@ def fetch_from_url(url: str, max_files: int = 50) -> list[tuple[str, bytes]]:
             return out
 
     try:
-        r = httpx.get(url, timeout=60, follow_redirects=True)
+        r = safe_http_get(url, timeout=60.0, max_bytes=50 * 1024 * 1024)
         r.raise_for_status()
+    except ValueError:
+        raise
     except httpx.HTTPError as e:
         raise ValueError(f"Không tải được file từ URL: {e}")
-    name = unquote(Path(urlparse(url).path).name) or "downloaded"
+    name = unquote(Path(parsed.path).name) or "downloaded"
     return [(name, r.content)]
 
 
 _MAIN_XML_MARK = b"<HDon"
+_ZIP_MAX_FILES = 50
+_ZIP_MAX_UNCOMPRESSED = 200 * 1024 * 1024  # 200 MB
 
 
-def expand_zip(name: str, data: bytes) -> list[tuple[str, bytes]]:
-    """Giai nen ZIP: neu co XML hoa don chinh (chua '<HDon', bo *_Bang_Ke*/*hdcd*)
-    -> chi lay cac XML do; khong thi lay cac PDF. Khong phai ZIP -> tra ve nguyen ven."""
+class ZipLimitError(ValueError):
+    """ZIP vuot qua gioi han so tep hoac tong dung luong giai nen (chong zip-bomb)."""
+
+
+def expand_zip(
+    name: str,
+    data: bytes,
+    *,
+    max_files: int = _ZIP_MAX_FILES,
+    max_uncompressed: int = _ZIP_MAX_UNCOMPRESSED,
+) -> list[tuple[str, bytes]]:
+    """Giai nen ZIP (chong zip-bomb: gioi han so file & tong dung luong giai nen).
+    Neu co XML hoa don chinh (chua '<HDon', bo *_Bang_Ke*/*hdcd*) -> chi lay cac XML do;
+    khong thi lay cac PDF. Khong phai ZIP -> tra ve nguyen ven."""
     if not (name.lower().endswith(".zip") or data[:2] == b"PK"):
         return [(name, data)]
 
     xmls: list[tuple[str, bytes]] = []
     pdfs: list[tuple[str, bytes]] = []
+    total_read = 0
+    file_count = 0
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            for info in zf.infolist():
-                if info.is_dir():
-                    continue
+            infos = [info for info in zf.infolist() if not info.is_dir() and "__MACOSX" not in info.filename]
+            if len(infos) > max_files:
+                raise ZipLimitError(f"File ZIP chứa quá nhiều tệp (tối đa {max_files} tệp)")
+            declared_total = sum(max(0, info.file_size) for info in infos)
+            if declared_total > max_uncompressed:
+                raise ZipLimitError("File ZIP vượt quá giới hạn giải nén 200 MB")
+            for info in infos:
+                file_count += 1
+                if file_count > max_files:
+                    raise ZipLimitError(f"File ZIP chứa quá nhiều tệp (tối đa {max_files} tệp)")
                 fname = Path(info.filename).name
                 low = fname.lower()
+                if not (low.endswith(".xml") or low.endswith(".pdf")):
+                    continue
+                chunks: list[bytes] = []
+                with zf.open(info, "r") as member:
+                    while True:
+                        chunk = member.read(65536)
+                        if not chunk:
+                            break
+                        total_read += len(chunk)
+                        if total_read > max_uncompressed:
+                            raise ZipLimitError("File ZIP vượt quá giới hạn giải nén 200 MB")
+                        chunks.append(chunk)
+                member_bytes = b"".join(chunks)
                 if low.endswith(".xml"):
-                    xmls.append((fname, zf.read(info)))
+                    xmls.append((fname, member_bytes))
                 elif low.endswith(".pdf"):
-                    pdfs.append((fname, zf.read(info)))
+                    pdfs.append((fname, member_bytes))
     except zipfile.BadZipFile:
         return [(name, data)]
 

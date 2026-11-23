@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 import threading
 import time
@@ -62,9 +63,12 @@ def format_currency_vnd(amount: float | int | None) -> str:
     if amount is None or amount == 0:
         return "0"
     try:
-        val = int(round(float(amount)))
+        f = float(amount)
+        if not math.isfinite(f):
+            return "0"
+        val = int(round(f))
         return f"{val:,}".replace(",", ".")
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return "0"
 
 
@@ -595,6 +599,9 @@ class BiddingClient:
                             }
                             self._cache_set(cache_key, result, SEARCH_CACHE_TTL)
                             return result
+                    else:
+                        BiddingClient._global_last_egp_failure = time.time()
+                        logger.warning("Goi e-GP search tra ma HTTP %s, chuyen sang Smart Mock Generator", resp.status_code)
             except Exception as exc:
                 BiddingClient._global_last_egp_failure = time.time()
                 logger.warning("Goi e-GP search gap loi (%s), chuyen sang Smart Mock Generator", exc)
@@ -751,12 +758,18 @@ def get_tender_details(
 
 def _heuristic_ai_analysis(tender_data: dict[str, Any], custom_context: str = "") -> dict[str, Any]:
     """Phan tich heuristic thong minh khi AI service khong bat hoac offline."""
-    title = str(tender_data.get("tender_name", ""))
-    price = float(tender_data.get("bid_price", 0.0))
-    field = str(tender_data.get("field", "")).upper()
-    entity = str(tender_data.get("procuring_entity", ""))
-    tbmt = str(tender_data.get("tbmt_code", ""))
-    deadline = str(tender_data.get("bid_deadline", ""))
+    title = str(tender_data.get("tender_name") or "")
+    raw_price = tender_data.get("bid_price")
+    try:
+        price = float(raw_price) if raw_price is not None else 0.0
+        if not math.isfinite(price):
+            price = 0.0
+    except (TypeError, ValueError):
+        price = 0.0
+    field = str(tender_data.get("field") or "").upper()
+    entity = str(tender_data.get("procuring_entity") or "")
+    tbmt = str(tender_data.get("tbmt_code") or "")
+    deadline = str(tender_data.get("bid_deadline") or "")
 
     # Tinh toan diem phu hop dua tren tu khoa cong nghe
     iot_keywords = ["scada", "iot", "gateway", "modbus", "cam bien", "quan trac", "tram bom", "nang luong", "chieu sang", "tu dong hoa", "rtu", "datalogger", "plc"]
@@ -1242,21 +1255,26 @@ def list_watchlists(db: Session, is_active: bool | None = None) -> list[BiddingW
 
 def generate_tender_html_preview(tender: dict[str, Any]) -> str:
     """Sinh ma HTML giao dien E-HSMT chuan Cổng Mua Sam Cong e-GP de nhung iframe hoac xem truc tiep."""
-    tbmt_code = tender.get("tbmt_code") or "N/A"
-    tender_name = tender.get("tender_name") or "Gói thầu mua sắm / xây lắp"
-    procuring_entity = tender.get("procuring_entity") or "Chưa cập nhật"
-    investor = tender.get("investor") or procuring_entity
-    field = tender.get("field") or "Hàng hóa"
+    from html import escape as _esc
+
+    tbmt_code = _esc(str(tender.get("tbmt_code") or "N/A"), quote=True)
+    tender_name = _esc(str(tender.get("tender_name") or "Gói thầu mua sắm / xây lắp"), quote=True)
+    procuring_entity = _esc(str(tender.get("procuring_entity") or "Chưa cập nhật"), quote=True)
+    investor = _esc(str(tender.get("investor") or tender.get("procuring_entity") or "Chưa cập nhật"), quote=True)
+    field = _esc(str(tender.get("field") or "Hàng hóa"), quote=True)
     bid_price = tender.get("bid_price") or 0.0
-    bid_price_str = f"{bid_price:,.0f} VND" if bid_price > 0 else "Chưa công bố"
-    bid_deadline = tender.get("bid_deadline") or "Chưa xác định"
-    bid_opening = tender.get("bid_opening_date") or bid_deadline
-    province = tender.get("province") or "Toàn quốc"
-    method = tender.get("bidding_method") or "Đấu thầu rộng rãi qua mạng"
-    decision_no = tender.get("decision_number") or "QĐ-EGP/2026"
-    validity_days = tender.get("bid_validity_period_days") or 90
-    execution_days = tender.get("execution_period_days") or 60
-    description = tender.get("description") or "Cung cấp thiết bị, vật tư, giải pháp công nghệ và dịch vụ kỹ thuật kèm theo."
+    bid_price_str = _esc(f"{bid_price:,.0f} VND" if bid_price > 0 else "Chưa công bố", quote=True)
+    bid_deadline = _esc(str(tender.get("bid_deadline") or "Chưa xác định"), quote=True)
+    bid_opening = _esc(str(tender.get("bid_opening_date") or tender.get("bid_deadline") or "Chưa xác định"), quote=True)
+    province = _esc(str(tender.get("province") or "Toàn quốc"), quote=True)
+    method = _esc(str(tender.get("bidding_method") or "Đấu thầu rộng rãi qua mạng"), quote=True)
+    decision_no = _esc(str(tender.get("decision_number") or "QĐ-EGP/2026"), quote=True)
+    validity_days = _esc(str(tender.get("bid_validity_period_days") or 90), quote=True)
+    execution_days = _esc(str(tender.get("execution_period_days") or 60), quote=True)
+    description = _esc(
+        str(tender.get("description") or "Cung cấp thiết bị, vật tư, giải pháp công nghệ và dịch vụ kỹ thuật kèm theo."),
+        quote=True,
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="vi">
@@ -2011,16 +2029,30 @@ class BiddingAttachmentService:
 
     @classmethod
     def generate_attachment_bytes(cls, tbmt_code: str, file_id: str, tender: dict[str, Any]) -> tuple[bytes, str, str]:
+        from html import escape as _esc
         import weasyprint
-        tender_name = tender.get("tender_name", "Gói thầu mua sắm thiết bị")
-        procuring = tender.get("procuring_entity", "Bên mời thầu")
-        investor = tender.get("investor", "Chủ đầu tư")
+        from .security_utils import safe_weasyprint_url_fetcher
+
+        raw_tbmt = str(tbmt_code or "")
+        raw_tender_name = str(tender.get("tender_name", "Gói thầu mua sắm thiết bị"))
+        raw_procuring = str(tender.get("procuring_entity", "Bên mời thầu"))
+        raw_investor = str(tender.get("investor", "Chủ đầu tư"))
         bid_price = tender.get("bid_price", 0.0)
-        bid_price_vnd = format_currency_vnd(bid_price) + " ₫"
-        decision_no = tender.get("decision_number", "104/QĐ-BMT")
-        deadline = tender.get("bid_deadline", "2026-09-01 15:00:00")
-        method = tender.get("bidding_method", "Đấu thầu rộng rãi qua mạng")
-        desc = tender.get("description", "Cung cấp thiết bị IoT, SCADA và tích hợp truyền thông dữ liệu.")
+        raw_bid_price_vnd = format_currency_vnd(bid_price) + " ₫"
+        raw_decision_no = str(tender.get("decision_number", "104/QĐ-BMT"))
+        raw_deadline = str(tender.get("bid_deadline", "2026-09-01 15:00:00"))
+        raw_method = str(tender.get("bidding_method", "Đấu thầu rộng rãi qua mạng"))
+        raw_desc = str(tender.get("description", "Cung cấp thiết bị IoT, SCADA và tích hợp truyền thông dữ liệu."))
+
+        e_tbmt = _esc(raw_tbmt, quote=True)
+        tender_name = _esc(raw_tender_name, quote=True)
+        procuring = _esc(raw_procuring, quote=True)
+        investor = _esc(raw_investor, quote=True)
+        bid_price_vnd = _esc(raw_bid_price_vnd, quote=True)
+        decision_no = _esc(raw_decision_no, quote=True)
+        deadline = _esc(raw_deadline, quote=True)
+        method = _esc(raw_method, quote=True)
+        desc = _esc(raw_desc, quote=True)
 
         if file_id == "ehsmt-tech-specs":
             html = f"""<!DOCTYPE html>
@@ -2049,7 +2081,7 @@ class BiddingAttachmentService:
   </div>
 
   <div class="title">CHƯƠNG V. YÊU CẦU VỀ KỸ THUẬT</div>
-  <div class="subtitle">Mã TBMT: <strong>{tbmt_code}</strong> — Số QĐ: <strong>{decision_no}</strong></div>
+  <div class="subtitle">Mã TBMT: <strong>{e_tbmt}</strong> — Số QĐ: <strong>{decision_no}</strong></div>
 
   <div class="box">
     <strong>Gói thầu:</strong> {tender_name}<br>
@@ -2078,13 +2110,13 @@ class BiddingAttachmentService:
       <tr>
         <td style="text-align: center;">1</td>
         <td><strong>Thiết bị IoT Gateway 4G Công nghiệp</strong><br><em>(iNut / Tương đương)</em></td>
-        <td>CPU Cortex-M4/A7 $\ge$ 168MHz, RAM $\ge$ 64MB, Flash $\ge$ 128MB. Hỗ trợ 2x RS485 (Modbus RTU Master/Slave), 1x Ethernet 10/100, 1x Khe SIM 4G LTE đa mạng. Chuẩn công nghiệp chống sét lan truyền 4kV, dải nhiệt độ hoạt động -20°C đến +70°C.</td>
+        <td>CPU Cortex-M4/A7 &ge; 168MHz, RAM &ge; 64MB, Flash &ge; 128MB. Hỗ trợ 2x RS485 (Modbus RTU Master/Slave), 1x Ethernet 10/100, 1x Khe SIM 4G LTE đa mạng. Chuẩn công nghiệp chống sét lan truyền 4kV, dải nhiệt độ hoạt động -20°C đến +70°C.</td>
         <td style="text-align: center;">Bộ</td>
       </tr>
       <tr>
         <td style="text-align: center;">2</td>
         <td><strong>Module Datalogger Thu Thập Tín Hiệu</strong></td>
-        <td>8 kênh Analog Input (4-20mA / 0-10V) độ phân giải 16-bit, 4 kênh Digital Input (Opto-isolated), 4 kênh Relay Output (5A/250VAC). Lưu trữ dữ liệu thẻ nhớ MicroSD $\ge$ 32GB khi mất sóng mạng. Tự động đồng bộ FTP/MQTT về máy chủ trung tâm.</td>
+        <td>8 kênh Analog Input (4-20mA / 0-10V) độ phân giải 16-bit, 4 kênh Digital Input (Opto-isolated), 4 kênh Relay Output (5A/250VAC). Lưu trữ dữ liệu thẻ nhớ MicroSD &ge; 32GB khi mất sóng mạng. Tự động đồng bộ FTP/MQTT về máy chủ trung tâm.</td>
         <td style="text-align: center;">Bộ</td>
       </tr>
       <tr>
@@ -2096,7 +2128,7 @@ class BiddingAttachmentService:
       <tr>
         <td style="text-align: center;">4</td>
         <td><strong>Tủ Điện Điều Khiển & Bộ Lưu Điện UPS</strong></td>
-        <td>Vỏ tủ tôn sơn tĩnh điện chuẩn IP55 ngoài trời, trang bị bộ đổi nguồn công nghiệp 24VDC Meanwell, chống sét lan truyền Type 2, Bộ lưu điện Online UPS $\ge$ 1000VA duy trì hoạt động $\ge$ 4 giờ khi mất điện lưới.</td>
+        <td>Vỏ tủ tôn sơn tĩnh điện chuẩn IP55 ngoài trời, trang bị bộ đổi nguồn công nghiệp 24VDC Meanwell, chống sét lan truyền Type 2, Bộ lưu điện Online UPS &ge; 1000VA duy trì hoạt động &ge; 4 giờ khi mất điện lưới.</td>
         <td style="text-align: center;">Tủ</td>
       </tr>
     </tbody>
@@ -2115,8 +2147,8 @@ class BiddingAttachmentService:
   </div>
 </body>
 </html>"""
-            pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-            return pdf_bytes, "application/pdf", f"E-HSMT_Chuong_V_Yeu_Cau_Ky_Thuat_{tbmt_code}.pdf"
+            pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
+            return pdf_bytes, "application/pdf", f"E-HSMT_Chuong_V_Yeu_Cau_Ky_Thuat_{raw_tbmt}.pdf"
 
         elif file_id == "ehsmt-eval-criteria":
             html = f"""<!DOCTYPE html>
@@ -2140,7 +2172,7 @@ class BiddingAttachmentService:
   </div>
 
   <div class="title">CHƯƠNG III. TIÊU CHUẨN ĐÁNH GIÁ E-HSDT</div>
-  <div style="text-align: center; margin-bottom: 20px;">Mã TBMT: <strong>{tbmt_code}</strong></div>
+  <div style="text-align: center; margin-bottom: 20px;">Mã TBMT: <strong>{e_tbmt}</strong></div>
 
   <h3>1. ĐÁNH GIÁ TƯ CÁCH HỢP LỆ VÀ NĂNG LỰC TÀI CHÍNH</h3>
   <table class="table">
@@ -2160,12 +2192,12 @@ class BiddingAttachmentService:
       <tr>
         <td style="text-align: center;">2</td>
         <td>Doanh thu bình quân hàng năm (3 năm gần nhất)</td>
-        <td>Tối thiểu $\ge$ {format_currency_vnd(bid_price * 1.5)} VND.</td>
+        <td>Tối thiểu &ge; {format_currency_vnd(bid_price * 1.5)} VND.</td>
       </tr>
       <tr>
         <td style="text-align: center;">3</td>
         <td>Hợp đồng tương tự đã hoàn thành</td>
-        <td>Đã hoàn thành tối thiểu 01 hợp đồng cung cấp thiết bị IoT/SCADA/Tự động hóa có giá trị $\ge$ {format_currency_vnd(bid_price * 0.7)} VND.</td>
+        <td>Đã hoàn thành tối thiểu 01 hợp đồng cung cấp thiết bị IoT/SCADA/Tự động hóa có giá trị &ge; {format_currency_vnd(bid_price * 0.7)} VND.</td>
       </tr>
     </tbody>
   </table>
@@ -2174,8 +2206,8 @@ class BiddingAttachmentService:
   <p>Áp dụng phương pháp <strong>Giá thấp nhất</strong> (hoặc Giá đánh giá kết hợp Kỹ thuật). Nhà thầu có E-HSDT đáp ứng tiêu chuẩn kỹ thuật và có giá dự thầu sau giảm giá thấp nhất sẽ được xếp hạng thứ nhất để mời vào đối chiếu tài liệu và thương thảo hợp đồng.</p>
 </body>
 </html>"""
-            pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-            return pdf_bytes, "application/pdf", f"E-HSMT_Chuong_III_Tieu_Chuan_Danh_Gia_{tbmt_code}.pdf"
+            pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
+            return pdf_bytes, "application/pdf", f"E-HSMT_Chuong_III_Tieu_Chuan_Danh_Gia_{raw_tbmt}.pdf"
 
         elif file_id == "decision-approval":
             html = f"""<!DOCTYPE html>
@@ -2212,7 +2244,7 @@ class BiddingAttachmentService:
   <p><strong>Xét Tờ trình của {procuring} về việc thẩm định và phê duyệt E-HSMT;</strong></p>
 
   <h3 style="text-align: center;">QUYẾT ĐỊNH:</h3>
-  <p><strong>Điều 1.</strong> Phê duyệt Hồ sơ mời thầu qua mạng (E-HSMT) cho gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{tbmt_code}</strong>).</p>
+  <p><strong>Điều 1.</strong> Phê duyệt Hồ sơ mời thầu qua mạng (E-HSMT) cho gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{e_tbmt}</strong>).</p>
   <p>• Giá gói thầu dự toán: <strong>{bid_price_vnd}</strong>.</p>
   <p>• Hình thức lựa chọn nhà thầu: <strong>{method}</strong>.</p>
   <p><strong>Điều 2.</strong> Giao {procuring} tổ chức phát hành E-HSMT công khai trên Hệ thống mạng đấu thầu quốc gia theo đúng trình tự và quy định hiện hành.</p>
@@ -2229,8 +2261,8 @@ class BiddingAttachmentService:
   </table>
 </body>
 </html>"""
-            pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-            return pdf_bytes, "application/pdf", f"Quyet_Dinh_Phe_Duyet_E-HSMT_{tbmt_code}.pdf"
+            pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
+            return pdf_bytes, "application/pdf", f"Quyet_Dinh_Phe_Duyet_E-HSMT_{raw_tbmt}.pdf"
 
         elif file_id == "kqlcnt-report":
             html = f"""<!DOCTYPE html>
@@ -2249,14 +2281,14 @@ class BiddingAttachmentService:
   </div>
 
   <div class="title">BÁO CÁO ĐÁNH GIÁ E-HSDT VÀ KẾT QUẢ LỰA CHỌN NHÀ THẦU</div>
-  <p style="text-align: center;">Gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{tbmt_code}</strong>)</p>
+  <p style="text-align: center;">Gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{e_tbmt}</strong>)</p>
 
   <p>Tổ chuyên gia đấu thầu đã tiến hành mở thầu và đánh giá E-HSDT của các nhà thầu tham dự theo đúng quy trình quy định tại Thông tư 06/2024/TT-BKHĐT.</p>
   <p>Kết quả đánh giá: Nhà thầu xếp hạng thứ nhất đáp ứng toàn diện các tiêu chuẩn kỹ thuật, năng lực tài chính và đề xuất mức giá cạnh tranh nhất.</p>
 </body>
 </html>"""
-            pdf_bytes = weasyprint.HTML(string=html).write_pdf()
-            return pdf_bytes, "application/pdf", f"Bao_Cao_Danh_Gia_E-HSDT_KQLCNT_{tbmt_code}.pdf"
+            pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
+            return pdf_bytes, "application/pdf", f"Bao_Cao_Danh_Gia_E-HSDT_KQLCNT_{raw_tbmt}.pdf"
 
         else:
             # Word DOCX / Rich text formatted bidding forms
@@ -2265,21 +2297,21 @@ class BiddingAttachmentService:
 -------------------------
 
 CHƯƠNG IV. BIỂU MẪU DỰ THẦU (E-HSDT)
-Gói thầu: {tender_name}
-Mã TBMT: {tbmt_code}
-Chủ đầu tư: {investor}
+Gói thầu: {raw_tender_name}
+Mã TBMT: {raw_tbmt}
+Chủ đầu tư: {raw_investor}
 
 MẪU SỐ 01: ĐƠN DỰ THẦU
-Kính gửi: {procuring}
+Kính gửi: {raw_procuring}
 
-1. Sau khi nghiên cứu E-HSMT của gói thầu {tender_name} (Mã TBMT: {tbmt_code}), chúng tôi cam kết đáp ứng đầy đủ yêu cầu kỹ thuật và tiến độ thực hiện.
-2. Tổng giá dự thầu của chúng tôi là: {bid_price_vnd} (Đã bao gồm toàn bộ thuế, phí và chi phí bảo hành 24 tháng).
+1. Sau khi nghiên cứu E-HSMT của gói thầu {raw_tender_name} (Mã TBMT: {raw_tbmt}), chúng tôi cam kết đáp ứng đầy đủ yêu cầu kỹ thuật và tiến độ thực hiện.
+2. Tổng giá dự thầu của chúng tôi là: {raw_bid_price_vnd} (Đã bao gồm toàn bộ thuế, phí và chi phí bảo hành 24 tháng).
 3. Hiệu lực của E-HSDT là 90 ngày kể từ ngày đóng thầu.
 
 ĐẠI DIỆN HỢP PHÁP CỦA NHÀ THẦU
 (Ký tên, đóng dấu và tải lên hệ thống e-GP)
 """.encode("utf-8")
-            return content, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"E-HSMT_Chuong_IV_Bieu_Mau_Du_Thau_{tbmt_code}.docx"
+            return content, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"E-HSMT_Chuong_IV_Bieu_Mau_Du_Thau_{raw_tbmt}.docx"
 
     @classmethod
     def generate_full_dossier_zip(cls, tbmt_code: str, tender: dict[str, Any]) -> tuple[bytes, str]:
@@ -2403,16 +2435,23 @@ class CompetitorDossierService:
     def generate_competitor_file_bytes(
         cls, tbmt_code: str, tax_code: str, file_id: str, tender: dict[str, Any]
     ) -> tuple[bytes, str, str]:
+        from html import escape as _esc
         import weasyprint
-        tender_name = tender.get("tender_name", "Gói thầu")
-        procuring = tender.get("procuring_entity", "Bên mời thầu")
+        from .security_utils import safe_weasyprint_url_fetcher
+
+        tender_name = _esc(str(tender.get("tender_name", "Gói thầu")), quote=True)
+        e_tbmt = _esc(str(tbmt_code or ""), quote=True)
+        e_tax = _esc(str(tax_code or ""), quote=True)
 
         competitors = cls.get_competitors(tbmt_code, tender)
         target_comp = next((c for c in competitors if c["tax_code"] == tax_code), competitors[0])
-        comp_name = target_comp["contractor_name"]
-        comp_price = target_comp["bid_price_formatted"]
-        comp_rank = target_comp["status_label"]
-        comp_eval = target_comp["eval_result"]
+        comp_name = _esc(str(target_comp["contractor_name"]), quote=True)
+        comp_price = _esc(str(target_comp["bid_price_formatted"]), quote=True)
+        comp_rank = _esc(str(target_comp["status_label"]), quote=True)
+        comp_eval = _esc(str(target_comp["eval_result"]), quote=True)
+        comp_addr = _esc(str(target_comp["address"]), quote=True)
+        comp_disc = _esc(str(target_comp["discount_percent"]), quote=True)
+        comp_score = _esc(str(target_comp["tech_score"]), quote=True)
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -2437,14 +2476,14 @@ class CompetitorDossierService:
 
   <div class="title">HỒ SƠ DỰ THẦU QUA MẠNG (E-HSDT)</div>
   <div style="text-align: center; font-size: 12pt; margin-bottom: 20px;">
-    Gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{tbmt_code}</strong>)
+    Gói thầu: <strong>{tender_name}</strong> (Mã TBMT: <strong>{e_tbmt}</strong>)
   </div>
 
   <div class="box">
     <strong>Nhà thầu nộp E-HSDT:</strong> {comp_name}<br>
-    <strong>Mã số thuế:</strong> {tax_code} • <strong>Địa chỉ:</strong> {target_comp['address']}<br>
-    <strong>Giá dự thầu:</strong> {comp_price} (Giảm {target_comp['discount_percent']}%)<br>
-    <strong>Điểm kỹ thuật:</strong> {target_comp['tech_score']}/100 điểm<br>
+    <strong>Mã số thuế:</strong> {e_tax} • <strong>Địa chỉ:</strong> {comp_addr}<br>
+    <strong>Giá dự thầu:</strong> {comp_price} (Giảm {comp_disc}%)<br>
+    <strong>Điểm kỹ thuật:</strong> {comp_score}/100 điểm<br>
     <strong>Xếp hạng / Kết quả đánh giá:</strong> {comp_rank}<br>
     <strong>Nhận xét của Tổ chuyên gia:</strong> {comp_eval}
   </div>
@@ -2489,7 +2528,7 @@ class CompetitorDossierService:
   </div>
 </body>
 </html>"""
-        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+        pdf_bytes = weasyprint.HTML(string=html, url_fetcher=safe_weasyprint_url_fetcher).write_pdf()
         filename = f"E-HSDT_{tax_code}_{file_id}_{tbmt_code}.pdf"
         return pdf_bytes, "application/pdf", filename
 

@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<title>{{ tieu_de or "BÁO GIÁ GIẢI PHÁP VIỄN TRẮC & ĐIỀU PHỐI ĐIỆN MẶT TRỜI (INUT-SOLAR & INUT-SOLAR-HUB)" }}</title>
+<title>{{ tieu_de or "HỢP ĐỒNG CUNG CẤP GIẢI PHÁP VIỄN TRẮC & ĐIỀU PHỐI ĐIỆN MẶT TRỜI (INUT-SOLAR & INUT-SOLAR-HUB)" }}</title>
 <style>
   @page {
     size: A4 portrait;
@@ -84,7 +84,8 @@
     padding: 4px 7px;
     font-size: 8px;
     color: #0f172a;
-    min-width: 148px;
+    min-width: 156px;
+    white-space: nowrap;
   }
   .doc-badge .code {
     font-weight: bold;
@@ -98,7 +99,8 @@
     margin: 2.5px 0 4.5px;
   }
   .title-box h1 {
-    font-size: 12.4px;
+    font-size: 11.5px;
+    white-space: nowrap;
     font-weight: bold;
     text-transform: uppercase;
     color: #0c4a6e;
@@ -389,56 +391,82 @@
   /* Bank & Signatures */
   .bottom-grid {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 6px;
     page-break-inside: avoid;
   }
   .bank-card {
-    flex: 1.25;
     border: 1px solid #94a3b8;
     border-left: 3.5px solid #0369a1;
     border-radius: 4px;
-    padding: 5.5px 7.5px;
+    padding: 5.5px 9px;
     background: #ffffff;
     font-size: 8.1px;
-    line-height: 1.34;
+    line-height: 1.36;
   }
   .bank-card .b-head {
     font-weight: bold;
     text-transform: uppercase;
     color: #0c4a6e;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
+    border-bottom: 1px dashed #cbd5e1;
+    padding-bottom: 2px;
+  }
+  .bank-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .bank-col {
+    flex: 1;
   }
   .sig-wrap {
-    flex: 1;
     display: flex;
-    justify-content: space-around;
+    justify-content: space-between;
+    gap: 14px;
     text-align: center;
+    page-break-inside: avoid;
   }
   .sig-col {
-    width: 48%;
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    border-top: 2.5px solid #0369a1;
+    border-radius: 4px;
+    background: #ffffff;
+    padding: 7px 10px 8px;
   }
   .sig-role {
     font-weight: bold;
-    font-size: 8.3px;
+    font-size: 9.2px;
+    text-transform: uppercase;
+    color: #0c4a6e;
+    letter-spacing: 0.2px;
+  }
+  .sig-company {
+    font-weight: bold;
+    font-size: 8px;
     text-transform: uppercase;
     color: #0f172a;
+    margin-top: 2px;
   }
   .sig-sub {
-    font-size: 7.4px;
-    font-style: italic;
-    color: #64748b;
-    min-height: 19px;
+    font-size: 7.6px;
+    color: #475569;
+    margin-top: 2px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed #e2e8f0;
   }
   .sig-space {
-    height: 64px;
+    height: 92px;
   }
   .sig-name {
     font-weight: bold;
-    font-size: 8.5px;
+    font-size: 9.2px;
+    text-transform: uppercase;
     color: #0c4a6e;
+    padding-top: 3px;
+    border-top: 1px dotted #cbd5e1;
   }
 </style>
 </head>
@@ -457,22 +485,22 @@
       </div>
     </div>
     <div class="doc-badge">
-      <div>Số báo giá: <span class="code">{{ so or "01/2026/BG-SOLAR-VHP" }}</span></div>
-      <div>Ngày lập: <b>{{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}</b></div>
-      <div>Hiệu lực: <b>{{ hieu_luc }} ngày</b></div>
+      <div>Số hợp đồng: <span class="code">{{ so or "01/2026/HĐ-SOLAR-VHP" }}</span></div>
+      <div>Ngày ký: <b>{{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}</b></div>
+      <div>Hiệu lực: <b>Từ {{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}</b></div>
     </div>
   </div>
 
   <!-- TITLE -->
   <div class="title-box">
-    <h1>{{ tieu_de or "BẢNG BÁO GIÁ & DỰ TOÁN PHÂN KỲ GÓI THẦU HỆ THỐNG INUT-SOLAR & INUT-SOLAR-HUB" }}</h1>
+    <h1>{{ tieu_de or "HỢP ĐỒNG CUNG CẤP & DỰ TOÁN PHÂN KỲ GÓI THẦU HỆ THỐNG INUT-SOLAR & INUT-SOLAR-HUB" }}</h1>
     <div class="subtitle">{{ sub_title or "Gói I: 16 Thiết bị Biên (Đã gồm Bắn bù NMS) & Phần mềm R&D Setup Hết VNPT NMS · Gói II (Gói sau): Cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp) inut-solar-hub Đưa vào Thầu" }}</div>
   </div>
 
   <!-- PARTIES -->
   <div class="parties">
     <div class="party-card">
-      <div class="party-head">BÊN NHẬN BÁO GIÁ (BÊN B — ĐỐI TÁC ĐỘC QUYỀN MẢNG NMS VNPT)</div>
+      <div class="party-head">BÊN MUA (BÊN B — ĐỐI TÁC ĐỘC QUYỀN MẢNG NMS VNPT)</div>
       <div class="party-name">{{ ben_b.name }}</div>
       <div><b>Đại diện:</b> {{ ben_b.rep or "Ông Hoàng Anh Tuấn" }} &nbsp;·&nbsp; <b>Chức vụ:</b> {{ ben_b.title or "Giám đốc" }} &nbsp;|&nbsp; <b>Điện thoại:</b> {{ ben_b.phone or "0903.293.935" }}</div>
       <div><b>Mã số thuế:</b> {{ ben_b.mst }} &nbsp;|&nbsp; <b>Số tài khoản:</b> {{ ben_b.bank_account or "5020562517 tại Ngân hàng BIDV – Chi nhánh Lam Sơn" }}</div>
@@ -480,7 +508,7 @@
       <div><b>Phạm vi hợp tác:</b> Triển khai 16 thiết bị biên <code>inut-solar</code> tự động bắn bù &amp; setup hết VNPT NMS (Gói I); đưa cục Phần mềm Quản trị Tập trung Đa cấp (N-cấp) <code>inut-solar-hub</code> vào hồ sơ thầu gói sau (Gói II).</div>
     </div>
     <div class="party-card">
-      <div class="party-head">ĐƠN VỊ CUNG CẤP &amp; PHÁT TRIỂN (BÊN A — INUT TECHNOLOGY)</div>
+      <div class="party-head">BÊN BÁN / ĐƠN VỊ PHÁT TRIỂN (BÊN A — INUT TECHNOLOGY)</div>
       <div class="party-name">{{ ben_a.company }}</div>
       <div><b>Mã số thuế:</b> {{ ben_a.mst }} &nbsp;|&nbsp; <b>Đại diện:</b> {{ ben_a.rep }} ({{ ben_a.title }})</div>
       <div><b>Địa chỉ:</b> {{ ben_a.address }}</div>
@@ -523,7 +551,7 @@
         <td class="c"><b>{{ loop.index }}</b></td>
         <td>
           <div class="item-title">{{ it.ten }}</div>
-          {% if it.ghi_chu %}<div class="item-desc">{{ it.ghi_chu|replace('\n', '<br>')|safe }}</div>{% endif %}
+          {% if it.ghi_chu %}<div class="item-desc">{{ it.ghi_chu|e|replace('\n', '<br>')|safe }}</div>{% endif %}
         </td>
         <td class="c">{{ it.dvt }}</td>
         <td class="c"><b>{{ it.so_luong|qty }}</b></td>
@@ -553,7 +581,7 @@
       </tr>
     </tbody>
   </table>
-  <div class="bang-chu">(Số tiền thanh toán Gói I bằng chữ: <b>{{ bang_chu }}</b> — Thanh toán 100% trong 01 lần ngay khi xác nhận đặt hàng / ký Hợp đồng Gói I)</div>
+  <div class="bang-chu">(Số tiền thanh toán Gói I bằng chữ: <b>{{ bang_chu }}</b> — Thanh toán 100% trong 01 lần ngay khi ký Hợp đồng Gói I)</div>
 
   <!-- SECTION II: PACKAGE 2 (NEXT PACKAGE FOR TENDERING - FULL 70M R&D + 3.3M HUB) -->
   <div class="sec-head phase2">II. BẢNG DỰ TOÁN CHI PHÍ GÓI SAU (GÓI II — CỤC PHẦN MỀM QUẢN TRỊ ĐA CẤP N-CẤP INUT-SOLAR-HUB &amp; R&amp;D CHUYÊN SÂU ĐỂ ĐƯA VÀO THẦU)</div>
@@ -670,7 +698,7 @@
       <div class="pay-desc">
         • <b>100% Tiền thiết bị phần cứng (16 bộ <code>iNut Smartcity v1.1</code>):</b> <b>60.480.000 VNĐ</b> (56.000.000đ + 4.480.000đ VAT 8%).<br>
         • <b>100% Tiền hỗ trợ phần mềm:</b> <b>10.000.000 VNĐ (KCT — VAT 0đ)</b>, xuất hóa đơn <i>"Phần mềm nghiên cứu phát triển (R&amp;D) — Gói hỗ trợ thiết lập &amp; tích hợp đồng bộ toàn bộ hệ thống VNPT NMS (Setup hết NMS)"</i>.<br>
-        • Thanh toán 100% ngay khi xác nhận đặt hàng / ký Hợp đồng Gói I. Bảo hành phần cứng 01 năm (trừ sét lan truyền).
+        • Thanh toán 100% ngay khi ký Hợp đồng Gói I. Bảo hành phần cứng 01 năm (trừ sét lan truyền).
       </div>
     </div>
     <div class="pay-box">
@@ -737,7 +765,7 @@
   </table>
 
   <!-- SECTION V: STRATEGIC TERMS -->
-  <div class="sec-head">V. ĐIỀU KHOẢN XUẤT HÓA ĐƠN KCT, ĐỘC QUYỀN PHÂN PHỐI, BẢO HÀNH &amp; SỞ HỮU TRÍ TUỆ</div>
+  <div class="sec-head">V. ĐIỀU KHOẢN XUẤT HÓA ĐƠN KCT, ĐỘC QUYỀN PHÂN PHỐI, BẢO HÀNH, SỞ HỮU TRÍ TUỆ &amp; HIỆU LỰC HỢP ĐỒNG</div>
   <div class="clause-box">
     <div class="clause-item">
       <span class="clause-title">1. Cơ chế Thanh toán &amp; Xuất Hóa đơn Phần mềm Nghiên cứu (KCT 0%) ở Gói I và Dự toán Gói II Đưa vào Thầu:</span>
@@ -751,27 +779,39 @@
       <span class="clause-title">3. Vận hành Máy chủ Quản trị N-cấp (3.000.000đ/năm + VAT 10%), Bảo trì Linh hoạt &amp; Quyền R&amp;D Dữ liệu của iNut:</span>
       Phí máy chủ <b>3.000.000 VNĐ/năm</b> (+ VAT 10%) phục vụ vận hành hệ thống phần mềm quản trị tập trung đa cấp (N-cấp) <code>inut-solar-hub</code> cho các phòng ban, chi nhánh của Việt Hùng Solar (có thể cài đặt trực tiếp trên máy chủ Linux của Việt Hùng Power). Phí bảo trì &amp; nâng cấp phần mềm các năm sau <b>có thể thương lượng hoặc không cần gia hạn</b> nếu hệ thống ổn định để chuyển giao Việt Hùng Power tự chủ quản lý. <b>INUT JSC giữ bản quyền công nghệ lõi và toàn quyền khai thác dữ liệu thu thập từ NMS để R&amp;D bản chất năng lượng mặt trời.</b>
     </div>
+    <div class="clause-item">
+      <span class="clause-title">4. Hiệu lực Hợp đồng:</span>
+      Hợp đồng có hiệu lực kể từ ngày <b>{{ "%02d"|format(ngay.day) }}/{{ "%02d"|format(ngay.month) }}/{{ ngay.year }}</b>, được lập thành 02 (hai) bản có giá trị pháp lý như nhau (bao gồm bản điện tử ký số hợp pháp), mỗi Bên giữ 01 (một) bản làm căn cứ triển khai thực hiện, nghiệm thu, xuất hóa đơn và thanh quyết toán.
+    </div>
   </div>
 
   <!-- BANK & SIGNATURES -->
   <div class="bottom-grid">
     <div class="bank-card">
-      <div class="b-head">THÔNG TIN TÀI KHOẢN NHẬN THANH TOÁN (BÊN A)</div>
-      <div>• Đơn vị thụ hưởng: <b>{{ bank.account_name }}</b></div>
-      <div>• Số tài khoản: <b style="font-size: 9.8px; color: #0369a1;">{{ bank.account_number }}</b></div>
-      <div>• Ngân hàng: <b>{{ bank.bank_name }}</b></div>
-      <div>• Nội dung chuyển khoản Gói I (70.480.000đ): <i>VIET HUNG POWER TT GOI 1 INUT SOLAR NMS</i></div>
+      <div class="b-head">THÔNG TIN TÀI KHOẢN NHẬN THANH TOÁN (BÊN A — INUT JSC)</div>
+      <div class="bank-grid">
+        <div class="bank-col">
+          <div>• Đơn vị thụ hưởng: <b>{{ bank.account_name }}</b></div>
+          <div>• Ngân hàng: <b>{{ bank.bank_name }}</b></div>
+        </div>
+        <div class="bank-col">
+          <div>• Số tài khoản: <b style="font-size: 9.8px; color: #0369a1;">{{ bank.account_number }}</b></div>
+          <div>• Nội dung chuyển khoản Gói I (70.480.000đ): <i>VIET HUNG POWER TT GOI 1 INUT SOLAR NMS</i></div>
+        </div>
+      </div>
     </div>
     <div class="sig-wrap">
       <div class="sig-col">
-        <div class="sig-role">XÁC NHẬN CỦA BÊN MUA</div>
-        <div class="sig-sub">{{ ben_b.title or "Giám đốc" }} — {{ ben_b.name or "CÔNG TY CỔ PHẦN VIỆT HÙNG POWER" }}</div>
+        <div class="sig-role">ĐẠI DIỆN BÊN B (BÊN MUA)</div>
+        <div class="sig-company">{{ ben_b.name or "CÔNG TY CỔ PHẦN VIỆT HÙNG POWER" }}</div>
+        <div class="sig-sub">Chức vụ: <b>{{ ben_b.title or "Giám đốc" }}</b> &nbsp;·&nbsp; <i>(Ký, ghi rõ họ tên và đóng dấu)</i></div>
         <div class="sig-space"></div>
         <div class="sig-name">{{ ben_b.rep_sign or "HOÀNG ANH TUẤN" }}</div>
       </div>
       <div class="sig-col">
-        <div class="sig-role">ĐẠI DIỆN ĐƠN VỊ BÁO GIÁ</div>
-        <div class="sig-sub">{{ ben_a.title }} — INUT JSC</div>
+        <div class="sig-role">ĐẠI DIỆN BÊN A (BÊN BÁN)</div>
+        <div class="sig-company">{{ ben_a.company }}</div>
+        <div class="sig-sub">Chức vụ: <b>{{ ben_a.title }}</b> &nbsp;·&nbsp; <i>(Ký số, ghi rõ họ tên và đóng dấu)</i></div>
         <div class="sig-space"></div>
         <div class="sig-name">{{ ben_a.rep }}</div>
       </div>
