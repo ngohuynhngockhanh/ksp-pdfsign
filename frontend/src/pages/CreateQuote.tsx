@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type DocRecord, type OrderRec, type WebAdsDraftQuote } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
 import { BilliardQuoteTab } from "../components/BilliardQuoteTab";
+import { DataView, PromptDialog, ResponsiveTabs } from "../components/ui";
 
 type QItem = { ten: string; dvt: string; so_luong: string; don_gia: string; thue_suat: string };
 type Product = Awaited<ReturnType<typeof api.listProducts>>[number];
@@ -227,10 +228,16 @@ export function CreateQuote({
       .catch(() => {});
   }, [ngay.day, ngay.month, ngay.year]);
 
-  async function newOrder() {
+  const [newOrderPrompt, setNewOrderPrompt] = useState<string | null>(null);
+
+  function newOrder() {
     const goiy = `${benB.name || "Khách"} — ${ngay.day}/${ngay.month}/${ngay.year}`;
-    const name = window.prompt("Tên đơn hàng mới:", goiy);
-    if (!name?.trim()) return;
+    setNewOrderPrompt(goiy);
+  }
+
+  async function confirmNewOrder(name: string) {
+    setNewOrderPrompt(null);
+    if (!name.trim()) return;
     try {
       const o = await api.createOrder({ name: name.trim(), customer_id: suggested?.id ?? null });
       setOrders((arr) => [o, ...arr]);
@@ -509,40 +516,15 @@ export function CreateQuote({
     <div className="page-1col quote-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
         <h3 style={{ margin: 0 }}>Tạo Báo giá / Đề nghị thanh toán</h3>
-        <div style={{ display: "flex", gap: 6, background: "#f1f5f9", padding: 3, borderRadius: 8 }}>
-          <button
-            type="button"
-            onClick={() => setActiveQuoteMode("billiard")}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 6,
-              fontSize: 12.5,
-              fontWeight: 700,
-              background: activeQuoteMode === "billiard" ? "#0284c7" : "transparent",
-              color: activeQuoteMode === "billiard" ? "#fff" : "#475569",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            🎱 Báo giá Billiards (Camera & Billiard Live)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveQuoteMode("standard")}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 6,
-              fontSize: 12.5,
-              fontWeight: 700,
-              background: activeQuoteMode === "standard" ? "#0284c7" : "transparent",
-              color: activeQuoteMode === "standard" ? "#fff" : "#475569",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            📄 Báo giá Tiêu chuẩn
-          </button>
-        </div>
+        <ResponsiveTabs
+          tabs={[
+            { id: "billiard", label: "🎱 Báo giá Billiards (Camera & Billiard Live)" },
+            { id: "standard", label: "📄 Báo giá Tiêu chuẩn" },
+          ]}
+          active={activeQuoteMode}
+          onChange={(id) => setActiveQuoteMode(id as "billiard" | "standard")}
+          ariaLabel="Chế độ báo giá"
+        />
       </div>
 
       {activeQuoteMode === "billiard" ? (
@@ -551,7 +533,7 @@ export function CreateQuote({
         <div className="quote-2col" style={{ marginTop: 14 }}>
       <div className="q-form">
       {leadLoading && (
-        <div className="panel" style={{ padding: "10px 14px", background: "#eff6ff", borderColor: "#bfdbfe" }}>
+        <div className="panel" style={{ padding: "10px 14px", background: "var(--primary-soft)", borderColor: "var(--border-strong)" }}>
           ⏳ Đang nạp thông tin báo giá từ Web Lead…
         </div>
       )}
@@ -560,8 +542,8 @@ export function CreateQuote({
           className="panel"
           style={{
             padding: "10px 14px",
-            background: "#ecfdf5",
-            borderColor: "#a7f3d0",
+            background: "var(--primary-soft)",
+            borderColor: "var(--green)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -569,7 +551,7 @@ export function CreateQuote({
             flexWrap: "wrap",
           }}
         >
-          <div style={{ fontSize: 13, color: "#065f46" }}>
+          <div style={{ fontSize: 13, color: "var(--ink)" }}>
             📈 <b>Đang lập báo giá từ Web Lead #{leadBanner.leadId}</b>
             {leadBanner.customerName ? ` · ${leadBanner.customerName}` : ""}
             {leadBanner.contact ? ` (${leadBanner.contact})` : ""}
@@ -804,93 +786,96 @@ export function CreateQuote({
           ))}
         </datalist>
         {items.some((item) => item.ten.trim() && !item.dvt.trim()) && <div className="stock-form-alert">Thiếu đơn vị tính ở {items.filter((item) => item.ten.trim() && !item.dvt.trim()).length} dòng — cần bổ sung trước khi lập biểu.</div>}
-        <div style={{ overflowX: "auto" }}>
-          <table className="doc-table">
-            <thead>
-              <tr>
-                <th>Tên hàng hóa / dịch vụ</th>
-                <th style={{ width: "9%" }}>ĐVT</th>
-                <th style={{ width: "8%" }}>SL</th>
-                <th style={{ width: "14%" }}>Đơn giá</th>
-                <th style={{ width: "13%" }}>Thành tiền</th>
-                <th style={{ width: "9%" }}>Thuế (%)</th>
-                <th style={{ width: "12%" }}>Tiền thuế</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, i) => {
-                const tt = Math.round(parseNum(it.so_luong) * parseNum(it.don_gia));
-                const thue = Math.round((tt * parseNum(it.thue_suat)) / 100);
-                return (
-                  <tr key={i}>
-                    <td>
-                      <input
-                        value={it.ten}
-                        list="pl-products"
-                        placeholder="gõ để gợi ý từ danh mục…"
-                        onChange={(e) => setItem(i, "ten", e.target.value)}
-                      />
-                      {(() => {
-                        const stock = stockByName.get(normName(it.ten));
-                        if (!stock || !it.ten.trim()) return null;
-                        const du = stock.qty >= parseNum(it.so_luong);
-                        return (
-                          <span
-                            className={`chip sm ${du ? "green" : "red"}`}
-                            title={`Khả dụng tại ngày ${ngay.day}/${ngay.month}/${ngay.year} (báo giá không trừ kho)`}
-                          >
-                            Tồn ngày {ngay.day}/{ngay.month}: {stock.qty} {stock.dvt || "(thiếu ĐVT)"}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td>
-                      <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
-                    </td>
-                    <td>
-                      <input
-                        value={it.so_luong}
-                        onChange={(e) => setItem(i, "so_luong", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={it.don_gia}
-                        onChange={(e) => setItem(i, "don_gia", e.target.value)}
-                      />
-                    </td>
-                    <td style={{ textAlign: "right" }}>{vnd(tt)}</td>
-                    <td>
-                      <select
-                        value={it.thue_suat}
-                        onChange={(e) => setItem(i, "thue_suat", e.target.value)}
-                      >
-                        {!VAT_RATES.includes(it.thue_suat) && (
-                          <option value={it.thue_suat}>{it.thue_suat}%</option>
-                        )}
-                        {VAT_RATES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}%
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ textAlign: "right" }}>{vnd(thue)}</td>
-                    <td>
-                      <button
-                        className="danger-link"
-                        onClick={() => setItems(items.filter((_, j) => j !== i))}
-                      >
-                        Xóa
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataView
+          mobileMode="scroll"
+          desktop={
+            <table className="doc-table">
+              <thead>
+                <tr>
+                  <th>Tên hàng hóa / dịch vụ</th>
+                  <th style={{ width: "9%" }}>ĐVT</th>
+                  <th style={{ width: "8%" }}>SL</th>
+                  <th style={{ width: "14%" }}>Đơn giá</th>
+                  <th style={{ width: "13%" }}>Thành tiền</th>
+                  <th style={{ width: "9%" }}>Thuế (%)</th>
+                  <th style={{ width: "12%" }}>Tiền thuế</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, i) => {
+                  const tt = Math.round(parseNum(it.so_luong) * parseNum(it.don_gia));
+                  const thue = Math.round((tt * parseNum(it.thue_suat)) / 100);
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <input
+                          value={it.ten}
+                          list="pl-products"
+                          placeholder="gõ để gợi ý từ danh mục…"
+                          onChange={(e) => setItem(i, "ten", e.target.value)}
+                        />
+                        {(() => {
+                          const stock = stockByName.get(normName(it.ten));
+                          if (!stock || !it.ten.trim()) return null;
+                          const du = stock.qty >= parseNum(it.so_luong);
+                          return (
+                            <span
+                              className={`chip sm ${du ? "green" : "red"}`}
+                              title={`Khả dụng tại ngày ${ngay.day}/${ngay.month}/${ngay.year} (báo giá không trừ kho)`}
+                            >
+                              Tồn ngày {ngay.day}/{ngay.month}: {stock.qty} {stock.dvt || "(thiếu ĐVT)"}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td>
+                        <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
+                      </td>
+                      <td>
+                        <input
+                          value={it.so_luong}
+                          onChange={(e) => setItem(i, "so_luong", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={it.don_gia}
+                          onChange={(e) => setItem(i, "don_gia", e.target.value)}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right" }}>{vnd(tt)}</td>
+                      <td>
+                        <select
+                          value={it.thue_suat}
+                          onChange={(e) => setItem(i, "thue_suat", e.target.value)}
+                        >
+                          {!VAT_RATES.includes(it.thue_suat) && (
+                            <option value={it.thue_suat}>{it.thue_suat}%</option>
+                          )}
+                          {VAT_RATES.map((r) => (
+                            <option key={r} value={r}>
+                              {r}%
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: "right" }}>{vnd(thue)}</td>
+                      <td>
+                        <button
+                          className="danger-link"
+                          onClick={() => setItems(items.filter((_, j) => j !== i))}
+                        >
+                          Xóa
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          }
+        />
         <button
           onClick={() =>
             setItems([...items, { ten: "", dvt: "", so_luong: "1", don_gia: "", thue_suat: "10" }])
@@ -1066,6 +1051,14 @@ export function CreateQuote({
       </div>
         </div>
       )}
+      <PromptDialog
+        open={newOrderPrompt !== null}
+        title="Tạo đơn hàng mới"
+        label="Tên đơn hàng mới"
+        defaultValue={newOrderPrompt ?? ""}
+        onConfirm={confirmNewOrder}
+        onCancel={() => setNewOrderPrompt(null)}
+      />
     </div>
   );
 }

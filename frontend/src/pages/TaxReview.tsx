@@ -8,6 +8,7 @@ import {
   TaxReport,
   TaxPolicy,
 } from "../api";
+import { DataView } from "../components/ui";
 
 function vnd(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -45,7 +46,7 @@ function Findings({ findings, active, onSelect }: { findings: TaxFinding[]; acti
           className={`panel finding-card${active === i ? " active" : ""}`}
           onClick={() => onSelect(i)}
           style={{
-            borderLeft: `4px solid ${f.level === "do" ? "#dc2626" : "#d97706"}`,
+            borderLeft: `4px solid ${f.level === "do" ? "var(--red)" : "var(--amber)"}`,
           }}
         >
           <div style={{ fontWeight: 600 }}>
@@ -99,42 +100,47 @@ function GridView({ grid, flags, focusCode }: { grid: TaxGrid; flags: Set<string
         if (!(r === r1 && c === c1)) covered.add(`${r},${c}`);
   }
   return (
-    <div className="table-wrap xls-wrap">
-      <table className="xls">
-        <tbody>
-          {grid.rows.map((row, r) => (
-            <tr key={r}>
-              {row.map((cell, c) => {
-                if (covered.has(`${r},${c}`)) return null;
-                const a = anchor.get(`${r},${c}`);
-                const code = cell.trim().replace(/^\[|\]$/g, "");
-                const flagged = /^\[\d+[a-z]?\]$/.test(cell.trim()) && flags.has(code);
-                // tô cả ô giá trị liền phải nhãn bị lỗi
-                const prev = c > 0 ? row[c - 1].trim() : "";
-                const prevFlag =
-                  /^\[\d+[a-z]?\]$/.test(prev) && flags.has(prev.replace(/^\[|\]$/g, ""));
-                const num = /^[\d.,\-]+$/.test(cell.trim()) && cell.trim() !== "";
-                return (
-                  <td
-                    key={c}
-                    id={/^\[\d+[a-z]?\]$/.test(cell.trim()) ? `tax-cell-${code}` : undefined}
-                    rowSpan={a?.rs}
-                    colSpan={a?.cs}
-                    className={
-                      (flagged || (prevFlag && cell.trim()) ? "flag " : "") +
-                      (focusCode === code ? "focus-cell " : "") +
-                      (num ? "num" : "")
-                    }
-                  >
-                    {cell}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataView
+      mobileMode="scroll"
+      desktop={
+        <div className="table-wrap xls-wrap">
+          <table className="xls">
+            <tbody>
+              {grid.rows.map((row, r) => (
+                <tr key={r}>
+                  {row.map((cell, c) => {
+                    if (covered.has(`${r},${c}`)) return null;
+                    const a = anchor.get(`${r},${c}`);
+                    const code = cell.trim().replace(/^\[|\]$/g, "");
+                    const flagged = /^\[\d+[a-z]?\]$/.test(cell.trim()) && flags.has(code);
+                    // tô cả ô giá trị liền phải nhãn bị lỗi
+                    const prev = c > 0 ? row[c - 1].trim() : "";
+                    const prevFlag =
+                      /^\[\d+[a-z]?\]$/.test(prev) && flags.has(prev.replace(/^\[|\]$/g, ""));
+                    const num = /^[\d.,\-]+$/.test(cell.trim()) && cell.trim() !== "";
+                    return (
+                      <td
+                        key={c}
+                        id={/^\[\d+[a-z]?\]$/.test(cell.trim()) ? `tax-cell-${code}` : undefined}
+                        rowSpan={a?.rs}
+                        colSpan={a?.cs}
+                        className={
+                          (flagged || (prevFlag && cell.trim()) ? "flag " : "") +
+                          (focusCode === code ? "focus-cell " : "") +
+                          (num ? "num" : "")
+                        }
+                      >
+                        {cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      }
+    />
   );
 }
 
@@ -145,13 +151,18 @@ function FindingSnapshot({ grid, code }: { grid: TaxGrid; code: string }) {
   return (
     <div className="finding-snapshot">
       <div className="snapshot-label">Ảnh chụp vùng Excel liên quan · [{code}]</div>
-      <div className="table-wrap"><table className="xls"><tbody>
-        {grid.rows.slice(from, hit + 3).map((row, i) => (
-          <tr key={from + i}>{row.map((cell, c) => (
-            <td key={c} className={cell.trim() === `[${code}]` ? "focus-cell" : ""}>{cell}</td>
-          ))}</tr>
-        ))}
-      </tbody></table></div>
+      <DataView
+        mobileMode="scroll"
+        desktop={
+          <div className="table-wrap"><table className="xls"><tbody>
+            {grid.rows.slice(from, hit + 3).map((row, i) => (
+              <tr key={from + i}>{row.map((cell, c) => (
+                <td key={c} className={cell.trim() === `[${code}]` ? "focus-cell" : ""}>{cell}</td>
+              ))}</tr>
+            ))}
+          </tbody></table></div>
+        }
+      />
     </div>
   );
 }
@@ -333,7 +344,7 @@ export function TaxReview() {
             <Summary s={sel.summary} />
 
             {matchingReport && <section className="compare-strip"><div><b>CRM v{matchingReport.version}</b><span>↔</span><b>File kế toán</b></div><div><button onClick={compare}>So sánh chỉ tiêu</button>{matchingReport.status === "draft" && <button onClick={lockReport}>Khóa bản CRM</button>}</div></section>}
-            {diffs.length > 0 && <div className="compare-results"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Kết quả</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td>{d.match ? "Khớp" : `Lệch ${vnd(d.difference)}`}</td></tr>)}</tbody></table></div>}
+            {diffs.length > 0 && <DataView mobileMode="scroll" desktop={<div className="compare-results"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Kết quả</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td>{d.match ? "Khớp" : `Lệch ${vnd(d.difference)}`}</td></tr>)}</tbody></table></div>} />}
             {activeFinding >= 0 && focusCode && sel.grids[sheet] && <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />}
 
             <div className="excel-toolbar"><div className="tax-sheets">{sel.grids.map((g, i) => <button key={g.name} className={i === sheet ? "active" : ""} onClick={() => setSheet(i)}>{g.name}</button>)}</div><span>{focusCode ? `Đang xem chỉ tiêu [${focusCode}]` : "Bấm cảnh báo để nhảy tới ô liên quan"}</span></div>

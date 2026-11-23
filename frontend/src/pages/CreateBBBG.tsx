@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
+import { DataView } from "../components/ui";
 
 type Item = { ten: string; dvt: string; so_luong: string };
 type Ngay = { day: number; month: number; year: number };
@@ -182,9 +183,14 @@ export function CreateBBBG({
           <section className="bbbg-card bbbg-items-card">
             <header><span>03 · HÀNG HÓA</span><h2>Danh mục bàn giao</h2><p>Đối chiếu số lượng với tồn kho tại ngày lập biên bản.</p></header>
             {missingUnits > 0 && <div className="stock-form-alert">Có {missingUnits} dòng thiếu đơn vị tính.</div>}
-            <div className="bbbg-items-scroll"><table className="doc-table"><thead><tr><th>Tên hàng hóa</th><th>Đơn vị</th><th>Số lượng</th><th></th></tr></thead><tbody>
-              {items.map((it, i) => <tr key={i}><td><input value={it.ten} onChange={(e) => setItem(i, "ten", e.target.value)} />{stockByName.get(normName(it.ten)) && <span className={`chip sm ${(stockByName.get(normName(it.ten))?.qty ?? 0) >= Number(it.so_luong || 0) ? "green" : "red"}`}>Tồn {ngay.day}/{ngay.month}: {stockByName.get(normName(it.ten))?.qty} {stockByName.get(normName(it.ten))?.dvt || "(thiếu ĐVT)"}</span>}</td><td><input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} /></td><td><input value={it.so_luong} onChange={(e) => setItem(i, "so_luong", e.target.value)} /></td><td><button className="danger-link" onClick={() => setItems(items.filter((_, j) => j !== i))}>Xóa</button></td></tr>)}
-            </tbody></table></div>
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="bbbg-items-scroll"><table className="doc-table"><thead><tr><th>Tên hàng hóa</th><th>Đơn vị</th><th>Số lượng</th><th></th></tr></thead><tbody>
+                  {items.map((it, i) => <tr key={i}><td><input value={it.ten} onChange={(e) => setItem(i, "ten", e.target.value)} />{stockByName.get(normName(it.ten)) && <span className={`chip sm ${(stockByName.get(normName(it.ten))?.qty ?? 0) >= Number(it.so_luong || 0) ? "green" : "red"}`}>Tồn {ngay.day}/{ngay.month}: {stockByName.get(normName(it.ten))?.qty} {stockByName.get(normName(it.ten))?.dvt || "(thiếu ĐVT)"}</span>}</td><td><input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} /></td><td><input value={it.so_luong} onChange={(e) => setItem(i, "so_luong", e.target.value)} /></td><td><button className="danger-link" onClick={() => setItems(items.filter((_, j) => j !== i))}>Xóa</button></td></tr>)}
+                </tbody></table></div>
+              }
+            />
             <button className="bbbg-add-row" onClick={() => setItems([...items, { ten: "", dvt: "", so_luong: "" }])}>+ Thêm hàng hóa</button>
           </section>
         </div>

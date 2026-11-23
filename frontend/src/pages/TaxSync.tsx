@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, TaxSyncResult } from "../api";
 import { EmailSyncModal } from "../components/EmailSyncModal";
+import { DataView, FormGrid, PageHeader } from "../components/ui";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -98,77 +99,91 @@ export function TaxSync() {
   }
 
   return (
-    <div className="docs-page" style={{ maxWidth: 900 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h2>Đồng bộ hóa đơn từ cơ quan thuế</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
+    <div className="docs-page" style={{ maxWidth: 960 }}>
+      <PageHeader
+        eyebrow="INUT · ĐỒNG BỘ CƠ QUAN THUẾ"
+        title="Đồng bộ hóa đơn từ cơ quan thuế"
+        subtitle={
+          <>
             Đăng nhập cổng <b>hoadondientu.gdt.gov.vn</b> bằng tài khoản MST của công ty, tải hóa đơn
             mua/bán năm <b>2026</b> rồi đối chiếu. Mật khẩu đã lưu được mã hóa trên máy chủ.
-          </p>
-        </div>
-        <button
-          className="btn-sm ghost"
-          style={{ fontWeight: 600, color: "var(--accent-color, #0f766e)", padding: "8px 14px" }}
-          onClick={() => setEmailSyncOpen(true)}
-          title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
-        >
-          📥 Đồng bộ Email Zoho
-        </button>
-      </div>
-      <div className={`chip sm ${sessionValid ? "green" : "gray"}`} style={{ marginBottom: 10 }}>
+          </>
+        }
+        actions={
+          <button
+            className="btn-sm ghost ui-btn-chip"
+            style={{ fontWeight: 600, color: "var(--primary)" }}
+            onClick={() => setEmailSyncOpen(true)}
+            title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
+          >
+            📥 Đồng bộ Email Zoho
+          </button>
+        }
+      />
+      <div
+        className={`chip sm ${sessionValid ? "green" : "gray"}`}
+        style={{ marginBottom: 10, whiteSpace: "normal", maxWidth: "100%", height: "auto", lineHeight: 1.4 }}
+      >
         {sessionValid === null ? "Đang kiểm tra phiên cổng thuế…" : sessionValid ? "Phiên cổng thuế hiện còn hiệu lực" : "Phiên đã hết hạn — cần đăng nhập lại bằng CAPTCHA"}
       </div>
       {err && <div className="error">{err}</div>}
 
       <div className="panel">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        <FormGrid cols={3}>
+          <label>
             MST đăng nhập
-            <input value={mst} onChange={(e) => setMst(e.target.value)} />
+            <input className="ui-input" value={mst} onChange={(e) => setMst(e.target.value)} />
           </label>
-          <label style={{ flex: 1 }}>
+          <label>
             Mật khẩu cổng thuế {hasSavedPw && <span className="chip green sm">đã lưu</span>}
             <input
+              className="ui-input"
               type="password"
               value={password}
               placeholder={hasSavedPw ? "•••• (để trống = dùng mật khẩu đã lưu)" : "nhập mật khẩu"}
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          <button className="btn-sm ghost" style={{ alignSelf: "flex-end" }} onClick={saveCreds} title="Lưu MST + mật khẩu (mã hóa) để lần sau khỏi nhập">
-            💾 Lưu tài khoản
-          </button>
-        </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button className="btn-sm ghost ui-btn-chip" style={{ width: "100%" }} onClick={saveCreds} title="Lưu MST + mật khẩu (mã hóa) để lần sau khỏi nhập">
+              💾 Lưu tài khoản
+            </button>
+          </div>
+        </FormGrid>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
           <div>
-            <div className="muted" style={{ fontSize: 12 }}>Mã captcha</div>
+            <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Mã captcha</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {cap ? (
                 <span
-                  style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 6, height: 44, display: "inline-flex", alignItems: "center" }}
-                  dangerouslySetInnerHTML={{ __html: cap.svg }}
-                />
+                  style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, height: 44, padding: "2px 6px", display: "inline-flex", alignItems: "center" }}
+                >
+                  <img
+                    src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(cap.svg)}`}
+                    alt="Captcha"
+                    style={{ height: 38, width: "auto", display: "block" }}
+                  />
+                </span>
               ) : (
                 <span className="muted">đang tải…</span>
               )}
-              <button className="btn-sm ghost" onClick={loadCaptcha} title="Lấy captcha khác">
+              <button className="btn-sm ghost ui-btn-icon" onClick={loadCaptcha} title="Lấy captcha khác" aria-label="Lấy captcha khác">
                 🔄
               </button>
             </div>
           </div>
-          <label>
+          <label style={{ minWidth: 140, flex: "0 1 180px" }}>
             Nhập captcha
-            <input style={{ width: 120 }} value={cvalue} onChange={(e) => setCvalue(e.target.value)} />
+            <input className="ui-input" value={cvalue} onChange={(e) => setCvalue(e.target.value)} />
           </label>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
-          <div className="tb-group">
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+          <div className="tb-group" style={{ flexWrap: "wrap" }}>
             <span className="chip gray sm">Năm 2026</span>
             {[1, 2, 3, 4].map((q) => (
               <button
                 key={q}
-                className="btn-sm ghost"
+                className="btn-sm ghost ui-btn-chip"
                 onClick={() => {
                   setTu(Q[q as 1 | 2 | 3 | 4][0]);
                   setDen(Q[q as 1 | 2 | 3 | 4][1]);
@@ -178,16 +193,16 @@ export function TaxSync() {
               </button>
             ))}
           </div>
-          <label>
+          <label style={{ flex: "1 1 140px", minWidth: 0 }}>
             Từ ngày
-            <input type="date" value={tu} onChange={(e) => setTu(e.target.value)} />
+            <input className="ui-input" type="date" value={tu} onChange={(e) => setTu(e.target.value)} />
           </label>
-          <label>
+          <label style={{ flex: "1 1 140px", minWidth: 0 }}>
             Đến ngày
-            <input type="date" value={den} onChange={(e) => setDen(e.target.value)} />
+            <input className="ui-input" type="date" value={den} onChange={(e) => setDen(e.target.value)} />
           </label>
           <button
-            className="btn-sm"
+            className="btn-sm ui-btn-chip"
             disabled={busy}
             title="Dùng phiên đăng nhập đã lưu — khỏi nhập captcha (nếu còn hạn)"
             onClick={() => sync(true)}
@@ -202,15 +217,15 @@ export function TaxSync() {
             {busy ? "⏳ Đang tải…" : "🔍 Đăng nhập (captcha) & đồng bộ"}
           </button>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
           <input type="checkbox" checked={doImport} onChange={(e) => setDoImport(e.target.checked)} />
-          Tự động <b>nạp hóa đơn MUA thiếu</b> vào Nhập hàng (dạng nháp chờ duyệt) — dùng chung 1 captcha
+          <span>Tự động <b>nạp hóa đơn MUA thiếu</b> vào Nhập hàng (dạng nháp chờ duyệt) — dùng chung 1 captcha</span>
         </label>
       </div>
 
       {res && (
         <>
-          <div className="warn-banner" style={{ marginTop: 12, display: "flex", gap: 24, flexWrap: "wrap" }}>
+          <div className="warn-banner" style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
             {res.import && (
               <span className="chip green sm">
                 ✅ Đã nạp {res.import.imported} HĐ (bỏ qua {res.import.skipped}, lỗi {res.import.errors})
@@ -238,141 +253,153 @@ export function TaxSync() {
                 Cơ quan thuế là chuẩn. Các HĐ dưới đây có trong hệ thống nhưng không khớp cổng thuế —
                 kiểm tra lại số HĐ/MST (nhiều khi do parse PDF sai) hoặc là HĐ trùng/nhập nhầm.
               </p>
-              <div className="table-wrap">
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Loại</th>
-                      <th>Ngày</th>
-                      <th>Số HĐ</th>
-                      <th>Đối tác</th>
-                      <th style={{ textAlign: "right" }}>Tiền</th>
-                      <th>Nguồn/TT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(res.orphan_mua ?? []).map((h, i) => (
-                      <tr key={`m${i}`} className="row-neg">
-                        <td>MUA</td>
-                        <td>{h.ngay}</td>
-                        <td>{h.so_hd}</td>
-                        <td>{h.ten_ban} <span className="muted">({h.mst_ban})</span></td>
-                        <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
-                        <td className="muted">{h.source}/{h.status}</td>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Loại</th>
+                        <th>Ngày</th>
+                        <th>Số HĐ</th>
+                        <th>Đối tác</th>
+                        <th style={{ textAlign: "right" }}>Tiền</th>
+                        <th>Nguồn/TT</th>
                       </tr>
-                    ))}
-                    {(res.orphan_ban ?? []).map((h, i) => (
-                      <tr key={`b${i}`} className="row-neg">
-                        <td>BÁN</td>
-                        <td>{h.ngay}</td>
-                        <td>{h.ky_hieu} {h.so_hd}</td>
-                        <td>{h.ten_mua}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
-                        <td className="muted">{h.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(res.orphan_mua ?? []).map((h, i) => (
+                        <tr key={`m${i}`} className="row-neg">
+                          <td>MUA</td>
+                          <td>{h.ngay}</td>
+                          <td>{h.so_hd}</td>
+                          <td>{h.ten_ban} <span className="muted">({h.mst_ban})</span></td>
+                          <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
+                          <td className="muted">{h.source}/{h.status}</td>
+                        </tr>
+                      ))}
+                      {(res.orphan_ban ?? []).map((h, i) => (
+                        <tr key={`b${i}`} className="row-neg">
+                          <td>BÁN</td>
+                          <td>{h.ngay}</td>
+                          <td>{h.ky_hieu} {h.so_hd}</td>
+                          <td>{h.ten_mua}</td>
+                          <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
+                          <td className="muted">{h.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                }
+              />
             </>
           )}
 
           {res.mismatch_mua && res.mismatch_mua.length > 0 && (
             <>
               <h3>⚠️ Hóa đơn LỆCH TIỀN so với cơ quan thuế (cần sửa)</h3>
-              <div className="table-wrap">
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Ngày</th>
-                      <th>Số HĐ</th>
-                      <th>Nhà cung cấp</th>
-                      <th style={{ textAlign: "right" }}>Hệ thống</th>
-                      <th style={{ textAlign: "right" }}>Cổng thuế (đúng)</th>
-                      <th style={{ textAlign: "right" }}>Lệch</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {res.mismatch_mua.map((h, i) => (
-                      <tr key={i} className="row-neg">
-                        <td>{h.ngay}</td>
-                        <td>{h.ky_hieu} {h.so_hd}</td>
-                        <td>{h.ten_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(h.tien_he_thong)}</td>
-                        <td style={{ textAlign: "right" }}>
-                          <b>{vnd(h.tien_cong_thue)}</b>
-                        </td>
-                        <td style={{ textAlign: "right", color: "#c0392b", fontWeight: 600 }}>
-                          {h.lech > 0 ? "+" : ""}
-                          {vnd(h.lech)}
-                        </td>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Ngày</th>
+                        <th>Số HĐ</th>
+                        <th>Nhà cung cấp</th>
+                        <th style={{ textAlign: "right" }}>Hệ thống</th>
+                        <th style={{ textAlign: "right" }}>Cổng thuế (đúng)</th>
+                        <th style={{ textAlign: "right" }}>Lệch</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {res.mismatch_mua.map((h, i) => (
+                        <tr key={i} className="row-neg">
+                          <td>{h.ngay}</td>
+                          <td>{h.ky_hieu} {h.so_hd}</td>
+                          <td>{h.ten_ban}</td>
+                          <td style={{ textAlign: "right" }}>{vnd(h.tien_he_thong)}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <b>{vnd(h.tien_cong_thue)}</b>
+                          </td>
+                          <td style={{ textAlign: "right", color: "var(--red)", fontWeight: 600 }}>
+                            {h.lech > 0 ? "+" : ""}
+                            {vnd(h.lech)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                }
+              />
             </>
           )}
 
           {res.missing_mua.length > 0 && (
             <>
               <h3>Hóa đơn MUA VÀO thiếu (có trên cổng thuế, chưa nạp)</h3>
-              <div className="table-wrap">
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Ngày</th>
-                      <th>Số HĐ</th>
-                      <th>Nhà cung cấp</th>
-                      <th>MST</th>
-                      <th style={{ textAlign: "right" }}>Tổng tiền</th>
-                      <th>Loại</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {res.missing_mua.map((h, i) => (
-                      <tr key={i} className="row-treo">
-                        <td>{h.ngay}</td>
-                        <td>{h.ky_hieu} {h.so_hd}</td>
-                        <td>{h.ten_ban}</td>
-                        <td className="muted">{h.mst_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
-                        <td>
-                          <span className="chip gray sm">{h.co_ma ? "có mã" : "không mã"}</span>
-                        </td>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Ngày</th>
+                        <th>Số HĐ</th>
+                        <th>Nhà cung cấp</th>
+                        <th>MST</th>
+                        <th style={{ textAlign: "right" }}>Tổng tiền</th>
+                        <th>Loại</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {res.missing_mua.map((h, i) => (
+                        <tr key={i} className="row-treo">
+                          <td>{h.ngay}</td>
+                          <td>{h.ky_hieu} {h.so_hd}</td>
+                          <td>{h.ten_ban}</td>
+                          <td className="muted">{h.mst_ban}</td>
+                          <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
+                          <td>
+                            <span className="chip gray sm">{h.co_ma ? "có mã" : "không mã"}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                }
+              />
             </>
           )}
 
           {res.missing_ban.length > 0 && (
             <>
               <h3>Hóa đơn BÁN RA thiếu</h3>
-              <div className="table-wrap">
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Ngày</th>
-                      <th>Số HĐ</th>
-                      <th>Khách mua</th>
-                      <th style={{ textAlign: "right" }}>Tổng tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {res.missing_ban.map((h, i) => (
-                      <tr key={i} className="row-treo">
-                        <td>{h.ngay}</td>
-                        <td>{h.ky_hieu} {h.so_hd}</td>
-                        <td>{h.ten_mua}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Ngày</th>
+                        <th>Số HĐ</th>
+                        <th>Khách mua</th>
+                        <th style={{ textAlign: "right" }}>Tổng tiền</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {res.missing_ban.map((h, i) => (
+                        <tr key={i} className="row-treo">
+                          <td>{h.ngay}</td>
+                          <td>{h.ky_hieu} {h.so_hd}</td>
+                          <td>{h.ten_mua}</td>
+                          <td style={{ textAlign: "right" }}>{vnd(h.tong_tien)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                }
+              />
             </>
           )}
 

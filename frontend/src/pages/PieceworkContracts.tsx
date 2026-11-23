@@ -11,6 +11,30 @@ import {
   type PieceworkContractorDetail,
   type PieceworkContractorTaxSummary,
 } from "../api";
+import { AppModal, DataView, FormGrid, ResponsiveTabs } from "../components/ui";
+import { openExternalSafe, safeHttpUrl } from "../utils/url";
+
+// Shared INUT semantic accents (WCAG AA >= 4.5:1 on warm paper/soft surfaces)
+const INUT_TEXT_WARN = "#7a4b0b";
+const INUT_TEXT_DANGER = "#8c281b";
+const INUT_BORDER_SUCCESS = "rgba(29, 122, 87, 0.35)";
+const INUT_BORDER_WARN = "rgba(180, 116, 24, 0.4)";
+const INUT_BORDER_DANGER = "rgba(197, 72, 54, 0.38)";
+const INUT_BORDER_PRIMARY = "rgba(21, 125, 114, 0.35)";
+
+const FIELD_LABEL_STYLE: React.CSSProperties = {
+  display: "block",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--ink-2)",
+  marginBottom: 4,
+};
+
+const COMPACT_INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+};
+
 function formatDateTimeWithSeconds(isoStr?: string | null): string {
   if (!isoStr) return "N/A";
   try {
@@ -161,7 +185,7 @@ export function PieceworkContracts() {
         status_f: statusFilter,
         contract_type: typeFilter,
       });
-      setContracts(res.contracts);
+      setContracts(Array.isArray(res?.contracts) ? res.contracts : []);
     } catch (err) {
       setMessage({ text: "Lỗi tải danh sách hợp đồng khoán: " + (err as Error).message, type: "error" });
     } finally {
@@ -178,7 +202,7 @@ export function PieceworkContracts() {
     setContractorLoading(true);
     try {
       const res = await api.listPieceworkContractors(contractorSearch);
-      setContractors(res.contractors);
+      setContractors(Array.isArray(res?.contractors) ? res.contractors : []);
     } catch (err: any) {
       console.error("Lỗi tải danh bạ nhà cung cấp khoán:", err);
     } finally {
@@ -701,18 +725,19 @@ export function PieceworkContracts() {
     <div className="docs-page piecework-page">
       {/* Banner & Brand Header */}
       <div className="piecework-header">
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#0f172a", color: "#38bdf8", padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>
+        <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--ink)", color: "var(--gold)", padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: "0.5px", textTransform: "uppercase" }}>
             ⚖️ iNut HR & Compliance
           </div>
-          <h2 style={{ margin: "8px 0 4px 0", fontSize: 24, color: "#0f172a" }}>Quản Lý Hợp Đồng Giao Khoán & Hồ Sơ Thợ/CTV</h2>
-          <div style={{ color: "#64748b", fontSize: 13.5 }}>
+          <h2 style={{ margin: "8px 0 4px 0", fontSize: 24, color: "var(--ink)" }}>Quản Lý Hợp Đồng Giao Khoán & Hồ Sơ Thợ/CTV</h2>
+          <div style={{ color: "var(--muted)", fontSize: 13.5 }}>
             Chuẩn hóa giao khoán theo sản phẩm/kết quả đầu ra dân sự · Tự động kiểm định tính hợp lệ chứng từ (Nghị định 253/2026/NĐ-CP & Luật BHXH 2024)
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             className="piecework-btn-create"
+            style={{ background: "var(--primary)", color: "#ffffff" }}
             onClick={() => setShowCreateModal(true)}
           >
             ＋ Tạo HĐ Khoán Mới
@@ -720,7 +745,7 @@ export function PieceworkContracts() {
           <button
             type="button"
             className="piecework-btn-create"
-            style={{ background: "#0f766e" }}
+            style={{ background: "var(--primary-dark)", color: "#ffffff" }}
             onClick={() => {
               setContractorForm({
                 code: "",
@@ -745,7 +770,7 @@ export function PieceworkContracts() {
           <button
             type="button"
             className="piecework-btn-create"
-            style={{ background: "#7c3aed" }}
+            style={{ background: "var(--gold)", color: "var(--ink)" }}
             onClick={() => {
               setSmartPasteTarget("contract");
               setSmartPasteText("");
@@ -757,7 +782,7 @@ export function PieceworkContracts() {
           <button
             type="button"
             className="piecework-btn-create"
-            style={{ background: "#2563eb", display: "inline-flex", alignItems: "center", gap: 6 }}
+            style={{ background: "var(--ink)", color: "#ffffff", display: "inline-flex", alignItems: "center", gap: 6 }}
             disabled={syncingQuarterDrive}
             onClick={handleSyncQuarterlyDrive}
             title="Đồng bộ toàn bộ HĐ giao khoán đã ký trong quý lên Google Drive Kế toán"
@@ -768,30 +793,29 @@ export function PieceworkContracts() {
       </div>
 
       {/* Main Navigation Tabs */}
-      <div className="piecework-main-tabs">
-        <button
-          type="button"
-          className={`piecework-main-tab ${activeMainTab === "contracts" ? "active" : ""}`}
-          onClick={() => setActiveMainTab("contracts")}
-        >
-          <span>📄</span>
-          <span>Danh Sách Hợp Đồng Khoán ({contracts.length})</span>
-        </button>
-        <button
-          type="button"
-          className={`piecework-main-tab ${activeMainTab === "contractors" ? "active" : ""}`}
-          onClick={() => setActiveMainTab("contractors")}
-        >
-          <span>👥</span>
-          <span>Danh Bạ Nhà Cung Cấp / Thợ ({contractors.length})</span>
-        </button>
-      </div>
+      <ResponsiveTabs
+        ariaLabel="Chuyển mục hợp đồng khoán"
+        active={activeMainTab}
+        onChange={setActiveMainTab}
+        tabs={[
+          { id: "contracts", label: "📄 Danh Sách Hợp Đồng Khoán", badge: contracts.length },
+          { id: "contractors", label: "👥 Danh Bạ Nhà Cung Cấp / Thợ", badge: contractors.length },
+        ]}
+      />
 
       {/* Notifications */}
       {message && (
-        <div style={{ padding: "12px 18px", borderRadius: 10, marginBottom: 16, background: message.type === "success" ? "#f0fdf4" : "#fef2f2", color: message.type === "success" ? "#166534" : "#991b1b", border: `1px solid ${message.type === "success" ? "#bbf7d0" : "#fecaca"}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "12px 18px", borderRadius: 10, marginBottom: 16, background: message.type === "success" ? "var(--green-soft)" : "var(--red-soft)", color: message.type === "success" ? "var(--ink-2)" : INUT_TEXT_DANGER, border: `1px solid ${message.type === "success" ? INUT_BORDER_SUCCESS : INUT_BORDER_DANGER}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <span>{message.text}</span>
-          <button style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 700, minHeight: 36, minWidth: 36, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setMessage(null)}>✕</button>
+          <button
+            type="button"
+            className="ui-btn-icon"
+            aria-label="Đóng thông báo"
+            style={{ background: "transparent", borderColor: "transparent", color: "inherit", fontWeight: 700 }}
+            onClick={() => setMessage(null)}
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -800,487 +824,514 @@ export function PieceworkContracts() {
         <div data-testid="piecework-contracts-view">
           {/* Metrics Cards (Deficiency Radar) */}
           <div className="piecework-metrics-grid">
-        <div className="piecework-metric-card">
-          <div style={{ color: "#64748b", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>Tổng số hợp đồng</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>{totalContracts}</div>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{totalGross.toLocaleString("vi-VN")} đ</div>
-        </div>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+              <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>Tổng số hợp đồng</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--ink)", marginTop: 4 }}>{totalContracts}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{totalGross.toLocaleString("vi-VN")} đ</div>
+            </div>
 
-        <div className="piecework-metric-card" style={{ borderColor: "#fed7aa" }}>
-          <div style={{ color: "#c2410c", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>🔴 Cần bổ sung hồ sơ</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#c2410c", marginTop: 4 }}>{pendingDocsCount}</div>
-          <div style={{ fontSize: 12, color: "#ea580c", marginTop: 2 }}>Thiếu CCCD, nghiệm thu, ảnh HT</div>
-        </div>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: INUT_BORDER_WARN }}>
+              <div style={{ color: INUT_TEXT_WARN, fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>🔴 Cần bổ sung hồ sơ</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--coral)", marginTop: 4 }}>{pendingDocsCount}</div>
+              <div style={{ fontSize: 12, color: INUT_TEXT_WARN, marginTop: 2 }}>Thiếu CCCD, nghiệm thu, ảnh HT</div>
+            </div>
 
-        <div className="piecework-metric-card" style={{ borderColor: "#bbf7d0" }}>
-          <div style={{ color: "#15803d", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>🟢 Đủ điều kiện thanh toán</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#15803d", marginTop: 4 }}>{readyToPayCount}</div>
-          <div style={{ fontSize: 12, color: "#16a34a", marginTop: 2 }}>Đã có chữ ký & đủ chứng từ</div>
-        </div>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: INUT_BORDER_SUCCESS }}>
+              <div style={{ color: "var(--ink-2)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>🟢 Đủ điều kiện thanh toán</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--green)", marginTop: 4 }}>{readyToPayCount}</div>
+              <div style={{ fontSize: 12, color: "var(--green)", marginTop: 2 }}>Đã có chữ ký & đủ chứng từ</div>
+            </div>
 
-        <div className="piecework-metric-card">
-          <div style={{ color: "#475569", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>⚪ Đã thanh toán (Có UNC)</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#334155", marginTop: 4 }}>{completedCount}</div>
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Đã khớp Techcombank 79713</div>
-        </div>
-      </div>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+              <div style={{ color: "var(--ink-2)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>⚪ Đã thanh toán (Có UNC)</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--text)", marginTop: 4 }}>{completedCount}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Đã khớp Techcombank 79713</div>
+            </div>
+          </div>
 
-      {/* Filter and Search Bar */}
-      <div className="piecework-filter-bar">
-        <form onSubmit={handleSearchSubmit} className="piecework-filter-search">
-          <input
-            type="text"
-            placeholder="Tìm theo mã HĐ, tên thợ, số CCCD, công trình..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1, padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13.5, minHeight: 42 }}
-          />
-          <button type="submit" className="secondary" style={{ padding: "8px 16px", borderRadius: 8, minHeight: 42, fontWeight: 600 }}>Tìm kiếm</button>
-        </form>
+          {/* Filter and Search Bar */}
+          <div className="piecework-filter-bar" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+            <form onSubmit={handleSearchSubmit} className="piecework-filter-search" style={{ minWidth: 0 }}>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="Tìm theo mã HĐ, tên thợ, số CCCD, công trình..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <button type="submit" className="secondary ui-btn-chip" style={{ padding: "8px 16px", minHeight: 44, fontWeight: 600 }}>Tìm kiếm</button>
+            </form>
 
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="piecework-filter-select"
-        >
-          <option value="">Tất cả loại khoán</option>
-          <option value="thi_cong">Thi công lắp đặt</option>
-          <option value="boc_xep">Bốc xếp vận chuyển</option>
-          <option value="gia_cong">Gia công sản phẩm</option>
-        </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="ui-select"
+              style={{ width: "auto", maxWidth: "100%" }}
+            >
+              <option value="">Tất cả loại hợp đồng</option>
+              <option value="mua_ban_ca_nhan">🤝 HĐ Mua bán cá nhân</option>
+              <option value="thi_cong">Thi công lắp đặt</option>
+              <option value="boc_xep">Bốc xếp vận chuyển</option>
+              <option value="gia_cong">Gia công sản phẩm</option>
+              <option value="marketing">Marketing / Truyền thông</option>
+            </select>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="piecework-filter-select"
-        >
-          <option value="">Mọi trạng thái hồ sơ</option>
-          <option value="pending_docs">🔴 Cần bổ sung hồ sơ</option>
-          <option value="ready_to_pay">🟢 Đủ điều kiện thanh toán</option>
-          <option value="completed">⚪ Đã thanh toán (Có UNC)</option>
-        </select>
-      </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="ui-select"
+              style={{ width: "auto", maxWidth: "100%" }}
+            >
+              <option value="">Mọi trạng thái hồ sơ</option>
+              <option value="pending_docs">🔴 Cần bổ sung hồ sơ</option>
+              <option value="ready_to_pay">🟢 Đủ điều kiện thanh toán</option>
+              <option value="completed">⚪ Đã thanh toán (Có UNC)</option>
+            </select>
+          </div>
 
-      {/* Contract Content: Dual View (Desktop Table + Mobile Card Stack) */}
-      {loading ? (
-        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 40, textAlign: "center", color: "#64748b" }}>
-          Đang tải danh sách hợp đồng khoán...
-        </div>
-      ) : contracts.length === 0 ? (
-        <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 40, textAlign: "center", color: "#64748b" }}>
-          Không tìm thấy hợp đồng giao khoán nào phù hợp.
-        </div>
-      ) : (
-        <>
-          {/* 1. Desktop Table (Hidden on Mobile < 768px via CSS) */}
-          <div className="piecework-desktop-table">
-            <table>
-              <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12.5, color: "#475569" }}>
-                  <th style={{ padding: "12px 16px" }}>Mã HĐ / Ngày</th>
-                  <th style={{ padding: "12px 16px" }}>Thợ nhận khoán</th>
-                  <th style={{ padding: "12px 16px" }}>Công trình / Hạng mục</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right" }}>Giá trị khoán (VNĐ)</th>
-                  <th style={{ padding: "12px 16px" }}>Deficiency Radar (Kiểm soát hồ sơ)</th>
-                  <th style={{ padding: "12px 16px", textAlign: "center" }}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.map((c) => {
-                  const def = c.deficiency;
-                  return (
-                    <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9", fontSize: 13.5 }}>
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: 700, color: "#0284c7" }}>{c.contract_code}</div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>{c.contract_date}</div>
-                        <span style={{ display: "inline-block", marginTop: 4, padding: "2px 8px", borderRadius: 4, fontSize: 11, background: "#f1f5f9", color: "#475569" }}>
-                          {c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing"))}
-                        </span>
-                      </td>
+          {/* Contract Content: Dual View via DataView (Desktop Table + Mobile Card Stack) */}
+          {loading ? (
+            <div style={{ background: "var(--panel)", borderRadius: 14, border: "1px solid var(--border)", padding: 40, textAlign: "center", color: "var(--muted)" }}>
+              Đang tải danh sách hợp đồng khoán...
+            </div>
+          ) : contracts.length === 0 ? (
+            <div style={{ background: "var(--panel)", borderRadius: 14, border: "1px solid var(--border)", padding: 40, textAlign: "center", color: "var(--muted)" }}>
+              Không tìm thấy hợp đồng giao khoán nào phù hợp.
+            </div>
+          ) : (
+            <DataView
+              mobileMode="card"
+              desktop={
+                <div className="piecework-desktop-table" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+                  <table>
+                    <thead>
+                      <tr style={{ background: "var(--surface-subtle)", borderBottom: "1px solid var(--border)", fontSize: 12.5, color: "var(--ink-2)" }}>
+                        <th style={{ padding: "12px 16px" }}>Mã HĐ / Ngày</th>
+                        <th style={{ padding: "12px 16px" }}>Thợ nhận khoán</th>
+                        <th style={{ padding: "12px 16px" }}>Công trình / Hạng mục</th>
+                        <th style={{ padding: "12px 16px", textAlign: "right" }}>Giá trị khoán (VNĐ)</th>
+                        <th style={{ padding: "12px 16px" }}>Deficiency Radar (Kiểm soát hồ sơ)</th>
+                        <th style={{ padding: "12px 16px", textAlign: "center" }}>Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contracts.map((c) => {
+                        const def = c.deficiency;
+                        const safeDriveHref = safeHttpUrl(c.drive_link);
+                        return (
+                          <tr key={c.id} style={{ borderBottom: "1px solid var(--border)", fontSize: 13.5 }}>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{c.contract_code}</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)" }}>{c.contract_date}</div>
+                              <span style={{
+                                display: "inline-block",
+                                marginTop: 4,
+                                padding: "2px 8px",
+                                borderRadius: 4,
+                                fontSize: 11,
+                                fontWeight: c.contract_type === "mua_ban_ca_nhan" ? 700 : 500,
+                                background: c.contract_type === "mua_ban_ca_nhan" ? "#ecfdf5" : "var(--paper)",
+                                color: c.contract_type === "mua_ban_ca_nhan" ? "#047857" : "var(--ink-2)",
+                                border: c.contract_type === "mua_ban_ca_nhan" ? "1px solid #a7f3d0" : "1px solid var(--border)",
+                              }}>
+                                {c.contract_type === "mua_ban_ca_nhan" ? "🤝 Mua bán cá nhân" : (c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing")))}
+                              </span>
+                            </td>
 
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{c.worker_name}</div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>CCCD: {c.worker_id_card || "Chưa có"}</div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>SĐT: {c.worker_phone || "Chưa có"}</div>
-                        {c.payment_method === "cash" ? (
-                          <div style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>💵 Nhận tiền mặt tại chân công trình</div>
-                        ) : (
-                          <div style={{ fontSize: 11.5, color: "#0284c7" }}>{c.worker_bank_account} ({c.worker_bank_name})</div>
-                        )}
-                      </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 600, color: "var(--ink)" }}>{c.worker_name}</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)" }}>CCCD: {c.worker_id_card || "Chưa có"}</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)" }}>SĐT: {c.worker_phone || "Chưa có"}</div>
+                              {c.payment_method === "cash" ? (
+                                <div style={{ fontSize: 11.5, color: "var(--green)", fontWeight: 700 }}>💵 {c.contract_type === "mua_ban_ca_nhan" ? "Nhận tiền mặt trực tiếp" : "Nhận tiền mặt tại chân công trình"}</div>
+                              ) : (
+                                <div style={{ fontSize: 11.5, color: "var(--primary-dark)" }}>{c.worker_bank_account} ({c.worker_bank_name})</div>
+                              )}
+                            </td>
 
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: 600, color: "#334155" }}>{c.project_name}</div>
-                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>📍 {c.location}</div>
-                      </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 600, color: "var(--text)" }}>{c.project_name}</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>📍 {c.location}</div>
+                            </td>
 
-                      <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14.5 }}>{c.total_amount.toLocaleString("vi-VN")} đ</div>
-                        {def.is_sub_5m ? (
-                          <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600, marginTop: 2 }}>
-                            Miễn 10% TNCN (NĐ 253)
+                            <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                              <div style={{ fontWeight: 700, color: "var(--ink)", fontSize: 14.5 }}>{c.total_amount.toLocaleString("vi-VN")} đ</div>
+                              {def.is_sub_5m ? (
+                                <div style={{ fontSize: 11, color: "var(--green)", fontWeight: 600, marginTop: 2 }}>
+                                  Miễn 10% TNCN (NĐ 253)
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 11, color: INUT_TEXT_DANGER, marginTop: 2 }}>
+                                  Trừ 10% Thuế: -{c.tax_amount.toLocaleString("vi-VN")} đ
+                                  <div style={{ color: "var(--green)", fontWeight: 600 }}>Thực nhận: {c.net_amount.toLocaleString("vi-VN")} đ</div>
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxWidth: 320 }}>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[0].ok ? "var(--green-soft)" : "var(--red-soft)", color: def.checklist[0].ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
+                                  {def.checklist[0].ok ? "✓ CCCD 2 mặt" : "✗ Thiếu CCCD"}
+                                </span>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[1].ok ? "var(--green-soft)" : "var(--red-soft)", color: def.checklist[1].ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
+                                  {def.checklist[1].ok ? "✓ STK chính chủ" : "✗ Thiếu STK"}
+                                </span>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[2].ok ? "var(--green-soft)" : "var(--red-soft)", color: def.checklist[2].ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
+                                  {def.checklist[2].ok ? "✓ Nghiệm thu" : "✗ Thiếu Nghiệm thu"}
+                                </span>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[4].ok ? "var(--green-soft)" : "var(--amber-soft)", color: def.checklist[4].ok ? "var(--ink-2)" : INUT_TEXT_WARN }}>
+                                  {def.checklist[4].ok ? "✓ Thợ đã ký online" : "⏳ Chờ thợ ký"}
+                                </span>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[5].ok ? "var(--green-soft)" : "var(--paper)", color: def.checklist[5].ok ? "var(--ink-2)" : "var(--muted)" }}>
+                                  {def.checklist[5].ok ? "✓ Ký số INUT" : "Chưa ký số A"}
+                                </span>
+                                <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[6].ok ? "var(--green-soft)" : "var(--surface-subtle)", color: def.checklist[6].ok ? "var(--ink-2)" : "var(--muted)", border: "1px solid var(--border)" }}>
+                                  {def.checklist[6].ok ? "✓ Đã kẹp UNC" : "Chưa có UNC"}
+                                </span>
+                              </div>
+                              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 12, color: def.can_pay ? "var(--green)" : (def.missing_count > 0 ? INUT_TEXT_WARN : "var(--ink-2)") }}>
+                                {def.status_label}
+                              </div>
+                            </td>
+
+                            <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}>
+                                <button
+                                  className="ui-btn-chip"
+                                  style={{ background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}
+                                  onClick={() => copyToClipboard(`/khoan/${c.portal_token}`, `ký online HĐ ${c.contract_code}`)}
+                                  title="Sao chép link Portal di động gửi Zalo cho thợ"
+                                >
+                                  📲 Copy link Zalo thợ
+                                </button>
+
+                                <a
+                                  href={safeHttpUrl(`/khoan/${c.portal_token}`)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ui-btn-chip"
+                                  style={{ background: "var(--surface-subtle)", color: "var(--primary-dark)", borderColor: "var(--border-strong)" }}
+                                  title="Mở giao diện ký online của thợ để kiểm tra"
+                                >
+                                  📱 Mở Portal ký online
+                                </a>
+
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <a
+                                    href={safeHttpUrl(`/api/public/khoan/${c.portal_token}/pdf`)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: "var(--paper)", color: "var(--text)", borderColor: "var(--border-strong)" }}
+                                  >
+                                    📄 PDF
+                                  </a>
+
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}
+                                    onClick={() => setShareModal({ contract: c, tab: c.is_signed_by_inut ? "signed" : "unsigned" })}
+                                    title={c.is_signed_by_inut ? "Chia sẻ PDF đã ký số" : "Chia sẻ PDF bản thảo chưa ký"}
+                                  >
+                                    📤 Share
+                                  </button>
+
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: !c.is_signed_by_worker ? "var(--muted)" : (c.is_signed_by_inut ? "var(--primary-dark)" : "var(--primary)"), color: "#ffffff", borderColor: "transparent", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer" }}
+                                    disabled={actionLoading === c.id || !c.is_signed_by_worker}
+                                    onClick={() => openSigningModal(c)}
+                                    title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : (c.is_signed_by_inut ? "Bấm để ký lại số điện tử với chứng thư hoặc mốc thời gian khác" : "Ký số điện tử Bên A (INUT)")}
+                                  >
+                                    {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại" : "✍️ Ký INUT"))}
+                                  </button>
+
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: "var(--paper)", color: "var(--ink-2)", borderColor: "var(--border-strong)" }}
+                                    onClick={() => openDetail(c.id)}
+                                  >
+                                    Chi tiết
+                                  </button>
+                                </div>
+
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: "var(--primary-soft)", color: "var(--primary-dark)", borderColor: INUT_BORDER_PRIMARY }}
+                                    onClick={() => handleAuditContract(c)}
+                                    title="Kiểm định tính hợp lệ toàn diện hồ sơ theo luật"
+                                  >
+                                    🔍 Kiểm định
+                                  </button>
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ flex: 1, padding: "4px 6px", background: "var(--red-soft)", color: INUT_TEXT_DANGER, borderColor: INUT_BORDER_DANGER }}
+                                    onClick={() => handleDeleteContract(c)}
+                                    title="Xóa hợp đồng khoán"
+                                  >
+                                    🗑️ Xóa
+                                  </button>
+                                </div>
+
+                                {c.is_signed_by_inut && (
+                                  <button
+                                    className="ui-btn-chip"
+                                    style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: "1.5px solid var(--green)" }}
+                                    onClick={() => handleVerifySignature(c)}
+                                    title="Kiểm tra thẩm định chữ ký số theo chuẩn Foxit Reader và Cơ quan Thuế"
+                                  >
+                                    🛡️ Thẩm định Chữ ký số
+                                  </button>
+                                )}
+                                <button
+                                  className="ui-btn-chip"
+                                  style={{
+                                    background: c.drive_synced_at ? "var(--green-soft)" : "var(--primary-soft)",
+                                    color: c.drive_synced_at ? "var(--ink-2)" : "var(--primary-dark)",
+                                    border: c.drive_synced_at ? `1.5px solid ${INUT_BORDER_SUCCESS}` : `1.5px solid ${INUT_BORDER_PRIMARY}`,
+                                  }}
+                                  disabled={syncingDriveId === c.id}
+                                  onClick={() => handleSyncDrive(c)}
+                                  title={
+                                    c.drive_synced_at
+                                      ? `Đã đồng bộ lên Drive Kế toán (${formatDateTimeWithSeconds(c.drive_synced_at)}). Bấm để sync lại.`
+                                      : "Đồng bộ bộ hồ sơ HĐ giao khoán lên Google Drive Kế toán theo quý"
+                                  }
+                                >
+                                  {syncingDriveId === c.id
+                                    ? "⏳ Đang sync Drive..."
+                                    : c.drive_synced_at
+                                    ? "☁️ ✓ Đã sync Drive"
+                                    : "☁️ Sync Drive Kế toán"}
+                                </button>
+                                {safeDriveHref && (
+                                  <a
+                                    href={safeDriveHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ui-btn-chip"
+                                    style={{
+                                      background: "transparent",
+                                      borderColor: "transparent",
+                                      color: "var(--green)",
+                                      textDecoration: "underline",
+                                    }}
+                                    title={c.drive_folder}
+                                  >
+                                    📁 Mở Drive Quý
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              }
+              mobileCards={
+                <div className="piecework-mobile-cards ui-mobile-card-list" data-testid="piecework-mobile-cards" style={{ display: "grid", gap: 12 }}>
+                  {contracts.map((c) => {
+                    const def = c.deficiency;
+                    const safeDriveHref = safeHttpUrl(c.drive_link);
+                    return (
+                      <div key={c.id} className="piecework-mobile-card ui-mobile-card" data-testid="piecework-mobile-card" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+                        {/* Card Header */}
+                        <div className="piecework-mobile-card-header" style={{ borderBottomColor: "var(--border)" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--primary-dark)", overflowWrap: "anywhere" }}>{c.contract_code}</div>
+                            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                              {c.contract_date} · <span style={{
+                                padding: "1px 6px",
+                                borderRadius: 4,
+                                background: c.contract_type === "mua_ban_ca_nhan" ? "#ecfdf5" : "var(--paper)",
+                                fontSize: 11,
+                                fontWeight: c.contract_type === "mua_ban_ca_nhan" ? 700 : 500,
+                                color: c.contract_type === "mua_ban_ca_nhan" ? "#047857" : "var(--ink-2)",
+                                border: c.contract_type === "mua_ban_ca_nhan" ? "1px solid #a7f3d0" : "1px solid var(--border)",
+                              }}>{c.contract_type === "mua_ban_ca_nhan" ? "🤝 Mua bán cá nhân" : (c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing")))}</span>
+                            </div>
                           </div>
-                        ) : (
-                          <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>
-                            Trừ 10% Thuế: -{c.tax_amount.toLocaleString("vi-VN")} đ
-                            <div style={{ color: "#16a34a", fontWeight: 600 }}>Thực nhận: {c.net_amount.toLocaleString("vi-VN")} đ</div>
-                          </div>
-                        )}
-                      </td>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: def.can_pay ? "var(--green-soft)" : (def.missing_count > 0 ? "var(--amber-soft)" : "var(--paper)"), color: def.can_pay ? "var(--ink-2)" : (def.missing_count > 0 ? INUT_TEXT_WARN : "var(--ink-2)") }}>
+                            {def.status_label}
+                          </span>
+                        </div>
 
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxWidth: 320 }}>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[0].ok ? "#dcfce7" : "#fee2e2", color: def.checklist[0].ok ? "#166534" : "#991b1b" }}>
+                        {/* Card Info Rows */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ color: "var(--muted)" }}>{c.contract_type === "mua_ban_ca_nhan" ? "Cá nhân (Bên B):" : "Thợ nhận khoán:"}</span>
+                            <span style={{ fontWeight: 700, color: "var(--ink)", textAlign: "right" }}>{c.worker_name}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ color: "var(--muted)" }}>CCCD / SĐT:</span>
+                            <span style={{ color: "var(--text)", textAlign: "right" }}>{c.worker_id_card || "Chưa có"} · {c.worker_phone || "N/A"}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ color: "var(--muted)" }}>Hình thức nhận:</span>
+                            {c.payment_method === "cash" ? (
+                              <span style={{ color: "var(--green)", fontWeight: 700, textAlign: "right" }}>💵 {c.contract_type === "mua_ban_ca_nhan" ? "Nhận tiền mặt trực tiếp" : "Nhận tiền mặt tại chân công trình"}</span>
+                            ) : (
+                              <span style={{ color: "var(--primary-dark)", fontWeight: 600, textAlign: "right" }}>{c.worker_bank_account} ({c.worker_bank_name})</span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ color: "var(--muted)" }}>Công trình:</span>
+                            <span style={{ fontWeight: 600, color: "var(--text)", textAlign: "right", maxWidth: "60%", overflowWrap: "anywhere" }}>{c.project_name}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed var(--border)", paddingTop: 6, marginTop: 2 }}>
+                            <span style={{ fontWeight: 700, color: "var(--ink)" }}>Giá trị khoán:</span>
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontWeight: 800, color: "var(--ink)", fontSize: 15 }}>{c.total_amount.toLocaleString("vi-VN")} đ</span>
+                              {def.is_sub_5m ? (
+                                <div style={{ fontSize: 11, color: "var(--green)", fontWeight: 600 }}>Miễn 10% TNCN (NĐ 253)</div>
+                              ) : (
+                                <div style={{ fontSize: 11, color: INUT_TEXT_DANGER }}>-10% Thuế ({c.tax_amount.toLocaleString("vi-VN")} đ)</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Deficiency Checklist Chips */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, background: "var(--surface-subtle)", padding: 8, borderRadius: 8 }}>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[0].ok ? "var(--green-soft)" : "var(--red-soft)", color: def.checklist[0].ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
                             {def.checklist[0].ok ? "✓ CCCD 2 mặt" : "✗ Thiếu CCCD"}
                           </span>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[1].ok ? "#dcfce7" : "#fee2e2", color: def.checklist[1].ok ? "#166534" : "#991b1b" }}>
-                            {def.checklist[1].ok ? "✓ STK chính chủ" : "✗ Thiếu STK"}
-                          </span>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[2].ok ? "#dcfce7" : "#fee2e2", color: def.checklist[2].ok ? "#166534" : "#991b1b" }}>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[2].ok ? "var(--green-soft)" : "var(--red-soft)", color: def.checklist[2].ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
                             {def.checklist[2].ok ? "✓ Nghiệm thu" : "✗ Thiếu Nghiệm thu"}
                           </span>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[4].ok ? "#dcfce7" : "#fef3c7", color: def.checklist[4].ok ? "#166534" : "#b45309" }}>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[4].ok ? "var(--green-soft)" : "var(--amber-soft)", color: def.checklist[4].ok ? "var(--ink-2)" : INUT_TEXT_WARN }}>
                             {def.checklist[4].ok ? "✓ Thợ đã ký online" : "⏳ Chờ thợ ký"}
                           </span>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[5].ok ? "#dcfce7" : "#f1f5f9", color: def.checklist[5].ok ? "#166534" : "#64748b" }}>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[5].ok ? "var(--green-soft)" : "var(--paper)", color: def.checklist[5].ok ? "var(--ink-2)" : "var(--muted)" }}>
                             {def.checklist[5].ok ? "✓ Ký số INUT" : "Chưa ký số A"}
                           </span>
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[6].ok ? "#dcfce7" : "#f8fafc", color: def.checklist[6].ok ? "#166534" : "#94a3b8", border: "1px solid #e2e8f0" }}>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[6].ok ? "var(--green-soft)" : "var(--panel)", color: def.checklist[6].ok ? "var(--ink-2)" : "var(--muted)" }}>
                             {def.checklist[6].ok ? "✓ Đã kẹp UNC" : "Chưa có UNC"}
                           </span>
                         </div>
-                        <div style={{ marginTop: 6, fontWeight: 700, fontSize: 12, color: def.can_pay ? "#16a34a" : (def.missing_count > 0 ? "#ea580c" : "#475569") }}>
-                          {def.status_label}
-                        </div>
-                      </td>
 
-                      <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}>
+                        {/* Mobile Actions Grid (Touch Targets >= 44px) */}
+                        <div className="piecework-mobile-action-grid">
                           <button
-                            className="secondary"
-                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 6, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", minHeight: 32 }}
-                            onClick={() => copyToClipboard(`/khoan/${c.portal_token}`, `ký online HĐ ${c.contract_code}`)}
-                            title="Sao chép link Portal di động gửi Zalo cho thợ"
+                            className="piecework-touch-btn"
+                            style={{ gridColumn: "1 / -1", background: "var(--green-soft)", color: "var(--ink-2)", border: "1.5px solid var(--green)", fontWeight: 700 }}
+                            onClick={() => setShareModal({ contract: c, tab: c.is_signed_by_inut ? "signed" : "unsigned" })}
                           >
-                            📲 Copy link Zalo thợ
+                            {c.is_signed_by_inut ? "📤 Chia sẻ PDF Đã Ký (Zalo / Email / Link)" : "📤 Chia sẻ HĐ Chưa Ký (Bản Thảo / Zalo)"}
+                          </button>
+
+                          <button
+                            className="piecework-touch-btn"
+                            style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: `1px solid ${INUT_BORDER_SUCCESS}` }}
+                            onClick={() => copyToClipboard(`/khoan/${c.portal_token}`, `ký online HĐ ${c.contract_code}`)}
+                          >
+                            📲 Copy Zalo thợ
                           </button>
 
                           <a
-                            href={`/khoan/${c.portal_token}`}
+                            href={safeHttpUrl(`/khoan/${c.portal_token}`)}
                             target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: 12, padding: "5px 10px", borderRadius: 6, background: "#f8fafc", color: "#0284c7", border: "1px solid #cbd5e1", textDecoration: "none", textAlign: "center" }}
-                            title="Mở giao diện ký online của thợ để kiểm tra"
+                            rel="noopener noreferrer"
+                            className="piecework-touch-btn"
+                            style={{ background: "var(--surface-subtle)", color: "var(--primary-dark)", border: "1px solid var(--border-strong)" }}
                           >
-                            📱 Mở Portal ký online
+                            📱 Mở Portal ký
                           </a>
 
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <a
-                              href={`/api/public/khoan/${c.portal_token}/pdf`}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: "#e2e8f0", color: "#334155", textDecoration: "none", textAlign: "center" }}
-                            >
-                              📄 PDF
-                            </a>
+                          <a
+                            href={safeHttpUrl(`/api/public/khoan/${c.portal_token}/pdf`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="piecework-touch-btn"
+                            style={{ background: "var(--paper)", color: "var(--text)", border: "1px solid var(--border-strong)" }}
+                          >
+                            📄 Mở PDF
+                          </a>
 
-                            <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", cursor: "pointer", fontWeight: 700 }}
-                              onClick={() => setShareModal({ contract: c, tab: c.is_signed_by_inut ? "signed" : "unsigned" })}
-                              title={c.is_signed_by_inut ? "Chia sẻ PDF đã ký số" : "Chia sẻ PDF bản thảo chưa ký"}
-                            >
-                              📤 Share
-                            </button>
+                          <button
+                            className="piecework-touch-btn"
+                            style={{ background: !c.is_signed_by_worker ? "var(--muted)" : (c.is_signed_by_inut ? "var(--primary-dark)" : "var(--primary)"), color: "#ffffff", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer" }}
+                            disabled={actionLoading === c.id || !c.is_signed_by_worker}
+                            onClick={() => openSigningModal(c)}
+                            title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
+                          >
+                            {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại INUT" : "✍️ Ký số INUT"))}
+                          </button>
 
-                            <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: !c.is_signed_by_worker ? "#94a3b8" : (c.is_signed_by_inut ? "#0369a1" : "#0284c7"), color: "#fff", border: "none", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer", fontWeight: 600 }}
-                              disabled={actionLoading === c.id || !c.is_signed_by_worker}
-                              onClick={() => openSigningModal(c)}
-                              title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : (c.is_signed_by_inut ? "Bấm để ký lại số điện tử với chứng thư hoặc mốc thời gian khác" : "Ký số điện tử Bên A (INUT)")}
-                            >
-                              {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại" : "✍️ Ký INUT"))}
-                            </button>
+                          <button
+                            className="piecework-touch-btn"
+                            style={{ background: "var(--primary-soft)", color: "var(--primary-dark)", border: `1px solid ${INUT_BORDER_PRIMARY}` }}
+                            onClick={() => handleAuditContract(c)}
+                          >
+                            🔍 Kiểm định
+                          </button>
 
-                            <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", cursor: "pointer" }}
-                              onClick={() => openDetail(c.id)}
-                            >
-                              Chi tiết
-                            </button>
-                          </div>
-
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", cursor: "pointer" }}
-                              onClick={() => handleAuditContract(c)}
-                              title="Kiểm định tính hợp lệ toàn diện hồ sơ theo luật"
-                            >
-                              🔍 Kiểm định
-                            </button>
-                            <button
-                              style={{ flex: 1, fontSize: 11.5, padding: "4px 6px", borderRadius: 6, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", cursor: "pointer" }}
-                              onClick={() => handleDeleteContract(c)}
-                              title="Xóa hợp đồng khoán"
-                            >
-                              🗑️ Xóa
-                            </button>
-                          </div>
+                          <button
+                            className="piecework-touch-btn"
+                            style={{ background: "var(--surface-subtle)", color: "var(--ink-2)", border: "1px solid var(--border-strong)" }}
+                            onClick={() => openDetail(c.id)}
+                          >
+                            👁️ Chi tiết HĐ
+                          </button>
 
                           {c.is_signed_by_inut && (
                             <button
-                              style={{ fontSize: 11.5, padding: "5px 8px", borderRadius: 6, background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontWeight: 700 }}
+                              className="piecework-touch-btn"
+                              style={{ gridColumn: "1 / -1", background: "var(--green-soft)", color: "var(--ink-2)", border: "1.5px solid var(--green)", fontWeight: 700 }}
                               onClick={() => handleVerifySignature(c)}
-                              title="Kiểm tra thẩm định chữ ký số theo chuẩn Foxit Reader và Cơ quan Thuế"
                             >
-                              🛡️ Thẩm định Chữ ký số
+                              🛡️ Thẩm định Chữ ký số (Chuẩn Foxit / Thuế)
                             </button>
                           )}
                           <button
+                            className="piecework-touch-btn"
                             style={{
-                              fontSize: 11.5,
-                              padding: "5px 8px",
-                              borderRadius: 6,
-                              background: c.drive_synced_at ? "#ecfdf5" : "#eff6ff",
-                              color: c.drive_synced_at ? "#047857" : "#1d4ed8",
-                              border: c.drive_synced_at ? "1.5px solid #a7f3d0" : "1.5px solid #bfdbfe",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: 5,
-                              fontWeight: 600,
+                              gridColumn: "1 / -1",
+                              background: c.drive_synced_at ? "var(--green-soft)" : "var(--primary-soft)",
+                              color: c.drive_synced_at ? "var(--ink-2)" : "var(--primary-dark)",
+                              border: c.drive_synced_at ? `1.5px solid ${INUT_BORDER_SUCCESS}` : `1.5px solid ${INUT_BORDER_PRIMARY}`,
+                              fontWeight: 700,
                             }}
                             disabled={syncingDriveId === c.id}
                             onClick={() => handleSyncDrive(c)}
-                            title={
-                              c.drive_synced_at
-                                ? `Đã đồng bộ lên Drive Kế toán (${formatDateTimeWithSeconds(c.drive_synced_at)}). Bấm để sync lại.`
-                                : "Đồng bộ bộ hồ sơ HĐ giao khoán lên Google Drive Kế toán theo quý"
-                            }
                           >
                             {syncingDriveId === c.id
                               ? "⏳ Đang sync Drive..."
                               : c.drive_synced_at
-                              ? "☁️ ✓ Đã sync Drive"
-                              : "☁️ Sync Drive Kế toán"}
+                              ? "☁️ ✓ Đã sync Drive Kế toán"
+                              : "☁️ Đồng bộ lên Drive Kế toán"}
                           </button>
-                          {c.drive_link && (
+                          {safeDriveHref && (
                             <a
-                              href={c.drive_link}
+                              href={safeDriveHref}
                               target="_blank"
-                              rel="noreferrer"
+                              rel="noopener noreferrer"
+                              className="piecework-touch-btn"
                               style={{
-                                fontSize: 11,
-                                color: "#059669",
+                                gridColumn: "1 / -1",
+                                background: "var(--primary-dark)",
+                                color: "#ffffff",
+                                fontWeight: 700,
                                 textAlign: "center",
-                                textDecoration: "underline",
-                                display: "inline-block",
-                                marginTop: -2,
+                                textDecoration: "none",
                               }}
-                              title={c.drive_folder}
                             >
-                              📁 Mở Drive Quý
+                              📁 Mở Thư Mục Trên Google Drive
                             </a>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* 2. Mobile Card Stack (Visible on Mobile < 768px via CSS) */}
-          <div className="piecework-mobile-cards" data-testid="piecework-mobile-cards">
-            {contracts.map((c) => {
-              const def = c.deficiency;
-              return (
-                <div key={c.id} className="piecework-mobile-card" data-testid="piecework-mobile-card">
-                  {/* Card Header */}
-                  <div className="piecework-mobile-card-header">
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: "#0284c7" }}>{c.contract_code}</div>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                        {c.contract_date} · <span style={{ padding: "1px 6px", borderRadius: 4, background: "#f1f5f9", fontSize: 11, color: "#475569" }}>{c.contract_type === "thi_cong" ? "Thi công" : (c.contract_type === "boc_xep" ? "Bốc xếp" : (c.contract_type === "gia_cong" ? "Gia công" : "Marketing"))}</span>
                       </div>
-                    </div>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: def.can_pay ? "#dcfce7" : (def.missing_count > 0 ? "#ffedd5" : "#f1f5f9"), color: def.can_pay ? "#166534" : (def.missing_count > 0 ? "#c2410c" : "#475569") }}>
-                      {def.status_label}
-                    </span>
-                  </div>
-
-                  {/* Card Info Rows */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>Thợ nhận khoán:</span>
-                      <span style={{ fontWeight: 700, color: "#0f172a" }}>{c.worker_name}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>CCCD / SĐT:</span>
-                      <span style={{ color: "#334155" }}>{c.worker_id_card || "Chưa có"} · {c.worker_phone || "N/A"}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>Hình thức nhận:</span>
-                      {c.payment_method === "cash" ? (
-                        <span style={{ color: "#15803d", fontWeight: 700 }}>💵 Nhận tiền mặt tại chân công trình</span>
-                      ) : (
-                        <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.worker_bank_account} ({c.worker_bank_name})</span>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#64748b" }}>Công trình:</span>
-                      <span style={{ fontWeight: 600, color: "#334155", textAlign: "right", maxWidth: "60%" }}>{c.project_name}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e2e8f0", paddingTop: 6, marginTop: 2 }}>
-                      <span style={{ fontWeight: 700, color: "#0f172a" }}>Giá trị khoán:</span>
-                      <div style={{ textAlign: "right" }}>
-                        <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{c.total_amount.toLocaleString("vi-VN")} đ</span>
-                        {def.is_sub_5m ? (
-                          <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>Miễn 10% TNCN (NĐ 253)</div>
-                        ) : (
-                          <div style={{ fontSize: 11, color: "#dc2626" }}>-10% Thuế ({c.tax_amount.toLocaleString("vi-VN")} đ)</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Deficiency Checklist Chips */}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, background: "#f8fafc", padding: 8, borderRadius: 8 }}>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[0].ok ? "#dcfce7" : "#fee2e2", color: def.checklist[0].ok ? "#166534" : "#991b1b" }}>
-                      {def.checklist[0].ok ? "✓ CCCD 2 mặt" : "✗ Thiếu CCCD"}
-                    </span>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[2].ok ? "#dcfce7" : "#fee2e2", color: def.checklist[2].ok ? "#166534" : "#991b1b" }}>
-                      {def.checklist[2].ok ? "✓ Nghiệm thu" : "✗ Thiếu Nghiệm thu"}
-                    </span>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[4].ok ? "#dcfce7" : "#fef3c7", color: def.checklist[4].ok ? "#166534" : "#b45309" }}>
-                      {def.checklist[4].ok ? "✓ Thợ đã ký online" : "⏳ Chờ thợ ký"}
-                    </span>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[5].ok ? "#dcfce7" : "#f1f5f9", color: def.checklist[5].ok ? "#166534" : "#64748b" }}>
-                      {def.checklist[5].ok ? "✓ Ký số INUT" : "Chưa ký số A"}
-                    </span>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: def.checklist[6].ok ? "#dcfce7" : "#f8fafc", color: def.checklist[6].ok ? "#166534" : "#94a3b8" }}>
-                      {def.checklist[6].ok ? "✓ Đã kẹp UNC" : "Chưa có UNC"}
-                    </span>
-                  </div>
-
-                  {/* Mobile Actions Grid (Touch Targets >= 44px) */}
-                  <div className="piecework-mobile-action-grid">
-                    <button
-                      className="piecework-touch-btn"
-                      style={{ gridColumn: "1 / -1", background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
-                      onClick={() => setShareModal({ contract: c, tab: c.is_signed_by_inut ? "signed" : "unsigned" })}
-                    >
-                      {c.is_signed_by_inut ? "📤 Chia sẻ PDF Đã Ký (Zalo / Email / Link)" : "📤 Chia sẻ HĐ Chưa Ký (Bản Thảo / Zalo)"}
-                    </button>
-
-                    <button
-                      className="piecework-touch-btn"
-                      style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" }}
-                      onClick={() => copyToClipboard(`/khoan/${c.portal_token}`, `ký online HĐ ${c.contract_code}`)}
-                    >
-                      📲 Copy Zalo thợ
-                    </button>
-
-                    <a
-                      href={`/khoan/${c.portal_token}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="piecework-touch-btn"
-                      style={{ background: "#f8fafc", color: "#0284c7", border: "1px solid #cbd5e1" }}
-                    >
-                      📱 Mở Portal ký
-                    </a>
-
-                    <a
-                      href={`/api/public/khoan/${c.portal_token}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="piecework-touch-btn"
-                      style={{ background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1" }}
-                    >
-                      📄 Mở PDF
-                    </a>
-
-                    <button
-                      style={{ background: !c.is_signed_by_worker ? "#94a3b8" : (c.is_signed_by_inut ? "#0369a1" : "#0284c7"), color: "#fff", cursor: !c.is_signed_by_worker ? "not-allowed" : "pointer" }}
-                      disabled={actionLoading === c.id || !c.is_signed_by_worker}
-                      onClick={() => openSigningModal(c)}
-                      title={!c.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
-                    >
-                      {actionLoading === c.id ? "Đang ký…" : (!c.is_signed_by_worker ? "⏳ Chờ thợ ký" : (c.is_signed_by_inut ? "✍️ Ký lại INUT" : "✍️ Ký số INUT"))}
-                    </button>
-
-                    <button
-                      className="piecework-touch-btn"
-                      style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
-                      onClick={() => handleAuditContract(c)}
-                    >
-                      🔍 Kiểm định
-                    </button>
-
-                    <button
-                      className="piecework-touch-btn"
-                      style={{ background: "#f8fafc", color: "#475569", border: "1px solid #cbd5e1" }}
-                      onClick={() => openDetail(c.id)}
-                    >
-                      👁️ Chi tiết HĐ
-                    </button>
-
-                    {c.is_signed_by_inut && (
-                      <button
-                        className="piecework-touch-btn"
-                        style={{ gridColumn: "1 / -1", background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
-                        onClick={() => handleVerifySignature(c)}
-                      >
-                        🛡️ Thẩm định Chữ ký số (Chuẩn Foxit / Thuế)
-                      </button>
-                    )}
-                    <button
-                      className="piecework-touch-btn"
-                      style={{
-                        gridColumn: "1 / -1",
-                        background: c.drive_synced_at ? "#ecfdf5" : "#eff6ff",
-                        color: c.drive_synced_at ? "#047857" : "#1d4ed8",
-                        border: c.drive_synced_at ? "1.5px solid #a7f3d0" : "1.5px solid #bfdbfe",
-                        fontWeight: 700,
-                      }}
-                      disabled={syncingDriveId === c.id}
-                      onClick={() => handleSyncDrive(c)}
-                    >
-                      {syncingDriveId === c.id
-                        ? "⏳ Đang sync Drive..."
-                        : c.drive_synced_at
-                        ? "☁️ ✓ Đã sync Drive Kế toán"
-                        : "☁️ Đồng bộ lên Drive Kế toán"}
-                    </button>
-                    {c.drive_link && (
-                      <a
-                        href={c.drive_link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="piecework-touch-btn"
-                        style={{
-                          gridColumn: "1 / -1",
-                          background: "#2563eb",
-                          color: "#fff",
-                          fontWeight: 700,
-                          textAlign: "center",
-                          textDecoration: "none",
-                        }}
-                      >
-                        📁 Mở Thư Mục Trên Google Drive
-                      </a>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-      </div>
+              }
+            />
+          )}
+        </div>
       )}
 
       {/* TAB 2: CONTRACTORS / SUPPLIERS VIEW */}
@@ -1288,52 +1339,53 @@ export function PieceworkContracts() {
         <div data-testid="piecework-contractors-view">
           {/* Metrics Cards for Contractors */}
           <div className="piecework-metrics-grid">
-            <div className="piecework-metric-card">
-              <div style={{ color: "#64748b", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>Tổng số nhà cung cấp/thợ</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>{contractors.length}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Đã định danh CCCD & MST</div>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+              <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>Tổng số nhà cung cấp/thợ</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--ink)", marginTop: 4 }}>{contractors.length}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Đã định danh CCCD & MST</div>
             </div>
 
-            <div className="piecework-metric-card" style={{ borderColor: "#bae6fd" }}>
-              <div style={{ color: "#0369a1", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>📦 Hợp đồng đã giao</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#0369a1", marginTop: 4 }}>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: INUT_BORDER_PRIMARY }}>
+              <div style={{ color: "var(--primary-dark)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>📦 Hợp đồng đã giao</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "var(--primary-dark)", marginTop: 4 }}>
                 {contractors.reduce((s, c) => s + (c.contracts_count || 0), 0)}
               </div>
-              <div style={{ fontSize: 12, color: "#0284c7", marginTop: 2 }}>Tổng số lượt khoán việc</div>
+              <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 2 }}>Tổng số lượt khoán việc</div>
             </div>
 
-            <div className="piecework-metric-card" style={{ borderColor: "#bbf7d0" }}>
-              <div style={{ color: "#15803d", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>💰 Tổng thù lao chi trả (Gross)</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#15803d", marginTop: 4 }}>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: INUT_BORDER_SUCCESS }}>
+              <div style={{ color: "var(--ink-2)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>💰 Tổng thù lao chi trả (Gross)</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "var(--green)", marginTop: 4 }}>
                 {contractors.reduce((s, c) => s + (c.total_gross || 0), 0).toLocaleString("vi-VN")} đ
               </div>
-              <div style={{ fontSize: 12, color: "#16a34a", marginTop: 2 }}>Thực nhận (Net): {contractors.reduce((s, c) => s + (c.total_net || 0), 0).toLocaleString("vi-VN")} đ</div>
+              <div style={{ fontSize: 12, color: "var(--green)", marginTop: 2 }}>Thực nhận (Net): {contractors.reduce((s, c) => s + (c.total_net || 0), 0).toLocaleString("vi-VN")} đ</div>
             </div>
 
-            <div className="piecework-metric-card" style={{ borderColor: "#fed7aa" }}>
-              <div style={{ color: "#c2410c", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>⚖️ Thuế TNCN đã khấu trừ (10%)</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#c2410c", marginTop: 4 }}>
+            <div className="piecework-metric-card" style={{ background: "var(--panel)", borderColor: INUT_BORDER_WARN }}>
+              <div style={{ color: INUT_TEXT_WARN, fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>⚖️ Thuế TNCN đã khấu trừ (10%)</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "var(--coral)", marginTop: 4 }}>
                 {contractors.reduce((s, c) => s + (c.total_tax || 0), 0).toLocaleString("vi-VN")} đ
               </div>
-              <div style={{ fontSize: 12, color: "#ea580c", marginTop: 2 }}>Nộp NSNN (NĐ 253/2026)</div>
+              <div style={{ fontSize: 12, color: INUT_TEXT_WARN, marginTop: 2 }}>Nộp NSNN (NĐ 253/2026)</div>
             </div>
           </div>
 
           {/* Filter & Search Bar for Contractors */}
-          <div className="piecework-filter-bar">
-            <div style={{ display: "flex", gap: 8, flex: 1, minWidth: 260 }}>
+          <div className="piecework-filter-bar" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+            <div style={{ display: "flex", gap: 8, flex: 1, minWidth: 0 }}>
               <input
                 type="text"
+                className="ui-input"
                 placeholder="Tìm thợ theo họ tên, CCCD, MST cá nhân, SĐT, ngân hàng..."
                 value={contractorSearch}
                 onChange={(e) => setContractorSearch(e.target.value)}
-                style={{ flex: 1, padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13.5, minHeight: 42 }}
+                style={{ flex: 1, minWidth: 0 }}
               />
             </div>
             <button
               type="button"
               className="piecework-btn-create"
-              style={{ background: "#0f766e" }}
+              style={{ background: "var(--primary-dark)", color: "#ffffff" }}
               onClick={() => {
                 setContractorForm({
                   code: "",
@@ -1358,7 +1410,7 @@ export function PieceworkContracts() {
             <button
               type="button"
               className="piecework-btn-create"
-              style={{ background: "#7c3aed" }}
+              style={{ background: "var(--gold)", color: "var(--ink)" }}
               onClick={() => {
                 setSmartPasteTarget("contractor");
                 setSmartPasteText("");
@@ -1369,279 +1421,335 @@ export function PieceworkContracts() {
             </button>
           </div>
 
-          {/* Contractors Content: Desktop Table & Mobile Cards */}
+          {/* Contractors Content: Desktop Table & Mobile Cards via DataView */}
           {contractorLoading ? (
-            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 40, textAlign: "center", color: "#64748b" }}>
+            <div style={{ background: "var(--panel)", borderRadius: 14, border: "1px solid var(--border)", padding: 40, textAlign: "center", color: "var(--muted)" }}>
               Đang tải danh bạ nhà cung cấp khoán...
             </div>
           ) : contractors.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: 40, textAlign: "center", color: "#64748b" }}>
+            <div style={{ background: "var(--panel)", borderRadius: 14, border: "1px solid var(--border)", padding: 40, textAlign: "center", color: "var(--muted)" }}>
               Chưa có nhà cung cấp / thợ khoán nào phù hợp. Bấm "Thêm Nhà Cung Cấp Mới" hoặc "Smart Paste" để thêm nhanh!
             </div>
           ) : (
-            <>
-              {/* Desktop Table for Contractors */}
-              <div className="piecework-desktop-table" data-testid="contractors-desktop-table">
-                <table>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", fontSize: 12.5, color: "#475569" }}>
-                      <th style={{ padding: "12px 16px" }}>Mã / Họ tên nhà cung cấp</th>
-                      <th style={{ padding: "12px 16px" }}>CCCD / Ngày cấp / Nơi cấp</th>
-                      <th style={{ padding: "12px 16px" }}>MST cá nhân / SĐT</th>
-                      <th style={{ padding: "12px 16px" }}>Tài khoản ngân hàng</th>
-                      <th style={{ padding: "12px 16px", textAlign: "right" }}>Hợp đồng / Thù lao (Gross)</th>
-                      <th style={{ padding: "12px 16px", textAlign: "center" }}>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {contractors.map((c) => (
-                      <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9", fontSize: 13.5 }}>
-                        <td style={{ padding: "14px 16px" }}>
-                          <div style={{ fontWeight: 800, color: "#0f172a" }}>{c.name}</div>
-                          <span style={{ display: "inline-block", marginTop: 4, padding: "2px 8px", borderRadius: 4, fontSize: 11, background: "#f0f9ff", color: "#0369a1", fontWeight: 700 }}>
-                            {c.code}
-                          </span>
-                          {c.skills && (
-                            <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>🛠️ {c.skills}</div>
-                          )}
-                        </td>
-
-                        <td style={{ padding: "14px 16px" }}>
-                          <div style={{ fontWeight: 700, color: "#0284c7" }}>CCCD: {c.id_card}</div>
-                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Ngày cấp: {c.id_card_date || "N/A"}</div>
-                          <div style={{ fontSize: 11.5, color: "#94a3b8" }}>{c.id_card_place || "Cục CSQLHC về TTXH"}</div>
-                        </td>
-
-                        <td style={{ padding: "14px 16px" }}>
-                          <div style={{ fontWeight: 700, color: c.tax_code ? "#15803d" : "#ea580c" }}>
-                            {c.tax_code ? `MST: ${c.tax_code}` : "Chưa có MST"}
-                          </div>
-                          <div style={{ fontSize: 12, color: "#334155", marginTop: 2 }}>📞 SĐT: {c.phone || "Chưa có"}</div>
-                          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2, maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.address}>
-                            📍 {c.address || "Chưa có địa chỉ"}
-                          </div>
-                        </td>
-
-                        <td style={{ padding: "14px 16px" }}>
-                          <div style={{ fontWeight: 700, color: "#0f172a" }}>{c.bank_account}</div>
-                          <div style={{ fontSize: 12, color: "#0284c7", fontWeight: 600 }}>{c.bank_name}</div>
-                          <div style={{ fontSize: 11, color: "#16a34a", marginTop: 2 }}>✓ Đủ điều kiện chi Techcombank 79713</div>
-                        </td>
-
-                        <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                          <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14.5 }}>
-                            {c.total_gross?.toLocaleString("vi-VN")} đ
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "#0369a1", marginTop: 2 }}>
-                            <b>{c.contracts_count}</b> hợp đồng khoán
-                          </div>
-                          {c.total_tax > 0 ? (
-                            <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2 }}>
-                              Thuế TNCN: -{c.total_tax?.toLocaleString("vi-VN")} đ
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 11, color: "#16a34a", marginTop: 2 }}>Miễn trừ thuế TNCN</div>
-                          )}
-                        </td>
-
-                        <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 150 }}>
-                            <button
-                              type="button"
-                              className="piecework-btn-create"
-                              style={{ background: "#0284c7", padding: "6px 10px", fontSize: 12, minHeight: 34 }}
-                              onClick={() => handleCreateContractForContractor(c)}
-                              title="Tạo hợp đồng khoán mới cho nhà cung cấp này (tự điền 100%)"
-                            >
-                              ＋ Tạo HĐ Khoán
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary"
-                              style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 6, background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", fontWeight: 700 }}
-                              onClick={() => handleOpenTaxSummary(c.id)}
-                              title="Xem bảng kê quyết toán & khấu trừ thuế TNCN để hỗ trợ thợ hoàn thuế"
-                            >
-                              📊 Quyết Toán Thuế
-                            </button>
-                            <div style={{ display: "flex", gap: 4 }}>
-                              <button
-                                type="button"
-                                style={{ flex: 1, fontSize: 11.5, padding: "4px 8px", borderRadius: 6, background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", cursor: "pointer" }}
-                                onClick={() => {
-                                  setContractorForm({
-                                    code: c.code,
-                                    name: c.name,
-                                    id_card: c.id_card,
-                                    id_card_date: c.id_card_date,
-                                    id_card_place: c.id_card_place,
-                                    tax_code: c.tax_code,
-                                    phone: c.phone,
-                                    address: c.address,
-                                    bank_account: c.bank_account,
-                                    bank_name: c.bank_name,
-                                    skills: c.skills,
-                                    notes: c.notes,
-                                  });
-                                  setEditingContractor(c);
-                                  setShowContractorModal(true);
-                                }}
-                              >
-                                ✏️ Sửa
-                              </button>
-                              <button
-                                type="button"
-                                style={{ flex: 1, fontSize: 11.5, padding: "4px 8px", borderRadius: 6, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", cursor: "pointer" }}
-                                onClick={() => handleDeleteContractor(c)}
-                              >
-                                🗑️ Xóa
-                              </button>
-                            </div>
-                          </div>
-                        </td>
+            <DataView
+              mobileMode="card"
+              desktop={
+                <div className="piecework-desktop-table" data-testid="contractors-desktop-table" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+                  <table>
+                    <thead>
+                      <tr style={{ background: "var(--surface-subtle)", borderBottom: "1px solid var(--border)", fontSize: 12.5, color: "var(--ink-2)" }}>
+                        <th style={{ padding: "12px 16px" }}>Mã / Họ tên nhà cung cấp</th>
+                        <th style={{ padding: "12px 16px" }}>CCCD / Ngày cấp / Nơi cấp</th>
+                        <th style={{ padding: "12px 16px" }}>MST cá nhân / SĐT</th>
+                        <th style={{ padding: "12px 16px" }}>Tài khoản ngân hàng</th>
+                        <th style={{ padding: "12px 16px", textAlign: "right" }}>Hợp đồng / Thù lao (Gross)</th>
+                        <th style={{ padding: "12px 16px", textAlign: "center" }}>Thao tác</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {contractors.map((c) => (
+                        <tr key={c.id} style={{ borderBottom: "1px solid var(--border)", fontSize: 13.5 }}>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 800, color: "var(--ink)" }}>{c.name}</div>
+                            <span style={{ display: "inline-block", marginTop: 4, padding: "2px 8px", borderRadius: 4, fontSize: 11, background: "var(--primary-soft)", color: "var(--primary-dark)", fontWeight: 700 }}>
+                              {c.code}
+                            </span>
+                            {c.skills && (
+                              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>🛠️ {c.skills}</div>
+                            )}
+                          </td>
 
-              {/* Mobile Cards for Contractors */}
-              <div className="piecework-mobile-cards" data-testid="contractors-mobile-cards">
-                {contractors.map((c) => (
-                  <div key={c.id} className="piecework-mobile-card">
-                    <div className="piecework-mobile-card-header">
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>{c.name}</div>
-                        <div style={{ fontSize: 12, color: "#0284c7", fontWeight: 700, marginTop: 2 }}>{c.code}</div>
-                      </div>
-                      <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: "#dcfce7", color: "#166534" }}>
-                        {c.contracts_count} HĐ Khoán
-                      </span>
-                    </div>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 700, color: "var(--primary-dark)" }}>CCCD: {c.id_card}</div>
+                            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Ngày cấp: {c.id_card_date || "N/A"}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{c.id_card_place || "Cục CSQLHC về TTXH"}</div>
+                          </td>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>Số CCCD:</span>
-                        <span style={{ fontWeight: 700, color: "#0284c7" }}>{c.id_card}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>Mã số thuế:</span>
-                        <span style={{ fontWeight: 600, color: c.tax_code ? "#166534" : "#ea580c" }}>{c.tax_code || "Chưa có"}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>Số điện thoại:</span>
-                        <span style={{ color: "#334155" }}>{c.phone || "N/A"}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#64748b" }}>STK thụ hưởng:</span>
-                        <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.bank_account} ({c.bank_name})</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e2e8f0", paddingTop: 6 }}>
-                        <span style={{ fontWeight: 700, color: "#0f172a" }}>Tổng thù lao (Gross):</span>
-                        <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{c.total_gross?.toLocaleString("vi-VN")} đ</span>
-                      </div>
-                    </div>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 700, color: c.tax_code ? "var(--green)" : INUT_TEXT_WARN }}>
+                              {c.tax_code ? `MST: ${c.tax_code}` : "Chưa có MST"}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text)", marginTop: 2 }}>📞 SĐT: {c.phone || "Chưa có"}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={c.address}>
+                              📍 {c.address || "Chưa có địa chỉ"}
+                            </div>
+                          </td>
 
-                    {/* Mobile Touch Action Grid */}
-                    <div className="piecework-mobile-action-grid">
-                      <button
-                        type="button"
-                        className="piecework-touch-btn"
-                        style={{ background: "#0284c7", color: "#fff", gridColumn: "1 / -1" }}
-                        onClick={() => handleCreateContractForContractor(c)}
-                      >
-                        ＋ Tạo Hợp Đồng Khoán Cho Thợ Này
-                      </button>
-                      <button
-                        type="button"
-                        className="piecework-touch-btn"
-                        style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", fontWeight: 700 }}
-                        onClick={() => handleOpenTaxSummary(c.id)}
-                      >
-                        📊 Quyết Toán Thuế
-                      </button>
-                      <button
-                        type="button"
-                        className="piecework-touch-btn"
-                        style={{ background: "#f8fafc", color: "#475569", border: "1px solid #cbd5e1" }}
-                        onClick={() => {
-                          setContractorForm({
-                            code: c.code,
-                            name: c.name,
-                            id_card: c.id_card,
-                            id_card_date: c.id_card_date,
-                            id_card_place: c.id_card_place,
-                            tax_code: c.tax_code,
-                            phone: c.phone,
-                            address: c.address,
-                            bank_account: c.bank_account,
-                            bank_name: c.bank_name,
-                            skills: c.skills,
-                            notes: c.notes,
-                          });
-                          setEditingContractor(c);
-                          setShowContractorModal(true);
-                        }}
-                      >
-                        ✏️ Sửa Hồ Sơ
-                      </button>
+                          <td style={{ padding: "14px 16px" }}>
+                            <div style={{ fontWeight: 700, color: "var(--ink)" }}>{c.bank_account}</div>
+                            <div style={{ fontSize: 12, color: "var(--primary-dark)", fontWeight: 600 }}>{c.bank_name}</div>
+                            <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2 }}>✓ Đủ điều kiện chi Techcombank 79713</div>
+                          </td>
+
+                          <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                            <div style={{ fontWeight: 800, color: "var(--ink)", fontSize: 14.5 }}>
+                              {c.total_gross?.toLocaleString("vi-VN")} đ
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "var(--primary-dark)", marginTop: 2 }}>
+                              <b>{c.contracts_count}</b> hợp đồng khoán
+                            </div>
+                            {c.total_tax > 0 ? (
+                              <div style={{ fontSize: 11, color: INUT_TEXT_WARN, marginTop: 2 }}>
+                                Thuế TNCN: -{c.total_tax?.toLocaleString("vi-VN")} đ
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2 }}>Miễn trừ thuế TNCN</div>
+                            )}
+                          </td>
+
+                          <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 150 }}>
+                              <button
+                                type="button"
+                                className="ui-btn-chip"
+                                style={{ background: "var(--primary)", color: "#ffffff", borderColor: "transparent" }}
+                                onClick={() => handleCreateContractForContractor(c)}
+                                title="Tạo hợp đồng khoán mới cho nhà cung cấp này (tự điền 100%)"
+                              >
+                                ＋ Tạo HĐ Khoán
+                              </button>
+                              <button
+                                type="button"
+                                className="ui-btn-chip"
+                                style={{ background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}
+                                onClick={() => handleOpenTaxSummary(c.id)}
+                                title="Xem bảng kê quyết toán & khấu trừ thuế TNCN để hỗ trợ thợ hoàn thuế"
+                              >
+                                📊 Quyết Toán Thuế
+                              </button>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button
+                                  type="button"
+                                  className="ui-btn-chip"
+                                  style={{ flex: 1, padding: "4px 8px", background: "var(--paper)", color: "var(--ink-2)", borderColor: "var(--border-strong)" }}
+                                  onClick={() => {
+                                    setContractorForm({
+                                      code: c.code,
+                                      name: c.name,
+                                      id_card: c.id_card,
+                                      id_card_date: c.id_card_date,
+                                      id_card_place: c.id_card_place,
+                                      tax_code: c.tax_code,
+                                      phone: c.phone,
+                                      address: c.address,
+                                      bank_account: c.bank_account,
+                                      bank_name: c.bank_name,
+                                      skills: c.skills,
+                                      notes: c.notes,
+                                    });
+                                    setEditingContractor(c);
+                                    setShowContractorModal(true);
+                                  }}
+                                >
+                                  ✏️ Sửa
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ui-btn-chip"
+                                  style={{ flex: 1, padding: "4px 8px", background: "var(--red-soft)", color: INUT_TEXT_DANGER, borderColor: INUT_BORDER_DANGER }}
+                                  onClick={() => handleDeleteContractor(c)}
+                                >
+                                  🗑️ Xóa
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+              mobileCards={
+                <div className="piecework-mobile-cards ui-mobile-card-list" data-testid="contractors-mobile-cards" style={{ display: "grid", gap: 12 }}>
+                  {contractors.map((c) => (
+                    <div key={c.id} className="piecework-mobile-card ui-mobile-card" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+                      <div className="piecework-mobile-card-header" style={{ borderBottomColor: "var(--border)" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15, color: "var(--ink)" }}>{c.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--primary-dark)", fontWeight: 700, marginTop: 2 }}>{c.code}</div>
+                        </div>
+                        <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, background: "var(--green-soft)", color: "var(--ink-2)" }}>
+                          {c.contracts_count} HĐ Khoán
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ color: "var(--muted)" }}>Số CCCD:</span>
+                          <span style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{c.id_card}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ color: "var(--muted)" }}>Mã số thuế:</span>
+                          <span style={{ fontWeight: 600, color: c.tax_code ? "var(--green)" : INUT_TEXT_WARN }}>{c.tax_code || "Chưa có"}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ color: "var(--muted)" }}>Số điện thoại:</span>
+                          <span style={{ color: "var(--text)" }}>{c.phone || "N/A"}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ color: "var(--muted)" }}>STK thụ hưởng:</span>
+                          <span style={{ color: "var(--primary-dark)", fontWeight: 600, textAlign: "right" }}>{c.bank_account} ({c.bank_name})</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed var(--border)", paddingTop: 6 }}>
+                          <span style={{ fontWeight: 700, color: "var(--ink)" }}>Tổng thù lao (Gross):</span>
+                          <span style={{ fontWeight: 800, color: "var(--ink)", fontSize: 15 }}>{c.total_gross?.toLocaleString("vi-VN")} đ</span>
+                        </div>
+                      </div>
+
+                      {/* Mobile Touch Action Grid */}
+                      <div className="piecework-mobile-action-grid">
+                        <button
+                          type="button"
+                          className="piecework-touch-btn"
+                          style={{ background: "var(--primary)", color: "#ffffff", gridColumn: "1 / -1" }}
+                          onClick={() => handleCreateContractForContractor(c)}
+                        >
+                          ＋ Tạo Hợp Đồng Khoán Cho Thợ Này
+                        </button>
+                        <button
+                          type="button"
+                          className="piecework-touch-btn"
+                          style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: "1px solid var(--green)", fontWeight: 700 }}
+                          onClick={() => handleOpenTaxSummary(c.id)}
+                        >
+                          📊 Quyết Toán Thuế
+                        </button>
+                        <button
+                          type="button"
+                          className="piecework-touch-btn"
+                          style={{ background: "var(--surface-subtle)", color: "var(--ink-2)", border: "1px solid var(--border-strong)" }}
+                          onClick={() => {
+                            setContractorForm({
+                              code: c.code,
+                              name: c.name,
+                              id_card: c.id_card,
+                              id_card_date: c.id_card_date,
+                              id_card_place: c.id_card_place,
+                              tax_code: c.tax_code,
+                              phone: c.phone,
+                              address: c.address,
+                              bank_account: c.bank_account,
+                              bank_name: c.bank_name,
+                              skills: c.skills,
+                              notes: c.notes,
+                            });
+                            setEditingContractor(c);
+                            setShowContractorModal(true);
+                          }}
+                        >
+                          ✏️ Sửa Hồ Sơ
+                        </button>
+                        <button
+                          type="button"
+                          className="piecework-touch-btn"
+                          style={{ gridColumn: "1 / -1", background: "var(--red-soft)", color: INUT_TEXT_DANGER, border: `1px solid ${INUT_BORDER_DANGER}` }}
+                          onClick={() => handleDeleteContractor(c)}
+                        >
+                          🗑️ Xóa Nhà Cung Cấp
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </>
+                  ))}
+                </div>
+              }
+            />
           )}
         </div>
       )}
       {/* Modal Detail & Deficiency Checklist */}
-      {selectedDetail && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 14 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Chi tiết Hồ sơ & Deficiency Checklist</h3>
-                <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-                  Hợp đồng số: <b>{selectedDetail.contract_code}</b> · {selectedDetail.project_name}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  className="secondary"
-                  style={{ fontSize: 12, padding: "6px 12px", minHeight: 36 }}
-                  onClick={() => openEditContract(selectedDetail.id)}
-                >
-                  ✏️ Sửa HĐ
-                </button>
-                <button
-                  className="secondary"
-                  style={{ fontSize: 12, padding: "6px 12px", background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", minHeight: 36 }}
-                  onClick={() => handleAuditContract(selectedDetail)}
-                >
-                  🔍 Kiểm định
-                </button>
-                <button
-                  style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={() => setSelectedDetail(null)}
-                >
-                  ✕
-                </button>
-              </div>
+      <AppModal
+        open={Boolean(selectedDetail)}
+        onClose={() => setSelectedDetail(null)}
+        size="lg"
+        title="Chi tiết Hồ sơ & Deficiency Checklist"
+        subtitle={
+          selectedDetail ? (
+            <>
+              Hợp đồng số: <b>{selectedDetail.contract_code}</b> · {selectedDetail.project_name}
+            </>
+          ) : undefined
+        }
+        footer={
+          selectedDetail && (
+            <>
+              <button type="button" className="secondary" onClick={() => setSelectedDetail(null)}>
+                Đóng
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: "1.5px solid var(--green)", fontWeight: 700 }}
+                onClick={() => setShareModal({ contract: selectedDetail, tab: selectedDetail.is_signed_by_inut ? "signed" : "unsigned" })}
+              >
+                📤 Chia sẻ PDF (Đã ký / Chưa ký)
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: `1px solid ${INUT_BORDER_SUCCESS}`, fontWeight: 600 }}
+                onClick={() => handleVerifySignature(selectedDetail)}
+              >
+                🛡️ Thẩm định Chữ ký số
+              </button>
+              <button
+                type="button"
+                className="primary"
+                style={{ background: !selectedDetail.is_signed_by_worker ? "var(--muted)" : (selectedDetail.is_signed_by_inut ? "var(--primary-dark)" : "var(--primary)"), color: "#ffffff", fontWeight: 600, cursor: !selectedDetail.is_signed_by_worker ? "not-allowed" : "pointer" }}
+                disabled={!selectedDetail.is_signed_by_worker}
+                onClick={() => openSigningModal(selectedDetail)}
+                title={!selectedDetail.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
+              >
+                {!selectedDetail.is_signed_by_worker ? "⏳ Chờ Bên B ký trước" : (selectedDetail.is_signed_by_inut ? "✍️ Ký lại số INUT" : "✍️ Ký số Bên A (INUT)")}
+              </button>
+              <a
+                href={safeHttpUrl(`/api/public/khoan/${selectedDetail.portal_token}/pdf`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="secondary"
+                style={{ textDecoration: "none", color: "var(--text)", background: "var(--paper)", border: "1px solid var(--border-strong)", fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "8px 14px", borderRadius: 10 }}
+              >
+                📄 Mở PDF
+              </a>
+            </>
+          )
+        }
+      >
+        {selectedDetail && (
+          <div>
+            {/* Quick header actions */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", marginBottom: 14 }}>
+              <button
+                type="button"
+                className="ui-btn-chip"
+                onClick={() => openEditContract(selectedDetail.id)}
+              >
+                ✏️ Sửa HĐ
+              </button>
+              <button
+                type="button"
+                className="ui-btn-chip"
+                style={{ background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}
+                onClick={() => handleAuditContract(selectedDetail)}
+              >
+                🔍 Kiểm định
+              </button>
             </div>
 
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#334155", marginBottom: 8 }}>Trạng thái Checklist hồ sơ thiếu:</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Trạng thái Checklist hồ sơ thiếu:</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {selectedDetail.deficiency.checklist.map((chk) => (
-                  <div key={chk.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, background: chk.ok ? "#f0fdf4" : "#fef2f2", border: `1px solid ${chk.ok ? "#bbf7d0" : "#fecaca"}` }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13.5, color: chk.ok ? "#166534" : "#991b1b" }}>{chk.label}</div>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{chk.detail}</div>
+                  <div key={chk.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "10px 14px", borderRadius: 10, background: chk.ok ? "var(--green-soft)" : "var(--red-soft)", border: `1px solid ${chk.ok ? INUT_BORDER_SUCCESS : INUT_BORDER_DANGER}` }}>
+                    <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13.5, color: chk.ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>{chk.label}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{chk.detail}</div>
                     </div>
                     {/* Toggle button for manual checklist items */}
                     {chk.key === "acceptance" && (
                       <button
-                        className="secondary"
-                        style={{ fontSize: 12, padding: "4px 10px", minHeight: 36 }}
+                        type="button"
+                        className="ui-btn-chip"
                         onClick={() => toggleChecklist(selectedDetail.id, "has_acceptance", selectedDetail.has_acceptance)}
                       >
                         {selectedDetail.has_acceptance ? "Bỏ nghiệm thu" : "✓ Duyệt nghiệm thu"}
@@ -1649,8 +1757,8 @@ export function PieceworkContracts() {
                     )}
                     {chk.key === "bank_unc" && (
                       <button
-                        className="secondary"
-                        style={{ fontSize: 12, padding: "4px 10px", minHeight: 36 }}
+                        type="button"
+                        className="ui-btn-chip"
                         onClick={() => toggleChecklist(selectedDetail.id, "has_bank_proof", selectedDetail.has_bank_proof)}
                       >
                         {selectedDetail.has_bank_proof ? "Bỏ kẹp UNC" : "✓ Kẹp UNC Techcombank"}
@@ -1662,34 +1770,34 @@ export function PieceworkContracts() {
 
               {/* Worker Signature & eKYC Selfie Verification View */}
               {selectedDetail.worker_signature_data && (
-                <div style={{ marginTop: 18, padding: 14, background: "#f8fafc", borderRadius: 12, border: "1px solid #cbd5e1" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                <div style={{ marginTop: 18, padding: 14, background: "var(--surface-subtle)", borderRadius: 12, border: "1px solid var(--border-strong)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
                       ✍️ Bằng Chứng Xác Thực Ký Điện Tử & Chân Dung eKYC của Thợ:
                     </div>
-                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#dcfce7", color: "#166534", fontWeight: 700 }}>
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--green-soft)", color: "var(--ink-2)", fontWeight: 700 }}>
                       ✓ Đã xác thực
                     </span>
                   </div>
 
                   <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
                     <div>
-                      <div style={{ fontSize: 11.5, color: "#64748b", marginBottom: 4, fontWeight: 600 }}>Chữ ký tay cảm ứng:</div>
-                      <img src={selectedDetail.worker_signature_data} style={{ maxHeight: 75, maxWidth: 200, border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", padding: 4 }} alt="Chữ ký thợ" />
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Ký lúc: {selectedDetail.worker_signed_at || "N/A"}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>Chữ ký tay cảm ứng:</div>
+                      <img src={selectedDetail.worker_signature_data} style={{ maxHeight: 75, maxWidth: 200, border: "1px solid var(--border-strong)", borderRadius: 6, background: "var(--panel)", padding: 4 }} alt="Chữ ký thợ" />
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Ký lúc: {selectedDetail.worker_signed_at || "N/A"}</div>
                     </div>
 
                     {(selectedDetail.worker_face_photo_data || selectedDetail.attachments?.worker_face) && (
                       <div>
-                        <div style={{ fontSize: 11.5, color: "#64748b", marginBottom: 4, fontWeight: 600 }}>Ảnh chân dung eKYC chụp lúc ký:</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>Ảnh chân dung eKYC chụp lúc ký:</div>
                         <img
                           src={selectedDetail.worker_face_photo_data || selectedDetail.attachments?.worker_face?.url}
                           alt="Ảnh chân dung eKYC"
                           onClick={() => openPreview(selectedDetail.attachments?.worker_face || { url: selectedDetail.worker_face_photo_data, label: "Ảnh chụp chân dung thợ lúc ký" }, `Chân dung eKYC - ${selectedDetail.worker_name}`)}
-                          style={{ width: 75, height: 95, objectFit: "cover", borderRadius: 8, border: "2px solid #0284c7", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}
+                          style={{ width: 75, height: 95, objectFit: "cover", borderRadius: 8, border: "2px solid var(--primary)", cursor: "pointer", boxShadow: "var(--shadow)" }}
                           title="Bấm để xem ảnh phóng to"
                         />
-                        <div style={{ fontSize: 11, color: "#166534", fontWeight: 600, marginTop: 4 }}>
+                        <div style={{ fontSize: 11, color: "var(--green)", fontWeight: 600, marginTop: 4 }}>
                           ✓ Camera định danh
                         </div>
                       </div>
@@ -1700,28 +1808,28 @@ export function PieceworkContracts() {
 
               {/* Bên A: Con dấu ký số điện tử snap lại trên PDF */}
               {selectedDetail.is_signed_by_inut && (
-                <div style={{ marginTop: 14, padding: 14, background: "#f0fdf4", borderRadius: 12, border: "1.5px solid #86efac" }}>
+                <div style={{ marginTop: 14, padding: 14, background: "var(--green-soft)", borderRadius: 12, border: "1.5px solid var(--green)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-2)" }}>
                       🛡️ Chữ Ký Số Doanh Nghiệp Bên A (INUT Technology) — Bản Snap Trên PDF:
                     </div>
-                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#dcfce7", color: "#15803d", fontWeight: 700 }}>
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--panel)", color: "var(--green)", fontWeight: 700, border: `1px solid ${INUT_BORDER_SUCCESS}` }}>
                       ✓ Đã đóng dấu số điện tử
                     </span>
                   </div>
 
-                  <div style={{ background: "#fff", border: "2px solid #16a34a", borderRadius: 8, padding: "10px 14px", color: "#166534", fontSize: 12, lineHeight: 1.5, boxShadow: "0 1px 4px rgba(22,163,74,0.12)" }}>
-                    <div style={{ fontWeight: 800, fontSize: 12.5, color: "#15803d", borderBottom: "1px dashed #86efac", paddingBottom: 4, marginBottom: 6 }}>
+                  <div style={{ background: "var(--panel)", border: "2px solid var(--green)", borderRadius: 8, padding: "10px 14px", color: "var(--ink-2)", fontSize: 12, lineHeight: 1.5, boxShadow: "var(--shadow)" }}>
+                    <div style={{ fontWeight: 800, fontSize: 12.5, color: "var(--green)", borderBottom: `1px dashed ${INUT_BORDER_SUCCESS}`, paddingBottom: 4, marginBottom: 6 }}>
                       ✓ KÝ SỐ ĐIỆN TỬ BỞI: CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "4px 14px" }}>
-                      <div><b>Mã số thuế:</b> 4401053694</div>
-                      <div><b>Đơn vị cấp CA:</b> WINCA / CÔNG TY TNHH WINGROUP</div>
-                      <div><b>Ngày cấp chứng thư:</b> 15/06/2024 (Hạn dùng: 15/06/2027)</div>
-                      <div><b>Ngày giờ ký điện tử (/M):</b> <span style={{ color: "#0284c7", fontWeight: 700 }}>{formatDateTimeWithSeconds(selectedDetail.inut_signed_at)}</span></div>
-                      <div style={{ gridColumn: "1 / -1", wordBreak: "break-all" }}><b>Số sê-ri:</b> <span style={{ fontFamily: "monospace", fontSize: 11 }}>540116541CB8AAF5...</span></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "4px 14px", minWidth: 0 }}>
+                      <div style={{ minWidth: 0 }}><b>Mã số thuế:</b> 4401053694</div>
+                      <div style={{ minWidth: 0 }}><b>Đơn vị cấp CA:</b> WINCA / CÔNG TY TNHH WINGROUP</div>
+                      <div style={{ minWidth: 0 }}><b>Ngày cấp chứng thư:</b> 15/06/2024 (Hạn dùng: 15/06/2027)</div>
+                      <div style={{ minWidth: 0 }}><b>Ngày giờ ký điện tử (/M):</b> <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{formatDateTimeWithSeconds(selectedDetail.inut_signed_at)}</span></div>
+                      <div style={{ gridColumn: "1 / -1", wordBreak: "break-all", minWidth: 0 }}><b>Số sê-ri:</b> <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>540116541CB8AAF5...</span></div>
                     </div>
-                    <div style={{ fontSize: 10.5, color: "#15803d", marginTop: 6, borderTop: "1px solid #dcfce7", paddingTop: 4 }}>
+                    <div style={{ fontSize: 10.5, color: "var(--green)", marginTop: 6, borderTop: `1px solid ${INUT_BORDER_SUCCESS}`, paddingTop: 4 }}>
                       ✓ Chữ ký số PAdES toàn vẹn, hiển thị đúng dấu tích xanh trên Foxit Reader & Adobe Acrobat
                     </div>
                   </div>
@@ -1730,15 +1838,15 @@ export function PieceworkContracts() {
             </div>
 
             {/* Vùng Upload & Quản lý chứng từ trực tiếp */}
-            <div style={{ marginTop: 20, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#334155" }}>
+            <div style={{ marginTop: 20, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                   📁 Chứng từ Đính kèm & Tự động Kiểm định Tính Hợp lệ:
                 </div>
-                <span style={{ fontSize: 12, color: "#64748b" }}>Hỗ trợ JPG, PNG, PDF</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>Hỗ trợ JPG, PNG, PDF</span>
               </div>
 
-              <div className="piecework-grid-2col">
+              <FormGrid cols={2}>
                 {/* 1. CCCD Mặt trước */}
                 <DocumentCard
                   title="CCCD Mặt trước"
@@ -1805,19 +1913,19 @@ export function PieceworkContracts() {
                 />
 
                 {/* 6. Ảnh hiện trường / Kiosk (Multi-photos) */}
-                <div style={{ background: "#f8fafc", padding: 12, borderRadius: 12, border: "1px solid #e2e8f0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>Ảnh hiện trường thi công</div>
-                      <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 1 }}>Chụp rõ thiết bị, tủ điện hoặc Kiosk tại công trình</div>
+                <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 12, border: "1px solid var(--border)", minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>Ảnh hiện trường thi công</div>
+                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>Chụp rõ thiết bị, tủ điện hoặc Kiosk tại công trình</div>
                     </div>
-                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: (selectedDetail.attachments?.site_photos?.length || 0) > 0 ? "#dcfce7" : "#fee2e2", color: (selectedDetail.attachments?.site_photos?.length || 0) > 0 ? "#166534" : "#991b1b", fontWeight: 600 }}>
+                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: (selectedDetail.attachments?.site_photos?.length || 0) > 0 ? "var(--green-soft)" : "var(--red-soft)", color: (selectedDetail.attachments?.site_photos?.length || 0) > 0 ? "var(--ink-2)" : INUT_TEXT_DANGER, fontWeight: 600, flexShrink: 0 }}>
                       {(selectedDetail.attachments?.site_photos?.length || 0) > 0 ? `✓ Có ${selectedDetail.attachments?.site_photos?.length} ảnh` : "Chưa có ảnh"}
                     </span>
                   </div>
 
                   <div style={{ marginTop: 10, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "#0284c7", color: "#fff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 40, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "var(--primary)", color: "#ffffff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <span>🖼️</span>
                       <span>{uploadingKind === "site_photo" ? "Đang tải…" : "＋ Chọn ảnh từ thư viện / Tải tệp"}</span>
                       <input
@@ -1838,13 +1946,13 @@ export function PieceworkContracts() {
                   </div>
 
                   {selectedDetail.attachments?.site_photos && selectedDetail.attachments.site_photos.length > 0 && (
-                    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                       {selectedDetail.attachments.site_photos.map((photo, idx) => (
-                        <div key={photo.doc_id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                        <div key={photo.doc_id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--panel)", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
                           {photo.is_pdf ? (
                             <div
                               onClick={() => openPreview(photo, `Tệp hiện trường #${idx + 1} - ${selectedDetail.contract_code}`)}
-                              style={{ width: 44, height: 44, borderRadius: 6, background: "#fee2e2", color: "#dc2626", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 10, cursor: "pointer", flexShrink: 0 }}
+                              style={{ width: 44, height: 44, borderRadius: 6, background: "var(--red-soft)", color: INUT_TEXT_DANGER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 10, cursor: "pointer", flexShrink: 0 }}
                             >
                               <span>📄</span>
                               <span>PDF</span>
@@ -1854,19 +1962,21 @@ export function PieceworkContracts() {
                               src={photo.url}
                               alt={photo.label}
                               onClick={() => openPreview(photo, `Ảnh hiện trường #${idx + 1} - ${selectedDetail.contract_code}`)}
-                              style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #cbd5e1", cursor: "pointer", flexShrink: 0 }}
+                              style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border-strong)", cursor: "pointer", flexShrink: 0 }}
                             />
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.label}</div>
-                            <div style={{ fontSize: 11, color: photo.validation?.valid ? "#166534" : "#dc2626" }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.label}</div>
+                            <div style={{ fontSize: 11, color: photo.validation?.valid ? "var(--green)" : INUT_TEXT_DANGER }}>
                               {photo.validation?.dimensions || (photo.validation?.valid ? "Hợp lệ" : "Lỗi tệp")}
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                             <button
                               type="button"
-                              style={{ background: "#e0f2fe", color: "#0284c7", border: "none", borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 12, fontWeight: 600, minHeight: 36, minWidth: 36 }}
+                              className="ui-btn-icon"
+                              aria-label="Xem ảnh phóng to"
+                              style={{ background: "var(--primary-soft)", color: "var(--primary-dark)", borderColor: INUT_BORDER_PRIMARY }}
                               onClick={() => openPreview(photo, `Ảnh hiện trường #${idx + 1} - ${selectedDetail.contract_code}`)}
                               title="Xem ảnh phóng to"
                             >
@@ -1874,7 +1984,9 @@ export function PieceworkContracts() {
                             </button>
                             <button
                               type="button"
-                              style={{ background: "#fee2e2", color: "#b91c1c", border: "none", borderRadius: 6, padding: "6px 8px", cursor: "pointer", fontSize: 12, minHeight: 36, minWidth: 36 }}
+                              className="ui-btn-icon"
+                              aria-label="Xóa ảnh này"
+                              style={{ background: "var(--red-soft)", color: INUT_TEXT_DANGER, borderColor: INUT_BORDER_DANGER }}
                               onClick={() => handleDeleteDoc(selectedDetail.id, "site_photo", photo.doc_id)}
                               title="Xóa ảnh này"
                             >
@@ -1886,35 +1998,35 @@ export function PieceworkContracts() {
                     </div>
                   )}
                 </div>
-              </div>
+              </FormGrid>
 
               {/* Google Drive Accountant Sync Section */}
-              <div style={{ marginTop: 18, padding: 14, background: selectedDetail.drive_synced_at ? "#ecfdf5" : "#f8fafc", borderRadius: 12, border: `1.5px solid ${selectedDetail.drive_synced_at ? "#a7f3d0" : "#cbd5e1"}` }}>
+              <div style={{ marginTop: 18, padding: 14, background: selectedDetail.drive_synced_at ? "var(--green-soft)" : "var(--surface-subtle)", borderRadius: 12, border: `1.5px solid ${selectedDetail.drive_synced_at ? INUT_BORDER_SUCCESS : "var(--border-strong)"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 18 }}>☁️</span>
                     <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>
                         Lưu Trữ Google Drive Kế Toán Theo Quý
                       </div>
-                      <div style={{ fontSize: 12, color: "#64748b" }}>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
                         Tự động phân loại theo thời điểm ký của HĐ vào thư mục Quý kế toán
                       </div>
                     </div>
                   </div>
                   {selectedDetail.drive_synced_at ? (
-                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "#dcfce7", color: "#166534", fontWeight: 700 }}>
+                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "var(--panel)", color: "var(--ink-2)", fontWeight: 700, border: `1px solid ${INUT_BORDER_SUCCESS}` }}>
                       ✓ Đã đồng bộ: {formatDateTimeWithSeconds(selectedDetail.drive_synced_at)}
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "#fef3c7", color: "#92400e", fontWeight: 700 }}>
+                    <span style={{ fontSize: 11.5, padding: "3px 8px", borderRadius: 6, background: "var(--amber-soft)", color: INUT_TEXT_WARN, fontWeight: 700 }}>
                       ⏳ Chưa đồng bộ Drive
                     </span>
                   )}
                 </div>
 
                 {selectedDetail.drive_folder && (
-                  <div style={{ fontSize: 12, background: "#fff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontFamily: "monospace", color: "#334155", marginBottom: 10, wordBreak: "break-all" }}>
+                  <div style={{ fontSize: 12, background: "var(--panel)", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", fontFamily: "var(--font-mono)", color: "var(--text)", marginBottom: 10, wordBreak: "break-all" }}>
                     📁 {selectedDetail.drive_folder}
                   </div>
                 )}
@@ -1922,16 +2034,11 @@ export function PieceworkContracts() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    className="secondary"
+                    className="ui-btn-chip"
                     style={{
-                      fontSize: 12.5,
-                      padding: "6px 12px",
-                      background: selectedDetail.drive_synced_at ? "#f0fdf4" : "#eff6ff",
-                      color: selectedDetail.drive_synced_at ? "#166534" : "#1d4ed8",
-                      border: selectedDetail.drive_synced_at ? "1px solid #bbf7d0" : "1px solid #bfdbfe",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      minHeight: 36,
+                      background: selectedDetail.drive_synced_at ? "var(--panel)" : "var(--primary-soft)",
+                      color: selectedDetail.drive_synced_at ? "var(--ink-2)" : "var(--primary-dark)",
+                      borderColor: selectedDetail.drive_synced_at ? INUT_BORDER_SUCCESS : INUT_BORDER_PRIMARY,
                     }}
                     disabled={syncingDriveId === selectedDetail.id}
                     onClick={() => handleSyncDrive(selectedDetail)}
@@ -1939,23 +2046,16 @@ export function PieceworkContracts() {
                     {syncingDriveId === selectedDetail.id ? "⏳ Đang sync Drive..." : (selectedDetail.drive_synced_at ? "☁️ Đồng bộ lại lên Drive" : "☁️ Đồng bộ lên Drive Kế toán")}
                   </button>
 
-                  {selectedDetail.drive_link && (
+                  {safeHttpUrl(selectedDetail.drive_link) && (
                     <a
-                      href={selectedDetail.drive_link}
+                      href={safeHttpUrl(selectedDetail.drive_link)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
+                      className="ui-btn-chip"
                       style={{
-                        fontSize: 12.5,
-                        padding: "6px 12px",
-                        background: "#2563eb",
-                        color: "#fff",
-                        borderRadius: 6,
-                        textDecoration: "none",
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        minHeight: 36,
+                        background: "var(--primary-dark)",
+                        color: "#ffffff",
+                        borderColor: "transparent",
                       }}
                     >
                       🚀 Mở Thư Mục Trên Google Drive
@@ -1964,116 +2064,38 @@ export function PieceworkContracts() {
                 </div>
               </div>
             </div>
-
-            <div className="piecework-modal-actions">
-              <button className="secondary" onClick={() => setSelectedDetail(null)}>Đóng</button>
-              <button
-                type="button"
-                className="secondary"
-                style={{ background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
-                onClick={() => setShareModal({ contract: selectedDetail, tab: selectedDetail.is_signed_by_inut ? "signed" : "unsigned" })}
-              >
-                📤 Chia sẻ PDF (Đã ký / Chưa ký)
-              </button>
-              <button
-                className="secondary"
-                style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", fontWeight: 600 }}
-                onClick={() => handleVerifySignature(selectedDetail)}
-              >
-                🛡️ Thẩm định Chữ ký số
-              </button>
-              <button
-                style={{ background: !selectedDetail.is_signed_by_worker ? "#94a3b8" : (selectedDetail.is_signed_by_inut ? "#0369a1" : "#0284c7"), fontWeight: 600, cursor: !selectedDetail.is_signed_by_worker ? "not-allowed" : "pointer" }}
-                disabled={!selectedDetail.is_signed_by_worker}
-                onClick={() => openSigningModal(selectedDetail)}
-                title={!selectedDetail.is_signed_by_worker ? "Chờ người nhận khoán (Bên B) ký online trước khi Bên A ký số" : undefined}
-              >
-                {!selectedDetail.is_signed_by_worker ? "⏳ Chờ Bên B ký trước" : (selectedDetail.is_signed_by_inut ? "✍️ Ký lại số INUT" : "✍️ Ký số Bên A (INUT)")}
-              </button>
-              <a
-                href={`/api/public/khoan/${selectedDetail.portal_token}/pdf`}
-                target="_blank"
-                rel="noreferrer"
-                className="secondary"
-                style={{ textDecoration: "none", color: "#334155", background: "#f1f5f9", border: "1px solid #cbd5e1", fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-              >
-                📄 Mở PDF
-              </a>
-            </div>
           </div>
-        </div>
-      )}
-
-      {/* Lightbox / Document Preview Modal */}
-      {previewDoc && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.85)", backdropFilter: "blur(6px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1050, padding: 10 }}>
-          <div style={{ background: "#fff", width: "100%", maxWidth: 880, maxHeight: "96vh", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 25px 50px rgba(0,0,0,0.3)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#0f172a", color: "#fff" }}>
-              <div style={{ minWidth: 0, flex: 1, paddingRight: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{previewDoc.title}</div>
-                {previewDoc.validationNote && (
-                  <div style={{ fontSize: 11, color: "#86efac", marginTop: 2 }}>{previewDoc.validationNote}</div>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                <a
-                  href={previewDoc.downloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: "#38bdf8", textDecoration: "none", fontSize: 12, fontWeight: 600, padding: "6px 10px", background: "#1e293b", borderRadius: 6, minHeight: 34, display: "inline-flex", alignItems: "center" }}
-                >
-                  ⬇️ Tải file
-                </a>
-                <button
-                  type="button"
-                  style={{ background: "none", border: "none", color: "#fff", fontSize: 24, cursor: "pointer", minWidth: 38, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={() => setPreviewDoc(null)}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, padding: 12, overflowY: "auto", display: "flex", justifyContent: "center", alignItems: "center", background: "#f8fafc", minHeight: 360 }}>
-              {previewDoc.isPdf ? (
-                <iframe
-                  src={previewDoc.url}
-                  title={previewDoc.title}
-                  style={{ width: "100%", height: "74vh", border: "none", borderRadius: 8, background: "#fff" }}
-                />
-              ) : (
-                <img
-                  src={previewDoc.url}
-                  alt={previewDoc.title}
-                  style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* Audit Summary Modal - NO RAW JSON, Real Image/PDF Thumbnails */}
-      {auditModal && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 660 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#0f172a", color: "#38bdf8", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  Legal & Technical Compliance
-                </div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>🔍 Báo Cáo Kiểm Định Hồ Sơ Chi Tiết</h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>HĐ: <b>{auditModal.contract_code}</b> · {auditModal.worker_name}</div>
-              </div>
-              <button
-                style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
-                onClick={() => setAuditModal(null)}
-              >
-                ✕
-              </button>
+      <AppModal
+        open={Boolean(auditModal)}
+        onClose={() => setAuditModal(null)}
+        size="md"
+        title="🔍 Báo Cáo Kiểm Định Hồ Sơ Chi Tiết"
+        subtitle={
+          auditModal ? (
+            <>
+              HĐ: <b>{auditModal.contract_code}</b> · {auditModal.worker_name}
+            </>
+          ) : undefined
+        }
+        footer={
+          <button type="button" className="primary" style={{ background: "var(--primary)", color: "#ffffff", minHeight: 44, fontWeight: 700 }} onClick={() => setAuditModal(null)}>
+            Đã Hiểu & Đóng Báo Cáo
+          </button>
+        }
+      >
+        {auditModal && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--ink)", color: "var(--gold)", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                Legal & Technical Compliance
+              </span>
             </div>
 
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {auditModal.audit.checklist.map((chk: any) =>
                 renderAuditCheckItem(
                   chk,
@@ -2084,422 +2106,433 @@ export function PieceworkContracts() {
                 )
               )}
             </div>
-
-            <div className="piecework-modal-actions">
-              <button className="primary" style={{ background: "#0284c7", minHeight: 44, fontWeight: 700 }} onClick={() => setAuditModal(null)}>
-                Đã Hiểu & Đóng Báo Cáo
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* Modal Ký số INUT (Mặc định Ngày trên Hợp đồng khoán + Lựa chọn Chứng thư) */}
-      {signingContract && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 580 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>✍️ Ký Số Điện Tử Bên A (INUT)</h3>
-                <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-                  HĐ số: <b>{signingContract.contract_code}</b> · {signingContract.worker_name}
-                </div>
-              </div>
-              <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setSigningContract(null)}>✕</button>
-            </div>
-
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-              {/* 1. Lựa chọn chứng thư số */}
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "#334155", display: "block", marginBottom: 8 }}>
-                  1. LỰA CHỌN CHỨNG THƯ KÝ SỐ DOANH NGHIỆP:
-                </label>
-                {certLoading ? (
-                  <div style={{ padding: 12, color: "#64748b", fontSize: 13, textAlign: "center" }}>
-                    ⏳ Đang quét danh sách chứng thư số từ USB Token...
-                  </div>
-                ) : certificates.length === 0 ? (
-                  <div style={{ padding: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, fontSize: 12 }}>
-                    Sử dụng chứng thư số mặc định của INUT (MST: 4401053694)
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
-                    {certificates.map((cert) => (
-                      <label
-                        key={cert.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 10,
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: selectedCertId === cert.id ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                          background: selectedCertId === cert.id ? "#f0f9ff" : "#fff",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="certChoice"
-                          value={cert.id}
-                          checked={selectedCertId === cert.id}
-                          onChange={() => setSelectedCertId(cert.id)}
-                          style={{ marginTop: 3 }}
-                        />
-                        <div style={{ flex: 1, fontSize: 12 }}>
-                          <div style={{ fontWeight: 700, color: "#0f172a" }}>
-                            {cert.subject.includes("CN=") ? cert.subject.split("CN=")[1].split(",")[0] : cert.subject}
-                          </div>
-                          <div style={{ color: "#64748b", marginTop: 2 }}>
-                            Nhà cấp (CA): <b>{cert.issuer.includes("CN=") ? cert.issuer.split("CN=")[1].split(",")[0] : cert.issuer}</b>
-                            {" · "}
-                            <span style={{ color: cert.expired ? "#dc2626" : "#16a34a", fontWeight: 600 }}>
-                              {cert.expired ? "Hết hạn" : `Còn hạn đến ${cert.valid_to ? cert.valid_to.slice(0, 10) : ""}`}
-                            </span>
-                          </div>
-                          <div style={{ color: "#94a3b8", fontSize: 11 }}>Serial: {cert.serial || cert.id.slice(0, 16)}...</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 2. Mốc thời gian ký (/M) - Mặc định theo ngày HĐ khoán */}
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "#334155", display: "block", marginBottom: 8 }}>
-                  2. MỐC THỜI GIAN KÝ MẬT MÃ (/M):
-                </label>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, border: signMode === "contract_date" ? "2px solid #0284c7" : "1px solid #cbd5e1", background: signMode === "contract_date" ? "#f0f9ff" : "#fff", cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
-                    <input
-                      type="radio"
-                      name="signMode"
-                      value="contract_date"
-                      checked={signMode === "contract_date"}
-                      onChange={() => setSignMode("contract_date")}
-                      style={{ marginTop: 3, flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
-                      <div style={{ fontWeight: 700, fontSize: 13.5, color: "#0284c7", wordBreak: "break-word" }}>
-                        Theo ngày trên hợp đồng khoán ({customSignDate ? customSignDate.replace("T", " ") : signingContract.contract_date}) — Mặc định khuyên dùng (có giây lẻ)
-                      </div>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, wordBreak: "break-word" }}>
-                        Khớp ngày ký với ngày trên hợp đồng khoán và thời hạn nghiệm thu để đảm bảo chứng từ thuế hợp lệ.
-                      </div>
-
-                      {signMode === "contract_date" && (
-                        <div style={{ marginTop: 8, width: "100%" }}>
-                          <label style={{ fontSize: 11.5, color: "#475569", fontWeight: 600, display: "block", marginBottom: 3 }}>
-                            Tùy chỉnh ngày giờ ký (nếu cần đổi mốc giờ):
-                          </label>
-                          <input
-                            type="datetime-local"
-                            step="1"
-                            value={customSignDate}
-                            onChange={(e) => setCustomSignDate(e.target.value)}
-                            style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 6, border: "1px solid #0284c7", fontSize: 13, minHeight: 42 }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </label>
-
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, border: signMode === "realtime" ? "2px solid #0284c7" : "1px solid #cbd5e1", background: signMode === "realtime" ? "#f0f9ff" : "#fff", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="signMode"
-                      value="realtime"
-                      checked={signMode === "realtime"}
-                      onChange={() => setSignMode("realtime")}
-                      style={{ marginTop: 2 }}
-                    />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13.5, color: "#0f172a" }}>Ký theo thời gian thực hiện tại (Realtime)</div>
-                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Sử dụng mốc thời gian hệ thống chuẩn tại thời điểm bấm ký.</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* 3. PIN USB Token */}
-              <div>
-                <label style={{ fontSize: 12.5, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                  Mã PIN USB Token (Mặc định: 12345678)
-                </label>
-                <input
-                  type="password"
-                  value={certPin}
-                  onChange={(e) => setCertPin(e.target.value)}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 42 }}
-                />
-              </div>
-            </div>
-
-            <div className="piecework-modal-actions">
-              <button className="secondary" onClick={() => setSigningContract(null)} disabled={actionLoading === signingContract.id}>
+      <AppModal
+        open={Boolean(signingContract)}
+        onClose={() => setSigningContract(null)}
+        size="md"
+        title="✍️ Ký Số Điện Tử Bên A (INUT)"
+        subtitle={
+          signingContract ? (
+            <>
+              HĐ số: <b>{signingContract.contract_code}</b> · {signingContract.worker_name}
+            </>
+          ) : undefined
+        }
+        footer={
+          signingContract && (
+            <>
+              <button type="button" className="secondary" onClick={() => setSigningContract(null)} disabled={actionLoading === signingContract.id}>
                 Hủy
               </button>
               <button
+                type="button"
                 className="primary"
-                style={{ background: "#0284c7", fontWeight: 700 }}
+                style={{ background: "var(--primary)", color: "#ffffff", fontWeight: 700 }}
                 onClick={handleConfirmSignInut}
                 disabled={actionLoading === signingContract.id}
               >
                 {actionLoading === signingContract.id ? "Đang ký số…" : "✓ Xác nhận Ký số INUT"}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Thẩm định Chữ ký số Chuẩn Foxit Reader & Cơ quan Thuế */}
-      {verifyingContract && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 680 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#0f172a", color: "#38bdf8", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  Foxit PDF & Tax Audit Inspector
+            </>
+          )
+        }
+      >
+        {signingContract && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* 1. Lựa chọn chứng thư số */}
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 8 }}>
+                1. LỰA CHỌN CHỨNG THƯ KÝ SỐ DOANH NGHIỆP:
+              </label>
+              {certLoading ? (
+                <div style={{ padding: 12, color: "var(--muted)", fontSize: 13, textAlign: "center" }}>
+                  ⏳ Đang quét danh sách chứng thư số từ USB Token...
                 </div>
-                <h3 style={{ margin: "6px 0 0 0", fontSize: 18, color: "#0f172a" }}>🛡️ Bảng Thẩm Định Chữ Ký Số Pháp Lý</h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Hợp đồng: <b>{verifyingContract.contract_code}</b> · {verifyingContract.worker_name}
+              ) : certificates.length === 0 ? (
+                <div style={{ padding: 10, background: "var(--amber-soft)", color: INUT_TEXT_WARN, borderRadius: 8, fontSize: 12 }}>
+                  Sử dụng chứng thư số mặc định của INUT (MST: 4401053694)
                 </div>
-              </div>
-              <button style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setVerifyingContract(null)}>✕</button>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              {verifyLoading ? (
-                <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b" }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Đang trích xuất chứng thư và kiểm định chữ ký theo tiêu chuẩn Foxit Reader & Cơ quan Thuế...</div>
-                </div>
-              ) : verifyResult ? (
-                <div>
-                  {/* Verdict Banner */}
-                  {verifyResult.ok && verifyResult.has_signature && verifyResult.intact && verifyResult.valid ? (
-                    <div style={{ padding: "14px 18px", borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #22c55e", color: "#15803d", marginBottom: 16 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 28 }}>🛡️</span>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: 14.5, textTransform: "uppercase", letterSpacing: "0.3px" }}>
-                            ✓ CHỮ KÝ SỐ HỢP LỆ THEO CHUẨN FOXIT READER & CƠ QUAN THUẾ
-                          </div>
-                          <div style={{ fontSize: 12, color: "#166534", marginTop: 2 }}>
-                            {verifyResult.tax_compliance?.foxit_reader_verdict || "Tài liệu PDF toàn vẹn và không bị thay đổi sau khi ký số."}
-                          </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
+                  {certificates.map((cert) => (
+                    <label
+                      key={cert.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: selectedCertId === cert.id ? "2px solid var(--primary)" : "1px solid var(--border-strong)",
+                        background: selectedCertId === cert.id ? "var(--primary-soft)" : "var(--panel)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="certChoice"
+                        value={cert.id}
+                        checked={selectedCertId === cert.id}
+                        onChange={() => setSelectedCertId(cert.id)}
+                        style={{ marginTop: 3 }}
+                      />
+                      <div style={{ flex: 1, fontSize: 12, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: "var(--ink)" }}>
+                          {cert.subject.includes("CN=") ? cert.subject.split("CN=")[1].split(",")[0] : cert.subject}
                         </div>
-                      </div>
-                      <div style={{ marginTop: 8, padding: "6px 12px", background: "#dcfce7", borderRadius: 8, fontSize: 11.5, fontWeight: 700, color: "#14532d" }}>
-                        ⚖️ {verifyResult.tax_compliance?.tax_authority_status || "ĐỦ ĐIỀU KIỆN PHÁP LÝ HỒ SƠ QUYẾT TOÁN THUẾ & GIẢI TRÌNH THANH TRA"}
-                      </div>
-                    </div>
-                  ) : !verifyResult.has_signature ? (
-                    <div style={{ padding: "14px 18px", borderRadius: 12, background: "#fefce8", border: "1px solid #fef08a", color: "#854d0e", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 26 }}>⚠️</span>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>CHƯA CÓ CHỮ KÝ SỐ ĐIỆN TỬ</div>
-                        <div style={{ fontSize: 12, marginTop: 2 }}>{verifyResult.message || "Tệp PDF chưa được ký số bên A."}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ padding: "14px 18px", borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 26 }}>❌</span>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>CHỮ KÝ KHÔNG HỢP LỆ HOẶC BỊ SỬA ĐỔI</div>
-                        <div style={{ fontSize: 12, marginTop: 2 }}>{verifyResult.message || "Tệp PDF có dấu hiệu bị can thiệp sau khi ký."}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Visual Con Dấu Ký Số Điện Tử - Bản Snap trên PDF */}
-                  {verifyResult.has_signature && (
-                    <div style={{ margin: "14px 0", background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: 10, padding: "12px 16px", color: "#166534", boxShadow: "0 2px 8px rgba(22,163,74,0.12)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px dashed #86efac", paddingBottom: 6, marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13, color: "#15803d" }}>
-                          ✓ BẢN CHỤP CON DẤU KÝ SỐ ĐIỆN TỬ TRÊN PDF (DIGITAL SIGNATURE STAMP)
-                        </div>
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#dcfce7", color: "#15803d", fontWeight: 700 }}>
-                          Khớp 100% bản in PDF
-                        </span>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "6px 14px", fontSize: 12 }}>
-                        <div><b>Đơn vị ký:</b> CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT</div>
-                        <div><b>Mã số thuế:</b> 4401053694</div>
-                        <div><b>Đơn vị cấp CA:</b> {verifyResult.ca_issuer || "WINCA / WINGROUP CA"}</div>
-                        <div><b>Ngày cấp chứng thư:</b> {verifyResult.valid_from ? formatDateTimeWithSeconds(verifyResult.valid_from) : "15/06/2024 00:00:00"}</div>
-                        <div><b>Thời hạn hiệu lực:</b> {verifyResult.valid_to ? formatDateTimeWithSeconds(verifyResult.valid_to) : "15/06/2027 23:59:59"}</div>
-                        <div>
-                          <b>Ngày giờ ký điện tử (/M):</b>{" "}
-                          <span style={{ color: "#0284c7", fontWeight: 800 }}>
-                            {verifyResult.signing_time ? formatDateTimeWithSeconds(verifyResult.signing_time) : (verifyResult.sign_date_m || "N/A")}
+                        <div style={{ color: "var(--muted)", marginTop: 2 }}>
+                          Nhà cấp (CA): <b>{cert.issuer.includes("CN=") ? cert.issuer.split("CN=")[1].split(",")[0] : cert.issuer}</b>
+                          {" · "}
+                          <span style={{ color: cert.expired ? INUT_TEXT_DANGER : "var(--green)", fontWeight: 600 }}>
+                            {cert.expired ? "Hết hạn" : `Còn hạn đến ${cert.valid_to ? cert.valid_to.slice(0, 10) : ""}`}
                           </span>
                         </div>
-                        <div style={{ gridColumn: "1 / -1", wordBreak: "break-all" }}>
-                          <b>Số sê-ri:</b> <span style={{ fontFamily: "monospace", fontSize: 11 }}>{verifyResult.cert_serial || "540116541CB8..."}</span>
-                        </div>
+                        <div style={{ color: "var(--muted)", fontSize: 11 }}>Serial: {cert.serial || cert.id.slice(0, 16)}...</div>
                       </div>
-                      <div style={{ fontSize: 10.5, color: "#15803d", marginTop: 6, borderTop: "1px solid #dcfce7", paddingTop: 4 }}>
-                        ✓ Chữ ký số PAdES toàn vẹn, hiển thị đúng dấu tích xanh trên Foxit Reader & Adobe Acrobat
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 4 Detail Cards */}
-                  <div className="piecework-grid-2col">
-                    {/* Thẻ 1: Thông tin Người nộp thuế & Đơn vị ký */}
-                    <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0284c7", textTransform: "uppercase", marginBottom: 6 }}>
-                        1. Thông tin Người nộp thuế (Signer)
-                      </div>
-                      <div style={{ fontSize: 12, color: "#334155" }}>
-                        <div><b>Tên pháp nhân:</b> {verifyResult.signer_name || "CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT"}</div>
-                        <div style={{ marginTop: 3 }}><b>Mã số thuế:</b> <span style={{ color: "#0284c7", fontWeight: 700 }}>{verifyResult.signer_tax_code || "4401053694"}</span></div>
-                        <div style={{ marginTop: 3 }}><b>Vai trò:</b> Bên A - Đơn vị giao khoán</div>
-                        <div style={{ marginTop: 3 }}><b>Quốc gia:</b> Việt Nam (VN)</div>
-                      </div>
-                    </div>
-
-                    {/* Thẻ 2: Nhà cấp chứng thực số (CA) */}
-                    <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0284c7", textTransform: "uppercase", marginBottom: 6 }}>
-                        2. Tổ chức Chứng thực số (CA)
-                      </div>
-                      <div style={{ fontSize: 12, color: "#334155" }}>
-                        <div><b>Nhà cung cấp CA:</b> {verifyResult.ca_issuer || "WINCA / WINGROUP CA"}</div>
-                        <div style={{ marginTop: 3, wordBreak: "break-all" }}>
-                          <b>Số sê-ri:</b> <span style={{ fontFamily: "monospace", fontSize: 11 }}>{verifyResult.cert_serial || "N/A"}</span>
-                        </div>
-                        <div style={{ marginTop: 3 }}>
-                          <b>Thời hạn chứng thư:</b>
-                          <div style={{ color: "#166534", fontWeight: 600 }}>
-                            {verifyResult.valid_from ? formatDateTimeWithSeconds(verifyResult.valid_from) : "15/06/2024 00:00:00"} đến {verifyResult.valid_to ? formatDateTimeWithSeconds(verifyResult.valid_to) : "15/06/2027 23:59:59"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Thẻ 3: Mốc thời gian ký & Tiêu chuẩn mật mã */}
-                    <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0284c7", textTransform: "uppercase", marginBottom: 6 }}>
-                        3. Thời gian ký & Chuẩn Mật mã
-                      </div>
-                      <div style={{ fontSize: 12, color: "#334155" }}>
-                        <div><b>Mốc thời gian ký (/M):</b> <span style={{ color: "#0284c7", fontWeight: 700 }}>{verifyResult.sign_date_m || "N/A"}</span></div>
-                        <div style={{ marginTop: 3 }}><b>Thời gian chuẩn ISO (có giây lẻ):</b> <span style={{ color: "#0284c7", fontWeight: 700 }}>{formatDateTimeWithSeconds(verifyResult.signing_time)}</span></div>
-                        <div style={{ marginTop: 3 }}><b>Định dạng SubFilter:</b> {verifyResult.subfilter || "ETSI.CAdES.detached (PAdES)"}</div>
-                        <div style={{ marginTop: 3 }}><b>Thuật toán:</b> {verifyResult.digest_algorithm || "SHA-256"} · {verifyResult.signature_algorithm || "RSA 2048-bit"}</div>
-                      </div>
-                    </div>
-
-                    {/* Thẻ 4: Tính toàn vẹn văn bản */}
-                    <div style={{ background: "#f8fafc", padding: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0284c7", textTransform: "uppercase", marginBottom: 6 }}>
-                        4. Tính toàn vẹn văn bản (Integrity)
-                      </div>
-                      <div style={{ fontSize: 12, color: "#334155" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: verifyResult.intact ? "#166534" : "#dc2626" }}>
-                          <span>{verifyResult.intact ? "✓" : "✗"}</span>
-                          <span>{verifyResult.intact ? "Nguyên vẹn 100% (Không bị sửa đổi)" : "Tệp đã bị can thiệp"}</span>
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: 11.5, color: "#64748b" }}>
-                          Kể từ thời điểm áp dụng chữ ký số này, tài liệu PDF chưa từng bị thay đổi hoặc chèn thêm nội dung nào trái phép.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Căn cứ pháp lý cơ quan thuế */}
-                  <div style={{ marginTop: 14, padding: 12, background: "#f0f9ff", borderRadius: 10, border: "1px solid #bae6fd" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", marginBottom: 4 }}>
-                      ⚖️ Căn cứ pháp lý kiểm định chi phí hợp lý hợp lệ theo Cơ quan Thuế:
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "#334155" }}>
-                      <li>Luật Giao dịch điện tử số 20/2023/QH15 & Nghị định 130/2018/NĐ-CP (Giá trị pháp lý của chữ ký số doanh nghiệp).</li>
-                      <li>Nghị định 123/2020/NĐ-CP & Thông tư 78/2021/TT-BTC về lưu trữ và giải trình chứng từ điện tử.</li>
-                      <li>Nghị định 253/2026/NĐ-CP (Khoản 2 Điều 50) & Thông tư 133/2016/TT-BTC về hồ sơ khoán việc và nghiệm thu hoàn thành.</li>
-                    </ul>
-                  </div>
+                    </label>
+                  ))}
                 </div>
-              ) : null}
+              )}
             </div>
 
-            <div className="piecework-modal-actions">
-              <button className="secondary" onClick={() => setVerifyingContract(null)}>Đóng</button>
+            {/* 2. Mốc thời gian ký (/M) - Mặc định theo ngày HĐ khoán */}
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 8 }}>
+                2. MỐC THỜI GIAN KÝ MẬT MÃ (/M):
+              </label>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, border: signMode === "contract_date" ? "2px solid var(--primary)" : "1px solid var(--border-strong)", background: signMode === "contract_date" ? "var(--primary-soft)" : "var(--panel)", cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
+                  <input
+                    type="radio"
+                    name="signMode"
+                    value="contract_date"
+                    checked={signMode === "contract_date"}
+                    onChange={() => setSignMode("contract_date")}
+                    style={{ marginTop: 3, flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: "var(--primary-dark)", wordBreak: "break-word" }}>
+                      Theo ngày trên hợp đồng khoán ({customSignDate ? customSignDate.replace("T", " ") : signingContract.contract_date}) — Mặc định khuyên dùng (có giây lẻ)
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, wordBreak: "break-word" }}>
+                      Khớp ngày ký với ngày trên hợp đồng khoán và thời hạn nghiệm thu để đảm bảo chứng từ thuế hợp lệ.
+                    </div>
+
+                    {signMode === "contract_date" && (
+                      <div style={{ marginTop: 8, width: "100%" }}>
+                        <label style={{ fontSize: 11.5, color: "var(--ink-2)", fontWeight: 600, display: "block", marginBottom: 3 }}>
+                          Tùy chỉnh ngày giờ ký (nếu cần đổi mốc giờ):
+                        </label>
+                        <input
+                          type="datetime-local"
+                          step="1"
+                          className="ui-input"
+                          value={customSignDate}
+                          onChange={(e) => setCustomSignDate(e.target.value)}
+                          style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", borderColor: "var(--primary)" }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, border: signMode === "realtime" ? "2px solid var(--primary)" : "1px solid var(--border-strong)", background: signMode === "realtime" ? "var(--primary-soft)" : "var(--panel)", cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="signMode"
+                    value="realtime"
+                    checked={signMode === "realtime"}
+                    onChange={() => setSignMode("realtime")}
+                    style={{ marginTop: 2 }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--ink)" }}>Ký theo thời gian thực hiện tại (Realtime)</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Sử dụng mốc thời gian hệ thống chuẩn tại thời điểm bấm ký.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* 3. PIN USB Token */}
+            <div>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", display: "block", marginBottom: 4 }}>
+                Mã PIN USB Token (Mặc định: 12345678)
+              </label>
+              <input
+                type="password"
+                className="ui-input"
+                value={certPin}
+                onChange={(e) => setCertPin(e.target.value)}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+          </div>
+        )}
+      </AppModal>
+
+      {/* Modal Thẩm định Chữ ký số Chuẩn Foxit Reader & Cơ quan Thuế */}
+      <AppModal
+        open={Boolean(verifyingContract)}
+        onClose={() => setVerifyingContract(null)}
+        size="lg"
+        title="🛡️ Bảng Thẩm Định Chữ Ký Số Pháp Lý"
+        subtitle={
+          verifyingContract ? (
+            <>
+              Hợp đồng: <b>{verifyingContract.contract_code}</b> · {verifyingContract.worker_name}
+            </>
+          ) : undefined
+        }
+        footer={
+          verifyingContract && (
+            <>
+              <button type="button" className="secondary" onClick={() => setVerifyingContract(null)}>
+                Đóng
+              </button>
               <button
                 type="button"
                 className="secondary"
-                style={{ background: "#f0fdf4", color: "#166534", border: "1.5px solid #86efac", fontWeight: 700 }}
+                style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: "1.5px solid var(--green)", fontWeight: 700 }}
                 onClick={() => setShareModal({ contract: verifyingContract, tab: "signed" })}
               >
                 📤 Chia sẻ PDF Đã Ký
               </button>
               <a
-                href={`/api/public/khoan/${verifyingContract.portal_token}/pdf?signed=1`}
+                href={safeHttpUrl(`/api/public/khoan/${verifyingContract.portal_token}/pdf?signed=1`)}
                 download={`HDGK_${verifyingContract.contract_code.replace('/', '_')}_Foxit_Verified.pdf`}
                 className="secondary"
-                style={{ textDecoration: "none", color: "#0284c7", background: "#e0f2fe", border: "1px solid #bae6fd", fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, boxSizing: "border-box" }}
+                style={{ textDecoration: "none", color: "var(--primary-dark)", background: "var(--primary-soft)", border: `1px solid ${INUT_BORDER_PRIMARY}`, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 14px", borderRadius: 10, boxSizing: "border-box" }}
               >
                 ⬇️ Tải file PDF về máy (Mở bằng Foxit)
               </a>
               <a
-                href={`/api/public/khoan/${verifyingContract.portal_token}/pdf?signed=1`}
+                href={safeHttpUrl(`/api/public/khoan/${verifyingContract.portal_token}/pdf?signed=1`)}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="primary"
-                style={{ textDecoration: "none", background: "#0284c7", fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, boxSizing: "border-box" }}
+                style={{ textDecoration: "none", background: "var(--primary)", color: "#ffffff", fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 14px", borderRadius: 10, boxSizing: "border-box" }}
               >
                 📄 Mở PDF trực tiếp
               </a>
+            </>
+          )
+        }
+      >
+        {verifyingContract && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--ink)", color: "var(--gold)", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                Foxit PDF & Tax Audit Inspector
+              </span>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Share Modal - Hợp đồng ĐÃ KÝ & CHƯA KÝ */}
-      {shareModal && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 620 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
+            {verifyLoading ? (
+              <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)" }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Đang trích xuất chứng thư và kiểm định chữ ký theo tiêu chuẩn Foxit Reader & Cơ quan Thuế...</div>
+              </div>
+            ) : verifyResult ? (
               <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#0f172a", color: "#38bdf8", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  📤 Chia Sẻ Hợp Đồng & Tệp PDF
-                </div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>
-                  {shareModal.contract.contract_code}
-                </h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Thợ: <b>{shareModal.contract.worker_name}</b> · {shareModal.contract.project_name}
+                {/* Verdict Banner */}
+                {verifyResult.ok && verifyResult.has_signature && verifyResult.intact && verifyResult.valid ? (
+                  <div style={{ padding: "14px 18px", borderRadius: 12, background: "var(--green-soft)", border: "1.5px solid var(--green)", color: "var(--ink-2)", marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 28 }}>🛡️</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14.5, textTransform: "uppercase", letterSpacing: "0.3px", color: "var(--ink)" }}>
+                          ✓ CHỮ KÝ SỐ HỢP LỆ THEO CHUẨN FOXIT READER & CƠ QUAN THUẾ
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 2 }}>
+                          {verifyResult.tax_compliance?.foxit_reader_verdict || "Tài liệu PDF toàn vẹn và không bị thay đổi sau khi ký số."}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, padding: "6px 12px", background: "var(--panel)", borderRadius: 8, fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", border: `1px solid ${INUT_BORDER_SUCCESS}` }}>
+                      ⚖️ {verifyResult.tax_compliance?.tax_authority_status || "ĐỦ ĐIỀU KIỆN PHÁP LÝ HỒ SƠ QUYẾT TOÁN THUẾ & GIẢI TRÌNH THANH TRA"}
+                    </div>
+                  </div>
+                ) : !verifyResult.has_signature ? (
+                  <div style={{ padding: "14px 18px", borderRadius: 12, background: "var(--amber-soft)", border: `1px solid ${INUT_BORDER_WARN}`, color: INUT_TEXT_WARN, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 26 }}>⚠️</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>CHƯA CÓ CHỮ KÝ SỐ ĐIỆN TỬ</div>
+                      <div style={{ fontSize: 12, marginTop: 2 }}>{verifyResult.message || "Tệp PDF chưa được ký số bên A."}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "14px 18px", borderRadius: 12, background: "var(--red-soft)", border: `1px solid ${INUT_BORDER_DANGER}`, color: INUT_TEXT_DANGER, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 26 }}>❌</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>CHỮ KÝ KHÔNG HỢP LỆ HOẶC BỊ SỬA ĐỔI</div>
+                      <div style={{ fontSize: 12, marginTop: 2 }}>{verifyResult.message || "Tệp PDF có dấu hiệu bị can thiệp sau khi ký."}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Visual Con Dấu Ký Số Điện Tử - Bản Snap trên PDF */}
+                {verifyResult.has_signature && (
+                  <div style={{ margin: "14px 0", background: "var(--green-soft)", border: "2px solid var(--green)", borderRadius: 10, padding: "12px 16px", color: "var(--ink-2)", boxShadow: "var(--shadow)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px dashed ${INUT_BORDER_SUCCESS}`, paddingBottom: 6, marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, color: "var(--green)" }}>
+                        ✓ BẢN CHỤP CON DẤU KÝ SỐ ĐIỆN TỬ TRÊN PDF (DIGITAL SIGNATURE STAMP)
+                      </div>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--panel)", color: "var(--green)", fontWeight: 700, border: `1px solid ${INUT_BORDER_SUCCESS}` }}>
+                        Khớp 100% bản in PDF
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "6px 14px", fontSize: 12, minWidth: 0 }}>
+                      <div style={{ minWidth: 0 }}><b>Đơn vị ký:</b> CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT</div>
+                      <div style={{ minWidth: 0 }}><b>Mã số thuế:</b> 4401053694</div>
+                      <div style={{ minWidth: 0 }}><b>Đơn vị cấp CA:</b> {verifyResult.ca_issuer || "WINCA / WINGROUP CA"}</div>
+                      <div style={{ minWidth: 0 }}><b>Ngày cấp chứng thư:</b> {verifyResult.valid_from ? formatDateTimeWithSeconds(verifyResult.valid_from) : "15/06/2024 00:00:00"}</div>
+                      <div style={{ minWidth: 0 }}><b>Thời hạn hiệu lực:</b> {verifyResult.valid_to ? formatDateTimeWithSeconds(verifyResult.valid_to) : "15/06/2027 23:59:59"}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <b>Ngày giờ ký điện tử (/M):</b>{" "}
+                        <span style={{ color: "var(--primary-dark)", fontWeight: 800 }}>
+                          {verifyResult.signing_time ? formatDateTimeWithSeconds(verifyResult.signing_time) : (verifyResult.sign_date_m || "N/A")}
+                        </span>
+                      </div>
+                      <div style={{ gridColumn: "1 / -1", wordBreak: "break-all", minWidth: 0 }}>
+                        <b>Số sê-ri:</b> <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{verifyResult.cert_serial || "540116541CB8..."}</span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--green)", marginTop: 6, borderTop: `1px solid ${INUT_BORDER_SUCCESS}`, paddingTop: 4 }}>
+                      ✓ Chữ ký số PAdES toàn vẹn, hiển thị đúng dấu tích xanh trên Foxit Reader & Adobe Acrobat
+                    </div>
+                  </div>
+                )}
+
+                {/* 4 Detail Cards */}
+                <FormGrid cols={2}>
+                  {/* Thẻ 1: Thông tin Người nộp thuế & Đơn vị ký */}
+                  <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", textTransform: "uppercase", marginBottom: 6 }}>
+                      1. Thông tin Người nộp thuế (Signer)
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text)" }}>
+                      <div><b>Tên pháp nhân:</b> {verifyResult.signer_name || "CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT"}</div>
+                      <div style={{ marginTop: 3 }}><b>Mã số thuế:</b> <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{verifyResult.signer_tax_code || "4401053694"}</span></div>
+                      <div style={{ marginTop: 3 }}><b>Vai trò:</b> Bên A - Đơn vị giao khoán</div>
+                      <div style={{ marginTop: 3 }}><b>Quốc gia:</b> Việt Nam (VN)</div>
+                    </div>
+                  </div>
+
+                  {/* Thẻ 2: Nhà cấp chứng thực số (CA) */}
+                  <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", textTransform: "uppercase", marginBottom: 6 }}>
+                      2. Tổ chức Chứng thực số (CA)
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text)" }}>
+                      <div><b>Nhà cung cấp CA:</b> {verifyResult.ca_issuer || "WINCA / WINGROUP CA"}</div>
+                      <div style={{ marginTop: 3, wordBreak: "break-all" }}>
+                        <b>Số sê-ri:</b> <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{verifyResult.cert_serial || "N/A"}</span>
+                      </div>
+                      <div style={{ marginTop: 3 }}>
+                        <b>Thời hạn chứng thư:</b>
+                        <div style={{ color: "var(--green)", fontWeight: 600 }}>
+                          {verifyResult.valid_from ? formatDateTimeWithSeconds(verifyResult.valid_from) : "15/06/2024 00:00:00"} đến {verifyResult.valid_to ? formatDateTimeWithSeconds(verifyResult.valid_to) : "15/06/2027 23:59:59"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Thẻ 3: Mốc thời gian ký & Tiêu chuẩn mật mã */}
+                  <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", textTransform: "uppercase", marginBottom: 6 }}>
+                      3. Thời gian ký & Chuẩn Mật mã
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text)" }}>
+                      <div><b>Mốc thời gian ký (/M):</b> <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{verifyResult.sign_date_m || "N/A"}</span></div>
+                      <div style={{ marginTop: 3 }}><b>Thời gian chuẩn ISO (có giây lẻ):</b> <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{formatDateTimeWithSeconds(verifyResult.signing_time)}</span></div>
+                      <div style={{ marginTop: 3 }}><b>Định dạng SubFilter:</b> {verifyResult.subfilter || "ETSI.CAdES.detached (PAdES)"}</div>
+                      <div style={{ marginTop: 3 }}><b>Thuật toán:</b> {verifyResult.digest_algorithm || "SHA-256"} · {verifyResult.signature_algorithm || "RSA 2048-bit"}</div>
+                    </div>
+                  </div>
+
+                  {/* Thẻ 4: Tính toàn vẹn văn bản */}
+                  <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", textTransform: "uppercase", marginBottom: 6 }}>
+                      4. Tính toàn vẹn văn bản (Integrity)
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: verifyResult.intact ? "var(--green)" : INUT_TEXT_DANGER }}>
+                        <span>{verifyResult.intact ? "✓" : "✗"}</span>
+                        <span>{verifyResult.intact ? "Nguyên vẹn 100% (Không bị sửa đổi)" : "Tệp đã bị can thiệp"}</span>
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 11.5, color: "var(--muted)" }}>
+                        Kể từ thời điểm áp dụng chữ ký số này, tài liệu PDF chưa từng bị thay đổi hoặc chèn thêm nội dung nào trái phép.
+                      </div>
+                    </div>
+                  </div>
+                </FormGrid>
+
+                {/* Căn cứ pháp lý cơ quan thuế */}
+                <div style={{ marginTop: 14, padding: 12, background: "var(--primary-soft)", borderRadius: 10, border: `1px solid ${INUT_BORDER_PRIMARY}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", marginBottom: 4 }}>
+                    ⚖️ Căn cứ pháp lý kiểm định chi phí hợp lý hợp lệ theo Cơ quan Thuế:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "var(--text)" }}>
+                    <li>Luật Giao dịch điện tử số 20/2023/QH15 & Nghị định 130/2018/NĐ-CP (Giá trị pháp lý của chữ ký số doanh nghiệp).</li>
+                    <li>Nghị định 123/2020/NĐ-CP & Thông tư 78/2021/TT-BTC về lưu trữ và giải trình chứng từ điện tử.</li>
+                    <li>Nghị định 253/2026/NĐ-CP (Khoản 2 Điều 50) & Thông tư 133/2016/TT-BTC về hồ sơ khoán việc và nghiệm thu hoàn thành.</li>
+                  </ul>
                 </div>
               </div>
-              <button
-                style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
-                onClick={() => setShareModal(null)}
-              >
-                ✕
-              </button>
+            ) : null}
+          </div>
+        )}
+      </AppModal>
+
+      {/* Share Modal - Hợp đồng ĐÃ KÝ & CHƯA KÝ */}
+      <AppModal
+        open={Boolean(shareModal)}
+        onClose={() => setShareModal(null)}
+        size="md"
+        title={shareModal ? shareModal.contract.contract_code : ""}
+        subtitle={
+          shareModal ? (
+            <>
+              Thợ: <b>{shareModal.contract.worker_name}</b> · {shareModal.contract.project_name}
+            </>
+          ) : undefined
+        }
+        footer={
+          <button type="button" className="secondary" onClick={() => setShareModal(null)} style={{ minHeight: 44 }}>
+            Đóng
+          </button>
+        }
+      >
+        {shareModal && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--ink)", color: "var(--gold)", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                📤 Chia Sẻ Hợp Đồng & Tệp PDF
+              </span>
             </div>
 
             {/* Version Tabs: Đã Ký vs Chưa Ký vs Portal */}
-            <div style={{ display: "flex", gap: 8, marginTop: 14, borderBottom: "1px solid #e2e8f0", paddingBottom: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--border)", paddingBottom: 10, flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={() => { setShareModal({ ...shareModal, tab: "signed" }); setCopiedShare(false); }}
                 style={{
-                  flex: 1,
-                  minWidth: 140,
+                  flex: "1 1 140px",
+                  minWidth: 0,
                   padding: "8px 12px",
                   borderRadius: 8,
                   fontSize: 12.5,
                   fontWeight: 700,
-                  border: shareModal.tab === "signed" ? "2px solid #16a34a" : "1px solid #cbd5e1",
-                  background: shareModal.tab === "signed" ? "#f0fdf4" : "#f8fafc",
-                  color: shareModal.tab === "signed" ? "#15803d" : "#475569",
+                  border: shareModal.tab === "signed" ? "2px solid var(--green)" : "1px solid var(--border-strong)",
+                  background: shareModal.tab === "signed" ? "var(--green-soft)" : "var(--surface-subtle)",
+                  color: shareModal.tab === "signed" ? "var(--ink-2)" : "var(--muted)",
                   cursor: "pointer",
-                  minHeight: 42,
+                  minHeight: 44,
                 }}
               >
                 🟢 PDF ĐÃ KÝ SỐ {shareModal.contract.is_signed_by_inut ? "✓" : ""}
@@ -2509,17 +2542,17 @@ export function PieceworkContracts() {
                 type="button"
                 onClick={() => { setShareModal({ ...shareModal, tab: "unsigned" }); setCopiedShare(false); }}
                 style={{
-                  flex: 1,
-                  minWidth: 140,
+                  flex: "1 1 140px",
+                  minWidth: 0,
                   padding: "8px 12px",
                   borderRadius: 8,
                   fontSize: 12.5,
                   fontWeight: 700,
-                  border: shareModal.tab === "unsigned" ? "2px solid #d97706" : "1px solid #cbd5e1",
-                  background: shareModal.tab === "unsigned" ? "#fffbeb" : "#f8fafc",
-                  color: shareModal.tab === "unsigned" ? "#b45309" : "#475569",
+                  border: shareModal.tab === "unsigned" ? "2px solid var(--amber)" : "1px solid var(--border-strong)",
+                  background: shareModal.tab === "unsigned" ? "var(--amber-soft)" : "var(--surface-subtle)",
+                  color: shareModal.tab === "unsigned" ? INUT_TEXT_WARN : "var(--muted)",
                   cursor: "pointer",
-                  minHeight: 42,
+                  minHeight: 44,
                 }}
               >
                 🟡 PDF BẢN THẢO (CHƯA KÝ)
@@ -2529,17 +2562,17 @@ export function PieceworkContracts() {
                 type="button"
                 onClick={() => { setShareModal({ ...shareModal, tab: "portal" }); setCopiedShare(false); }}
                 style={{
-                  flex: 1,
-                  minWidth: 140,
+                  flex: "1 1 140px",
+                  minWidth: 0,
                   padding: "8px 12px",
                   borderRadius: 8,
                   fontSize: 12.5,
                   fontWeight: 700,
-                  border: shareModal.tab === "portal" ? "2px solid #0284c7" : "1px solid #cbd5e1",
-                  background: shareModal.tab === "portal" ? "#f0f9ff" : "#f8fafc",
-                  color: shareModal.tab === "portal" ? "#0369a1" : "#475569",
+                  border: shareModal.tab === "portal" ? "2px solid var(--primary)" : "1px solid var(--border-strong)",
+                  background: shareModal.tab === "portal" ? "var(--primary-soft)" : "var(--surface-subtle)",
+                  color: shareModal.tab === "portal" ? "var(--primary-dark)" : "var(--muted)",
                   cursor: "pointer",
-                  minHeight: 42,
+                  minHeight: 44,
                 }}
               >
                 📱 LINK KÝ ONLINE
@@ -2572,7 +2605,7 @@ export function PieceworkContracts() {
               return (
                 <div style={{ marginTop: 14 }}>
                   {/* Status Banner */}
-                  <div style={{ padding: "10px 14px", borderRadius: 8, background: isSignedTab ? "#f0fdf4" : (isDraftTab ? "#fffbeb" : "#f0f9ff"), border: `1px solid ${isSignedTab ? "#bbf7d0" : (isDraftTab ? "#fde68a" : "#bae6fd")}`, fontSize: 12.5, color: isSignedTab ? "#166534" : (isDraftTab ? "#92400e" : "#0369a1"), marginBottom: 12 }}>
+                  <div style={{ padding: "10px 14px", borderRadius: 8, background: isSignedTab ? "var(--green-soft)" : (isDraftTab ? "var(--amber-soft)" : "var(--primary-soft)"), border: `1px solid ${isSignedTab ? INUT_BORDER_SUCCESS : (isDraftTab ? INUT_BORDER_WARN : INUT_BORDER_PRIMARY)}`, fontSize: 12.5, color: isSignedTab ? "var(--ink-2)" : (isDraftTab ? INUT_TEXT_WARN : "var(--primary-dark)"), marginBottom: 12 }}>
                     {isSignedTab && (
                       <div>
                         <b>🟢 Phiên bản: ĐÃ KÝ SỐ CHÍNH THỨC</b>
@@ -2594,17 +2627,18 @@ export function PieceworkContracts() {
                   </div>
 
                   {/* URL Row with Copy Button */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       type="text"
                       readOnly
+                      className="ui-input"
                       value={activeUrl}
-                      style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 12, fontFamily: "monospace", color: "#0f172a", minHeight: 42, boxSizing: "border-box" }}
+                      style={{ flex: "1 1 200px", minWidth: 0, background: "var(--surface-subtle)", fontFamily: "var(--font-mono)", color: "var(--ink)", boxSizing: "border-box" }}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
                     <button
                       type="button"
-                      style={{ padding: "9px 16px", borderRadius: 8, background: copiedShare ? "#16a34a" : "#0284c7", color: "#fff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", minHeight: 42, whiteSpace: "nowrap" }}
+                      style={{ padding: "9px 16px", borderRadius: 8, background: copiedShare ? "var(--green)" : "var(--primary)", color: "#ffffff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", minHeight: 44, whiteSpace: "nowrap" }}
                       onClick={() => {
                         navigator.clipboard.writeText(activeUrl).then(() => {
                           setCopiedShare(true);
@@ -2618,13 +2652,13 @@ export function PieceworkContracts() {
                   </div>
 
                   {/* Quick Share Buttons Grid */}
-                  <div className="piecework-share-btn-grid" style={{ marginTop: 14 }}>
+                  <FormGrid cols={2} style={{ marginTop: 14 }}>
                     <button
                       type="button"
-                      style={{ padding: "10px 14px", borderRadius: 8, background: "#0068ff", color: "#fff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
+                      style={{ padding: "10px 14px", borderRadius: 8, background: "var(--primary)", color: "#ffffff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
                       onClick={() => {
                         const zaloShare = `https://zalo.me/share?url=${encodeURIComponent(activeUrl)}&message=${encodeURIComponent(shareMessage)}`;
-                        window.open(zaloShare, "_blank", "noopener,noreferrer");
+                        openExternalSafe(zaloShare);
                       }}
                     >
                       <span>💬</span> Gửi qua Zalo
@@ -2632,7 +2666,7 @@ export function PieceworkContracts() {
 
                     <button
                       type="button"
-                      style={{ padding: "10px 14px", borderRadius: 8, background: "#ea4335", color: "#fff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
+                      style={{ padding: "10px 14px", borderRadius: 8, background: "var(--coral)", color: "#ffffff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
                       onClick={() => {
                         const mailto = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareMessage)}`;
                         window.location.href = mailto;
@@ -2643,7 +2677,7 @@ export function PieceworkContracts() {
 
                     <button
                       type="button"
-                      style={{ padding: "10px 14px", borderRadius: 8, background: "#0f172a", color: "#38bdf8", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
+                      style={{ padding: "10px 14px", borderRadius: 8, background: "var(--ink)", color: "var(--gold)", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44 }}
                       onClick={async () => {
                         if (navigator.share) {
                           try {
@@ -2663,266 +2697,280 @@ export function PieceworkContracts() {
                     </button>
 
                     <a
-                      href={activeUrl}
+                      href={safeHttpUrl(activeUrl)}
                       target="_blank"
-                      rel="noreferrer"
-                      style={{ padding: "10px 14px", borderRadius: 8, background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", fontWeight: 700, fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44, boxSizing: "border-box" }}
+                      rel="noopener noreferrer"
+                      style={{ padding: "10px 14px", borderRadius: 8, background: "var(--paper)", color: "var(--text)", border: "1px solid var(--border-strong)", fontWeight: 700, fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 44, boxSizing: "border-box" }}
                     >
                       <span>📄</span> Mở Xem Trực Tiếp
                     </a>
-                  </div>
+                  </FormGrid>
                 </div>
               );
             })()}
-
-            <div className="piecework-modal-actions" style={{ marginTop: 20 }}>
-              <button className="secondary" onClick={() => setShareModal(null)} style={{ minHeight: 44 }}>
-                Đóng
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* Drive Sync Result Modal */}
-      {driveSyncModal && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 560 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#047857", color: "#ecfdf5", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  ☁️ Google Drive Kế Toán
-                </div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>
-                  Đồng Bộ Thành Công ({driveSyncModal.quarter})
-                </h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Hợp đồng: <b>{driveSyncModal.contract_code}</b>
-                </div>
-              </div>
+      <AppModal
+        open={Boolean(driveSyncModal)}
+        onClose={() => setDriveSyncModal(null)}
+        size="md"
+        title={driveSyncModal ? `Đồng Bộ Thành Công (${driveSyncModal.quarter})` : ""}
+        subtitle={
+          driveSyncModal ? (
+            <>
+              Hợp đồng: <b>{driveSyncModal.contract_code}</b>
+            </>
+          ) : undefined
+        }
+        footer={
+          driveSyncModal && (
+            <>
               <button
-                style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
+                type="button"
+                className="secondary"
+                style={{ minHeight: 44, padding: "0 16px" }}
                 onClick={() => setDriveSyncModal(null)}
               >
-                ✕
+                Đóng
               </button>
+              {safeHttpUrl(driveSyncModal.drive_link) && (
+                <a
+                  href={safeHttpUrl(driveSyncModal.drive_link)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="primary"
+                  style={{
+                    background: "var(--primary-dark)",
+                    color: "#ffffff",
+                    padding: "8px 16px",
+                    borderRadius: 10,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    minHeight: 44,
+                  }}
+                >
+                  🚀 Mở Thư Mục Trên Google Drive
+                </a>
+              )}
+            </>
+          )
+        }
+      >
+        {driveSyncModal && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--green)", color: "#ffffff", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                ☁️ Google Drive Kế Toán
+              </span>
+            </div>
+
+            <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }}>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 4 }}>Thư mục đích trên Google Drive:</div>
+              <div style={{ fontFamily: "var(--font-mono)", color: "var(--ink)", wordBreak: "break-all", fontWeight: 600 }}>
+                📁 {driveSyncModal.remote_dest}
+              </div>
             </div>
 
             <div style={{ marginTop: 14 }}>
-              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
-                <div style={{ color: "#64748b", fontSize: 12, marginBottom: 4 }}>Thư mục đích trên Google Drive:</div>
-                <div style={{ fontFamily: "monospace", color: "#0f172a", wordBreak: "break-all", fontWeight: 600 }}>
-                  📁 {driveSyncModal.remote_dest}
-                </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
+                Danh sách tệp hồ sơ đã đồng bộ ({driveSyncModal.files.length} tệp):
               </div>
-
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 8 }}>
-                  Danh sách tệp hồ sơ đã đồng bộ ({driveSyncModal.files.length} tệp):
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", background: "#f1f5f9", padding: 10, borderRadius: 8 }}>
-                  {driveSyncModal.files.map((fn, idx) => (
-                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#1e293b", background: "#fff", padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }}>
-                      <span>{fn.endsWith(".pdf") ? "📄" : (fn.endsWith(".docx") ? "📝" : "🖼️")}</span>
-                      <span style={{ fontFamily: "monospace", flex: 1, wordBreak: "break-all" }}>{fn}</span>
-                      <span style={{ color: "#166534", fontWeight: 700, fontSize: 11 }}>✓ Đã tải lên</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="secondary"
-                  style={{ minHeight: 40, padding: "0 16px" }}
-                  onClick={() => setDriveSyncModal(null)}
-                >
-                  Đóng
-                </button>
-                {driveSyncModal.drive_link && (
-                  <a
-                    href={driveSyncModal.drive_link}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      background: "#2563eb",
-                      color: "#fff",
-                      padding: "8px 16px",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      minHeight: 40,
-                    }}
-                  >
-                    🚀 Mở Thư Mục Trên Google Drive
-                  </a>
-                )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", background: "var(--paper)", padding: 10, borderRadius: 8 }}>
+                {driveSyncModal.files.map((fn, idx) => (
+                  <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink)", background: "var(--panel)", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
+                    <span>{fn.endsWith(".pdf") ? "📄" : (fn.endsWith(".docx") ? "📝" : "🖼️")}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", flex: 1, wordBreak: "break-all" }}>{fn}</span>
+                    <span style={{ color: "var(--green)", fontWeight: 700, fontSize: 11 }}>✓ Đã tải lên</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* Modal Edit Piecework Contract */}
-      {editingContract && (
-        <div className="piecework-modal-backdrop">
-          <form onSubmit={handleSaveEditContract} className="piecework-modal-box" style={{ maxWidth: 660 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Chỉnh Sửa Hợp Đồng Giao Khoán</h3>
-              <button type="button" style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setEditingContract(null)}>✕</button>
-            </div>
-
-            <div className="piecework-grid-2col" style={{ marginTop: 14 }}>
+      <AppModal
+        open={Boolean(editingContract)}
+        onClose={() => setEditingContract(null)}
+        size="md"
+        title="Chỉnh Sửa Hợp Đồng Giao Khoán"
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setEditingContract(null)}>Hủy</button>
+            <button type="submit" form="piecework-edit-contract-form" className="primary" style={{ background: "var(--primary)", color: "#ffffff" }}>Lưu Thay Đổi</button>
+          </>
+        }
+      >
+        {editingContract && (
+          <form id="piecework-edit-contract-form" onSubmit={handleSaveEditContract}>
+            <FormGrid cols={2}>
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã hợp đồng</label>
+                <label style={FIELD_LABEL_STYLE}>Mã hợp đồng</label>
                 <input
                   type="text"
                   disabled
+                  className="ui-input"
                   value={editingContract.contract_code}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 13, minHeight: 40 }}
+                  style={{ ...COMPACT_INPUT_STYLE, background: "var(--surface-subtle)", borderColor: "var(--border)" }}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Loại công việc khoán</label>
+                <label style={FIELD_LABEL_STYLE}>Loại hợp đồng</label>
                 <select
+                  className="ui-select"
                   value={editingContract.contract_type}
                   onChange={(e) => setEditingContract({ ...editingContract, contract_type: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 >
                   <option value="thi_cong">Thi công lắp đặt thiết bị / Kiosk</option>
+                  <option value="mua_ban_ca_nhan">🤝 Hợp đồng mua bán cá nhân (Hàng hóa / Thiết bị / Dịch vụ)</option>
                   <option value="boc_xep">Bốc xếp, vận chuyển nội bộ</option>
                   <option value="gia_cong">Gia công, đóng gói sản phẩm</option>
                   <option value="marketing">Truyền thông & Marketing / Sáng tạo nội dung</option>
                 </select>
               </div>
-
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Tên công trình / Hạng mục *</label>
+                <label style={FIELD_LABEL_STYLE}>Tên công trình / Hạng mục *</label>
                 <input
                   type="text"
                   required
+                  className="ui-input"
                   value={editingContract.project_name}
                   onChange={(e) => setEditingContract({ ...editingContract, project_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Địa điểm thi công</label>
+                <label style={FIELD_LABEL_STYLE}>Địa điểm thi công</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.location}
                   onChange={(e) => setEditingContract({ ...editingContract, location: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Ngày hợp đồng</label>
+                <label style={FIELD_LABEL_STYLE}>Ngày hợp đồng</label>
                 <input
                   type="date"
+                  className="ui-input"
                   value={editingContract.contract_date}
                   onChange={(e) => setEditingContract({ ...editingContract, contract_date: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Họ và tên thợ / Người nhận khoán *</label>
+                <label style={FIELD_LABEL_STYLE}>Họ và tên thợ / Người nhận khoán *</label>
                 <input
                   type="text"
                   required
+                  className="ui-input"
                   value={editingContract.worker_name}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số điện thoại</label>
+                <label style={FIELD_LABEL_STYLE}>Số điện thoại</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_phone}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_phone: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số CCCD gắn chip</label>
+                <label style={FIELD_LABEL_STYLE}>Số CCCD gắn chip</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_id_card}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_id_card: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã số thuế cá nhân</label>
+                <label style={FIELD_LABEL_STYLE}>Mã số thuế cá nhân</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_tax_code}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_tax_code: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#0f766e", marginBottom: 4 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", marginBottom: 4 }}>
                   💳 Hình thức chi trả thù lao (Chỉ Admin được chọn)
                 </label>
                 <select
+                  className="ui-select"
                   value={editingContract.payment_method || "bank_transfer"}
                   onChange={(e) => setEditingContract({ ...editingContract, payment_method: e.target.value as "bank_transfer" | "cash" })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1.5px solid #0f766e", background: editingContract.payment_method === "cash" ? "#ecfdf5" : "#fff", fontSize: 13, fontWeight: 600, minHeight: 40 }}
+                  style={{ ...COMPACT_INPUT_STYLE, border: "1.5px solid var(--primary-dark)", background: editingContract.payment_method === "cash" ? "var(--green-soft)" : "var(--panel)", fontWeight: 600 }}
                 >
                   <option value="bank_transfer">🏦 Chuyển khoản ngân hàng (Mặc định)</option>
                   <option value="cash">💵 Nhận tiền mặt tại chân công trình (Chỉ áp dụng &lt; 5 triệu đồng)</option>
                 </select>
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số tài khoản ngân hàng chính chủ</label>
+                <label style={FIELD_LABEL_STYLE}>Số tài khoản ngân hàng chính chủ</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_bank_account}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_bank_account: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Tên ngân hàng</label>
+                <label style={FIELD_LABEL_STYLE}>Tên ngân hàng</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_bank_name}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_bank_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
 
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Địa chỉ thường trú</label>
+                <label style={FIELD_LABEL_STYLE}>Địa chỉ thường trú</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={editingContract.worker_address}
                   onChange={(e) => setEditingContract({ ...editingContract, worker_address: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
+                  style={COMPACT_INPUT_STYLE}
                 />
               </div>
-            </div>
+            </FormGrid>
 
             {/* Work Items section */}
             <div style={{ marginTop: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>Hạng mục công việc giao khoán</label>
-                <button type="button" onClick={handleEditAddItem} style={{ fontSize: 12, padding: "4px 10px", background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 6, cursor: "pointer", minHeight: 34 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Hạng mục công việc giao khoán</label>
+                <button type="button" className="ui-btn-chip" onClick={handleEditAddItem} style={{ background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}>
                   ＋ Thêm dòng
                 </button>
               </div>
@@ -2931,616 +2979,768 @@ export function PieceworkContracts() {
                 <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <input
                     type="text"
+                    className="ui-input"
                     placeholder="Tên công việc..."
                     value={it.ten}
                     onChange={(e) => handleEditItemChange(idx, "ten", e.target.value)}
-                    style={{ flex: 3, minWidth: 160, padding: "7px 8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
+                    style={{ flex: "3 1 160px", minWidth: 0, width: "auto" }}
                   />
                   <input
                     type="number"
                     min="1"
+                    className="ui-input"
                     placeholder="SL"
                     value={it.so_luong}
                     onChange={(e) => handleEditItemChange(idx, "so_luong", Number(e.target.value))}
-                    style={{ width: 55, padding: "7px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
+                    style={{ width: 68, textAlign: "center", padding: "8px 6px" }}
                   />
                   <input
                     type="text"
+                    className="ui-input"
                     placeholder="ĐVT"
                     value={it.dvt}
                     onChange={(e) => handleEditItemChange(idx, "dvt", e.target.value)}
-                    style={{ width: 60, padding: "7px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
+                    style={{ width: 74, textAlign: "center", padding: "8px 6px" }}
                   />
                   <input
                     type="number"
+                    className="ui-input"
                     placeholder="Đơn giá"
                     value={it.don_gia}
                     onChange={(e) => handleEditItemChange(idx, "don_gia", Number(e.target.value))}
-                    style={{ width: 110, padding: "7px 8px", textAlign: "right", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
+                    style={{ flex: "1 1 110px", minWidth: 96, width: "auto", textAlign: "right" }}
                   />
-                  <button type="button" onClick={() => handleEditRemoveItem(idx)} style={{ background: "#fee2e2", color: "#b91c1c", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", minHeight: 38, minWidth: 38 }}>✕</button>
+                  <button
+                    type="button"
+                    className="ui-btn-icon"
+                    aria-label="Xóa dòng hạng mục"
+                    onClick={() => handleEditRemoveItem(idx)}
+                    style={{ background: "var(--red-soft)", color: INUT_TEXT_DANGER, borderColor: INUT_BORDER_DANGER }}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
-
-            <div className="piecework-modal-actions">
-              <button type="button" className="secondary" onClick={() => setEditingContract(null)}>Hủy</button>
-              <button type="submit" className="primary" style={{ background: "#0284c7" }}>Lưu Thay Đổi</button>
-            </div>
           </form>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* Modal Create New Piecework Contract */}
-      {showCreateModal && (
-        <div className="piecework-modal-backdrop">
-          <form onSubmit={handleCreateContract} className="piecework-modal-box" style={{ maxWidth: 640 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>Tạo Hợp Đồng Giao Khoán Mới</h3>
-              <button type="button" style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b", minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowCreateModal(false)}>✕</button>
+      <AppModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        size="md"
+        title="Tạo Hợp Đồng Giao Khoán Mới"
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>
+            <button type="submit" form="piecework-create-contract-form" className="primary" style={{ background: "var(--primary)", color: "#ffffff" }}>Tạo Hợp Đồng</button>
+          </>
+        }
+      >
+        <form id="piecework-create-contract-form" onSubmit={handleCreateContract}>
+          <FormGrid cols={2}>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Mã hợp đồng</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 04/2026/HĐGK"
+                value={formData.contract_code}
+                onChange={(e) => setFormData({ ...formData, contract_code: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            <div className="piecework-grid-2col" style={{ marginTop: 14 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã hợp đồng</label>
-                <input
-                  type="text"
-                  placeholder="VD: 04/2026/HĐGK"
-                  value={formData.contract_code}
-                  onChange={(e) => setFormData({ ...formData, contract_code: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Loại công việc khoán</label>
-                <select
-                  value={formData.contract_type}
-                  onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                >
-                  <option value="thi_cong">Thi công lắp đặt thiết bị / Kiosk</option>
-                  <option value="boc_xep">Bốc xếp, vận chuyển nội bộ</option>
-                  <option value="gia_cong">Gia công, đóng gói sản phẩm</option>
-                  <option value="marketing">Truyền thông & Marketing / Sáng tạo nội dung</option>
-                </select>
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Tên công trình / Hạng mục *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: Lắp đặt Kiosk AI tại Phường Đông Sơn"
-                  value={formData.project_name}
-                  onChange={(e) => setFormData({ ...formData, project_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Địa điểm thi công</label>
-                <input
-                  type="text"
-                  placeholder="VD: TP. Thanh Hóa"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Ngày hợp đồng</label>
-                <input
-                  type="date"
-                  value={formData.contract_date}
-                  onChange={(e) => setFormData({ ...formData, contract_date: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Họ và tên thợ / Người nhận khoán *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: Nguyễn Văn A"
-                  value={formData.worker_name}
-                  onChange={(e) => setFormData({ ...formData, worker_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số điện thoại</label>
-                <input
-                  type="text"
-                  placeholder="VD: 0912 345 678"
-                  value={formData.worker_phone}
-                  onChange={(e) => setFormData({ ...formData, worker_phone: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số CCCD gắn chip</label>
-                <input
-                  type="text"
-                  placeholder="VD: 038092004512"
-                  value={formData.worker_id_card}
-                  onChange={(e) => setFormData({ ...formData, worker_id_card: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã số thuế cá nhân</label>
-                <input
-                  type="text"
-                  placeholder="VD: 8492004512"
-                  value={formData.worker_tax_code}
-                  onChange={(e) => setFormData({ ...formData, worker_tax_code: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#0f766e", marginBottom: 4 }}>
-                  💳 Hình thức chi trả thù lao (Chỉ Admin được chọn)
-                </label>
-                <select
-                  value={formData.payment_method}
-                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as "bank_transfer" | "cash" })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1.5px solid #0f766e", background: formData.payment_method === "cash" ? "#ecfdf5" : "#fff", fontSize: 13, fontWeight: 600, minHeight: 40 }}
-                >
-                  <option value="bank_transfer">🏦 Chuyển khoản ngân hàng (Mặc định)</option>
-                  <option value="cash">💵 Nhận tiền mặt tại chân công trình (Chỉ áp dụng &lt; 5 triệu đồng)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số tài khoản ngân hàng chính chủ</label>
-                <input
-                  type="text"
-                  placeholder="VD: 19034567891011"
-                  value={formData.worker_bank_account}
-                  onChange={(e) => setFormData({ ...formData, worker_bank_account: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Tên ngân hàng</label>
-                <input
-                  type="text"
-                  placeholder="VD: Techcombank"
-                  value={formData.worker_bank_name}
-                  onChange={(e) => setFormData({ ...formData, worker_bank_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Địa chỉ thường trú</label>
-                <input
-                  type="text"
-                  placeholder="VD: Tổ 5, Quyết Tâm, TP. Sơn La"
-                  value={formData.worker_address}
-                  onChange={(e) => setFormData({ ...formData, worker_address: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Loại hợp đồng</label>
+              <select
+                className="ui-select"
+                value={formData.contract_type}
+                onChange={(e) => {
+                  const newType = e.target.value;
+                  const isMb = newType === "mua_ban_ca_nhan";
+                  const todayStr = new Date().toISOString().slice(0, 10).split("-").reverse().join("");
+                  setFormData({
+                    ...formData,
+                    contract_type: newType,
+                    contract_code: formData.contract_code ? formData.contract_code : (isMb ? `${todayStr}-01/HĐMB-INUT` : `${todayStr}-01/HĐGK-INUT`),
+                    title: isMb && (!formData.title || formData.title.includes("giao khoán")) ? `Hợp đồng mua bán cá nhân - ${formData.project_name || 'Hàng hóa / Thiết bị'}` : formData.title,
+                  });
+                }}
+                style={COMPACT_INPUT_STYLE}
+              >
+                <option value="thi_cong">Thi công lắp đặt thiết bị / Kiosk</option>
+                <option value="mua_ban_ca_nhan">🤝 Hợp đồng mua bán cá nhân (Hàng hóa / Thiết bị / Dịch vụ)</option>
+                <option value="boc_xep">Bốc xếp, vận chuyển nội bộ</option>
+                <option value="gia_cong">Gia công, đóng gói sản phẩm</option>
+                <option value="marketing">Truyền thông & Marketing / Sáng tạo nội dung</option>
+              </select>
             </div>
 
-            {/* Work Items section */}
-            <div style={{ marginTop: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>Hạng mục công việc giao khoán</label>
-                <button type="button" onClick={handleAddItem} style={{ fontSize: 12, padding: "4px 10px", background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", borderRadius: 6, cursor: "pointer", minHeight: 34 }}>
-                  ＋ Thêm dòng
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={FIELD_LABEL_STYLE}>
+                {formData.contract_type === "mua_ban_ca_nhan" ? "Tên hàng hóa / Tài sản / Giao dịch *" : "Tên công trình / Hạng mục *"}
+              </label>
+              <input
+                type="text"
+                required
+                className="ui-input"
+                placeholder={formData.contract_type === "mua_ban_ca_nhan" ? "VD: Mua bán bo mạch, thiết bị camera, chuyển giao phần mềm" : "VD: Lắp đặt Kiosk AI tại Phường Đông Sơn"}
+                value={formData.project_name}
+                onChange={(e) => setFormData({ ...formData, project_name: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Địa điểm thi công</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: TP. Thanh Hóa"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Ngày hợp đồng</label>
+              <input
+                type="date"
+                className="ui-input"
+                value={formData.contract_date}
+                onChange={(e) => setFormData({ ...formData, contract_date: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Họ và tên thợ / Người nhận khoán *</label>
+              <input
+                type="text"
+                required
+                className="ui-input"
+                placeholder="VD: Nguyễn Văn A"
+                value={formData.worker_name}
+                onChange={(e) => setFormData({ ...formData, worker_name: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số điện thoại</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 0912 345 678"
+                value={formData.worker_phone}
+                onChange={(e) => setFormData({ ...formData, worker_phone: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số CCCD gắn chip</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 038092004512"
+                value={formData.worker_id_card}
+                onChange={(e) => setFormData({ ...formData, worker_id_card: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Mã số thuế cá nhân</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 8492004512"
+                value={formData.worker_tax_code}
+                onChange={(e) => setFormData({ ...formData, worker_tax_code: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--primary-dark)", marginBottom: 4 }}>
+                💳 Hình thức chi trả thù lao (Chỉ Admin được chọn)
+              </label>
+              <select
+                className="ui-select"
+                value={formData.payment_method}
+                onChange={(e) => setFormData({ ...formData, payment_method: e.target.value as "bank_transfer" | "cash" })}
+                style={{ ...COMPACT_INPUT_STYLE, border: "1.5px solid var(--primary-dark)", background: formData.payment_method === "cash" ? "var(--green-soft)" : "var(--panel)", fontWeight: 600 }}
+              >
+                <option value="bank_transfer">🏦 Chuyển khoản ngân hàng (Mặc định)</option>
+                <option value="cash">💵 Nhận tiền mặt tại chân công trình (Chỉ áp dụng &lt; 5 triệu đồng)</option>
+              </select>
+            </div>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số tài khoản ngân hàng chính chủ</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 19034567891011"
+                value={formData.worker_bank_account}
+                onChange={(e) => setFormData({ ...formData, worker_bank_account: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Tên ngân hàng</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: Techcombank"
+                value={formData.worker_bank_name}
+                onChange={(e) => setFormData({ ...formData, worker_bank_name: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={FIELD_LABEL_STYLE}>Địa chỉ thường trú</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: Tổ 5, Quyết Tâm, TP. Sơn La"
+                value={formData.worker_address}
+                onChange={(e) => setFormData({ ...formData, worker_address: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+          </FormGrid>
+
+          {/* Work Items section */}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Hạng mục công việc giao khoán</label>
+              <button type="button" className="ui-btn-chip" onClick={handleAddItem} style={{ background: "var(--green-soft)", color: "var(--ink-2)", borderColor: INUT_BORDER_SUCCESS }}>
+                ＋ Thêm dòng
+              </button>
+            </div>
+
+            {formData.items.map((it, idx) => (
+              <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  className="ui-input"
+                  placeholder="Tên công việc..."
+                  value={it.ten}
+                  onChange={(e) => handleItemChange(idx, "ten", e.target.value)}
+                  style={{ flex: "3 1 160px", minWidth: 0, width: "auto" }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  className="ui-input"
+                  placeholder="SL"
+                  value={it.so_luong}
+                  onChange={(e) => handleItemChange(idx, "so_luong", Number(e.target.value))}
+                  style={{ width: 68, textAlign: "center", padding: "8px 6px" }}
+                />
+                <input
+                  type="text"
+                  className="ui-input"
+                  placeholder="ĐVT"
+                  value={it.dvt}
+                  onChange={(e) => handleItemChange(idx, "dvt", e.target.value)}
+                  style={{ width: 74, textAlign: "center", padding: "8px 6px" }}
+                />
+                <input
+                  type="number"
+                  className="ui-input"
+                  placeholder="Đơn giá"
+                  value={it.don_gia}
+                  onChange={(e) => handleItemChange(idx, "don_gia", Number(e.target.value))}
+                  style={{ flex: "1 1 110px", minWidth: 96, width: "auto", textAlign: "right" }}
+                />
+                <button
+                  type="button"
+                  className="ui-btn-icon"
+                  aria-label="Xóa dòng hạng mục"
+                  onClick={() => handleRemoveItem(idx)}
+                  style={{ background: "var(--red-soft)", color: INUT_TEXT_DANGER, borderColor: INUT_BORDER_DANGER }}
+                >
+                  ✕
                 </button>
               </div>
+            ))}
 
-              {formData.items.map((it, idx) => (
-                <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    placeholder="Tên công việc..."
-                    value={it.ten}
-                    onChange={(e) => handleItemChange(idx, "ten", e.target.value)}
-                    style={{ flex: 3, minWidth: 160, padding: "7px 8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="SL"
-                    value={it.so_luong}
-                    onChange={(e) => handleItemChange(idx, "so_luong", Number(e.target.value))}
-                    style={{ width: 55, padding: "7px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="ĐVT"
-                    value={it.dvt}
-                    onChange={(e) => handleItemChange(idx, "dvt", e.target.value)}
-                    style={{ width: 60, padding: "7px 4px", textAlign: "center", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Đơn giá"
-                    value={it.don_gia}
-                    onChange={(e) => handleItemChange(idx, "don_gia", Number(e.target.value))}
-                    style={{ width: 110, padding: "7px 8px", textAlign: "right", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12.5, minHeight: 38 }}
-                  />
-                  <button type="button" onClick={() => handleRemoveItem(idx)} style={{ background: "#fee2e2", color: "#b91c1c", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", minHeight: 38, minWidth: 38 }}>✕</button>
-                </div>
-              ))}
+            <div style={{ marginTop: 10, padding: "10px 14px", background: "var(--surface-subtle)", borderRadius: 8, border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Tổng giá trị khoán:</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: "var(--ink)" }}>{calculateTotal().toLocaleString("vi-VN")} VNĐ</span>
+            </div>
 
-              <div style={{ marginTop: 10, padding: "10px 14px", background: "#f8fafc", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Tổng giá trị khoán:</span>
-                <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{calculateTotal().toLocaleString("vi-VN")} VNĐ</span>
+            {calculateTotal() < 5000000 ? (
+              <div style={{ fontSize: 12, color: "var(--green)", marginTop: 4, fontStyle: "italic" }}>
+                ✓ Dưới 5 triệu đồng: Tự động miễn trừ 10% thuế TNCN theo Nghị định 253/2026/NĐ-CP.
               </div>
-
-              {calculateTotal() < 5000000 ? (
-                <div style={{ fontSize: 12, color: "#16a34a", marginTop: 4, fontStyle: "italic" }}>
-                  ✓ Dưới 5 triệu đồng: Tự động miễn trừ 10% thuế TNCN theo Nghị định 253/2026/NĐ-CP.
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>
-                  ⚠️ Từ 5 triệu đồng trở lên: Tự động tính khấu trừ 10% thuế TNCN ({Math.round(calculateTotal() * 0.1).toLocaleString("vi-VN")} đ) nộp NSNN.
-                </div>
-              )}
-            </div>
-
-            <div className="piecework-modal-actions">
-              <button type="button" className="secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>
-              <button type="submit" className="primary" style={{ background: "#0284c7" }}>Tạo Hợp Đồng</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Modal Smart Paste Thông Tin Thợ / Nhà Cung Cấp */}
-      {showSmartPasteModal && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 580 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#7c3aed", color: "#fff", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  ⚡ AI / Heuristic Extraction
-                </div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>Dán Nhanh & Trích Xuất Thông Tin Thợ</h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Tự động nhận diện Họ tên, CCCD 12 số, Ngày cấp, Nơi cấp, MST, SĐT, STK ngân hàng, Địa chỉ
-                </div>
+            ) : (
+              <div style={{ fontSize: 12, color: INUT_TEXT_DANGER, marginTop: 4, fontStyle: "italic" }}>
+                ⚠️ Từ 5 triệu đồng trở lên: Tự động tính khấu trừ 10% thuế TNCN ({Math.round(calculateTotal() * 0.1).toLocaleString("vi-VN")} đ) nộp NSNN.
               </div>
-              <button
-                type="button"
-                style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
-                onClick={() => setShowSmartPasteModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <label style={{ fontSize: 13, fontWeight: 700, color: "#334155", display: "block", marginBottom: 6 }}>
-                Dán toàn bộ tin nhắn Zalo, SMS hoặc chuỗi quét mã QR CCCD của thợ:
-              </label>
-              <textarea
-                rows={7}
-                placeholder={`Ví dụ tin nhắn Zalo:\nNguyễn Văn An, cccd 038092004512 cấp ngày 15/04/2022 tại Cục Cảnh sát QLHC về TTXH, mst 8492004512, sđt 0912 345 678, stk 19034567891011 techcombank, đ/c Tổ 2, Phường Đông Sơn, Thanh Hóa\n\nHoặc chuỗi QR CCCD:\n038092004512||Nguyễn Văn An|15041992|Nam|Tổ 2, Đông Sơn, Thanh Hóa|15042022`}
-                value={smartPasteText}
-                onChange={(e) => setSmartPasteText(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1.5px solid #cbd5e1", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
-              />
-              <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 6 }}>
-                💡 Hệ thống áp dụng thuật toán bóc tách regex thông minh, chống sai số tài khoản và định dạng CCCD chuẩn Bộ Công an.
-              </div>
-            </div>
-
-            <div className="piecework-modal-actions" style={{ marginTop: 18 }}>
-              <button type="button" className="secondary" onClick={() => setShowSmartPasteModal(false)}>Hủy</button>
-              <button
-                type="button"
-                className="primary"
-                style={{ background: "#7c3aed", fontWeight: 700 }}
-                onClick={handleApplySmartPaste}
-                disabled={!smartPasteText.trim()}
-              >
-                ⚡ Trích Xuất & Điền Tự Động
-              </button>
-            </div>
+            )}
           </div>
-        </div>
-      )}
+        </form>
+      </AppModal>
 
       {/* Modal Thêm / Chỉnh Sửa Nhà Cung Cấp Khoán */}
-      {showContractorModal && (
-        <div className="piecework-modal-backdrop">
-          <form onSubmit={handleSaveContractor} className="piecework-modal-box" style={{ maxWidth: 660 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>
-                  {editingContractor ? "Chỉnh Sửa Hồ Sơ Nhà Cung Cấp / Thợ" : "Thêm Nhà Cung Cấp / Thợ Mới Vào Danh Bạ"}
-                </h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Lưu trữ định danh CCCD & MST cá nhân để tạo HĐ khoán nhanh và hỗ trợ quyết toán thuế
-                </div>
-              </div>
-              <button type="button" style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowContractorModal(false)}>✕</button>
+      <AppModal
+        open={showContractorModal}
+        onClose={() => setShowContractorModal(false)}
+        size="md"
+        title={editingContractor ? "Chỉnh Sửa Hồ Sơ Nhà Cung Cấp / Thợ" : "Thêm Nhà Cung Cấp / Thợ Mới Vào Danh Bạ"}
+        subtitle="Lưu trữ định danh CCCD & MST cá nhân để tạo HĐ khoán nhanh và hỗ trợ quyết toán thuế"
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setShowContractorModal(false)}>Hủy</button>
+            <button type="submit" form="piecework-contractor-form" className="primary" style={{ background: "var(--primary-dark)", color: "#ffffff", fontWeight: 700 }}>
+              {editingContractor ? "Lưu Cập Nhật" : "✓ Lưu Vào Danh Bạ"}
+            </button>
+          </>
+        }
+      >
+        <form id="piecework-contractor-form" onSubmit={handleSaveContractor}>
+          {/* Smart Paste Quick trigger on contractor modal */}
+          <div style={{ background: "var(--paper)", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--gold)", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <span style={{ fontSize: 12.5, color: "var(--ink)", fontWeight: 600 }}>Có tin nhắn Zalo hoặc mã QR CCCD của thợ?</span>
+            <button
+              type="button"
+              className="ui-btn-chip"
+              style={{ background: "var(--gold)", color: "var(--ink)", borderColor: "transparent" }}
+              onClick={() => {
+                setSmartPasteTarget("contractor");
+                setSmartPasteText("");
+                setShowSmartPasteModal(true);
+              }}
+            >
+              ⚡ Dán nhanh tự điền form
+            </button>
+          </div>
+
+          <FormGrid cols={2}>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Mã nhà cung cấp (Tùy chọn)</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: CTV-HAI-4512 (để trống tự sinh)"
+                value={contractorForm.code}
+                onChange={(e) => setContractorForm({ ...contractorForm, code: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            {/* Smart Paste Quick trigger on contractor modal */}
-            <div style={{ background: "#f5f3ff", padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd6fe", marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-              <span style={{ fontSize: 12.5, color: "#5b21b6", fontWeight: 600 }}>Có tin nhắn Zalo hoặc mã QR CCCD của thợ?</span>
-              <button
-                type="button"
-                style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
-                onClick={() => {
-                  setSmartPasteTarget("contractor");
-                  setSmartPasteText("");
-                  setShowSmartPasteModal(true);
-                }}
-              >
-                ⚡ Dán nhanh tự điền form
-              </button>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Họ và tên thợ / Người nhận khoán *</label>
+              <input
+                type="text"
+                required
+                className="ui-input"
+                placeholder="VD: Lê Văn Hải"
+                value={contractorForm.name}
+                onChange={(e) => setContractorForm({ ...contractorForm, name: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            <div className="piecework-grid-2col" style={{ marginTop: 14 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã nhà cung cấp (Tùy chọn)</label>
-                <input
-                  type="text"
-                  placeholder="VD: CTV-HAI-4512 (để trống tự sinh)"
-                  value={contractorForm.code}
-                  onChange={(e) => setContractorForm({ ...contractorForm, code: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Họ và tên thợ / Người nhận khoán *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: Lê Văn Hải"
-                  value={contractorForm.name}
-                  onChange={(e) => setContractorForm({ ...contractorForm, name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số CCCD gắn chip (12 số) *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="VD: 038092004512"
-                  value={contractorForm.id_card}
-                  onChange={(e) => setContractorForm({ ...contractorForm, id_card: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Ngày cấp CCCD</label>
-                <input
-                  type="date"
-                  value={contractorForm.id_card_date}
-                  onChange={(e) => setContractorForm({ ...contractorForm, id_card_date: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Nơi cấp CCCD</label>
-                <input
-                  type="text"
-                  value={contractorForm.id_card_place}
-                  onChange={(e) => setContractorForm({ ...contractorForm, id_card_place: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Mã số thuế cá nhân (MST làm hoàn thuế)</label>
-                <input
-                  type="text"
-                  placeholder="VD: 8492004512"
-                  value={contractorForm.tax_code}
-                  onChange={(e) => setContractorForm({ ...contractorForm, tax_code: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số điện thoại</label>
-                <input
-                  type="text"
-                  placeholder="VD: 0961 197 999"
-                  value={contractorForm.phone}
-                  onChange={(e) => setContractorForm({ ...contractorForm, phone: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Số tài khoản ngân hàng chính chủ</label>
-                <input
-                  type="text"
-                  placeholder="VD: 19034567891011"
-                  value={contractorForm.bank_account}
-                  onChange={(e) => setContractorForm({ ...contractorForm, bank_account: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Tên ngân hàng thụ hưởng</label>
-                <input
-                  type="text"
-                  placeholder="VD: Techcombank"
-                  value={contractorForm.bank_name}
-                  onChange={(e) => setContractorForm({ ...contractorForm, bank_name: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Kỹ năng / Hạng mục khoán chính</label>
-                <input
-                  type="text"
-                  placeholder="VD: Lắp đặt Kiosk, thi công điện mạng..."
-                  value={contractorForm.skills}
-                  onChange={(e) => setContractorForm({ ...contractorForm, skills: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Địa chỉ thường trú (Theo CCCD)</label>
-                <input
-                  type="text"
-                  placeholder="VD: Tổ 2, Phường Đông Sơn, TP. Thanh Hóa, Tỉnh Thanh Hóa"
-                  value={contractorForm.address}
-                  onChange={(e) => setContractorForm({ ...contractorForm, address: e.target.value })}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, minHeight: 40 }}
-                />
-              </div>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số CCCD gắn chip (12 số) *</label>
+              <input
+                type="text"
+                required
+                className="ui-input"
+                placeholder="VD: 038092004512"
+                value={contractorForm.id_card}
+                onChange={(e) => setContractorForm({ ...contractorForm, id_card: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            <div className="piecework-modal-actions">
-              <button type="button" className="secondary" onClick={() => setShowContractorModal(false)}>Hủy</button>
-              <button type="submit" className="primary" style={{ background: "#0f766e", fontWeight: 700 }}>
-                {editingContractor ? "Lưu Cập Nhật" : "✓ Lưu Vào Danh Bạ"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Modal Bảng Kê Thuế & Thu Nhập Cho Thợ Hoàn Thuế */}
-      {taxSummaryData && (
-        <div className="piecework-modal-backdrop">
-          <div className="piecework-modal-box" style={{ maxWidth: 760 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
-              <div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#15803d", color: "#fff", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
-                  ⚖️ Hỗ Trợ Hoàn Thuế TNCN (NĐ 253/2026/NĐ-CP)
-                </div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: 18, color: "#0f172a" }}>
-                  Bảng Kê Chi Trả Thù Lao & Khấu Trừ Thuế TNCN — Năm {taxSummaryData.year}
-                </h3>
-                <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 2 }}>
-                  Thợ: <b>{taxSummaryData.contractor.name}</b> · CCCD: <b>{taxSummaryData.contractor.id_card}</b> · MST: <b>{taxSummaryData.contractor.tax_code || "Chưa có"}</b>
-                </div>
-              </div>
-              <button type="button" style={{ background: "none", border: "none", fontSize: 24, cursor: "pointer", color: "#64748b", minWidth: 40, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setTaxSummaryData(null)}>✕</button>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Ngày cấp CCCD</label>
+              <input
+                type="date"
+                className="ui-input"
+                value={contractorForm.id_card_date}
+                onChange={(e) => setContractorForm({ ...contractorForm, id_card_date: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              {/* Summary 3 Cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
-                <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 11.5, color: "#64748b", fontWeight: 600 }}>TỔNG THÙ LAO (GROSS)</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 3 }}>
-                    {taxSummaryData.summary.total_gross_income.toLocaleString("vi-VN")} đ
-                  </div>
-                  <div style={{ fontSize: 11, color: "#0284c7" }}>{taxSummaryData.summary.total_contracts} hợp đồng khoán</div>
-                </div>
-
-                <div style={{ background: "#fef2f2", padding: "12px 14px", borderRadius: 10, border: "1px solid #fecaca" }}>
-                  <div style={{ fontSize: 11.5, color: "#991b1b", fontWeight: 600 }}>THUẾ TNCN ĐÃ KHẤU TRỪ (10%)</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#b91c1c", marginTop: 3 }}>
-                    {taxSummaryData.summary.total_tax_withheld.toLocaleString("vi-VN")} đ
-                  </div>
-                  <div style={{ fontSize: 11, color: "#dc2626" }}>Đã nộp vào NSNN</div>
-                </div>
-
-                <div style={{ background: "#f0fdf4", padding: "12px 14px", borderRadius: 10, border: "1px solid #bbf7d0" }}>
-                  <div style={{ fontSize: 11.5, color: "#166534", fontWeight: 600 }}>THỰC NHẬN CHUYỂN KHOẢN (NET)</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#15803d", marginTop: 3 }}>
-                    {taxSummaryData.summary.total_net_paid.toLocaleString("vi-VN")} đ
-                  </div>
-                  <div style={{ fontSize: 11, color: "#16a34a" }}>TK Techcombank 79713</div>
-                </div>
-              </div>
-
-              {/* Table of contracts in year */}
-              <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, textAlign: "left" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569" }}>
-                      <th style={{ padding: "8px 10px" }}>STT</th>
-                      <th style={{ padding: "8px 10px" }}>Số HĐ / Ngày</th>
-                      <th style={{ padding: "8px 10px" }}>Hạng mục công việc</th>
-                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Tổng tiền (Gross)</th>
-                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Thuế TNCN (10%)</th>
-                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Thực nhận (Net)</th>
-                      <th style={{ padding: "8px 10px", textAlign: "center" }}>File PDF</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {taxSummaryData.contracts.map((it) => (
-                      <tr key={it.contract_code} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "8px 10px" }}>{it.stt}</td>
-                        <td style={{ padding: "8px 10px" }}>
-                          <div style={{ fontWeight: 700, color: "#0284c7" }}>{it.contract_code}</div>
-                          <div style={{ fontSize: 11, color: "#64748b" }}>{it.contract_date}</div>
-                        </td>
-                        <td style={{ padding: "8px 10px" }}>
-                          <div style={{ fontWeight: 600 }}>{it.project_name}</div>
-                          <div style={{ fontSize: 11, color: "#64748b" }}>{it.contract_type_label}</div>
-                        </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700 }}>
-                          {it.gross_amount.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", color: it.tax_withheld > 0 ? "#dc2626" : "#16a34a" }}>
-                          {it.tax_withheld > 0 ? `-${it.tax_withheld.toLocaleString("vi-VN")} đ` : "Miễn khấu trừ"}
-                        </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "#166534" }}>
-                          {it.net_paid.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                          <a
-                            href={it.pdf_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: "#0284c7", textDecoration: "none", fontWeight: 600, fontSize: 11.5 }}
-                          >
-                            📄 PDF Đã Ký
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Tax Guidance Note */}
-              <div style={{ marginTop: 12, padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, border: "1px solid #bae6fd", fontSize: 12, color: "#0369a1" }}>
-                <b>💡 Hướng dẫn làm thủ tục Hoàn Thuế Thu Nhập Cá Nhân:</b>
-                <div style={{ marginTop: 3 }}>{taxSummaryData.tax_refund_guidance}</div>
-                <div style={{ marginTop: 4, fontSize: 11, color: "#475569" }}>
-                  Đơn vị chi trả: <b>{taxSummaryData.payer.company_name}</b> (MST: {taxSummaryData.payer.tax_code}) cam kết đã kê khai thuế theo đúng quy định.
-                </div>
-              </div>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Nơi cấp CCCD</label>
+              <input
+                type="text"
+                className="ui-input"
+                value={contractorForm.id_card_place}
+                onChange={(e) => setContractorForm({ ...contractorForm, id_card_place: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
 
-            <div className="piecework-modal-actions" style={{ marginTop: 18 }}>
-              <button type="button" className="secondary" onClick={() => setTaxSummaryData(null)}>Đóng</button>
-              <button
-                type="button"
-                className="secondary"
-                style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", fontWeight: 700 }}
-                onClick={() => window.print()}
-              >
-                🖨️ In Bảng Kê Thuế
-              </button>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Mã số thuế cá nhân (MST làm hoàn thuế)</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 8492004512"
+                value={contractorForm.tax_code}
+                onChange={(e) => setContractorForm({ ...contractorForm, tax_code: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
             </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số điện thoại</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 0961 197 999"
+                value={contractorForm.phone}
+                onChange={(e) => setContractorForm({ ...contractorForm, phone: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Số tài khoản ngân hàng chính chủ</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: 19034567891011"
+                value={contractorForm.bank_account}
+                onChange={(e) => setContractorForm({ ...contractorForm, bank_account: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Tên ngân hàng thụ hưởng</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: Techcombank"
+                value={contractorForm.bank_name}
+                onChange={(e) => setContractorForm({ ...contractorForm, bank_name: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div>
+              <label style={FIELD_LABEL_STYLE}>Kỹ năng / Hạng mục khoán chính</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: Lắp đặt Kiosk, thi công điện mạng..."
+                value={contractorForm.skills}
+                onChange={(e) => setContractorForm({ ...contractorForm, skills: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={FIELD_LABEL_STYLE}>Địa chỉ thường trú (Theo CCCD)</label>
+              <input
+                type="text"
+                className="ui-input"
+                placeholder="VD: Tổ 2, Phường Đông Sơn, TP. Thanh Hóa, Tỉnh Thanh Hóa"
+                value={contractorForm.address}
+                onChange={(e) => setContractorForm({ ...contractorForm, address: e.target.value })}
+                style={COMPACT_INPUT_STYLE}
+              />
+            </div>
+          </FormGrid>
+        </form>
+      </AppModal>
+
+      {/* Modal Smart Paste Thông Tin Thợ / Nhà Cung Cấp (rendered after Contractor modal for proper stacking) */}
+      <AppModal
+        open={showSmartPasteModal}
+        onClose={() => setShowSmartPasteModal(false)}
+        size="md"
+        title="Dán Nhanh & Trích Xuất Thông Tin Thợ"
+        subtitle="Tự động nhận diện Họ tên, CCCD 12 số, Ngày cấp, Nơi cấp, MST, SĐT, STK ngân hàng, Địa chỉ"
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setShowSmartPasteModal(false)}>Hủy</button>
+            <button
+              type="button"
+              className="primary"
+              style={{ background: "var(--gold)", color: "var(--ink)", fontWeight: 700 }}
+              onClick={handleApplySmartPaste}
+              disabled={!smartPasteText.trim()}
+            >
+              ⚡ Trích Xuất & Điền Tự Động
+            </button>
+          </>
+        }
+      >
+        <div>
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--ink)", color: "var(--gold)", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+              ⚡ AI / Heuristic Extraction
+            </span>
+          </div>
+
+          <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 6 }}>
+            Dán toàn bộ tin nhắn Zalo, SMS hoặc chuỗi quét mã QR CCCD của thợ:
+          </label>
+          <textarea
+            rows={7}
+            className="ui-textarea"
+            placeholder={`Ví dụ tin nhắn Zalo:\nNguyễn Văn An, cccd 038092004512 cấp ngày 15/04/2022 tại Cục Cảnh sát QLHC về TTXH, mst 8492004512, sđt 0912 345 678, stk 19034567891011 techcombank, đ/c Tổ 2, Phường Đông Sơn, Thanh Hóa\n\nHoặc chuỗi QR CCCD:\n038092004512||Nguyễn Văn An|15041992|Nam|Tổ 2, Đông Sơn, Thanh Hóa|15042022`}
+            value={smartPasteText}
+            onChange={(e) => setSmartPasteText(e.target.value)}
+            style={{ width: "100%", boxSizing: "border-box" }}
+          />
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+            💡 Hệ thống áp dụng thuật toán bóc tách regex thông minh, chống sai số tài khoản và định dạng CCCD chuẩn Bộ Công an.
           </div>
         </div>
-      )}
+      </AppModal>
+
+      {/* Modal Bảng Kê Thuế & Thu Nhập Cho Thợ Hoàn Thuế */}
+      <AppModal
+        open={Boolean(taxSummaryData)}
+        onClose={() => setTaxSummaryData(null)}
+        size="lg"
+        title={taxSummaryData ? `Bảng Kê Chi Trả Thù Lao & Khấu Trừ Thuế TNCN — Năm ${taxSummaryData.year}` : ""}
+        subtitle={
+          taxSummaryData ? (
+            <>
+              Thợ: <b>{taxSummaryData.contractor.name}</b> · CCCD: <b>{taxSummaryData.contractor.id_card}</b> · MST: <b>{taxSummaryData.contractor.tax_code || "Chưa có"}</b>
+            </>
+          ) : undefined
+        }
+        footer={
+          <>
+            <button type="button" className="secondary" onClick={() => setTaxSummaryData(null)}>Đóng</button>
+            <button
+              type="button"
+              className="secondary"
+              style={{ background: "var(--green-soft)", color: "var(--ink-2)", border: "1px solid var(--green)", fontWeight: 700 }}
+              onClick={() => window.print()}
+            >
+              🖨️ In Bảng Kê Thuế
+            </button>
+          </>
+        }
+      >
+        {taxSummaryData && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--green)", color: "#ffffff", padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" }}>
+                ⚖️ Hỗ Trợ Hoàn Thuế TNCN (NĐ 253/2026/NĐ-CP)
+              </span>
+            </div>
+
+            {/* Summary 3 Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 10, marginBottom: 14, minWidth: 0 }}>
+              <div style={{ background: "var(--surface-subtle)", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600 }}>TỔNG THÙ LAO (GROSS)</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--ink)", marginTop: 3 }}>
+                  {taxSummaryData.summary.total_gross_income.toLocaleString("vi-VN")} đ
+                </div>
+                <div style={{ fontSize: 11, color: "var(--primary-dark)" }}>{taxSummaryData.summary.total_contracts} hợp đồng khoán</div>
+              </div>
+
+              <div style={{ background: "var(--red-soft)", padding: "12px 14px", borderRadius: 10, border: `1px solid ${INUT_BORDER_DANGER}`, minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, color: INUT_TEXT_DANGER, fontWeight: 600 }}>THUẾ TNCN ĐÃ KHẤU TRỪ (10%)</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: INUT_TEXT_DANGER, marginTop: 3 }}>
+                  {taxSummaryData.summary.total_tax_withheld.toLocaleString("vi-VN")} đ
+                </div>
+                <div style={{ fontSize: 11, color: INUT_TEXT_DANGER }}>Đã nộp vào NSNN</div>
+              </div>
+
+              <div style={{ background: "var(--green-soft)", padding: "12px 14px", borderRadius: 10, border: `1px solid ${INUT_BORDER_SUCCESS}`, minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, color: "var(--ink-2)", fontWeight: 600 }}>THỰC NHẬN CHUYỂN KHOẢN (NET)</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--green)", marginTop: 3 }}>
+                  {taxSummaryData.summary.total_net_paid.toLocaleString("vi-VN")} đ
+                </div>
+                <div style={{ fontSize: 11, color: "var(--green)" }}>TK Techcombank 79713</div>
+              </div>
+            </div>
+
+            {/* Table / Mobile Cards of contracts in year */}
+            <DataView
+              mobileMode="card"
+              desktop={
+                <div className="ui-table-scroll-wrap" style={{ background: "var(--panel)", borderColor: "var(--border)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ background: "var(--surface-subtle)", borderBottom: "1px solid var(--border)", color: "var(--ink-2)" }}>
+                        <th style={{ padding: "8px 10px" }}>STT</th>
+                        <th style={{ padding: "8px 10px" }}>Số HĐ / Ngày</th>
+                        <th style={{ padding: "8px 10px" }}>Hạng mục công việc</th>
+                        <th style={{ padding: "8px 10px", textAlign: "right" }}>Tổng tiền (Gross)</th>
+                        <th style={{ padding: "8px 10px", textAlign: "right" }}>Thuế TNCN (10%)</th>
+                        <th style={{ padding: "8px 10px", textAlign: "right" }}>Thực nhận (Net)</th>
+                        <th style={{ padding: "8px 10px", textAlign: "center" }}>File PDF</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taxSummaryData.contracts.map((it) => {
+                        const safePdfHref = safeHttpUrl(it.pdf_url);
+                        return (
+                          <tr key={it.contract_code} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "8px 10px" }}>{it.stt}</td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <div style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{it.contract_code}</div>
+                              <div style={{ fontSize: 11, color: "var(--muted)" }}>{it.contract_date}</div>
+                            </td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <div style={{ fontWeight: 600, color: "var(--ink)" }}>{it.project_name}</div>
+                              <div style={{ fontSize: 11, color: "var(--muted)" }}>{it.contract_type_label}</div>
+                            </td>
+                            <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "var(--ink)" }}>
+                              {it.gross_amount.toLocaleString("vi-VN")} đ
+                            </td>
+                            <td style={{ padding: "8px 10px", textAlign: "right", color: it.tax_withheld > 0 ? INUT_TEXT_DANGER : "var(--green)" }}>
+                              {it.tax_withheld > 0 ? `-${it.tax_withheld.toLocaleString("vi-VN")} đ` : "Miễn khấu trừ"}
+                            </td>
+                            <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "var(--ink-2)" }}>
+                              {it.net_paid.toLocaleString("vi-VN")} đ
+                            </td>
+                            <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                              {safePdfHref ? (
+                                <a
+                                  href={safePdfHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ui-btn-chip"
+                                  style={{ fontSize: 11.5, padding: "4px 8px" }}
+                                >
+                                  📄 PDF Đã Ký
+                                </a>
+                              ) : (
+                                <span style={{ color: "var(--muted)", fontSize: 11.5 }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              }
+              mobileCards={
+                <div className="ui-mobile-card-list">
+                  {taxSummaryData.contracts.map((it) => {
+                    const safePdfHref = safeHttpUrl(it.pdf_url);
+                    return (
+                      <div key={it.contract_code} className="ui-mobile-card">
+                        <div className="ui-mobile-card-head">
+                          <div style={{ minWidth: 0 }}>
+                            <div className="ui-mobile-card-title" style={{ color: "var(--primary-dark)" }}>
+                              #{it.stt} · {it.contract_code}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                              {it.contract_date} · {it.contract_type_label}
+                            </div>
+                          </div>
+                          {safePdfHref && (
+                            <a
+                              href={safePdfHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ui-btn-chip"
+                            >
+                              📄 PDF
+                            </a>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflowWrap: "anywhere" }}>
+                          {it.project_name}
+                        </div>
+                        <div className="ui-mobile-card-grid">
+                          <div className="ui-mobile-card-kv">
+                            <span>Tổng tiền (Gross)</span>
+                            <strong>{it.gross_amount.toLocaleString("vi-VN")} đ</strong>
+                          </div>
+                          <div className="ui-mobile-card-kv">
+                            <span>Thuế TNCN (10%)</span>
+                            <strong style={{ color: it.tax_withheld > 0 ? INUT_TEXT_DANGER : "var(--green)" }}>
+                              {it.tax_withheld > 0 ? `-${it.tax_withheld.toLocaleString("vi-VN")} đ` : "Miễn khấu trừ"}
+                            </strong>
+                          </div>
+                          <div className="ui-mobile-card-kv" style={{ gridColumn: "1 / -1" }}>
+                            <span>Thực nhận (Net)</span>
+                            <strong style={{ color: "var(--green)" }}>{it.net_paid.toLocaleString("vi-VN")} đ</strong>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              }
+            />
+
+            {/* Tax Guidance Note */}
+            <div style={{ marginTop: 12, padding: "10px 14px", background: "var(--primary-soft)", borderRadius: 8, border: `1px solid ${INUT_BORDER_PRIMARY}`, fontSize: 12, color: "var(--primary-dark)" }}>
+              <b>💡 Hướng dẫn làm thủ tục Hoàn Thuế Thu Nhập Cá Nhân:</b>
+              <div style={{ marginTop: 3 }}>{taxSummaryData.tax_refund_guidance}</div>
+              <div style={{ marginTop: 4, fontSize: 11, color: "var(--ink-2)" }}>
+                Đơn vị chi trả: <b>{taxSummaryData.payer.company_name}</b> (MST: {taxSummaryData.payer.tax_code}) cam kết đã kê khai thuế theo đúng quy định.
+              </div>
+            </div>
+          </div>
+        )}
+      </AppModal>
+
+      {/* Lightbox / Document Preview Modal (rendered LAST so it stacks above Detail & Audit modals) */}
+      <AppModal
+        open={Boolean(previewDoc)}
+        onClose={() => setPreviewDoc(null)}
+        size="lg"
+        title={previewDoc?.title ?? "Xem tài liệu"}
+        subtitle={previewDoc?.validationNote}
+        footer={
+          previewDoc && (
+            <>
+              {safeHttpUrl(previewDoc.downloadUrl) && (
+                <a
+                  href={safeHttpUrl(previewDoc.downloadUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="secondary"
+                  style={{ textDecoration: "none", color: "var(--primary-dark)", background: "var(--primary-soft)", border: `1px solid ${INUT_BORDER_PRIMARY}`, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 14px", borderRadius: 10 }}
+                >
+                  ⬇️ Tải file
+                </a>
+              )}
+              <button type="button" className="primary" style={{ background: "var(--primary)", color: "#ffffff" }} onClick={() => setPreviewDoc(null)}>
+                Đóng
+              </button>
+            </>
+          )
+        }
+      >
+        {previewDoc && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", background: "var(--surface-subtle)", borderRadius: 10, padding: 10, minHeight: 360 }}>
+            {previewDoc.isPdf ? (
+              <iframe
+                src={safeHttpUrl(previewDoc.url)}
+                title={previewDoc.title}
+                style={{ width: "100%", height: "70vh", border: "none", borderRadius: 8, background: "var(--panel)" }}
+              />
+            ) : (
+              <img
+                src={previewDoc.url}
+                alt={previewDoc.title}
+                style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 8, boxShadow: "var(--shadow)" }}
+              />
+            )}
+          </div>
+        )}
+      </AppModal>
     </div>
   );
 }
@@ -3576,22 +3776,22 @@ function DocumentCard({
   );
 
   return (
-    <div style={{ background: "#f8fafc", padding: 12, borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 10 }}>
+    <div style={{ background: "var(--surface-subtle)", padding: 12, borderRadius: 12, border: "1px solid var(--border)", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 10, minWidth: 0 }}>
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{title}</div>
-          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: isOk ? "#dcfce7" : (hasDoc ? "#fef3c7" : "#fee2e2"), color: isOk ? "#166534" : (hasDoc ? "#b45309" : "#991b1b"), fontWeight: 600 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", minWidth: 0 }}>{title}</div>
+          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: isOk ? "var(--green-soft)" : (hasDoc ? "var(--amber-soft)" : "var(--red-soft)"), color: isOk ? "var(--ink-2)" : (hasDoc ? INUT_TEXT_WARN : INUT_TEXT_DANGER), fontWeight: 600, flexShrink: 0 }}>
             {hasDoc ? "✓ Đã có tệp" : "✗ Chưa có"}
           </span>
         </div>
 
         {/* Thumbnail Preview if file exists */}
         {hasDoc && attachment && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: 6, background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: 6, background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)" }}>
             {isPdf ? (
               <div
                 onClick={() => onPreview(attachment)}
-                style={{ width: 44, height: 44, borderRadius: 6, background: "#fee2e2", color: "#dc2626", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 10, cursor: "pointer", flexShrink: 0 }}
+                style={{ width: 44, height: 44, borderRadius: 6, background: "var(--red-soft)", color: INUT_TEXT_DANGER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 10, cursor: "pointer", flexShrink: 0 }}
                 title="Bấm để xem trước tệp PDF"
               >
                 <span style={{ fontSize: 14 }}>📄</span>
@@ -3602,15 +3802,15 @@ function DocumentCard({
                 src={attachment.url}
                 alt={title}
                 onClick={() => onPreview(attachment)}
-                style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #cbd5e1", cursor: "pointer", flexShrink: 0 }}
+                style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border-strong)", cursor: "pointer", flexShrink: 0 }}
                 title="Bấm để xem ảnh phóng to"
               />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: attachment.validation?.valid ? "#166534" : "#dc2626", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: attachment.validation?.valid ? "var(--green)" : INUT_TEXT_DANGER, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {attachment.validation?.valid ? `🟢 ${attachment.validation.note || (isPdf ? "Tài liệu PDF" : "Ảnh hợp lệ")}` : `⚠️ ${attachment.validation?.error || "Lỗi tệp"}`}
               </div>
-              <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
                 {attachment.validation?.dimensions ? `Kích thước: ${attachment.validation.dimensions}` : (attachment.validation?.pages ? `Số trang: ${attachment.validation.pages}` : "")}
                 {attachment.validation?.size_kb ? ` (${attachment.validation.size_kb} KB)` : ""}
               </div>
@@ -3619,8 +3819,8 @@ function DocumentCard({
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "#0284c7", color: "#fff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 40, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ flex: 1, textAlign: "center", padding: "8px 10px", background: "var(--primary)", color: "#ffffff", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontWeight: 600, minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {uploading ? "Đang tải…" : (hasDoc ? "🔄 Thay tệp" : "＋ Tải tệp lên")}
           <input
             type="file"
@@ -3635,7 +3835,8 @@ function DocumentCard({
           <>
             <button
               type="button"
-              style={{ fontSize: 12, color: "#0284c7", background: "#e0f2fe", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontWeight: 600, minHeight: 40, minWidth: 40 }}
+              className="ui-btn-chip"
+              style={{ color: "var(--primary-dark)", background: "var(--primary-soft)", borderColor: INUT_BORDER_PRIMARY }}
               onClick={() => onPreview(attachment)}
               title="Xem trước tài liệu"
             >
@@ -3643,7 +3844,9 @@ function DocumentCard({
             </button>
             <button
               type="button"
-              style={{ fontSize: 12, color: "#dc2626", background: "#fee2e2", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", minHeight: 40, minWidth: 40 }}
+              className="ui-btn-icon"
+              aria-label="Xóa tệp chứng từ này"
+              style={{ color: INUT_TEXT_DANGER, background: "var(--red-soft)", borderColor: INUT_BORDER_DANGER }}
               onClick={onDelete}
               title="Xóa tệp chứng từ này"
             >
@@ -3675,8 +3878,8 @@ function renderAuditCheckItem(
         alignItems: "flex-start",
         padding: "12px 14px",
         borderRadius: 12,
-        background: chk.ok ? "#f0fdf4" : "#fef2f2",
-        border: `1.5px solid ${chk.ok ? "#86efac" : "#fecaca"}`,
+        background: chk.ok ? "var(--green-soft)" : "var(--red-soft)",
+        border: `1.5px solid ${chk.ok ? INUT_BORDER_SUCCESS : INUT_BORDER_DANGER}`,
         boxSizing: "border-box",
         overflowWrap: "anywhere",
         wordBreak: "break-word",
@@ -3685,44 +3888,44 @@ function renderAuditCheckItem(
       <span style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{chk.ok ? "✅" : "⚠️"}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: chk.ok ? "#166534" : "#991b1b" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: chk.ok ? "var(--ink-2)" : INUT_TEXT_DANGER }}>
             {chk.label}
           </div>
-          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: chk.ok ? "#dcfce7" : "#fee2e2", color: chk.ok ? "#15803d" : "#991b1b", fontWeight: 700 }}>
+          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--panel)", color: chk.ok ? "var(--green)" : INUT_TEXT_DANGER, border: `1px solid ${chk.ok ? INUT_BORDER_SUCCESS : INUT_BORDER_DANGER}`, fontWeight: 700 }}>
             {chk.ok ? "ĐẠT YÊU CẦU" : "CẦN BỔ SUNG"}
           </span>
         </div>
 
-        <div style={{ fontSize: 13, color: "#334155", marginTop: 4, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4, lineHeight: 1.45 }}>
           {chk.detail}
         </div>
 
         {/* 1. Item CCCD: Show structured breakdown + Front/Back thumbnails */}
         {chk.key === "id_card" && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)" }}>
             {v?.cccd_format && (
-              <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
-                <b>Định danh pháp lý:</b> Mã tỉnh: <span style={{ color: "#0284c7", fontWeight: 700 }}>{v.cccd_format.province_code || "Hợp chuẩn"}</span>
+              <div style={{ fontSize: 12, color: "var(--ink-2)", marginBottom: 8 }}>
+                <b>Định danh pháp lý:</b> Mã tỉnh: <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{v.cccd_format.province_code || "Hợp chuẩn"}</span>
                 {v.cccd_format.birth_year && ` · Năm sinh: ${v.cccd_format.birth_year}`}
                 {" · "}
-                <span style={{ color: v.cccd_format.valid ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                <span style={{ color: v.cccd_format.valid ? "var(--green)" : INUT_TEXT_DANGER, fontWeight: 600 }}>
                   {v.cccd_format.valid ? "✓ 12 số hợp chuẩn theo quy định Bộ Công an" : "Số CCCD chưa đúng định dạng"}
                 </span>
               </div>
             )}
 
             {/* Thumbnails of Front and Back side */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 130px), 1fr))", gap: 8, minWidth: 0 }}>
               {attachments?.id_card_front && (
                 <div
                   onClick={() => onPreview && onPreview(attachments.id_card_front, "CCCD Mặt trước")}
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer" }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid var(--border-strong)", background: "var(--surface-subtle)", cursor: "pointer", minWidth: 0 }}
                   title="Bấm để xem ảnh phóng to"
                 >
-                  <img src={attachments.id_card_front.url} alt="CCCD Trước" style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e2e8f0" }} />
+                  <img src={attachments.id_card_front.url} alt="CCCD Trước" style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)", flexShrink: 0 }} />
                   <div style={{ fontSize: 11, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a" }}>CCCD Trước</div>
-                    <div style={{ color: "#166534" }}>{v?.front?.dimensions || "Ảnh hợp lệ"}</div>
+                    <div style={{ fontWeight: 700, color: "var(--ink)" }}>CCCD Trước</div>
+                    <div style={{ color: "var(--green)" }}>{v?.front?.dimensions || "Ảnh hợp lệ"}</div>
                   </div>
                 </div>
               )}
@@ -3730,13 +3933,13 @@ function renderAuditCheckItem(
               {attachments?.id_card_back && (
                 <div
                   onClick={() => onPreview && onPreview(attachments.id_card_back, "CCCD Mặt sau")}
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer" }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid var(--border-strong)", background: "var(--surface-subtle)", cursor: "pointer", minWidth: 0 }}
                   title="Bấm để xem ảnh phóng to"
                 >
-                  <img src={attachments.id_card_back.url} alt="CCCD Sau" style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e2e8f0" }} />
+                  <img src={attachments.id_card_back.url} alt="CCCD Sau" style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)", flexShrink: 0 }} />
                   <div style={{ fontSize: 11, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a" }}>CCCD Sau (Chip)</div>
-                    <div style={{ color: "#166534" }}>{v?.back?.dimensions || "Ảnh hợp lệ"}</div>
+                    <div style={{ fontWeight: 700, color: "var(--ink)" }}>CCCD Sau (Chip)</div>
+                    <div style={{ color: "var(--green)" }}>{v?.back?.dimensions || "Ảnh hợp lệ"}</div>
                   </div>
                 </div>
               )}
@@ -3746,10 +3949,10 @@ function renderAuditCheckItem(
 
         {/* 2. Item Bank Account */}
         {chk.key === "bank_account" && v && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12, color: "#475569" }}>
-            <div><b>Chủ tài khoản:</b> <span style={{ color: "#0f172a", fontWeight: 700 }}>{v.account_name || "Chính chủ"}</span></div>
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, color: "var(--ink-2)" }}>
+            <div><b>Chủ tài khoản:</b> <span style={{ color: "var(--ink)", fontWeight: 700 }}>{v.account_name || "Chính chủ"}</span></div>
             <div style={{ marginTop: 2 }}><b>Số tài khoản:</b> {v.account || chk.detail} ({v.bank || "Ngân hàng"})</div>
-            <div style={{ marginTop: 3, color: v.valid ? "#166534" : "#dc2626", fontWeight: 600 }}>
+            <div style={{ marginTop: 3, color: v.valid ? "var(--green)" : INUT_TEXT_DANGER, fontWeight: 600 }}>
               {v.valid ? "✓ Khớp 100% với CCCD (Đủ điều kiện chi trả từ Techcombank 79713)" : "Chưa khớp tên người nhận"}
             </div>
           </div>
@@ -3757,20 +3960,20 @@ function renderAuditCheckItem(
 
         {/* 3. Item Acceptance & Site Photos */}
         {chk.key === "acceptance" && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)" }}>
             {attachments?.acceptance && (
               <div
                 onClick={() => onPreview && onPreview(attachments.acceptance, "Biên bản nghiệm thu hoàn thành")}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer", marginBottom: 8 }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, borderRadius: 6, border: "1px solid var(--border-strong)", background: "var(--surface-subtle)", cursor: "pointer", marginBottom: 8 }}
                 title="Bấm để xem tệp nghiệm thu"
               >
-                <div style={{ width: 36, height: 36, borderRadius: 6, background: "#fee2e2", color: "#dc2626", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 9 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--red-soft)", color: INUT_TEXT_DANGER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 9, flexShrink: 0 }}>
                   <span>📄</span>
                   <span>PDF</span>
                 </div>
-                <div style={{ fontSize: 11.5 }}>
-                  <div style={{ fontWeight: 700, color: "#0f172a" }}>Biên bản nghiệm thu khối lượng hoàn thành</div>
-                  <div style={{ color: "#166534" }}>{attachments.acceptance.validation?.pages ? `Tài liệu PDF ${attachments.acceptance.validation.pages} trang hợp lệ` : "Đã xác nhận"}</div>
+                <div style={{ fontSize: 11.5, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: "var(--ink)" }}>Biên bản nghiệm thu khối lượng hoàn thành</div>
+                  <div style={{ color: "var(--green)" }}>{attachments.acceptance.validation?.pages ? `Tài liệu PDF ${attachments.acceptance.validation.pages} trang hợp lệ` : "Đã xác nhận"}</div>
                 </div>
               </div>
             )}
@@ -3778,21 +3981,21 @@ function renderAuditCheckItem(
             {/* Site Photos Thumbnails */}
             {attachments?.site_photos && attachments.site_photos.length > 0 && (
               <div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", marginBottom: 6 }}>
                   📷 Ảnh hiện trường thi công / kiểm đếm ({attachments.site_photos.length} ảnh):
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 130px), 1fr))", gap: 8, minWidth: 0 }}>
                   {attachments.site_photos.map((photo: any, pIdx: number) => (
                     <div
                       key={photo.doc_id || pIdx}
                       onClick={() => onPreview && onPreview(photo, `Ảnh hiện trường #${pIdx + 1}`)}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", cursor: "pointer" }}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, borderRadius: 6, border: "1px solid var(--border-strong)", background: "var(--surface-subtle)", cursor: "pointer", minWidth: 0 }}
                       title="Bấm để xem ảnh phóng to"
                     >
-                      <img src={photo.url} alt={photo.label} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 4, border: "1px solid #e2e8f0" }} />
+                      <img src={photo.url} alt={photo.label} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)", flexShrink: 0 }} />
                       <div style={{ fontSize: 11, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.label}</div>
-                        <div style={{ color: "#166534" }}>{photo.validation?.dimensions || "1280x720"}</div>
+                        <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{photo.label}</div>
+                        <div style={{ color: "var(--green)" }}>{photo.validation?.dimensions || "1280x720"}</div>
                       </div>
                     </div>
                   ))}
@@ -3804,18 +4007,18 @@ function renderAuditCheckItem(
 
         {/* 4. Item Tax TNCN */}
         {chk.key === "tax_tncn" && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12, color: "#475569" }}>
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, color: "var(--ink-2)" }}>
             <div><b>Căn cứ pháp lý:</b> Khoản 2 Điều 50 Nghị định số 253/2026/NĐ-CP</div>
             <div style={{ marginTop: 3 }}>
               {attachments?.tax_commitment ? (
                 <div
                   onClick={() => onPreview && onPreview(attachments.tax_commitment, "Bản cam kết thuế Mẫu 08/CK-TNCN")}
-                  style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, cursor: "pointer", color: "#0284c7", fontWeight: 600 }}
+                  style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, cursor: "pointer", color: "var(--primary-dark)", fontWeight: 600 }}
                 >
                   <span>📄</span> Xem Bản cam kết 08/CK-TNCN đính kèm
                 </div>
               ) : (
-                <div style={{ color: chk.ok ? "#166534" : "#ea580c", fontWeight: 600, marginTop: 2 }}>
+                <div style={{ color: chk.ok ? "var(--green)" : INUT_TEXT_WARN, fontWeight: 600, marginTop: 2 }}>
                   {chk.ok ? "✓ Đạt điều kiện miễn trừ khấu trừ 10% theo quy định pháp luật" : "Cần khấu trừ 10% hoặc nộp Mẫu 08"}
                 </div>
               )}
@@ -3825,28 +4028,28 @@ function renderAuditCheckItem(
 
         {/* 5. Item Worker Signature & eKYC Selfie */}
         {chk.key === "worker_sign" && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)" }}>
             <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
               {workerSig && (
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>Chữ ký điện tử:</div>
-                  <img src={workerSig} alt="Chữ ký" style={{ maxHeight: 50, maxWidth: 140, border: "1px solid #cbd5e1", borderRadius: 4, background: "#fff", padding: 2 }} />
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>Chữ ký điện tử:</div>
+                  <img src={workerSig} alt="Chữ ký" style={{ maxHeight: 50, maxWidth: 140, border: "1px solid var(--border-strong)", borderRadius: 4, background: "var(--panel)", padding: 2 }} />
                 </div>
               )}
               {(workerFace || attachments?.worker_face) && (
                 <div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>Ảnh chân dung eKYC lúc ký:</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>Ảnh chân dung eKYC lúc ký:</div>
                   <img
                     src={workerFace || attachments?.worker_face?.url}
                     alt="eKYC"
                     onClick={() => onPreview && onPreview(attachments?.worker_face || { url: workerFace, label: "Ảnh chụp chân dung thợ lúc ký" }, "Ảnh chụp chân dung lúc ký (eKYC)")}
-                    style={{ width: 48, height: 60, objectFit: "cover", borderRadius: 6, border: "1.5px solid #0284c7", cursor: "pointer" }}
+                    style={{ width: 48, height: 60, objectFit: "cover", borderRadius: 6, border: "1.5px solid var(--primary)", cursor: "pointer" }}
                     title="Bấm để xem ảnh phóng to"
                   />
                 </div>
               )}
             </div>
-            <div style={{ fontSize: 11, color: "#166534", fontWeight: 600, marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: "var(--green)", fontWeight: 600, marginTop: 4 }}>
               ✓ Đã đối soát chữ ký điện tử và ảnh khuôn mặt người ký tại hiện trường
             </div>
           </div>
@@ -3854,18 +4057,18 @@ function renderAuditCheckItem(
 
         {/* 6. Item INUT Digital Signature - Full visual stamp preview */}
         {chk.key === "inut_sign" && (
-          <div style={{ marginTop: 8, padding: "10px 12px", background: "#fff", borderRadius: 8, border: "2px solid #16a34a", boxShadow: "0 1px 4px rgba(22,163,74,0.12)" }}>
-            <div style={{ fontWeight: 800, fontSize: 12, color: "#15803d", borderBottom: "1px dashed #86efac", paddingBottom: 4, marginBottom: 6 }}>
+          <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--panel)", borderRadius: 8, border: "2px solid var(--green)", boxShadow: "var(--shadow)" }}>
+            <div style={{ fontWeight: 800, fontSize: 12, color: "var(--green)", borderBottom: `1px dashed ${INUT_BORDER_SUCCESS}`, paddingBottom: 4, marginBottom: 6 }}>
               ✓ BẢN CHỤP CON DẤU KÝ SỐ ĐIỆN TỬ TRÊN PDF (BÊN A INUT)
             </div>
-            <div style={{ fontSize: 11.5, color: "#334155", lineHeight: 1.5 }}>
+            <div style={{ fontSize: 11.5, color: "var(--text)", lineHeight: 1.5 }}>
               <div><b>Đơn vị ký:</b> CÔNG TY CP ĐẦU TƯ & PHÁT TRIỂN CÔNG NGHỆ INUT (MST: 4401053694)</div>
               <div><b>Đơn vị cấp CA:</b> WINCA / CÔNG TY TNHH WINGROUP</div>
               <div><b>Ngày cấp chứng thư:</b> 15/06/2024 (Hạn hiệu lực: 15/06/2027)</div>
-              <div><b>Ngày giờ ký số (/M):</b> <span style={{ color: "#0284c7", fontWeight: 700 }}>{chk.detail?.includes("lúc") ? chk.detail.split("lúc")[1].trim() : "28/09/2026 09:27:45"}</span></div>
-              <div><b>Số sê-ri:</b> <span style={{ fontFamily: "monospace", fontSize: 10.5 }}>540116541CB8AAF5660DD8CD</span></div>
+              <div><b>Ngày giờ ký số (/M):</b> <span style={{ color: "var(--primary-dark)", fontWeight: 700 }}>{chk.detail?.includes("lúc") ? chk.detail.split("lúc")[1].trim() : "28/09/2026 09:27:45"}</span></div>
+              <div><b>Số sê-ri:</b> <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>540116541CB8AAF5660DD8CD</span></div>
               <div><b>Tiêu chuẩn kỹ thuật:</b> PAdES / ETSI.CAdES.detached · SHA-256 with RSA 2048-bit</div>
-              <div style={{ fontSize: 10, color: "#166534", marginTop: 4, borderTop: "1px solid #dcfce7", paddingTop: 3 }}>
+              <div style={{ fontSize: 10, color: "var(--green)", marginTop: 4, borderTop: `1px solid ${INUT_BORDER_SUCCESS}`, paddingTop: 3 }}>
                 ✓ Ảnh con dấu chữ ký số điện tử snap lại trên PDF tự động hiển thị khớp chuẩn pháp lý
               </div>
             </div>
@@ -3874,17 +4077,17 @@ function renderAuditCheckItem(
 
         {/* 7. Item Bank UNC */}
         {chk.key === "bank_unc" && (
-          <div style={{ marginTop: 8, padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12, color: "#475569" }}>
+          <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, color: "var(--ink-2)" }}>
             {attachments?.bank_proof ? (
               <div
                 onClick={() => onPreview && onPreview(attachments.bank_proof, "Ủy nhiệm chi Techcombank 79713")}
-                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: "#0284c7", fontWeight: 600 }}
+                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: "var(--primary-dark)", fontWeight: 600 }}
               >
                 <span>{attachments.bank_proof.is_pdf ? "📄" : "🖼️"}</span>
                 <span>Xem Ủy nhiệm chi (UNC) Techcombank 79713 đã kẹp</span>
               </div>
             ) : (
-              <div style={{ color: "#64748b" }}>
+              <div style={{ color: "var(--muted)" }}>
                 Chứng từ thanh toán chuyển khoản không dùng tiền mặt (Techcombank 79713). Kẹp bổ sung sau khi chi tiền.
               </div>
             )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Customer } from "../api";
+import { AppModal, FormGrid } from "../components/ui";
 import { copyText, defaultPassword, slugUsername } from "../util";
 
 export function Customers() {
@@ -239,13 +240,13 @@ function CustomerCard({
           ))}
         </div>
       )}
-      <div className="account-add">
-        <input placeholder="tên đăng nhập" value={u} onChange={(e) => setU(e.target.value)} />
-        <input placeholder="mật khẩu" value={p} onChange={(e) => setP(e.target.value)} />
-        <button disabled={!u || !p} onClick={addAccount}>
+      <FormGrid cols={3} className="account-add-grid">
+        <input className="ui-input" placeholder="tên đăng nhập" value={u} onChange={(e) => setU(e.target.value)} />
+        <input className="ui-input" placeholder="mật khẩu" value={p} onChange={(e) => setP(e.target.value)} />
+        <button className="ui-btn-chip" disabled={!u || !p} onClick={addAccount}>
           Cấp / đổi mật khẩu
         </button>
-      </div>
+      </FormGrid>
       <button className="primary" style={{ marginTop: 8 }} onClick={autoAccount}>
         {c.account_usernames.length ? "Cấp lại mật khẩu & sao chép" : "Tạo tài khoản & sao chép"}
       </button>
@@ -294,41 +295,43 @@ function MergeModal({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-        <h3>🔀 Gộp 2 công ty</h3>
-        <p className="muted">Chọn công ty muốn GIỮ LẠI. Công ty còn lại sẽ bị xoá.</p>
-
-        {[a, b].map((c) => (
-          <label key={c.id} style={{ display: "block", marginTop: 8 }}>
-            <input
-              type="radio"
-              name="keep"
-              checked={keepId === c.id}
-              onChange={() => setKeepId(c.id)}
-            />{" "}
-            <b>{c.name}</b>{" "}
-            {c.tax_code && <span className="muted">(MST: {c.tax_code})</span>}{" "}
-            <span className="muted">— {c.document_count} hồ sơ</span>
-          </label>
-        ))}
-
-        <div className="error" style={{ marginTop: 12 }}>
-          Toàn bộ hồ sơ, tài khoản, đơn hàng, hoá đơn bán, phiếu xuất của <b>{drop.name}</b> sẽ
-          chuyển sang <b>{keep.name}</b>; tên "{drop.name}" sẽ thành alias của "{keep.name}"; công
-          ty "{drop.name}" sẽ bị XOÁ. Không thể hoàn tác.
-        </div>
-        {err && <div className="error">{err}</div>}
-
-        <div className="modal-actions">
+    <AppModal
+      open
+      onClose={onClose}
+      title="🔀 Gộp 2 công ty"
+      subtitle="Chọn công ty muốn GIỮ LẠI. Công ty còn lại sẽ bị xoá."
+      size="md"
+      footer={
+        <>
           <button onClick={onClose} disabled={busy}>
             Hủy
           </button>
           <button className="primary" onClick={doMerge} disabled={busy}>
             🔀 Gộp "{drop.name}" → "{keep.name}"
           </button>
-        </div>
+        </>
+      }
+    >
+      {[a, b].map((c) => (
+        <label key={c.id} style={{ display: "block", marginTop: 8 }}>
+          <input
+            type="radio"
+            name="keep"
+            checked={keepId === c.id}
+            onChange={() => setKeepId(c.id)}
+          />{" "}
+          <b>{c.name}</b>{" "}
+          {c.tax_code && <span className="muted">(MST: {c.tax_code})</span>}{" "}
+          <span className="muted">— {c.document_count} hồ sơ</span>
+        </label>
+      ))}
+
+      <div className="error" style={{ marginTop: 12 }}>
+        Toàn bộ hồ sơ, tài khoản, đơn hàng, hoá đơn bán, phiếu xuất của <b>{drop.name}</b> sẽ
+        chuyển sang <b>{keep.name}</b>; tên "{drop.name}" sẽ thành alias của "{keep.name}"; công
+        ty "{drop.name}" sẽ bị XOÁ. Không thể hoàn tác.
       </div>
-    </div>
+      {err && <div className="error">{err}</div>}
+    </AppModal>
   );
 }

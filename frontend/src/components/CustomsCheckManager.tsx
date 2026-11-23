@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, CustomsCheckLog, CustomsCheckTask } from "../api";
+import { AppModal, DataView } from "./ui";
 
 export function CustomsCheckManager() {
   const [tasks, setTasks] = useState<CustomsCheckTask[]>([]);
@@ -25,7 +26,7 @@ export function CustomsCheckManager() {
     setLoading(true);
     try {
       const data = await api.customsCheckTasks();
-      setTasks(data);
+      setTasks(Array.isArray(data) ? data : []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -43,7 +44,7 @@ export function CustomsCheckManager() {
     setError("");
     try {
       const updated = await api.customsCheckAutoSeed();
-      setTasks(updated);
+      setTasks(Array.isArray(updated) ? updated : []);
       setMessage(`Đã quét và đồng bộ các tờ khai Luồng Vàng / Luồng Đỏ vào danh sách theo dõi.`);
     } catch (e) {
       setError((e as Error).message);
@@ -108,7 +109,7 @@ export function CustomsCheckManager() {
     setLoadingLogs(true);
     try {
       const l = await api.customsCheckTaskLogs(task.id);
-      setLogs(l);
+      setLogs(Array.isArray(l) ? l : []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -185,237 +186,286 @@ export function CustomsCheckManager() {
             Chưa có task theo dõi nào. Bấm <b>"🔄 Quét tờ khai Vàng/Đỏ"</b> để tự động nạp các tờ khai luồng vàng/đỏ từ CSDL.
           </p>
         ) : (
-          <table className="customs-check-table">
-            <thead>
-              <tr>
-                <th>Số tờ khai / Bộ hồ sơ</th>
-                <th>Phân luồng</th>
-                <th>Trạng thái xử lý</th>
-                <th>Cán bộ kiểm tra</th>
-                <th>Chu kỳ</th>
-                <th>Báo Telegram</th>
-                <th>Lần check cuối</th>
-                <th>Tình trạng task</th>
-                <th style={{ textAlign: "right" }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const isYellow = task.phan_luong.includes("Vàng") || task.phan_luong === "2";
-                const isRed = task.phan_luong.includes("Đỏ") || task.phan_luong === "3";
-                const isCompleted = task.status === "completed";
+          <DataView
+            mobileMode="card"
+            desktop={
+              <table className="customs-check-table">
+                <thead>
+                  <tr>
+                    <th>Số tờ khai / Bộ hồ sơ</th>
+                    <th>Phân luồng</th>
+                    <th>Trạng thái xử lý</th>
+                    <th>Cán bộ kiểm tra</th>
+                    <th>Chu kỳ</th>
+                    <th>Báo Telegram</th>
+                    <th>Lần check cuối</th>
+                    <th>Tình trạng task</th>
+                    <th style={{ textAlign: "right" }}>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task) => {
+                    const isYellow = task.phan_luong.includes("Vàng") || task.phan_luong === "2";
+                    const isRed = task.phan_luong.includes("Đỏ") || task.phan_luong === "3";
+                    const isCompleted = task.status === "completed";
 
-                return (
-                  <tr key={task.id} className={`customs-task-row ${task.status}`}>
-                    <td>
-                      <div className="task-decl-code">
-                        <strong>{task.so_to_khai}</strong>
-                        {task.folder_name && <small className="task-folder-chip">📁 {task.folder_name}</small>}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`chip sm ${isYellow ? "amber" : isRed ? "red" : "default"}`}>
-                        {task.phan_luong || "Chưa rõ"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="task-status-cell">
-                        {isCompleted ? (
-                          <span className="status-badge completed">
-                            ✅ {task.last_status_text || "Hoàn thành xử lý"}
+                    return (
+                      <tr key={task.id} className={`customs-task-row ${task.status}`}>
+                        <td>
+                          <div className="task-decl-code">
+                            <strong>{task.so_to_khai}</strong>
+                            {task.folder_name && <small className="task-folder-chip">📁 {task.folder_name}</small>}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`chip sm ${isYellow ? "amber" : isRed ? "red" : "default"}`}>
+                            {task.phan_luong || "Chưa rõ"}
                           </span>
-                        ) : task.last_status_text ? (
-                          <span className="status-badge processing">
-                            ⏳ {task.last_status_text}
+                        </td>
+                        <td>
+                          <div className="task-status-cell">
+                            {isCompleted ? (
+                              <span className="status-badge completed">
+                                ✅ {task.last_status_text || "Hoàn thành xử lý"}
+                              </span>
+                            ) : task.last_status_text ? (
+                              <span className="status-badge processing">
+                                ⏳ {task.last_status_text}
+                              </span>
+                            ) : (
+                              <span className="status-badge waiting">Chưa tra cứu</span>
+                            )}
+                            {task.ngay_thong_quan && (
+                              <small className="tq-date">TQ: {task.ngay_thong_quan}</small>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="officer-name">
+                            {task.last_officer ? `👮 ${task.last_officer}` : "—"}
                           </span>
-                        ) : (
-                          <span className="status-badge waiting">Chưa tra cứu</span>
-                        )}
-                        {task.ngay_thong_quan && (
-                          <small className="tq-date">TQ: {task.ngay_thong_quan}</small>
-                        )}
+                        </td>
+                        <td>
+                          <span className="interval-tag">{task.interval_minutes} phút</span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className={`notify-mode-btn ${task.notify_mode === "always" ? "mode-always" : "mode-on-change"}`}
+                            onClick={() => handleToggleMode(task)}
+                            title={
+                              task.notify_mode === "always"
+                                ? "Đang chọn: Cứ 1 tiếng bắn báo cáo định kỳ. Bấm để chuyển sang 'Chỉ khi có đổi'."
+                                : "Đang chọn: Chỉ bắn khi có thay đổi trạng thái/cán bộ. Bấm để chuyển sang 'Luôn bắn mỗi tiếng'."
+                            }
+                          >
+                            {task.notify_mode === "always" ? "🔔 Luôn bắn mỗi tiếng" : "🔕 Chỉ khi có đổi"}
+                          </button>
+                        </td>
+                        <td>
+                          <div className="check-times">
+                            <small>{task.last_checked_at ? new Date(task.last_checked_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "Chưa check"}</small>
+                            {task.status === "active" && task.next_check_at && (
+                              <small className="next-time">
+                                Kế tiếp: {new Date(task.next_check_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                              </small>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`task-badge ${task.status}`}>
+                            {task.status === "active" && "🟢 Đang chạy"}
+                            {task.status === "completed" && "🎯 Đã xong (Clear)"}
+                            {task.status === "paused" && "⏸️ Tạm dừng"}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="task-btn-group">
+                            <button
+                              className="btn-xs primary ui-btn-chip"
+                              disabled={runningId === task.id}
+                              onClick={() => handleRunNow(task)}
+                              title="Tra cứu ngay lập tức trên Cổng Hải quan và gửi Telegram nếu có cập nhật"
+                            >
+                              {runningId === task.id ? "Đang check…" : "🔍 Check ngay"}
+                            </button>
+                            <button
+                              className="btn-xs ghost ui-btn-icon"
+                              onClick={() => handleToggle(task)}
+                              aria-label={task.status === "active" ? "Tạm dừng kiểm tra" : "Kích hoạt kiểm tra định kỳ"}
+                              title={task.status === "active" ? "Tạm dừng kiểm tra" : "Kích hoạt kiểm tra định kỳ"}
+                            >
+                              {task.status === "active" ? "⏸️" : "▶️"}
+                            </button>
+                            <button
+                              className="btn-xs ghost ui-btn-icon"
+                              onClick={() => handleViewLogs(task)}
+                              aria-label={`Xem lịch sử ${task.so_to_khai}`}
+                              title="Xem lịch sử các lần check và tin nhắn Telegram"
+                            >
+                              📜
+                            </button>
+                            <button
+                              className="btn-xs ghost text-danger ui-btn-icon"
+                              onClick={() => handleDelete(task)}
+                              aria-label={`Xóa task ${task.so_to_khai}`}
+                              title="Xóa task theo dõi"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list" style={{ padding: 10 }}>
+                {tasks.map((task) => {
+                  const isYellow = task.phan_luong.includes("Vàng") || task.phan_luong === "2";
+                  const isRed = task.phan_luong.includes("Đỏ") || task.phan_luong === "3";
+                  return (
+                    <article key={task.id} className="ui-mobile-card">
+                      <div className="ui-mobile-card-head">
+                        <strong className="ui-mobile-card-title">{task.so_to_khai}</strong>
+                        <span className={`chip sm ${isYellow ? "amber" : isRed ? "red" : "default"}`}>
+                          {task.phan_luong || "Chưa rõ"}
+                        </span>
                       </div>
-                    </td>
-                    <td>
-                      <span className="officer-name">
-                        {task.last_officer ? `👮 ${task.last_officer}` : "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="interval-tag">{task.interval_minutes} phút</span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`notify-mode-btn ${task.notify_mode === "always" ? "mode-always" : "mode-on-change"}`}
-                        onClick={() => handleToggleMode(task)}
-                        title={
-                          task.notify_mode === "always"
-                            ? "Đang chọn: Cứ 1 tiếng bắn báo cáo định kỳ. Bấm để chuyển sang 'Chỉ khi có đổi'."
-                            : "Đang chọn: Chỉ bắn khi có thay đổi trạng thái/cán bộ. Bấm để chuyển sang 'Luôn bắn mỗi tiếng'."
-                        }
-                      >
-                        {task.notify_mode === "always" ? "🔔 Luôn bắn mỗi tiếng" : "🔕 Chỉ khi có đổi"}
-                      </button>
-                    </td>
-                    <td>
-                      <div className="check-times">
-                        <small>{task.last_checked_at ? new Date(task.last_checked_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "Chưa check"}</small>
-                        {task.status === "active" && task.next_check_at && (
-                          <small className="next-time">
-                            Kế tiếp: {new Date(task.next_check_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                          </small>
-                        )}
+                      <div className="ui-mobile-card-meta">
+                        <span>{task.last_status_text || "Chưa tra cứu"}</span>
+                        {task.last_officer && <span>👮 {task.last_officer}</span>}
+                        <span>{task.interval_minutes} phút</span>
                       </div>
-                    </td>
-                    <td>
-                      <span className={`task-badge ${task.status}`}>
-                        {task.status === "active" && "🟢 Đang chạy"}
-                        {task.status === "completed" && "🎯 Đã xong (Clear)"}
-                        {task.status === "paused" && "⏸️ Tạm dừng"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="task-btn-group">
-                        <button
-                          className="btn-xs primary"
-                          disabled={runningId === task.id}
-                          onClick={() => handleRunNow(task)}
-                          title="Tra cứu ngay lập tức trên Cổng Hải quan và gửi Telegram nếu có cập nhật"
-                        >
+                      <div className="ui-mobile-card-actions">
+                        <button className="primary ui-btn-chip" disabled={runningId === task.id} onClick={() => handleRunNow(task)}>
                           {runningId === task.id ? "Đang check…" : "🔍 Check ngay"}
                         </button>
-                        <button
-                          className="btn-xs ghost"
-                          onClick={() => handleToggle(task)}
-                          title={task.status === "active" ? "Tạm dừng kiểm tra" : "Kích hoạt kiểm tra định kỳ"}
-                        >
+                        <button className="ghost ui-btn-chip" onClick={() => handleToggleMode(task)}>
+                          {task.notify_mode === "always" ? "🔔 Mỗi tiếng" : "🔕 Khi đổi"}
+                        </button>
+                        <button className="ghost ui-btn-icon" onClick={() => handleToggle(task)} aria-label="Bật/tắt task">
                           {task.status === "active" ? "⏸️" : "▶️"}
                         </button>
-                        <button
-                          className="btn-xs ghost"
-                          onClick={() => handleViewLogs(task)}
-                          title="Xem lịch sử các lần check và tin nhắn Telegram"
-                        >
+                        <button className="ghost ui-btn-icon" onClick={() => handleViewLogs(task)} aria-label="Xem log">
                           📜
                         </button>
-                        <button
-                          className="btn-xs ghost text-danger"
-                          onClick={() => handleDelete(task)}
-                          title="Xóa task theo dõi"
-                        >
+                        <button className="ghost text-danger ui-btn-icon" onClick={() => handleDelete(task)} aria-label="Xóa task">
                           🗑️
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </article>
+                  );
+                })}
+              </div>
+            }
+          />
         )}
       </div>
 
       {/* Logs Modal */}
-      {activeTaskForLogs && (
-        <div className="customs-modal-backdrop" onClick={() => setActiveTaskForLogs(null)}>
-          <div className="customs-modal-content" onClick={(e) => e.stopPropagation()}>
-            <header className="modal-header">
-              <h3>📜 Lịch sử kiểm tra: Tờ khai {activeTaskForLogs.so_to_khai}</h3>
-              <button className="close-btn" onClick={() => setActiveTaskForLogs(null)}>✕</button>
-            </header>
-            <div className="modal-body">
-              <p className="muted" style={{ marginBottom: "12px" }}>
-                Bộ hồ sơ: <b>{activeTaskForLogs.folder_name || "—"}</b> · Phân luồng: <b>{activeTaskForLogs.phan_luong}</b> · Trạng thái hiện tại: <b>{activeTaskForLogs.status}</b>
-              </p>
-              {loadingLogs ? (
-                <p>Đang tải lịch sử…</p>
-              ) : !logs.length ? (
-                <p className="muted">Chưa có bản ghi log nào.</p>
-              ) : (
-                <div className="logs-timeline">
-                  {logs.map((l) => (
-                    <div key={l.id} className={`log-entry ${l.is_completed ? "completed-log" : ""}`}>
-                      <div className="log-time">
-                        {new Date(l.checked_at).toLocaleString("vi-VN")}
-                      </div>
-                      <div className="log-details">
-                        <div className="log-header">
-                          <span className="log-status">{l.trang_thai_xu_ly}</span>
-                          {l.cong_chuc_kiem_tra && <span className="log-officer">👮 {l.cong_chuc_kiem_tra}</span>}
-                          {l.telegram_sent && <span className="log-telegram">📲 Telegram đã gửi</span>}
-                        </div>
-                        {l.message && <pre className="log-message">{l.message}</pre>}
-                      </div>
+      <AppModal
+        open={!!activeTaskForLogs}
+        onClose={() => setActiveTaskForLogs(null)}
+        title={activeTaskForLogs ? `📜 Lịch sử kiểm tra: Tờ khai ${activeTaskForLogs.so_to_khai}` : "Lịch sử kiểm tra"}
+        size="md"
+        footer={<button onClick={() => setActiveTaskForLogs(null)}>Đóng</button>}
+      >
+        {activeTaskForLogs && (
+          <>
+            <p className="muted" style={{ marginBottom: "12px", marginTop: 0 }}>
+              Bộ hồ sơ: <b>{activeTaskForLogs.folder_name || "—"}</b> · Phân luồng: <b>{activeTaskForLogs.phan_luong}</b> · Trạng thái hiện tại: <b>{activeTaskForLogs.status}</b>
+            </p>
+            {loadingLogs ? (
+              <p>Đang tải lịch sử…</p>
+            ) : !logs.length ? (
+              <p className="muted">Chưa có bản ghi log nào.</p>
+            ) : (
+              <div className="logs-timeline">
+                {logs.map((l) => (
+                  <div key={l.id} className={`log-entry ${l.is_completed ? "completed-log" : ""}`}>
+                    <div className="log-time">
+                      {new Date(l.checked_at).toLocaleString("vi-VN")}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                    <div className="log-details">
+                      <div className="log-header">
+                        <span className="log-status">{l.trang_thai_xu_ly}</span>
+                        {l.cong_chuc_kiem_tra && <span className="log-officer">👮 {l.cong_chuc_kiem_tra}</span>}
+                        {l.telegram_sent && <span className="log-telegram">📲 Telegram đã gửi</span>}
+                      </div>
+                      {l.message && <pre className="log-message">{l.message}</pre>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </AppModal>
 
       {/* Add Task Modal */}
-      {showAddModal && (
-        <div className="customs-modal-backdrop" onClick={() => setShowAddModal(false)}>
-          <div className="customs-modal-content small-modal" onClick={(e) => e.stopPropagation()}>
-            <header className="modal-header">
-              <h3>➕ Thêm task theo dõi tờ khai Hải quan</h3>
-              <button className="close-btn" onClick={() => setShowAddModal(false)}>✕</button>
-            </header>
-            <form onSubmit={handleCreateTask} className="modal-form">
-              <label>
-                Số tờ khai hải quan (12 chữ số) <span className="text-danger">*</span>
-                <input
-                  required
-                  pattern="[0-9]{11,12}"
-                  placeholder="Ví dụ: 108625440120"
-                  value={newTk}
-                  onChange={(e) => setNewTk(e.target.value)}
-                />
-              </label>
-              <div className="form-row">
-                <label>
-                  Phân luồng
-                  <select value={newLuong} onChange={(e) => setNewLuong(e.target.value)}>
-                    <option value="Luồng Vàng">Luồng Vàng</option>
-                    <option value="Luồng Đỏ">Luồng Đỏ</option>
-                    <option value="Luồng Xanh">Luồng Xanh</option>
-                  </select>
-                </label>
-                <label>
-                  Chu kỳ kiểm tra
-                  <select value={newInterval} onChange={(e) => setNewInterval(Number(e.target.value))}>
-                    <option value={15}>15 phút</option>
-                    <option value={30}>30 phút</option>
-                    <option value={60}>1 tiếng (Mặc định)</option>
-                    <option value={120}>2 tiếng</option>
-                  </select>
-                </label>
-              </div>
-              <label>
-                Chế độ bắn Telegram
-                <select
-                  value={newNotifyMode}
-                  onChange={(e) => setNewNotifyMode(e.target.value as "always" | "on_change")}
-                >
-                  <option value="always">🔔 Luôn bắn mỗi chu kỳ (1 tiếng/lần - để biết bot còn chạy)</option>
-                  <option value="on_change">🔕 Chỉ bắn khi có thay đổi trạng thái hoặc thông quan</option>
-                </select>
-              </label>
-              <div className="modal-actions">
-                <button type="button" className="secondary btn-sm" onClick={() => setShowAddModal(false)}>
-                  Hủy
-                </button>
-                <button type="submit" className="primary btn-sm">
-                  Lưu & Bắt đầu theo dõi
-                </button>
-              </div>
-            </form>
+      <AppModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="➕ Thêm task theo dõi tờ khai Hải quan"
+        size="sm"
+        footer={
+          <>
+            <button type="button" className="secondary btn-sm" onClick={() => setShowAddModal(false)}>
+              Hủy
+            </button>
+            <button type="submit" form="customs-add-task-form" className="primary btn-sm">
+              Lưu & Bắt đầu theo dõi
+            </button>
+          </>
+        }
+      >
+        <form id="customs-add-task-form" onSubmit={handleCreateTask} className="modal-form">
+          <label>
+            Số tờ khai hải quan (12 chữ số) <span className="text-danger">*</span>
+            <input
+              className="ui-input"
+              required
+              pattern="[0-9]{11,12}"
+              placeholder="Ví dụ: 108625440120"
+              value={newTk}
+              onChange={(e) => setNewTk(e.target.value)}
+            />
+          </label>
+          <div className="form-row">
+            <label>
+              Phân luồng
+              <select className="ui-select" value={newLuong} onChange={(e) => setNewLuong(e.target.value)}>
+                <option value="Luồng Vàng">Luồng Vàng</option>
+                <option value="Luồng Đỏ">Luồng Đỏ</option>
+                <option value="Luồng Xanh">Luồng Xanh</option>
+              </select>
+            </label>
+            <label>
+              Chu kỳ kiểm tra
+              <select className="ui-select" value={newInterval} onChange={(e) => setNewInterval(Number(e.target.value))}>
+                <option value={15}>15 phút</option>
+                <option value={30}>30 phút</option>
+                <option value={60}>1 tiếng (Mặc định)</option>
+                <option value={120}>2 tiếng</option>
+              </select>
+            </label>
           </div>
-        </div>
-      )}
+          <label>
+            Chế độ bắn Telegram
+            <select
+              className="ui-select"
+              value={newNotifyMode}
+              onChange={(e) => setNewNotifyMode(e.target.value as "always" | "on_change")}
+            >
+              <option value="always">🔔 Luôn bắn mỗi chu kỳ (1 tiếng/lần - để biết bot còn chạy)</option>
+              <option value="on_change">🔕 Chỉ bắn khi có thay đổi trạng thái hoặc thông quan</option>
+            </select>
+          </label>
+        </form>
+      </AppModal>
     </section>
   );
 }

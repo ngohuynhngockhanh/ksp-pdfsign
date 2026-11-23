@@ -11,6 +11,8 @@ import {
   getSpxOrderLabelUrl,
   printSpxOrderRemote,
 } from "../api";
+import { AppModal, DataView, FormGrid } from "../components/ui";
+import { openExternalSafe } from "../utils/url";
 
 // ─── Web Audio API Sound Generator (Zero External Dependency) ───────────────
 function playScannerBeep(type: "success" | "error" = "success", enabled: boolean = true) {
@@ -245,7 +247,7 @@ export function ShippingSPX() {
     const cleanCode = code.trim();
     if (!cleanCode) return;
     const url = getSpxOrderLabelUrl(cleanCode);
-    window.open(url, "_blank");
+    openExternalSafe(url);
   };
 
   const handleSyncSubmit = async (e: React.FormEvent) => {
@@ -437,7 +439,7 @@ export function ShippingSPX() {
             type="button"
             onClick={() => setShowCustomModal(true)}
             className="spx-btn-sync"
-            style={{ background: "#0c6b58", color: "#fff", borderColor: "#0c6b58" }}
+            style={{ background: "var(--primary)", color: "#fffefa", borderColor: "var(--primary)" }}
             title="Tạo và in tem giao hàng ngoài sàn / chành xe sang máy in TP732H"
           >
             🏷️ In Tem Ngoài Sàn
@@ -494,7 +496,7 @@ export function ShippingSPX() {
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button
               type="submit"
               disabled={quickPrinting || !quickCode.trim()}
@@ -527,8 +529,11 @@ export function ShippingSPX() {
           <div className={quickMsg.type === "success" ? "spx-alert-success" : "spx-alert-error"}>
             <span>{quickMsg.text}</span>
             <button
+              type="button"
               onClick={() => setQuickMsg(null)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: "700" }}
+              className="ui-btn-icon"
+              aria-label="Đóng thông báo in nhanh"
+              style={{ background: "none", border: "none", color: "inherit", fontWeight: "700" }}
             >
               ✕
             </button>
@@ -751,310 +756,345 @@ export function ShippingSPX() {
             </p>
           </div>
         ) : (
-          <div className="spx-table-wrap">
-            <table className="spx-data-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "36px" }}>
-                    <input
-                      type="checkbox"
-                      checked={orders.length > 0 && selectedTrackingNos.length === orders.length}
-                      onChange={toggleSelectAll}
-                      aria-label="Chọn tất cả bảng vận đơn"
-                      style={{ cursor: "pointer" }}
-                    />
-                  </th>
-                  <th>Mã Vận Đơn</th>
-                  <th>Người Nhận & SĐT</th>
-                  <th>Địa Chỉ Giao Hàng</th>
-                  <th>Tiền Thu Hộ (COD)</th>
-                  <th>Thời Gian Tạo</th>
-                  <th style={{ textAlign: "center" }}>Trạng Thái In</th>
-                  <th style={{ textAlign: "right" }}>Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody>
+          <DataView
+            mobileMode="card"
+            desktop={
+              <div className="spx-table-wrap">
+                <table className="spx-data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "36px" }}>
+                        <input
+                          type="checkbox"
+                          checked={orders.length > 0 && selectedTrackingNos.length === orders.length}
+                          onChange={toggleSelectAll}
+                          aria-label="Chọn tất cả bảng vận đơn"
+                          style={{ cursor: "pointer" }}
+                        />
+                      </th>
+                      <th>Mã Vận Đơn</th>
+                      <th>Người Nhận & SĐT</th>
+                      <th>Địa Chỉ Giao Hàng</th>
+                      <th>Tiền Thu Hộ (COD)</th>
+                      <th>Thời Gian Tạo</th>
+                      <th style={{ textAlign: "center" }}>Trạng Thái In</th>
+                      <th style={{ textAlign: "right" }}>Thao Tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => {
+                      const isSelected = selectedTrackingNos.includes(o.tracking_no);
+                      const isPrinting = printingRowNo === o.tracking_no;
+                      return (
+                        <tr
+                          key={o.id}
+                          style={{
+                            background: isSelected ? "var(--primary-soft)" : !o.is_printed ? "rgba(214,96,72,0.05)" : undefined,
+                          }}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectRow(o.tracking_no)}
+                              aria-label={`Chọn đơn ${o.tracking_no}`}
+                              style={{ cursor: "pointer" }}
+                            />
+                          </td>
+
+                          <td>
+                            <div
+                              onClick={() => setPreviewOrder(o)}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setPreviewOrder(o);
+                                }
+                              }}
+                              className="spx-tracking-link"
+                              title="Bấm để xem chi tiết & preview tem nhãn"
+                            >
+                              <span>{o.tracking_no}</span>
+                              <span style={{ fontSize: "11px", color: "var(--muted)" }}>👁️</span>
+                            </div>
+                            {o.order_code && o.order_code !== o.tracking_no && (
+                              <div style={{ fontSize: "11px", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
+                                Đơn: {o.order_code}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div style={{ fontWeight: "700", color: "var(--ink)" }}>{o.recipient_name || "Khách hàng"}</div>
+                            <div style={{ color: "var(--muted)", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
+                              {o.recipient_phone || "—"}
+                            </div>
+                          </td>
+
+                          <td style={{ maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.recipient_address}>
+                            <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{o.recipient_address || "Theo đơn hàng SPX"}</div>
+                            <div style={{ fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {[o.ward, o.district, o.province].filter(Boolean).join(", ")}
+                            </div>
+                          </td>
+
+                          <td>
+                            {o.cod_amount > 0 ? (
+                              <span className="spx-cod-val">{formatVND(o.cod_amount)}</span>
+                            ) : (
+                              <span style={{ color: "var(--muted)" }}>0 ₫</span>
+                            )}
+                          </td>
+
+                          <td style={{ color: "var(--muted)", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
+                            {o.created_at ? o.created_at.slice(0, 16).replace("T", " ") : "—"}
+                          </td>
+
+                          <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                            {o.is_printed ? (
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePrinted(o.tracking_no, true)}
+                                className="spx-badge-printed"
+                                title="Bấm để chuyển về Chưa in"
+                              >
+                                <span>🟢</span> Đã In
+                                {o.printed_at && (
+                                  <span style={{ fontSize: "10px", opacity: 0.85, marginLeft: "2px" }}>
+                                    ({o.printed_at.slice(11, 16)} {o.printed_at.slice(8, 10)}/{o.printed_at.slice(5, 7)})
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePrinted(o.tracking_no, false)}
+                                className="spx-badge-unprinted"
+                                title="Bấm để đánh dấu Đã in"
+                              >
+                                <span>🔴</span> Chưa In
+                              </button>
+                            )}
+                          </td>
+
+                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
+                              <button
+                                type="button"
+                                onClick={() => handlePrintSingleRemote(o.tracking_no)}
+                                disabled={isPrinting}
+                                className="spx-btn-row-print ui-btn-chip"
+                                title="In ngay ra máy in TP732H tại 192.168.1.10"
+                              >
+                                {isPrinting ? "⏳" : "🖨️"} In .10
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleQuickBrowserPrint(o.tracking_no)}
+                                className="spx-btn-row-pdf ui-btn-chip"
+                                title="Xem và in qua trình duyệt"
+                              >
+                                📄 PDF
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCancelOrder(o.tracking_no)}
+                                className="ui-btn-icon"
+                                aria-label={`Hủy đơn ${o.tracking_no}`}
+                                title="Hủy đơn"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list" style={{ padding: 10 }}>
                 {orders.map((o) => {
                   const isSelected = selectedTrackingNos.includes(o.tracking_no);
                   const isPrinting = printingRowNo === o.tracking_no;
                   return (
-                    <tr
+                    <article
                       key={o.id}
+                      className="ui-mobile-card"
                       style={{
-                        background: isSelected ? "#f0fdfa" : !o.is_printed ? "#fff1f215" : undefined,
+                        background: isSelected ? "var(--primary-soft)" : undefined,
                       }}
                     >
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectRow(o.tracking_no)}
-                          aria-label={`Chọn đơn ${o.tracking_no}`}
-                          style={{ cursor: "pointer" }}
-                        />
-                      </td>
-
-                      <td>
-                        <div
-                          onClick={() => setPreviewOrder(o)}
-                          role="button"
-                          tabIndex={0}
-                          className="spx-tracking-link"
-                          title="Bấm để xem chi tiết & preview tem nhãn"
-                        >
-                          <span>{o.tracking_no}</span>
-                          <span style={{ fontSize: "11px", color: "#64748b" }}>👁️</span>
-                        </div>
-                        {o.order_code && o.order_code !== o.tracking_no && (
-                          <div style={{ fontSize: "11px", color: "#64748b", fontFamily: "var(--font-mono)" }}>
-                            Đơn: {o.order_code}
-                          </div>
-                        )}
-                      </td>
-
-                      <td>
-                        <div style={{ fontWeight: "700", color: "#1e293b" }}>{o.recipient_name || "Khách hàng"}</div>
-                        <div style={{ color: "#64748b", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
-                          {o.recipient_phone || "—"}
-                        </div>
-                      </td>
-
-                      <td style={{ maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.recipient_address}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{o.recipient_address || "Theo đơn hàng SPX"}</div>
-                        <div style={{ fontSize: "11px", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {[o.ward, o.district, o.province].filter(Boolean).join(", ")}
-                        </div>
-                      </td>
-
-                      <td>
-                        {o.cod_amount > 0 ? (
-                          <span className="spx-cod-val">{formatVND(o.cod_amount)}</span>
-                        ) : (
-                          <span style={{ color: "#64748b" }}>0 ₫</span>
-                        )}
-                      </td>
-
-                      <td style={{ color: "#64748b", whiteSpace: "nowrap", fontFamily: "var(--font-mono)", fontSize: "11px" }}>
-                        {o.created_at ? o.created_at.slice(0, 16).replace("T", " ") : "—"}
-                      </td>
-
-                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                      <div className="ui-mobile-card-head">
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectRow(o.tracking_no)}
+                            aria-label={`Chọn đơn ${o.tracking_no}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewOrder(o)}
+                            className="spx-tracking-link"
+                            style={{ background: "none", border: "none", padding: 0, textAlign: "left" }}
+                          >
+                            <span>{o.tracking_no}</span>
+                            <span style={{ fontSize: "11px", color: "var(--muted)" }}>👁️</span>
+                          </button>
+                        </label>
                         {o.is_printed ? (
-                          <span
+                          <button
+                            type="button"
                             onClick={() => handleTogglePrinted(o.tracking_no, true)}
                             className="spx-badge-printed"
-                            title="Bấm để chuyển về Chưa in"
                           >
-                            <span>🟢</span> Đã In
-                            {o.printed_at && (
-                              <span style={{ fontSize: "10px", opacity: 0.8, marginLeft: "2px" }}>
-                                ({o.printed_at.slice(11, 16)} {o.printed_at.slice(8, 10)}/{o.printed_at.slice(5, 7)})
-                              </span>
-                            )}
-                          </span>
+                            🟢 Đã In
+                          </button>
                         ) : (
-                          <span
+                          <button
+                            type="button"
                             onClick={() => handleTogglePrinted(o.tracking_no, false)}
                             className="spx-badge-unprinted"
-                            title="Bấm để đánh dấu Đã in"
                           >
-                            <span>🔴</span> Chưa In
-                          </span>
+                            🔴 Chưa In
+                          </button>
                         )}
-                      </td>
-
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
-                          <button
-                            onClick={() => handlePrintSingleRemote(o.tracking_no)}
-                            disabled={isPrinting}
-                            className="spx-btn-row-print"
-                            title="In ngay ra máy in TP732H tại 192.168.1.10"
-                          >
-                            {isPrinting ? "⏳" : "🖨️"} In .10
-                          </button>
-
-                          <button
-                            onClick={() => handleQuickBrowserPrint(o.tracking_no)}
-                            className="spx-btn-row-pdf"
-                            title="Xem và in qua trình duyệt"
-                          >
-                            📄 PDF
-                          </button>
-
-                          <button
-                            onClick={() => handleCancelOrder(o.tracking_no)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: "#64748b",
-                              cursor: "pointer",
-                              padding: "4px 6px",
-                              borderRadius: "6px",
-                            }}
-                            title="Hủy đơn"
-                          >
-                            🗑️
-                          </button>
+                      </div>
+                      <div className="ui-mobile-card-meta">
+                        <strong style={{ color: "var(--ink)" }}>{o.recipient_name || "Khách hàng"}</strong>
+                        <span style={{ fontFamily: "var(--font-mono)" }}>{o.recipient_phone || "—"}</span>
+                        <strong style={{ color: o.cod_amount > 0 ? "var(--red)" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                          COD: {o.cod_amount > 0 ? formatVND(o.cod_amount) : "0 ₫"}
+                        </strong>
+                      </div>
+                      {o.recipient_address && (
+                        <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                          {o.recipient_address}
                         </div>
-                      </td>
-                    </tr>
+                      )}
+                      <div className="ui-mobile-card-actions">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintSingleRemote(o.tracking_no)}
+                          disabled={isPrinting}
+                          className="spx-btn-row-print ui-btn-chip"
+                        >
+                          {isPrinting ? "⏳" : "🖨️"} In .10
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickBrowserPrint(o.tracking_no)}
+                          className="spx-btn-row-pdf ui-btn-chip"
+                        >
+                          📄 PDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewOrder(o)}
+                          className="ui-btn-chip"
+                        >
+                          👁️ Chi tiết
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelOrder(o.tracking_no)}
+                          className="ui-btn-icon"
+                          aria-label={`Hủy đơn ${o.tracking_no}`}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </article>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            }
+          />
         )}
       </div>
 
       {/* ─── 📥 MODAL NHẬP / ĐỒNG BỘ MÃ ĐƠN HÀNG HÀNG LOẠT ─────────────────── */}
-      {showSyncModal && (
-        <div className="spx-modal-backdrop">
-          <form onSubmit={handleSyncSubmit} className="spx-modal-card">
-            <div className="spx-modal-head">
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "20px" }}>📥</span>
-                <h3>Đồng Bộ & Nhập Mã Đơn SPX</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="spx-modal-body">
-              <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155" }}>
-                Dán danh sách Mã vận đơn / Mã đơn SPX:
-              </label>
-              <textarea
-                rows={4}
-                value={syncRawText}
-                onChange={(e) => setSyncRawText(e.target.value)}
-                placeholder={`Dán danh sách mã vận đơn (mỗi dòng 1 mã hoặc cách nhau bằng dấu phẩy):\nSPXVN069813371898\nVN2615337004838260\nSPXVN0123456789`}
-                className="spx-modal-textarea"
-                required
-              />
-              <p style={{ margin: 0, fontSize: "11px", color: "#64748b" }}>
-                Hệ thống tự động phát hiện mã <code>SPXVN...</code> hoặc <code>VN...</code> và đưa vào danh sách chờ in tem.
-              </p>
-            </div>
-
-            <div className="spx-modal-foot">
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="spx-btn-date"
-                style={{ height: "36px", padding: "0 16px" }}
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                disabled={syncing || !syncRawText.trim()}
-                className="spx-btn-sync"
-                style={{ height: "36px" }}
-              >
-                {syncing ? "⏳ Đang Đồng Bộ..." : "📥 Đồng Bộ Ngay"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <AppModal
+        open={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        title="Đồng Bộ & Nhập Mã Đơn SPX"
+        size="md"
+        className="spx-modal-card"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowSyncModal(false)}
+              className="spx-btn-date ui-btn-chip"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              form="spx-sync-modal-form"
+              disabled={syncing || !syncRawText.trim()}
+              className="spx-btn-sync ui-btn-chip"
+            >
+              {syncing ? "⏳ Đang Đồng Bộ..." : "📥 Đồng Bộ Ngay"}
+            </button>
+          </>
+        }
+      >
+        <form id="spx-sync-modal-form" onSubmit={handleSyncSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ fontSize: "13px", fontWeight: "700", color: "var(--ink)" }}>
+            Dán danh sách Mã vận đơn / Mã đơn SPX:
+            <textarea
+              rows={5}
+              value={syncRawText}
+              onChange={(e) => setSyncRawText(e.target.value)}
+              placeholder={`Dán danh sách mã vận đơn (mỗi dòng 1 mã hoặc cách nhau bằng dấu phẩy):\nSPXVN069813371898\nVN2615337004838260\nSPXVN0123456789`}
+              className="ui-textarea spx-modal-textarea"
+              required
+            />
+          </label>
+          <p className="muted" style={{ margin: 0, fontSize: "12px" }}>
+            Hệ thống tự động phát hiện mã <code>SPXVN...</code> hoặc <code>VN...</code> và đưa vào danh sách chờ in tem.
+          </p>
+        </form>
+      </AppModal>
 
       {/* ─── 👁️ MODAL XEM TRƯỚC TEM NHÃN IN (LABEL PREVIEW MODAL) ─────────── */}
-      {previewOrder && (
-        <div className="spx-modal-backdrop">
-          <div className="spx-modal-card" style={{ maxWidth: "680px" }}>
-            <div className="spx-modal-head">
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "20px" }}>🏷️</span>
-                <div>
-                  <h3 style={{ margin: 0 }}>Chi Tiết Vận Đơn & Nhãn In SPX</h3>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "#0f766e", fontWeight: "700" }}>
-                    {previewOrder.tracking_no}
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewOrder(null)}
-                style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="spx-modal-body">
-              {/* Order Info Grid */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px",
-                  background: "#f8fafc",
-                  padding: "14px",
-                  borderRadius: "12px",
-                  border: "1px solid #e2e8f0",
-                  fontSize: "12px",
-                }}
-              >
-                <div>
-                  <span style={{ color: "#64748b" }}>Người nhận:</span>
-                  <div style={{ fontWeight: "700", color: "#0f172a" }}>{previewOrder.recipient_name}</div>
-                  <div style={{ fontFamily: "var(--font-mono)", color: "#475569" }}>{previewOrder.recipient_phone}</div>
-                </div>
-
-                <div>
-                  <span style={{ color: "#64748b" }}>Tiền thu hộ (COD):</span>
-                  <div style={{ fontWeight: "800", color: "#c2410c", fontFamily: "var(--font-mono)", fontSize: "14px" }}>
-                    {formatVND(previewOrder.cod_amount)}
-                  </div>
-                </div>
-
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <span style={{ color: "#64748b" }}>Địa chỉ giao:</span>
-                  <div style={{ color: "#334155", fontWeight: "500" }}>{previewOrder.recipient_address}</div>
-                </div>
-              </div>
-
-              {/* Embedded Label Preview */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: "700", color: "#334155" }}>Xem trước nhãn tem in A6/nhiệt:</span>
-                  <span style={{ fontSize: "11px", color: "#0f766e", fontFamily: "var(--font-mono)", fontWeight: "600" }}>
-                    Tỉ Lệ Vàng 65% Lệch Phải
-                  </span>
-                </div>
-                <div style={{ border: "1px solid #cbd5e1", borderRadius: "12px", overflow: "hidden", height: "290px", background: "#f1f5f9" }}>
-                  <iframe
-                    src={getSpxOrderLabelUrl(previewOrder.tracking_no)}
-                    style={{ width: "100%", height: "100%", border: "none" }}
-                    title={`Label ${previewOrder.tracking_no}`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="spx-modal-foot" style={{ justifyContent: "space-between" }}>
+      <AppModal
+        open={!!previewOrder}
+        onClose={() => setPreviewOrder(null)}
+        title="Chi Tiết Vận Đơn & Nhãn In SPX"
+        subtitle={
+          previewOrder ? (
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--primary-dark)", fontWeight: 700 }}>
+              {previewOrder.tracking_no}
+            </span>
+          ) : undefined
+        }
+        size="lg"
+        className="spx-modal-card"
+        footer={
+          previewOrder ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" }}>
               <button
                 type="button"
                 onClick={() => handleTogglePrinted(previewOrder.tracking_no, previewOrder.is_printed)}
-                className={previewOrder.is_printed ? "spx-badge-printed" : "spx-badge-unprinted"}
-                style={{ cursor: "pointer" }}
+                className={previewOrder.is_printed ? "spx-badge-printed ui-btn-chip" : "spx-badge-unprinted ui-btn-chip"}
               >
                 {previewOrder.is_printed ? "🟢 Đã in (Bấm để đổi)" : "🔴 Chưa in (Bấm để đánh dấu đã in)"}
               </button>
 
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={() => handleQuickBrowserPrint(previewOrder.tracking_no)}
-                  className="spx-btn-date"
-                  style={{ height: "36px", padding: "0 14px" }}
+                  className="spx-btn-date ui-btn-chip"
                 >
                   📄 Mở PDF
                 </button>
@@ -1065,155 +1105,170 @@ export function ShippingSPX() {
                     handlePrintSingleRemote(previewOrder.tracking_no);
                     setPreviewOrder(null);
                   }}
-                  className="spx-btn-print-action"
-                  style={{ height: "36px", fontSize: "12px", padding: "0 16px" }}
+                  className="spx-btn-print-action ui-btn-chip"
                 >
                   🖨️ In Máy TP732H (.158)
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── 🏷️ MODAL IN TEM GIAO HÀNG NGOÀI SÀN (CUSTOM LABEL MODAL) ──────── */}
-      {showCustomModal && (
-        <div className="spx-modal-backdrop">
-          <div className="spx-modal-card" style={{ maxWidth: "560px" }}>
-            <div className="spx-modal-head">
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "20px" }}>🏷️</span>
+          ) : undefined
+        }
+      >
+        {previewOrder && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Order Info Grid */}
+            <div
+              style={{
+                background: "var(--paper)",
+                padding: "14px",
+                borderRadius: "12px",
+                border: "1px solid var(--border)",
+                fontSize: "13px",
+              }}
+            >
+              <FormGrid cols={2}>
                 <div>
-                  <h3 style={{ margin: 0 }}>In Tem Giao Hàng Ngoài Sàn</h3>
-                  <p style={{ margin: 0, fontSize: "11px", color: "#64748b" }}>
-                    In trực tiếp tem nhiệt 100x50mm (tỉ lệ vàng 65%) sang máy in TP732H
-                  </p>
+                  <span style={{ color: "var(--muted)" }}>Người nhận:</span>
+                  <div style={{ fontWeight: "700", color: "var(--ink)" }}>{previewOrder.recipient_name}</div>
+                  <div style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>{previewOrder.recipient_phone}</div>
                 </div>
+
+                <div>
+                  <span style={{ color: "var(--muted)" }}>Tiền thu hộ (COD):</span>
+                  <div style={{ fontWeight: "800", color: "var(--red)", fontFamily: "var(--font-mono)", fontSize: "14px" }}>
+                    {formatVND(previewOrder.cod_amount)}
+                  </div>
+                </div>
+              </FormGrid>
+
+              <div style={{ marginTop: 10 }}>
+                <span style={{ color: "var(--muted)" }}>Địa chỉ giao:</span>
+                <div style={{ color: "var(--text)", fontWeight: "500" }}>{previewOrder.recipient_address}</div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowCustomModal(false)}
-                style={{ background: "none", border: "none", fontSize: "16px", cursor: "pointer", color: "#64748b" }}
-              >
-                ✕
-              </button>
             </div>
 
-            <form onSubmit={handlePrintCustom}>
-              <div className="spx-modal-body" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                      Mã kiện / Mã đơn <span style={{ color: "#e11d48" }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={customForm.code}
-                      onChange={(e) => setCustomForm({ ...customForm, code: e.target.value })}
-                      placeholder="VD: THI 058 601 1011"
-                      className="spx-quick-input"
-                      style={{ height: "38px", fontSize: "13px" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                      Số điện thoại nhận <span style={{ color: "#e11d48" }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={customForm.recipient_phone}
-                      onChange={(e) => setCustomForm({ ...customForm, recipient_phone: e.target.value })}
-                      placeholder="VD: 0902644315"
-                      className="spx-quick-input"
-                      style={{ height: "38px", fontSize: "13px" }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                    Tên người nhận <span style={{ color: "#e11d48" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={customForm.recipient_name}
-                    onChange={(e) => setCustomForm({ ...customForm, recipient_name: e.target.value })}
-                    placeholder="VD: Thiết bị điện Cao Thắng"
-                    className="spx-quick-input"
-                    style={{ height: "38px", fontSize: "13px" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                    Địa chỉ nhận hàng <span style={{ color: "#e11d48" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={customForm.recipient_address}
-                    onChange={(e) => setCustomForm({ ...customForm, recipient_address: e.target.value })}
-                    placeholder="VD: 48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh"
-                    className="spx-quick-input"
-                    style={{ height: "38px", fontSize: "13px" }}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                      Nội dung hàng hóa
-                     </label>
-                    <input
-                      type="text"
-                      value={customForm.item_desc}
-                      onChange={(e) => setCustomForm({ ...customForm, item_desc: e.target.value })}
-                      placeholder="Mặc định lấy theo mã đơn"
-                      className="spx-quick-input"
-                      style={{ height: "38px", fontSize: "13px" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>
-                      Chỉ dẫn giao hàng
-                    </label>
-                    <input
-                      type="text"
-                      value={customForm.note}
-                      onChange={(e) => setCustomForm({ ...customForm, note: e.target.value })}
-                      placeholder="VD: Cho xem hàng, không cho thử"
-                      className="spx-quick-input"
-                      style={{ height: "38px", fontSize: "13px" }}
-                    />
-                  </div>
-                </div>
+            {/* Embedded Label Preview (PDF — never sandboxed) */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", flexWrap: "wrap", gap: 6 }}>
+                <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--text)" }}>Xem trước nhãn tem in A6/nhiệt:</span>
+                <span style={{ fontSize: "11px", color: "var(--primary-dark)", fontFamily: "var(--font-mono)", fontWeight: "600" }}>
+                  Tỉ Lệ Vàng 65% Lệch Phải
+                </span>
               </div>
-
-              <div className="spx-modal-foot" style={{ justifyContent: "flex-end", gap: "8px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCustomModal(false)}
-                  className="spx-btn-date"
-                  style={{ height: "38px", padding: "0 16px" }}
-                >
-                  Đóng
-                </button>
-                <button
-                  type="submit"
-                  disabled={customPrinting}
-                  className="spx-btn-print-action"
-                  style={{ height: "38px", fontSize: "13px", padding: "0 20px" }}
-                >
-                  {customPrinting ? "⏳ Đang gửi in..." : "🖨️ In Máy TP732H (.10)"}
-                </button>
+              <div style={{ border: "1px solid var(--border-strong)", borderRadius: "12px", overflow: "hidden", height: "290px", background: "var(--paper)" }}>
+                <iframe
+                  src={getSpxOrderLabelUrl(previewOrder.tracking_no)}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                  title={`Label ${previewOrder.tracking_no}`}
+                />
               </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
+
+      {/* ─── 🏷️ MODAL IN TEM GIAO HÀNG NGOÀI SÀN (CUSTOM LABEL MODAL) ──────── */}
+      <AppModal
+        open={showCustomModal}
+        onClose={() => setShowCustomModal(false)}
+        title="🏷️ In Tem Giao Hàng Ngoài Sàn"
+        subtitle="In trực tiếp tem nhiệt 100x50mm (tỉ lệ vàng 65%) sang máy in TP732H"
+        size="md"
+        className="spx-modal-card"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCustomModal(false)}
+              className="spx-btn-date ui-btn-chip"
+            >
+              Đóng
+            </button>
+            <button
+              type="submit"
+              form="spx-custom-label-form"
+              disabled={customPrinting}
+              className="spx-btn-print-action ui-btn-chip"
+            >
+              {customPrinting ? "⏳ Đang gửi in..." : "🖨️ In Máy TP732H (.10)"}
+            </button>
+          </>
+        }
+      >
+        <form id="spx-custom-label-form" onSubmit={handlePrintCustom} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <FormGrid cols={2}>
+            <label>
+              Mã kiện / Mã đơn <span style={{ color: "var(--red)" }}>*</span>
+              <input
+                type="text"
+                required
+                value={customForm.code}
+                onChange={(e) => setCustomForm({ ...customForm, code: e.target.value })}
+                placeholder="VD: THI 058 601 1011"
+                className="ui-input"
+              />
+            </label>
+            <label>
+              Số điện thoại nhận <span style={{ color: "var(--red)" }}>*</span>
+              <input
+                type="text"
+                required
+                value={customForm.recipient_phone}
+                onChange={(e) => setCustomForm({ ...customForm, recipient_phone: e.target.value })}
+                placeholder="VD: 0902644315"
+                className="ui-input"
+              />
+            </label>
+          </FormGrid>
+
+          <label>
+            Tên người nhận <span style={{ color: "var(--red)" }}>*</span>
+            <input
+              type="text"
+              required
+              value={customForm.recipient_name}
+              onChange={(e) => setCustomForm({ ...customForm, recipient_name: e.target.value })}
+              placeholder="VD: Thiết bị điện Cao Thắng"
+              className="ui-input"
+            />
+          </label>
+
+          <label>
+            Địa chỉ nhận hàng <span style={{ color: "var(--red)" }}>*</span>
+            <input
+              type="text"
+              required
+              value={customForm.recipient_address}
+              onChange={(e) => setCustomForm({ ...customForm, recipient_address: e.target.value })}
+              placeholder="VD: 48 Đặng Ngọc Chinh, Phường 3, TP Tây Ninh"
+              className="ui-input"
+            />
+          </label>
+
+          <FormGrid cols={2}>
+            <label>
+              Nội dung hàng hóa
+              <input
+                type="text"
+                value={customForm.item_desc}
+                onChange={(e) => setCustomForm({ ...customForm, item_desc: e.target.value })}
+                placeholder="Mặc định lấy theo mã đơn"
+                className="ui-input"
+              />
+            </label>
+            <label>
+              Chỉ dẫn giao hàng
+              <input
+                type="text"
+                value={customForm.note}
+                onChange={(e) => setCustomForm({ ...customForm, note: e.target.value })}
+                placeholder="VD: Cho xem hàng, không cho thử"
+                className="ui-input"
+              />
+            </label>
+          </FormGrid>
+        </form>
+      </AppModal>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type TelegramStatus, type TtsStatus } from "../api";
+import { FormGrid } from "../components/ui";
+import { safeHttpUrl } from "../utils/url";
 
 export function Telegram() {
   const [status, setStatus] = useState<TelegramStatus | null>(null);
@@ -38,7 +40,7 @@ export function Telegram() {
         api.ttsStatus().catch(() => null),
       ]);
       setStatus(tg);
-      if (ts) {
+      if (ts && Array.isArray(ts.providers) && ts.voices) {
         setTtsInfo(ts);
         setSpeakerEnabled(ts.telegram_tts_speaker_enabled ?? true);
         setFilterEnabled(ts.telegram_tts_filter_enabled ?? true);
@@ -241,9 +243,11 @@ export function Telegram() {
           {link && <div style={{ marginTop: 18 }}>
             <label>Link kết nối</label>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input readOnly value={link} style={{ flex: "1 1 420px" }} />
-              <button onClick={copyLink}>Sao chép</button>
-              <a className="telegram-open-link" href={link} target="_blank" rel="noreferrer">Mở Telegram</a>
+              <input className="ui-input" readOnly value={link} style={{ flex: "1 1 min(100%, 280px)", minWidth: 0 }} />
+              <button type="button" className="ui-btn-chip" onClick={copyLink}>Sao chép</button>
+              {safeHttpUrl(link) && (
+                <a className="telegram-open-link ui-btn-chip" href={safeHttpUrl(link)} target="_blank" rel="noopener noreferrer">Mở Telegram</a>
+              )}
             </div>
             {expiresAt && <small className="muted">Hết hạn: {new Date(expiresAt).toLocaleString("vi-VN")}</small>}
           </div>}
@@ -253,7 +257,7 @@ export function Telegram() {
       {ttsInfo && (
         <section className="panel" style={{ marginTop: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <h3 style={{ margin: 0 }}>🔊 Cấu Hình Lọc Regex (RK Burner) &amp; Loa Báo Động BLE ({ttsInfo.ble_speaker_base_url})</h3>
               <p className="muted" style={{ margin: "4px 0 0" }}>
                 Chỉ những tin nhắn Telegram khớp biểu thức Regex (mặc định <code>RK\s*Burner</code>) mới kích hoạt còi báo động và đọc giọng nói Tiếng Việt (Kokoro → VNMap TTS → Chị Google → Microsoft) qua loa tại <code>77.88.207.23</code>.
@@ -266,7 +270,7 @@ export function Telegram() {
             </span>
           </div>
 
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14, padding: "10px 12px", background: "var(--bg-soft, #f8fafc)", borderRadius: 8, border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14, padding: "10px 12px", background: "var(--surface-subtle, #f4f8f6)", borderRadius: 8, border: "1px solid var(--border)" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, margin: 0, cursor: "pointer", fontWeight: 600 }}>
               <input
                 type="checkbox"
@@ -291,28 +295,29 @@ export function Telegram() {
             <label>Biểu thức Regex lọc tin nhắn báo loa (Không phân biệt hoa/thường - Case Insensitive)</label>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
               <input
+                className="ui-input"
                 type="text"
                 value={regexPattern}
                 onChange={(e) => setRegexPattern(e.target.value)}
                 placeholder="Ví dụ: RK\s*Burner"
-                style={{ flex: "1 1 320px", fontFamily: "monospace", fontWeight: 700 }}
+                style={{ flex: "1 1 min(100%, 240px)", minWidth: 0, fontFamily: "var(--font-mono)", fontWeight: 700 }}
               />
-              <button type="button" onClick={() => setRegexPattern("RK\\s*Burner")} title="Chỉ báo tin nhắn RK Burner">
+              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern("RK\\s*Burner")} title="Chỉ báo tin nhắn RK Burner">
                 Preset: RK Burner
               </button>
-              <button type="button" onClick={() => setRegexPattern("RK\\s*Burner|Hải quan|Thông quan")} title="RK Burner hoặc Hải quan">
+              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern("RK\\s*Burner|Hải quan|Thông quan")} title="RK Burner hoặc Hải quan">
                 Preset: RK Burner + Hải quan
               </button>
-              <button type="button" onClick={() => setRegexPattern(".*")} title="Báo mọi tin nhắn">
+              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern(".*")} title="Báo mọi tin nhắn">
                 Preset: Tất cả (.*)
               </button>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 14 }}>
+          <FormGrid cols={2} style={{ marginTop: 14 }}>
             <div>
               <label>Âm báo trước khi đọc TTS</label>
-              <select value={alarmSound} onChange={(e) => setAlarmSound(e.target.value)} style={{ width: "100%" }}>
+              <select className="ui-select" value={alarmSound} onChange={(e) => setAlarmSound(e.target.value)} style={{ width: "100%" }}>
                 <option value="auto">🤖 Tự động (Thành công → 🎉 Success · Lỗi/Fail → 🚨 Alarm)</option>
                 <option value="success">🎉 Luôn phát Success (Hoàn thành)</option>
                 <option value="alarm">🚨 Luôn phát Alarm (Còi báo động)</option>
@@ -324,7 +329,7 @@ export function Telegram() {
             </div>
             <div>
               <label>Nguồn TTS (Fallback Chain)</label>
-              <select value={ttsProvider} onChange={(e) => setTtsProvider(e.target.value)} style={{ width: "100%" }}>
+              <select className="ui-select" value={ttsProvider} onChange={(e) => setTtsProvider(e.target.value)} style={{ width: "100%" }}>
                 {ttsInfo.providers.map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
@@ -332,7 +337,7 @@ export function Telegram() {
             </div>
             <div>
               <label>Giọng đọc Tiếng Việt</label>
-              <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} style={{ width: "100%" }}>
+              <select className="ui-select" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} style={{ width: "100%" }}>
                 <optgroup label="Kokoro / VNMap TTS (WAV 24kHz)">
                   {ttsInfo.voices.kokoro.map((v) => (
                     <option key={v.id} value={v.id}>{v.label}</option>
@@ -361,19 +366,19 @@ export function Telegram() {
                   onChange={(e) => setVolume(Number(e.target.value))}
                   style={{ flex: 1 }}
                 />
-                <button type="button" onClick={() => handleVolumeChange(volume)}>Đặt</button>
+                <button type="button" className="ui-btn-chip" onClick={() => handleVolumeChange(volume)}>Đặt</button>
               </div>
             </div>
-          </div>
+          </FormGrid>
 
           <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="primary" type="button" disabled={busy} onClick={handleSaveConfig}>
+            <button className="primary ui-btn-chip" type="button" disabled={busy} onClick={handleSaveConfig}>
               💾 Lưu cấu hình Regex &amp; Loa
             </button>
-            <button type="button" onClick={() => handlePlaySound("alarm")}>🚨 Thử còi Alarm</button>
-            <button type="button" onClick={() => handlePlaySound("chime")}>🔔 Thử Chime</button>
-            <button type="button" onClick={() => handlePlaySound("success")}>🎉 Thử Success</button>
-            <button type="button" onClick={handleStopSpeaker}>⏹ Dừng loa</button>
+            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("alarm")}>🚨 Thử còi Alarm</button>
+            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("chime")}>🔔 Thử Chime</button>
+            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("success")}>🎉 Thử Success</button>
+            <button type="button" className="ui-btn-chip" onClick={handleStopSpeaker}>⏹ Dừng loa</button>
           </div>
 
           <hr style={{ margin: "18px 0", border: 0, borderTop: "1px solid var(--border)" }} />
@@ -381,10 +386,11 @@ export function Telegram() {
           <div>
             <label>Nội dung tin nhắn kiểm thử (Test khớp Regex &amp; Đọc thử ra loa 77.88.207.23)</label>
             <textarea
+              className="ui-textarea"
               rows={3}
               value={ttsText}
               onChange={(e) => setTtsText(e.target.value)}
-              style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
+              style={{ width: "100%", marginTop: 4, fontFamily: "var(--font-mono)" }}
             />
           </div>
 
@@ -394,8 +400,9 @@ export function Telegram() {
                 marginTop: 10,
                 padding: "10px 12px",
                 borderRadius: 8,
-                border: `1px solid ${regexPreview.matched ? "#86efac" : "#cbd5e1"}`,
-                background: regexPreview.matched ? "#f0fdf4" : "#f8fafc",
+                border: `1px solid ${regexPreview.matched ? "var(--green)" : "var(--border)"}`,
+                background: regexPreview.matched ? "var(--primary-soft)" : "var(--surface-subtle)",
+                color: "var(--ink)",
                 fontSize: 13,
               }}
             >
@@ -413,13 +420,13 @@ export function Telegram() {
           )}
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            <button type="button" disabled={busy} onClick={handleTestRegex}>
+            <button type="button" className="ui-btn-chip" disabled={busy} onClick={handleTestRegex}>
               🔍 Kiểm tra khớp Regex
             </button>
-            <button className="primary" type="button" disabled={busy} onClick={handleSpeakOnly}>
+            <button className="primary ui-btn-chip" type="button" disabled={busy} onClick={handleSpeakOnly}>
               🗣 Phát thử Còi + Đọc Loa ngay
             </button>
-            <button type="button" disabled={busy || !status.connected} onClick={handleSendTelegramAndSpeak}>
+            <button type="button" className="ui-btn-chip" disabled={busy || !status.connected} onClick={handleSendTelegramAndSpeak}>
               ✈️ Bắn thử Telegram + Phát loa (nếu khớp Regex)
             </button>
           </div>

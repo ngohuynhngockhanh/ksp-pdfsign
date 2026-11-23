@@ -414,11 +414,28 @@ export interface DocRecord {
   customer_name: string | null;
   created_at: string;
   download_url: string;
+  view_url?: string;
   nas_synced: boolean;
   doc_type: string;
   signed_upload_name: string;
   order_id: number | null;
   order_code: string;
+  lio_session_id?: string;
+  lio_status?: string;
+  lio_placement_method?: string;
+  lio_reason?: string;
+  lio_signed_at?: string;
+  lio_expires_at?: string;
+  lio_countersigned_status?: string;
+  lio_countersigned_at?: string;
+  lio_countersigned_file_id?: string;
+  lio_countersigned_error?: string;
+  lio_countersigned_signatures?: Array<{
+    signer: string;
+    serial: string;
+    signed_at: string;
+    valid: boolean;
+  }>;
 }
 
 export interface CustomerInvoice {
@@ -1971,6 +1988,7 @@ export const api = {
     customer_id?: number | null;
     doc_type?: string;
     order_id?: number | null;
+    existing_document_id?: number | null;
   }) {
     return req<{
       doc_id: string;
@@ -2073,6 +2091,25 @@ export const api = {
     return req<{ items: DocRecord[]; total: number; page: number; per_page: number }>(
       `/api/documents?${p.toString()}`,
     );
+  },
+  documentViewUrl(docPk: number) {
+    return `/api/documents/${docPk}/view`;
+  },
+  async uploadVaultDocument(
+    file: File,
+    opts: { docType?: string; customerId?: number | null; note?: string } = {},
+  ) {
+    const p = new URLSearchParams();
+    if (opts.docType) p.set("doc_type", opts.docType);
+    if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    if (opts.note) p.set("note", opts.note);
+    const fd = new FormData();
+    fd.append("file", file);
+    const qs = p.toString();
+    return req<DocRecord>(`/api/documents/upload${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+      body: fd,
+    });
   },
   async myDocuments() {
     return req<DocRecord[]>("/api/my/documents");
@@ -2764,6 +2801,40 @@ export const api = {
   },
   signedFileUrl(docPk: number, inline: boolean) {
     return `/api/documents/${docPk}/signed-file${inline ? "?inline=true" : ""}`;
+  },
+  async lioSignerStatus() {
+    return req<{
+      enabled: boolean;
+      configured: boolean;
+      base_url: string;
+      webhook_configured: boolean;
+      poll_interval_seconds: number;
+      reachable: boolean;
+      error: string;
+    }>("/api/lio-signer/status");
+  },
+  async requestLioSign(docPk: number, forceNew = false) {
+    return req<DocRecord>(`/api/documents/${docPk}/lio-sign${forceNew ? "?force_new=true" : ""}`, {
+      method: "POST",
+    });
+  },
+  async pollLioSign(docPk: number) {
+    return req<DocRecord>(`/api/documents/${docPk}/lio-poll`, {
+      method: "POST",
+    });
+  },
+  async sendLioCountersigned(docPk: number, file?: File) {
+    if (file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      return req<DocRecord>(`/api/documents/${docPk}/lio-countersigned`, {
+        method: "POST",
+        body: fd,
+      });
+    }
+    return req<DocRecord>(`/api/documents/${docPk}/lio-countersigned`, {
+      method: "POST",
+    });
   },
 
   // --- Nhật ký thao tác ---

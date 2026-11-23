@@ -4,11 +4,41 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
-// Trinh xem PDF chi doc (render tat ca trang ra canvas).
+// Trình xem PDF chỉ đọc (render tất cả trang ra canvas, tự vừa khung mobile & sắc nét DPR).
 export function PdfView({ url }: { url: string }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1.2);
+  const [scale, setScale] = useState(1.1);
+  const [fitScale, setFitScale] = useState(1.1);
+  const [userZoomed, setUserZoomed] = useState(false);
   const [numPages, setNumPages] = useState(0);
+  const [page1WidthPt, setPage1WidthPt] = useState(595);
+
+  useEffect(() => {
+    setUserZoomed(false);
+  }, [url]);
+
+  // Fit-width auto scaling via ResizeObserver (UI-MOB-02)
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const recompute = () => {
+      const avail = Math.max(260, el.clientWidth - 24);
+      const computed = Math.min(1.35, Math.max(0.45, Number((avail / page1WidthPt).toFixed(2))));
+      setFitScale(computed);
+      if (!userZoomed) {
+        setScale(avail < 760 ? computed : Math.min(1.2, computed));
+      }
+    };
+    recompute();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(recompute);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener("resize", recompute);
+    return () => window.removeEventListener("resize", recompute);
+  }, [page1WidthPt, userZoomed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,16 +49,27 @@ export function PdfView({ url }: { url: string }) {
       const doc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
       if (cancelled) return;
       setNumPages(doc.numPages);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
       for (let i = 1; i <= doc.numPages; i++) {
         const page = await doc.getPage(i);
         if (cancelled) return;
+        if (i === 1) {
+          const vp1 = page.getViewport({ scale: 1 });
+          if (vp1.width > 0) setPage1WidthPt(vp1.width);
+        }
         const viewport = page.getViewport({ scale });
         const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
         canvas.className = "pdfview-page";
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         container.appendChild(canvas);
-        await page.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
+        await page.render({ canvasContext: ctx, viewport }).promise.catch(() => {});
       }
     })();
     return () => {
@@ -37,20 +78,33 @@ export function PdfView({ url }: { url: string }) {
   }, [url, scale]);
 
   return (
-    <div className="pdfview">
+    <div className="pdfview" ref={rootRef}>
       <div className="pdfview-toolbar">
-        <span className="muted">{numPages} trang</span>
+        <strong>{numPages} trang</strong>
         <label>
-          Phóng
+          Phóng ({Math.round(scale * 100)}%)
           <input
             type="range"
-            min={0.7}
-            max={2}
-            step={0.1}
+            min={0.45}
+            max={2.2}
+            step={0.05}
             value={scale}
-            onChange={(e) => setScale(parseFloat(e.target.value))}
+            onChange={(e) => {
+              setUserZoomed(true);
+              setScale(parseFloat(e.target.value));
+            }}
           />
         </label>
+        <button
+          type="button"
+          className="btn-sm"
+          onClick={() => {
+            setUserZoomed(false);
+            setScale(fitScale);
+          }}
+        >
+          Vừa khung
+        </button>
       </div>
       <div className="pdfview-pages" ref={containerRef} />
     </div>

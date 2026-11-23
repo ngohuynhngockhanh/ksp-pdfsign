@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, CustomsDriveFolder, CustomsDriveSource, InvCustomsDecl } from "../api";
+import { DataView } from "./ui";
+import { safeHttpUrl } from "../utils/url";
 
 const statusLabel: Record<string, string> = {
   linked: "Đã liên kết", waiting_declaration: "Chờ tờ khai", ambiguous: "Chờ gán thủ công",
@@ -184,7 +186,9 @@ export function CustomsDriveDossiers() {
     </header>
     {message && <div className="payroll-message" aria-live="polite">{message}</div>}
     <div className="customs-drive-source"><label>Folder Drive năm {year}<input aria-label={`Folder Drive năm ${year}`} value={sourceId} placeholder="Dán folder ID Google Drive" onChange={(e) => setSourceId(e.target.value)} /></label><button className="secondary" disabled={busy || !sourceId.trim()} onClick={saveSource}>Lưu nguồn</button>
-      {source && <a href={`https://drive.google.com/drive/folders/${source.folder_id}`} target="_blank" rel="noreferrer">Mở folder Drive ↗</a>}
+      {source && safeHttpUrl(`https://drive.google.com/drive/folders/${encodeURIComponent(source.folder_id)}`) && (
+        <a href={safeHttpUrl(`https://drive.google.com/drive/folders/${encodeURIComponent(source.folder_id)}`)} target="_blank" rel="noopener noreferrer">Mở folder Drive ↗</a>
+      )}
     </div>
     <details className="customs-supplier-note" open>
       <summary>Ghi chú gửi nhà cung cấp và mẫu nhãn hàng</summary>
@@ -350,70 +354,80 @@ export function CustomsDriveDossiers() {
 
               {isExpanded && (
                 <div className="customs-drive-details">
-                  <div className="customs-drive-table-wrap">
-                    <table className="customs-drive-table">
-                      <thead>
-                        <tr>
-                          <th>Chứng từ</th>
-                          <th>Loại chứng từ</th>
-                          <th>Liên quan / dùng để làm gì</th>
-                          <th>Trạng thái đọc file</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {row.documents.map((doc) => (
-                          <tr key={doc.id} className={`customs-doc-row kind-${doc.kind}`}>
-                            <td>
-                              <strong>{doc.name}</strong>
-                              <small>
-                                {formatSize(doc.size)} · {doc.mime_type || "Không rõ định dạng"}
-                              </small>
-                            </td>
-                            <td>
-                              <div className={`customs-kind-control kind-${doc.kind}`}>
-                                <span className="customs-kind-swatch" aria-hidden="true" />
-                                <select
-                                  aria-label={`Loại chứng từ của ${doc.name}`}
-                                  value={doc.kind}
-                                  disabled={busy || savingDocumentId !== null}
-                                  onChange={(e) => setDocumentKind(doc.id, e.target.value)}
-                                >
-                                  {documentKinds.map((kind) => (
-                                    <option key={kind} value={kind}>
-                                      {kindLabel[kind]}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <small>
-                                {savingDocumentId === doc.id
-                                  ? "Đang tự lưu…"
-                                  : savedDocumentId === doc.id
-                                  ? "Đã lưu tự động"
-                                  : doc.kind_manual
-                                  ? "Đã xét thủ công"
-                                  : "AI tự phân loại"}
-                              </small>
-                            </td>
-                            <td>{kindPurpose[doc.kind] ?? kindPurpose.other}</td>
-                            <td>
-                              {doc.parse_error ? (
-                                <span className="customs-file-error">{doc.parse_error}</span>
-                              ) : (
-                                <span className="customs-file-ok">Đã đọc nội dung</span>
-                              )}
-                            </td>
-                            <td>
-                              <a href={doc.file_url || row.drive_url} target="_blank" rel="noreferrer">
-                                Mở file ↗
-                              </a>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <DataView
+                    mobileMode="scroll"
+                    desktop={
+                      <div className="customs-drive-table-wrap" tabIndex={0}>
+                        <table className="customs-drive-table">
+                          <thead>
+                            <tr>
+                              <th>Chứng từ</th>
+                              <th>Loại chứng từ</th>
+                              <th>Liên quan / dùng để làm gì</th>
+                              <th>Trạng thái đọc file</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.documents.map((doc) => {
+                              const docHref = safeHttpUrl(doc.file_url || row.drive_url);
+                              return (
+                                <tr key={doc.id} className={`customs-doc-row kind-${doc.kind}`}>
+                                  <td>
+                                    <strong>{doc.name}</strong>
+                                    <small>
+                                      {formatSize(doc.size)} · {doc.mime_type || "Không rõ định dạng"}
+                                    </small>
+                                  </td>
+                                  <td>
+                                    <div className={`customs-kind-control kind-${doc.kind}`}>
+                                      <span className="customs-kind-swatch" aria-hidden="true" />
+                                      <select
+                                        aria-label={`Loại chứng từ của ${doc.name}`}
+                                        value={doc.kind}
+                                        disabled={busy || savingDocumentId !== null}
+                                        onChange={(e) => setDocumentKind(doc.id, e.target.value)}
+                                      >
+                                        {documentKinds.map((kind) => (
+                                          <option key={kind} value={kind}>
+                                            {kindLabel[kind]}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <small>
+                                      {savingDocumentId === doc.id
+                                        ? "Đang tự lưu…"
+                                        : savedDocumentId === doc.id
+                                        ? "Đã lưu tự động"
+                                        : doc.kind_manual
+                                        ? "Đã xét thủ công"
+                                        : "AI tự phân loại"}
+                                    </small>
+                                  </td>
+                                  <td>{kindPurpose[doc.kind] ?? kindPurpose.other}</td>
+                                  <td>
+                                    {doc.parse_error ? (
+                                      <span className="customs-file-error">{doc.parse_error}</span>
+                                    ) : (
+                                      <span className="customs-file-ok">Đã đọc nội dung</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {docHref && (
+                                      <a href={docHref} target="_blank" rel="noopener noreferrer">
+                                        Mở file ↗
+                                      </a>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    }
+                  />
                   {row.findings.map((finding) => (
                     <div className={`finding ${finding.level}`} key={finding.code}>
                       {finding.message}
@@ -423,9 +437,11 @@ export function CustomsDriveDossiers() {
               )}
 
               <footer>
-                <a href={row.drive_url} target="_blank" rel="noreferrer">
-                  Mở folder Drive ↗
-                </a>
+                {safeHttpUrl(row.drive_url) && (
+                  <a href={safeHttpUrl(row.drive_url)} target="_blank" rel="noopener noreferrer">
+                    Mở folder Drive ↗
+                  </a>
+                )}
                 <button className="secondary" disabled={busy} onClick={() => review(row.id)}>
                   Kiểm tra lại
                 </button>

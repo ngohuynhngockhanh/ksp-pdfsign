@@ -1,6 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, DOC_TYPES, type Customer, type DocRecord, type OrderRec } from "../api";
+import { AppModal, DataView, PromptDialog } from "../components/ui";
 import { copyText, quickCreateCustomer, shareDocument } from "../util";
+
+function isHtmlDocPreview(filename: string): boolean {
+  return /\.(html?|docx|xlsx?|md|markdown)$/i.test(filename || "");
+}
 
 // ── Ô "Loại" dạng badge màu, bấm để sửa ──────────────────────────────
 function TypeCell({ d, onChanged }: { d: DocRecord; onChanged: () => void }) {
@@ -118,18 +123,77 @@ function OrderCell({
   );
 }
 
-// ── Menu "⋯" cho hành động phụ ───────────────────────────────────────
-function RowMenu({ children }: { children: ReactNode }) {
+// ── Menu "⋯" cho hành động phụ (viewport-clamped trên desktop, bottom sheet trên mobile) ──
+function RowMenu({ title, children }: { title?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+
+  function toggleMenu() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const mobile = typeof window !== "undefined" && window.innerWidth <= 820;
+    setIsMobile(mobile);
+    if (!mobile && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const estHeight = 280;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top =
+        spaceBelow < estHeight
+          ? Math.max(12, rect.top - Math.min(estHeight, rect.top - 12))
+          : rect.bottom + 4;
+      const right = Math.max(12, window.innerWidth - rect.right);
+      setPos({ top, right });
+    }
+    setOpen(true);
+  }
+
   return (
     <span className="rowmenu">
-      <button className="kebab" title="Thêm" onClick={() => setOpen((o) => !o)}>
+      <button
+        ref={btnRef}
+        type="button"
+        className="kebab ui-btn-icon"
+        title="Thêm thao tác"
+        aria-label={title ? `Thêm thao tác cho ${title}` : "Thêm thao tác"}
+        onClick={toggleMenu}
+      >
         ⋯
       </button>
-      {open && (
+      {open && isMobile && (
+        <AppModal
+          open
+          onClose={() => setOpen(false)}
+          title={title || "Thao tác hồ sơ"}
+          size="sm"
+        >
+          <div className="row-action-sheet" style={{ display: "flex", flexDirection: "column", gap: 8 }} onClick={() => setOpen(false)}>
+            {children}
+          </div>
+        </AppModal>
+      )}
+      {open && !isMobile && (
         <>
           <div className="menu-backdrop" onClick={() => setOpen(false)} />
-          <div className="menu" onClick={() => setOpen(false)}>
+          <div
+            className="menu"
+            style={
+              pos
+                ? {
+                    position: "fixed",
+                    top: pos.top,
+                    right: pos.right,
+                    maxHeight: "min(360px, calc(100vh - 24px))",
+                    overflowY: "auto",
+                    zIndex: 1100,
+                  }
+                : undefined
+            }
+            onClick={() => setOpen(false)}
+          >
             {children}
           </div>
         </>
@@ -167,6 +231,70 @@ export function Documents({
   const [uploading, setUploading] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocRecord | null>(null);
   const [lioBusyId, setLioBusyId] = useState<number | null>(null);
+  const [renameTarget, setRenameTarget] = useState<DocRecord | null>(null);
+  const [trackTarget, setTrackTarget] = useState<{
+    doc: DocRecord;
+    enabled: boolean;
+    note: string;
+    milestone: string;
+    days: string;
+  } | null>(null);
+
+  async function confirmRename(nextName: string) {
+    if (!renameTarget) return;
+    const trimmed = nextName.trim();
+    const target = renameTarget;
+    setRenameTarget(null);
+    if (!trimmed || trimmed === target.filename) return;
+    try {
+      await api.renameDocument(target.id, trimmed);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function openTrackingDialog(d: DocRecord) {
+    try {
+      const cur = await api.getDocTracking(d.id);
+      if (cur.enabled) {
+        await api.setDocTracking(d.id, {
+          enabled: false,
+          note: cur.note,
+          milestone_date: cur.milestone_date,
+          expires_days: 7,
+        });
+        alert("⚪ Đã tắt theo dõi lượt xem");
+        return;
+      }
+      setTrackTarget({
+        doc: d,
+        enabled: true,
+        note: cur.note || "",
+        milestone: cur.milestone_date || "",
+        days: "7",
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function saveTrackingDialog() {
+    if (!trackTarget) return;
+    try {
+      const daysVal = parseInt(trackTarget.days, 10);
+      await api.setDocTracking(trackTarget.doc.id, {
+        enabled: trackTarget.enabled,
+        note: trackTarget.note,
+        milestone_date: trackTarget.milestone,
+        expires_days: Number.isNaN(daysVal) ? 7 : daysVal,
+      });
+      setTrackTarget(null);
+      alert("✅ Đã bật theo dõi lượt xem");
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
 
   useEffect(() => {
     if (!previewDoc) return;
@@ -606,359 +734,429 @@ export function Documents({
 
       {err && <div className="error">{err}</div>}
 
-      {/* Table */}
-      <div className="table-wrap document-vault-table-wrap">
-        <table className="dt document-vault-table">
-          <thead>
-            <tr>
-              <th className="chk" aria-label="Chọn">
-                <input type="checkbox" aria-label="Chọn tất cả hồ sơ" checked={allChecked} onChange={toggleAll} />
-              </th>
-              <th>Tên file</th>
-              <th>Loại</th>
-              <th className="col-hide-sm">Người ký</th>
-              <th className="col-hide-sm">Thời gian</th>
-              <th>Khách hàng</th>
-              <th className="col-act">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {docs.map((d) => (
-              <tr
-                key={d.id}
-                id={`doc-row-${d.id}`}
-                style={flashId === d.id ? { background: "#fff3cd" } : undefined}
-              >
-                <td className="chk">
-                  <input type="checkbox" aria-label={`Chọn ${d.filename}`} checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
-                </td>
-                <td className="fname">
-                  <button
-                    type="button"
-                    className="doc-fname-trigger ft"
-                    title="Bấm để xem trước trực tiếp"
-                    onClick={() => setPreviewDoc(d)}
+      {/* Table / Mobile Cards */}
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap document-vault-table-wrap">
+            <table className="dt document-vault-table">
+              <thead>
+                <tr>
+                  <th className="chk" aria-label="Chọn">
+                    <input type="checkbox" aria-label="Chọn tất cả hồ sơ" checked={allChecked} onChange={toggleAll} />
+                  </th>
+                  <th>Tên file</th>
+                  <th>Loại</th>
+                  <th className="col-hide-sm">Người ký</th>
+                  <th className="col-hide-sm">Thời gian</th>
+                  <th>Khách hàng</th>
+                  <th className="col-act">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {docs.map((d) => (
+                  <tr
+                    key={d.id}
+                    id={`doc-row-${d.id}`}
+                    style={flashId === d.id ? { background: "#fdf3de" } : undefined}
                   >
-                    {d.filename}
-                  </button>
-                  <button
-                    className="rename-btn"
-                    title="Đổi tên bộ hồ sơ"
-                    onClick={async () => {
-                      const name = window.prompt("Tên mới cho bộ hồ sơ:", d.filename);
-                      if (!name || name.trim() === d.filename) return;
-                      try {
-                        await api.renameDocument(d.id, name.trim());
-                        load();
-                      } catch (e) {
-                        alert((e as Error).message);
-                      }
-                    }}
-                  >
-                    ✏️
-                  </button>
-                  <span className="chips">
-                    {d.filename.toLowerCase().endsWith(".docx") && (
-                      <span className="chip docx-fmt sm" title="Tài liệu Microsoft Word (.docx)">
-                        DOCX
-                      </span>
-                    )}
-                    {d.filename.toLowerCase().endsWith(".md") && (
-                      <span className="chip md-fmt sm" title="Tài liệu kỹ thuật Markdown (.md)">
-                        MD
-                      </span>
-                    )}
-                    {d.nas_synced && (
-                      <span className="chip green sm" title="Đã sao lưu NAS">
-                        NAS ✓
-                      </span>
-                    )}
-                    {d.signed_upload_name && (
-                      <span className="chip indigo sm" title={d.signed_upload_name}>
-                        📎 đã ký
-                      </span>
-                    )}
-                    {d.lio_status === "signed" && (
-                      <span
-                        className="chip green sm"
-                        title={`Đã ký số từ xa LIO (${d.lio_session_id || ""} · vị trí: ${d.lio_placement_method || "auto"})`}
-                      >
-                        ✍️ LIO đã ký
-                      </span>
-                    )}
-                    {d.lio_countersigned_status === "sent" && (
-                      <span
-                        className="chip indigo sm"
-                        title={`Đã gửi bản đủ 2 chữ ký về LIO (${d.lio_countersigned_file_id || ""} · lúc ${d.lio_countersigned_at || ""})`}
-                      >
-                        🤝 Đã gửi 2CK LIO
-                      </span>
-                    )}
-                    {d.lio_countersigned_status === "failed" && (
+                    <td className="chk">
+                      <input type="checkbox" aria-label={`Chọn ${d.filename}`} checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
+                    </td>
+                    <td className="fname">
                       <button
                         type="button"
-                        className="chip amber sm"
-                        disabled={lioBusyId === d.id}
-                        onClick={() => handleLioCountersigned(d)}
-                        title={`Chưa gửi được bản 2 chữ ký về LIO: ${d.lio_countersigned_error || ""} — bấm để gửi lại`}
+                        className="doc-fname-trigger ft"
+                        title="Bấm để xem trước trực tiếp"
+                        onClick={() => setPreviewDoc(d)}
                       >
-                        ⚠️ Lỗi gửi 2CK LIO ↻
+                        {d.filename}
                       </button>
-                    )}
-                    {(d.lio_status === "pending" ||
-                      d.lio_status === "waiting_approval" ||
-                      d.lio_status === "processing") && (
                       <button
                         type="button"
-                        className="chip amber sm"
-                        disabled={lioBusyId === d.id}
-                        onClick={() => handleLioPoll(d)}
-                        title={`Phiên ${d.lio_session_id} đang chờ duyệt trên điện thoại (vị trí: ${d.lio_placement_method || "auto"}) — bấm để kiểm tra ngay`}
+                        className="rename-btn ui-btn-icon"
+                        title="Đổi tên bộ hồ sơ"
+                        aria-label={`Đổi tên ${d.filename}`}
+                        onClick={() => setRenameTarget(d)}
                       >
-                        {lioBusyId === d.id ? "⏳ Đang hỏi LIO…" : "⏳ LIO chờ duyệt ↻"}
+                        ✏️
                       </button>
-                    )}
-                    {(d.lio_status === "rejected" ||
-                      d.lio_status === "failed" ||
-                      d.lio_status === "expired") && (
-                      <button
-                        type="button"
-                        className="chip red sm"
-                        disabled={lioBusyId === d.id}
-                        onClick={() => handleLioSign(d, true)}
-                        title={`Phiên LIO ${d.lio_status} (${d.lio_reason || "hết hạn/lỗi"}) — bấm để tạo phiên ký mới`}
-                      >
-                        ⚠️ LIO {d.lio_status} ↻
-                      </button>
-                    )}
-                    <OrderCell
-                      d={d}
-                      orders={orders}
-                      onAssign={async (id, v) => {
-                        await api.setDocumentOrder(id, v === "" ? null : Number(v));
-                        load();
-                      }}
-                    />
-                  </span>
-                </td>
-                <td>
-                  <TypeCell d={d} onChanged={load} />
-                </td>
-                <td className="muted col-hide-sm">{d.signer_name}</td>
-                <td className="muted col-hide-sm nowrap">
-                  {new Date(d.created_at).toLocaleString("vi-VN")}
-                </td>
-                <td>
-                  <CustomerCell d={d} customers={customers} onAssign={assign} />
-                </td>
-                <td className="col-act">
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="iact"
-                      onClick={() => setPreviewDoc(d)}
-                      title="Xem trước trực tiếp"
-                      aria-label={`Xem trước ${d.filename}`}
-                    >
-                      Xem
-                    </button>
-                    <a className="iact" href={d.download_url} title="Tải xuống">
-                      ⬇
-                    </a>
-                    <button className="iact" onClick={() => shareOne(d.id)} title="Chia sẻ">
-                      🔗
-                    </button>
-                    {d.filename.toLowerCase().endsWith(".pdf") && (
-                      <button className="iact" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">
-                        ✔
-                      </button>
-                    )}
-                    {d.filename.toLowerCase().endsWith(".pdf") && (
-                      <button
-                        type="button"
-                        className="iact"
-                        disabled={lioBusyId === d.id}
-                        onClick={() =>
-                          d.lio_status === "pending" ||
-                          d.lio_status === "waiting_approval" ||
-                          d.lio_status === "processing"
-                            ? handleLioPoll(d)
-                            : handleLioSign(d, d.lio_status === "signed")
-                        }
-                        title={
-                          d.lio_status === "pending" || d.lio_status === "waiting_approval"
-                            ? "Kiểm tra trạng thái duyệt ký LIO ngay"
-                            : "Gửi sang LIO Signer để ký số từ xa (CAS CERT)"
-                        }
-                        aria-label={`Ký số LIO ${d.filename}`}
-                      >
-                        {lioBusyId === d.id
-                          ? "…"
-                          : d.lio_status === "pending" || d.lio_status === "waiting_approval"
-                            ? "↻ LIO"
-                            : "✍️ LIO"}
-                      </button>
-                    )}
-                    {d.filename.toLowerCase().endsWith(".pdf") && d.lio_status === "signed" && (
-                      <button
-                        type="button"
-                        className="iact"
-                        disabled={lioBusyId === d.id}
-                        onClick={() => handleLioCountersigned(d)}
-                        title="Gửi bản hợp đồng đã đủ 2 chữ ký về LIO (POST /v1/sessions/{session_id}/countersigned)"
-                        aria-label={`Gửi bản 2 chữ ký về LIO cho ${d.filename}`}
-                      >
-                        {lioBusyId === d.id ? "…" : d.lio_countersigned_status === "sent" ? "🤝 2CK ✓" : "📤 2 bên"}
-                      </button>
-                    )}
-                    <RowMenu>
-                      <button
-                        onClick={async () => {
-                          const name = window.prompt("Tên mới cho bộ hồ sơ:", d.filename);
-                          if (!name || name.trim() === d.filename) return;
-                          try {
-                            await api.renameDocument(d.id, name.trim());
-                            load();
-                          } catch (e) {
-                            alert((e as Error).message);
-                          }
-                        }}
-                      >
-                        ✏️ Đổi tên
-                      </button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const cur = await api.getDocTracking(d.id);
-                            const enabled = !cur.enabled;
-                            let note = cur.note;
-                            let milestone = cur.milestone_date;
-                            let days: number | null = 7;
-                            if (enabled) {
-                              note = prompt("Ghi chú ngữ cảnh (VD: Gửi ngày 28/10 · HĐ kế toán):", cur.note) ?? cur.note;
-                              milestone = prompt("Ngày mốc (YYYY-MM-DD, để trống nếu không cần):", cur.milestone_date) ?? cur.milestone_date;
-                              const daysStr = prompt("Hạn báo Telegram (số ngày, 0 = vô thời hạn):", "7");
-                              days = daysStr !== null ? parseInt(daysStr) || 0 : 7;
-                            }
-                            await api.setDocTracking(d.id, { enabled, note, milestone_date: milestone, expires_days: days });
-                            alert(enabled ? "✅ Đã bật theo dõi lượt xem" : "⚪ Đã tắt theo dõi lượt xem");
-                          } catch (e) {
-                            alert((e as Error).message);
-                          }
-                        }}
-                      >
-                        👁 Theo dõi lượt xem
-                      </button>
-                      {d.filename.toLowerCase().endsWith(".pdf") && (
-                        <button
-                          onClick={() =>
-                            d.lio_status === "pending" ||
-                            d.lio_status === "waiting_approval" ||
-                            d.lio_status === "processing"
-                              ? handleLioPoll(d)
-                              : handleLioSign(d, Boolean(d.lio_session_id))
-                          }
-                        >
-                          {d.lio_status === "pending" || d.lio_status === "waiting_approval"
-                            ? "🔄 Kiểm tra trạng thái ký LIO"
-                            : d.lio_session_id
-                              ? "✍️ Gửi lại phiên ký LIO mới"
-                              : "✍️ Gửi LIO ký số (CAS CERT)"}
-                        </button>
-                      )}
-                      {d.filename.toLowerCase().endsWith(".pdf") && d.lio_status === "signed" && (
-                        <>
-                          <button onClick={() => handleLioCountersigned(d)}>
-                            {d.lio_countersigned_status === "sent"
-                              ? "🤝 Gửi lại bản 2 chữ ký về LIO"
-                              : "📤 Gửi bản đủ 2 chữ ký về LIO"}
+                      <span className="chips">
+                        {d.filename.toLowerCase().endsWith(".docx") && (
+                          <span className="chip docx-fmt sm" title="Tài liệu Microsoft Word (.docx)">
+                            DOCX
+                          </span>
+                        )}
+                        {d.filename.toLowerCase().endsWith(".md") && (
+                          <span className="chip md-fmt sm" title="Tài liệu kỹ thuật Markdown (.md)">
+                            MD
+                          </span>
+                        )}
+                        {d.nas_synced && (
+                          <span className="chip green sm" title="Đã sao lưu NAS">
+                            NAS ✓
+                          </span>
+                        )}
+                        {d.signed_upload_name && (
+                          <span className="chip indigo sm" title={d.signed_upload_name}>
+                            📎 đã ký
+                          </span>
+                        )}
+                        {d.lio_status === "signed" && (
+                          <span
+                            className="chip green sm"
+                            title={`Đã ký số từ xa LIO (${d.lio_session_id || ""} · vị trí: ${d.lio_placement_method || "auto"})`}
+                          >
+                            ✍️ LIO đã ký
+                          </span>
+                        )}
+                        {d.lio_countersigned_status === "sent" && (
+                          <span
+                            className="chip indigo sm"
+                            title={`Đã gửi bản đủ 2 chữ ký về LIO (${d.lio_countersigned_file_id || ""} · lúc ${d.lio_countersigned_at || ""})`}
+                          >
+                            🤝 Đã gửi 2CK LIO
+                          </span>
+                        )}
+                        {d.lio_countersigned_status === "failed" && (
+                          <button
+                            type="button"
+                            className="chip amber sm"
+                            disabled={lioBusyId === d.id}
+                            onClick={() => handleLioCountersigned(d)}
+                            title={`Chưa gửi được bản 2 chữ ký về LIO: ${d.lio_countersigned_error || ""} — bấm để gửi lại`}
+                          >
+                            ⚠️ Lỗi gửi 2CK LIO ↻
                           </button>
+                        )}
+                        {(d.lio_status === "pending" ||
+                          d.lio_status === "waiting_approval" ||
+                          d.lio_status === "processing") && (
+                          <button
+                            type="button"
+                            className="chip amber sm"
+                            disabled={lioBusyId === d.id}
+                            onClick={() => handleLioPoll(d)}
+                            title={`Phiên ${d.lio_session_id} đang chờ duyệt trên điện thoại (vị trí: ${d.lio_placement_method || "auto"}) — bấm để kiểm tra ngay`}
+                          >
+                            {lioBusyId === d.id ? "⏳ Đang hỏi LIO…" : "⏳ LIO chờ duyệt ↻"}
+                          </button>
+                        )}
+                        {(d.lio_status === "rejected" ||
+                          d.lio_status === "failed" ||
+                          d.lio_status === "expired") && (
+                          <button
+                            type="button"
+                            className="chip red sm"
+                            disabled={lioBusyId === d.id}
+                            onClick={() => handleLioSign(d, true)}
+                            title={`Phiên LIO ${d.lio_status} (${d.lio_reason || "hết hạn/lỗi"}) — bấm để tạo phiên ký mới`}
+                          >
+                            ⚠️ LIO {d.lio_status} ↻
+                          </button>
+                        )}
+                        <OrderCell
+                          d={d}
+                          orders={orders}
+                          onAssign={async (id, v) => {
+                            await api.setDocumentOrder(id, v === "" ? null : Number(v));
+                            load();
+                          }}
+                        />
+                      </span>
+                    </td>
+                    <td>
+                      <TypeCell d={d} onChanged={load} />
+                    </td>
+                    <td className="muted col-hide-sm">{d.signer_name}</td>
+                    <td className="muted col-hide-sm nowrap">
+                      {new Date(d.created_at).toLocaleString("vi-VN")}
+                    </td>
+                    <td>
+                      <CustomerCell d={d} customers={customers} onAssign={assign} />
+                    </td>
+                    <td className="col-act">
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="ui-btn-chip"
+                          onClick={() => setPreviewDoc(d)}
+                          title="Xem trước trực tiếp"
+                          aria-label={`Xem trước ${d.filename}`}
+                        >
+                          Xem
+                        </button>
+                        <a className="ui-btn-icon" href={d.download_url} title="Tải xuống" aria-label={`Tải xuống ${d.filename}`}>
+                          ⬇
+                        </a>
+                        <button type="button" className="ui-btn-icon" onClick={() => shareOne(d.id)} title="Chia sẻ" aria-label={`Chia sẻ ${d.filename}`}>
+                          🔗
+                        </button>
+                        {d.filename.toLowerCase().endsWith(".pdf") && (
+                          <button type="button" className="ui-btn-icon" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký" aria-label={`Kiểm tra chữ ký ${d.filename}`}>
+                            ✔
+                          </button>
+                        )}
+                        {d.filename.toLowerCase().endsWith(".pdf") && (
+                          <button
+                            type="button"
+                            className="ui-btn-chip"
+                            disabled={lioBusyId === d.id}
+                            onClick={() =>
+                              d.lio_status === "pending" ||
+                              d.lio_status === "waiting_approval" ||
+                              d.lio_status === "processing"
+                                ? handleLioPoll(d)
+                                : handleLioSign(d, d.lio_status === "signed")
+                            }
+                            title={
+                              d.lio_status === "pending" || d.lio_status === "waiting_approval"
+                                ? "Kiểm tra trạng thái duyệt ký LIO ngay"
+                                : "Gửi sang LIO Signer để ký số từ xa (CAS CERT)"
+                            }
+                            aria-label={`Ký số LIO ${d.filename}`}
+                          >
+                            {lioBusyId === d.id
+                              ? "…"
+                              : d.lio_status === "pending" || d.lio_status === "waiting_approval"
+                                ? "↻ LIO"
+                                : "✍️ LIO"}
+                          </button>
+                        )}
+                        {d.filename.toLowerCase().endsWith(".pdf") && d.lio_status === "signed" && (
+                          <button
+                            type="button"
+                            className="ui-btn-chip"
+                            disabled={lioBusyId === d.id}
+                            onClick={() => handleLioCountersigned(d)}
+                            title="Gửi bản hợp đồng đã đủ 2 chữ ký về LIO (POST /v1/sessions/{session_id}/countersigned)"
+                            aria-label={`Gửi bản 2 chữ ký về LIO cho ${d.filename}`}
+                          >
+                            {lioBusyId === d.id ? "…" : d.lio_countersigned_status === "sent" ? "🤝 2CK ✓" : "📤 2 bên"}
+                          </button>
+                        )}
+                        <RowMenu title={d.filename}>
+                          <button type="button" onClick={() => setRenameTarget(d)}>
+                            ✏️ Đổi tên
+                          </button>
+                          <button type="button" onClick={() => openTrackingDialog(d)}>
+                            👁 Theo dõi lượt xem
+                          </button>
+                          {d.filename.toLowerCase().endsWith(".pdf") && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                d.lio_status === "pending" ||
+                                d.lio_status === "waiting_approval" ||
+                                d.lio_status === "processing"
+                                  ? handleLioPoll(d)
+                                  : handleLioSign(d, Boolean(d.lio_session_id))
+                              }
+                            >
+                              {d.lio_status === "pending" || d.lio_status === "waiting_approval"
+                                ? "🔄 Kiểm tra trạng thái ký LIO"
+                                : d.lio_session_id
+                                  ? "✍️ Gửi lại phiên ký LIO mới"
+                                  : "✍️ Gửi LIO ký số (CAS CERT)"}
+                            </button>
+                          )}
+                          {d.filename.toLowerCase().endsWith(".pdf") && d.lio_status === "signed" && (
+                            <>
+                              <button type="button" onClick={() => handleLioCountersigned(d)}>
+                                {d.lio_countersigned_status === "sent"
+                                  ? "🤝 Gửi lại bản 2 chữ ký về LIO"
+                                  : "📤 Gửi bản đủ 2 chữ ký về LIO"}
+                              </button>
+                              <label className="menu-file">
+                                📤 Chọn PDF 2 chữ ký & gửi LIO
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  hidden
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) handleLioCountersigned(d, f);
+                                  }}
+                                />
+                              </label>
+                            </>
+                          )}
+                          {d.filename.toLowerCase().endsWith(".pdf") && onCountersign && (
+                            <button type="button" onClick={() => onCountersign(d)}>
+                              🖊 Ký tiếp bằng USB Token (iNut)
+                            </button>
+                          )}
+                          {d.signed_upload_name && (
+                            <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noopener noreferrer">
+                              📎 Xem bản đã ký
+                            </a>
+                          )}
                           <label className="menu-file">
-                            📤 Chọn PDF 2 chữ ký & gửi LIO
+                            {d.signed_upload_name ? "🖊 Thay bản đã ký" : "🖊 Tải bản đã ký lên"}
                             <input
                               type="file"
                               accept="application/pdf"
                               hidden
                               onChange={(e) => {
                                 const f = e.target.files?.[0];
-                                if (f) handleLioCountersigned(d, f);
+                                if (f) uploadSigned(d.id, f);
                               }}
                             />
                           </label>
-                        </>
-                      )}
-                      {d.filename.toLowerCase().endsWith(".pdf") && onCountersign && (
-                        <button onClick={() => onCountersign(d)}>
-                          🖊 Ký tiếp bằng USB Token (iNut)
-                        </button>
-                      )}
-                      {d.signed_upload_name && (
-                        <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">
-                          📎 Xem bản đã ký
-                        </a>
-                      )}
-                      <label className="menu-file">
-                        {d.signed_upload_name ? "🖊 Thay bản đã ký" : "🖊 Tải bản đã ký lên"}
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          hidden
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) uploadSigned(d.id, f);
-                          }}
-                        />
-                      </label>
-                      <button
-                        className="menu-danger"
-                        onClick={async () => {
-                          if (confirm("Xoá hồ sơ này?")) {
-                            await api.deleteDocument(d.id);
-                            load();
-                          }
-                        }}
-                      >
-                        🗑 Xoá hồ sơ
-                      </button>
-                    </RowMenu>
-                  </div>
-                </td>
-              </tr>
+                          <button
+                            type="button"
+                            className="menu-danger"
+                            onClick={async () => {
+                              if (confirm("Xoá hồ sơ này?")) {
+                                await api.deleteDocument(d.id);
+                                load();
+                              }
+                            }}
+                          >
+                            🗑 Xoá hồ sơ
+                          </button>
+                        </RowMenu>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && docs.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>
+                      <div className="empty">
+                        <div className="empty-ic">🗂️</div>
+                        <div>Không có hồ sơ nào khớp.</div>
+                        {(search || filter !== "all") && (
+                          <button
+                            className="btn-sm"
+                            onClick={() => {
+                              setSearch("");
+                              setFilter("all");
+                              setPage(1);
+                            }}
+                          >
+                            Xoá bộ lọc
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {loading &&
+                  docs.length === 0 &&
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={"sk" + i} className="skel-row">
+                      <td colSpan={7}>
+                        <div className="skel" />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
+            {docs.map((d) => (
+              <article
+                key={d.id}
+                className="ui-mobile-card"
+                style={flashId === d.id ? { background: "#fdf3de" } : undefined}
+              >
+                <div className="ui-mobile-card-head">
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                    <input type="checkbox" aria-label={`Chọn ${d.filename}`} checked={sel.has(d.id)} onChange={() => toggle(d.id)} />
+                    <button
+                      type="button"
+                      className="doc-fname-trigger ui-mobile-card-title"
+                      style={{ textAlign: "left" }}
+                      onClick={() => setPreviewDoc(d)}
+                    >
+                      {d.filename}
+                    </button>
+                  </label>
+                  <TypeCell d={d} onChanged={load} />
+                </div>
+                <div className="ui-mobile-card-meta">
+                  <CustomerCell d={d} customers={customers} onAssign={assign} />
+                  <OrderCell
+                    d={d}
+                    orders={orders}
+                    onAssign={async (id, v) => {
+                      await api.setDocumentOrder(id, v === "" ? null : Number(v));
+                      load();
+                    }}
+                  />
+                  {d.nas_synced && <span className="chip green sm">NAS ✓</span>}
+                  {d.signed_upload_name && <span className="chip indigo sm">📎 đã ký</span>}
+                  {d.lio_status === "signed" && <span className="chip green sm">✍️ LIO đã ký</span>}
+                  <span className="muted">{new Date(d.created_at).toLocaleDateString("vi-VN")}</span>
+                </div>
+                <div className="ui-mobile-card-actions">
+                  <button type="button" className="ui-btn-chip" onClick={() => setPreviewDoc(d)}>
+                    Xem
+                  </button>
+                  <a className="ui-btn-icon" href={d.download_url} title="Tải xuống" aria-label={`Tải xuống ${d.filename}`}>
+                    ⬇
+                  </a>
+                  <button type="button" className="ui-btn-icon" onClick={() => shareOne(d.id)} title="Chia sẻ" aria-label={`Chia sẻ ${d.filename}`}>
+                    🔗
+                  </button>
+                  {d.filename.toLowerCase().endsWith(".pdf") && (
+                    <button type="button" className="ui-btn-icon" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký" aria-label={`Kiểm tra chữ ký ${d.filename}`}>
+                      ✔
+                    </button>
+                  )}
+                  {d.filename.toLowerCase().endsWith(".pdf") && (
+                    <button
+                      type="button"
+                      className="ui-btn-chip"
+                      disabled={lioBusyId === d.id}
+                      onClick={() =>
+                        d.lio_status === "pending" ||
+                        d.lio_status === "waiting_approval" ||
+                        d.lio_status === "processing"
+                          ? handleLioPoll(d)
+                          : handleLioSign(d, d.lio_status === "signed")
+                      }
+                    >
+                      {lioBusyId === d.id ? "…" : d.lio_status === "pending" || d.lio_status === "waiting_approval" ? "↻ LIO" : "✍️ LIO"}
+                    </button>
+                  )}
+                  <RowMenu title={d.filename}>
+                    <button type="button" onClick={() => setRenameTarget(d)}>✏️ Đổi tên</button>
+                    <button type="button" onClick={() => openTrackingDialog(d)}>👁 Theo dõi lượt xem</button>
+                    {d.filename.toLowerCase().endsWith(".pdf") && onCountersign && (
+                      <button type="button" onClick={() => onCountersign(d)}>🖊 Ký tiếp bằng USB Token (iNut)</button>
+                    )}
+                    {d.signed_upload_name && (
+                      <a href={api.signedFileUrl(d.id, true)} target="_blank" rel="noopener noreferrer">📎 Xem bản đã ký</a>
+                    )}
+                    <button
+                      type="button"
+                      className="menu-danger"
+                      onClick={async () => {
+                        if (confirm("Xoá hồ sơ này?")) {
+                          await api.deleteDocument(d.id);
+                          load();
+                        }
+                      }}
+                    >
+                      🗑 Xoá hồ sơ
+                    </button>
+                  </RowMenu>
+                </div>
+              </article>
             ))}
             {!loading && docs.length === 0 && (
-              <tr>
-                <td colSpan={7}>
-                  <div className="empty">
-                    <div className="empty-ic">🗂️</div>
-                    <div>Không có hồ sơ nào khớp.</div>
-                    {(search || filter !== "all") && (
-                      <button
-                        className="btn-sm"
-                        onClick={() => {
-                          setSearch("");
-                          setFilter("all");
-                          setPage(1);
-                        }}
-                      >
-                        Xoá bộ lọc
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
+              <div className="empty">
+                <div className="empty-ic">🗂️</div>
+                <div>Không có hồ sơ nào khớp.</div>
+              </div>
             )}
-            {loading &&
-              docs.length === 0 &&
-              Array.from({ length: 4 }).map((_, i) => (
-                <tr key={"sk" + i} className="skel-row">
-                  <td colSpan={7}>
-                    <div className="skel" />
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+      />
 
       {pages > 1 && (
         <div className="pager">
@@ -1045,7 +1243,7 @@ export function Documents({
                   className="doc-pv-btn"
                   href={previewDoc.view_url || api.documentViewUrl(previewDoc.id)}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                 >
                   Mở tab mới
                 </a>
@@ -1073,10 +1271,68 @@ export function Documents({
               className="doc-preview-frame"
               src={previewDoc.view_url || api.documentViewUrl(previewDoc.id)}
               title={previewDoc.filename}
+              sandbox={isHtmlDocPreview(previewDoc.filename) ? "" : undefined}
             />
           </div>
         </div>
       )}
+
+      <PromptDialog
+        open={!!renameTarget}
+        title="Đổi tên bộ hồ sơ"
+        label="Tên mới cho bộ hồ sơ"
+        defaultValue={renameTarget?.filename || ""}
+        placeholder="Nhập tên tệp mới…"
+        onConfirm={confirmRename}
+        onCancel={() => setRenameTarget(null)}
+      />
+
+      <AppModal
+        open={!!trackTarget}
+        onClose={() => setTrackTarget(null)}
+        title="👁 Bật theo dõi lượt xem"
+        subtitle={trackTarget?.doc.filename}
+        size="sm"
+        footer={
+          <>
+            <button type="button" className="ghost" onClick={() => setTrackTarget(null)}>Hủy</button>
+            <button type="button" className="primary" onClick={saveTrackingDialog}>Lưu theo dõi</button>
+          </>
+        }
+      >
+        {trackTarget && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <label>
+              Ghi chú ngữ cảnh
+              <input
+                className="ui-input"
+                value={trackTarget.note}
+                placeholder="VD: Gửi ngày 28/10 · HĐ kế toán"
+                onChange={(e) => setTrackTarget({ ...trackTarget, note: e.target.value })}
+              />
+            </label>
+            <label>
+              Ngày mốc (YYYY-MM-DD, để trống nếu không cần)
+              <input
+                className="ui-input"
+                value={trackTarget.milestone}
+                placeholder="YYYY-MM-DD"
+                onChange={(e) => setTrackTarget({ ...trackTarget, milestone: e.target.value })}
+              />
+            </label>
+            <label>
+              Hạn báo Telegram (số ngày, 0 = vô thời hạn)
+              <input
+                className="ui-input"
+                type="number"
+                min={0}
+                value={trackTarget.days}
+                onChange={(e) => setTrackTarget({ ...trackTarget, days: e.target.value })}
+              />
+            </label>
+          </div>
+        )}
+      </AppModal>
     </div>
   );
 }

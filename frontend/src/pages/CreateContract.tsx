@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, ContractDraft, Customer, DocRecord } from "../api";
+import { safeHttpUrl } from "../utils/url";
 
 type Party = {
   name: string; mst: string; address: string; email: string;
@@ -145,7 +146,7 @@ export function CreateContract() {
         <button className="contract-draft-delete" onClick={() => removeDraft(d)} title="Xóa bản đang soạn">×</button>
       </article>)}</div> : <div className="contract-draft-empty">Chưa có hợp đồng đang soạn trong nhóm này.</div>}
       {existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).length > 0 && <div className="contract-issued-block"><h3>Hợp đồng đã tạo</h3><div className="contract-draft-list">{existingContracts.filter((doc) => !draftFilter || doc.customer_id === draftFilter).map((doc) => <article key={doc.id}>
-        <a className="contract-draft-open" href={doc.download_url} target="_blank" rel="noreferrer"><small>{doc.customer_name || "Chưa gắn khách hàng"}</small><strong>{doc.filename}</strong><span>{doc.note || "Hồ sơ hợp đồng"} · {new Date(doc.created_at).toLocaleString("vi-VN")}</span></a>
+        <a className="contract-draft-open" href={safeHttpUrl(doc.download_url)} target="_blank" rel="noopener noreferrer"><small>{doc.customer_name || "Chưa gắn khách hàng"}</small><strong>{doc.filename}</strong><span>{doc.note || "Hồ sơ hợp đồng"} · {new Date(doc.created_at).toLocaleString("vi-VN")}</span></a>
       </article>)}</div></div>}
     </section>
     <div className="contract-grid">
@@ -171,6 +172,6 @@ export function CreateContract() {
     </div>
     <div className="contract-actions"><button className="secondary save-draft" onClick={saveDraft} disabled={!!busy}>{busy === "save" ? "Đang lưu…" : activeDraftId ? "Lưu thay đổi" : "Lưu bản đang soạn"}</button><button className="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Đang tạo…" : "Xem trước PDF"}</button><button className="primary" onClick={generate} disabled={!!busy}>{busy === "generate" ? "Đang phát hành…" : "Lưu hợp đồng & tạo link"}</button></div>
     {previewUrl && <iframe className="contract-preview" src={previewUrl} title="Xem trước hợp đồng" />}
-    {result && <section className="share-result"><div><span>{finalizedSession ? `Phiên v${finalizedSession.version} đã chốt` : `Đã tạo ${result.is_draft ? "bản nháp" : "hợp đồng"}`}</span><h2>{result.filename}</h2><p>{finalizedSession ? "Phiên này đã khóa để giữ lịch sử. Hãy tạo phiên mới nếu cần soạn hợp đồng tiếp theo." : "Hồ sơ đã được gắn vào khách hàng và các hóa đơn cùng MST."}</p></div><div className="share-links">{finalizedSession && <button onClick={newDraft}>Tạo phiên làm việc mới</button>}<button onClick={() => copy(result.share_url)}>Copy link hợp đồng 7 ngày</button><button onClick={() => copy(result.login_url)}>Copy link đăng nhập nhanh</button><a href={result.share_url} target="_blank" rel="noreferrer">Mở link</a></div>{result.temporary_password && <div className="credential">Tài khoản mới: <b>{result.username}</b> · Mật khẩu tạm: <b>{result.temporary_password}</b></div>}</section>}
+    {result && <section className="share-result"><div><span>{finalizedSession ? `Phiên v${finalizedSession.version} đã chốt` : `Đã tạo ${result.is_draft ? "bản nháp" : "hợp đồng"}`}</span><h2>{result.filename}</h2><p>{finalizedSession ? "Phiên này đã khóa để giữ lịch sử. Hãy tạo phiên mới nếu cần soạn hợp đồng tiếp theo." : "Hồ sơ đã được gắn vào khách hàng và các hóa đơn cùng MST."}</p></div><div className="share-links">{finalizedSession && <button onClick={newDraft}>Tạo phiên làm việc mới</button>}<button onClick={() => copy(result.share_url)}>Copy link hợp đồng 7 ngày</button><button onClick={() => copy(result.login_url)}>Copy link đăng nhập nhanh</button>{safeHttpUrl(result.share_url) && <a href={safeHttpUrl(result.share_url)} target="_blank" rel="noopener noreferrer">Mở link</a>}</div>{result.temporary_password && <div className="credential">Tài khoản mới: <b>{result.username}</b> · Mật khẩu tạm: <b>{result.temporary_password}</b></div>}</section>}
   </div>;
 }

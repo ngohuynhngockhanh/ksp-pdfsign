@@ -12,6 +12,8 @@ import {
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { NegStockModal } from "../components/NegStockModal";
+import { AppModal, DataView, FormGrid } from "../components/ui";
+import { openExternalSafe } from "../utils/url";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -291,9 +293,8 @@ export function StockIssue() {
           <button
             className="btn-sm ghost"
             onClick={() =>
-              window.open(
+              openExternalSafe(
                 api.invExportUrl("issues", "xlsx", { tu: dateRange.tu, den: dateRange.den }),
-                "_blank",
               )
             }
           >
@@ -303,22 +304,86 @@ export function StockIssue() {
       </div>
       {err && <div className="error">{err}</div>}
 
-      <div className="table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th>Số CT</th>
-              <th>Ngày</th>
-              <th>Khách hàng</th>
-              <th>Mục đích</th>
-              <th>Định khoản</th>
-              <th>Ghi chú</th>
-              <th style={{ textAlign: "right" }}>Giá vốn</th>
-              <th>Trạng thái</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th>Số CT</th>
+                  <th>Ngày</th>
+                  <th>Khách hàng</th>
+                  <th>Mục đích</th>
+                  <th>Định khoản</th>
+                  <th>Ghi chú</th>
+                  <th style={{ textAlign: "right" }}>Giá vốn</th>
+                  <th>Trạng thái</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((i) => {
+                  const [color, label] = STATUS_CHIP[i.status] ?? ["gray", i.status];
+                  const posted = i.status === "posted";
+                  const giaVon = posted
+                    ? i.lines.reduce((s, l) => s + l.gia_von, 0)
+                    : i.tong_gia_von_uoc;
+                  const dk = MUC_DICH_XUAT[i.muc_dich];
+                  return (
+                    <tr key={i.id} style={{ cursor: "pointer" }} title="Xem/sửa phiếu xuất" onClick={() => openView(i)}>
+                      <td className="muted nowrap">{i.so_ct || `PX#${i.id}`}</td>
+                      <td className="nowrap">{i.ngay}</td>
+                      <td>{i.customer_name}</td>
+                      <td className="muted nowrap">{dk?.label ?? i.muc_dich}</td>
+                      <td className="nowrap">
+                        <span className="chip gray sm">Nợ {i.tk_no}</span>{" "}
+                        <span className="chip gray sm">Có {i.tk_co}</span>
+                      </td>
+                      <td className="muted">
+                        {i.lines.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
+                        {i.note ? ` — ${i.note}` : ""}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="nowrap">
+                        {posted ? vnd(giaVon) : <span className="muted">~{vnd(giaVon)}</span>}
+                      </td>
+                      <td>
+                        <span className={`chip sm ${color}`}>{label}</span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {i.status !== "posted" && (
+                          <button
+                            className="btn-sm ghost ui-btn-icon"
+                            aria-label={`Xóa phiếu xuất ${i.so_ct || i.id}`}
+                            onClick={async () => {
+                              if (!window.confirm(`Xóa phiếu nháp PX#${i.id}?`)) return;
+                              await api.invIssueDelete(i.id);
+                              load();
+                            }}
+                          >
+                            🗑
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {list.length === 0 && (
+                  <tr>
+                    <td colSpan={9}>
+                      <div className="empty">
+                        <div className="empty-ic">📤</div>
+                        <div>Chưa có phiếu xuất nào.</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
             {list.map((i) => {
               const [color, label] = STATUS_CHIP[i.status] ?? ["gray", i.status];
               const posted = i.status === "posted";
@@ -327,29 +392,27 @@ export function StockIssue() {
                 : i.tong_gia_von_uoc;
               const dk = MUC_DICH_XUAT[i.muc_dich];
               return (
-                <tr key={i.id} style={{ cursor: "pointer" }} title="Xem/sửa phiếu xuất" onClick={() => openView(i)}>
-                  <td className="muted nowrap">{i.so_ct || `PX#${i.id}`}</td>
-                  <td className="nowrap">{i.ngay}</td>
-                  <td>{i.customer_name}</td>
-                  <td className="muted nowrap">{dk?.label ?? i.muc_dich}</td>
-                  <td className="nowrap">
-                    <span className="chip gray sm">Nợ {i.tk_no}</span>{" "}
-                    <span className="chip gray sm">Có {i.tk_co}</span>
-                  </td>
-                  <td className="muted">
+                <article key={i.id} className="ui-mobile-card" onClick={() => openView(i)} style={{ cursor: "pointer" }}>
+                  <div className="ui-mobile-card-head">
+                    <strong className="ui-mobile-card-title">{i.so_ct || `PX#${i.id}`} · {i.customer_name || dk?.label || i.muc_dich}</strong>
+                    <span className={`chip sm ${color}`}>{label}</span>
+                  </div>
+                  <div className="ui-mobile-card-meta">
+                    <span>{i.ngay}</span>
+                    <strong style={{ fontVariantNumeric: "tabular-nums" }}>{posted ? `${vnd(giaVon)} đ` : `~${vnd(giaVon)} đ`}</strong>
+                    <span className="chip gray sm">Nợ {i.tk_no} / Có {i.tk_co}</span>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
                     {i.lines.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
                     {i.note ? ` — ${i.note}` : ""}
-                  </td>
-                  <td style={{ textAlign: "right" }} className="nowrap">
-                    {posted ? vnd(giaVon) : <span className="muted">~{vnd(giaVon)}</span>}
-                  </td>
-                  <td>
-                    <span className={`chip sm ${color}`}>{label}</span>
-                  </td>
-                  <td onClick={(e) => e.stopPropagation()}>
+                  </div>
+                  <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="ui-btn-chip" onClick={() => openView(i)}>Xem / sửa</button>
                     {i.status !== "posted" && (
                       <button
-                        className="btn-sm ghost"
+                        type="button"
+                        className="ui-btn-icon"
+                        aria-label={`Xóa phiếu xuất ${i.so_ct || i.id}`}
                         onClick={async () => {
                           if (!window.confirm(`Xóa phiếu nháp PX#${i.id}?`)) return;
                           await api.invIssueDelete(i.id);
@@ -359,84 +422,97 @@ export function StockIssue() {
                         🗑
                       </button>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </article>
               );
             })}
             {list.length === 0 && (
-              <tr>
-                <td colSpan={9}>
-                  <div className="empty">
-                    <div className="empty-ic">📤</div>
-                    <div>Chưa có phiếu xuất nào.</div>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {creating && (
-        <div className="modal-backdrop" onClick={() => setCreating(false)}>
-          <div className="modal" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
-            <h3>Tạo phiếu xuất kho</h3>
-            <p className="muted">
-              Chỉ chọn được hàng <b>đủ tồn tại ngày xuất</b> (đã trừ các phiếu xuất tương lai).
-              Không thể bán thứ chưa có đầu vào — hệ thống chặn cứng.
-            </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <label>
-                Ngày xuất
-                <input type="date" value={ngay} onChange={(e) => setNgay(e.target.value)} />
-              </label>
-              <label>
-                Khách hàng
-                <select value={customerId} onChange={(e) => setCustomerId(Number(e.target.value))}>
-                  <option value={0}>— không chọn —</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ flex: 1 }}>
-                Ghi chú
-                <input value={note} onChange={(e) => setNote(e.target.value)} />
-              </label>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, alignItems: "flex-end" }}>
-              <label>
-                Mục đích xuất
-                <select value={mucDich} onChange={(e) => setMucDich(e.target.value as MucDichXuat)}>
-                  {(Object.keys(MUC_DICH_XUAT) as MucDichXuat[]).map((k) => (
-                    <option key={k} value={k}>
-                      {MUC_DICH_XUAT[k].label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Lý do xuất
-                <input value={lyDo} onChange={(e) => setLyDo(e.target.value)} />
-              </label>
-              <label>
-                Người nhận
-                <input style={{ width: 130 }} value={nguoiNhan} onChange={(e) => setNguoiNhan(e.target.value)} />
-              </label>
-              <label>
-                Bộ phận
-                <input style={{ width: 120 }} value={boPhan} onChange={(e) => setBoPhan(e.target.value)} />
-              </label>
-              <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
-                Định khoản gợi ý:{" "}
-                <span className="chip gray sm">Nợ {MUC_DICH_XUAT[mucDich].no}</span>{" "}
-                <span className="chip gray sm">Có {MUC_DICH_XUAT[mucDich].co}</span>
+              <div className="empty">
+                <div className="empty-ic">📤</div>
+                <div>Chưa có phiếu xuất nào.</div>
               </div>
-            </div>
+            )}
+          </div>
+        }
+      />
 
-            {lines.length > 0 && (
+      <AppModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        title="Tạo phiếu xuất kho"
+        subtitle="Chỉ chọn được hàng đủ tồn tại ngày xuất (đã trừ các phiếu xuất tương lai)."
+        size="lg"
+        footer={
+          <>
+            <button onClick={() => setCreating(false)}>Hủy</button>
+            <button
+              className="primary"
+              disabled={lines.length === 0 || lines.some((l) => l.so_luong <= 0)}
+              title={
+                over.length > 0
+                  ? "Có dòng vượt khả dụng — khi ghi sổ sẽ hỏi lý do duyệt âm kho"
+                  : ""
+              }
+              onClick={save}
+            >
+              ✅ Ghi sổ phiếu xuất ({lines.length} dòng)
+            </button>
+          </>
+        }
+      >
+        <FormGrid cols={3}>
+          <label>
+            Ngày xuất
+            <input className="ui-input" type="date" value={ngay} onChange={(e) => setNgay(e.target.value)} />
+          </label>
+          <label>
+            Khách hàng
+            <select className="ui-select" value={customerId} onChange={(e) => setCustomerId(Number(e.target.value))}>
+              <option value={0}>— không chọn —</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ghi chú
+            <input className="ui-input" value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          <label>
+            Mục đích xuất
+            <select className="ui-select" value={mucDich} onChange={(e) => setMucDich(e.target.value as MucDichXuat)}>
+              {(Object.keys(MUC_DICH_XUAT) as MucDichXuat[]).map((k) => (
+                <option key={k} value={k}>
+                  {MUC_DICH_XUAT[k].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Lý do xuất
+            <input className="ui-input" value={lyDo} onChange={(e) => setLyDo(e.target.value)} />
+          </label>
+          <label>
+            Người nhận
+            <input className="ui-input" value={nguoiNhan} onChange={(e) => setNguoiNhan(e.target.value)} />
+          </label>
+          <label>
+            Bộ phận
+            <input className="ui-input" value={boPhan} onChange={(e) => setBoPhan(e.target.value)} />
+          </label>
+        </FormGrid>
+        <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+          Định khoản gợi ý:{" "}
+          <span className="chip gray sm">Nợ {MUC_DICH_XUAT[mucDich].no}</span>{" "}
+          <span className="chip gray sm">Có {MUC_DICH_XUAT[mucDich].co}</span>
+        </div>
+
+        {lines.length > 0 && (
+          <DataView
+            mobileMode="scroll"
+            desktop={
               <div className="table-wrap" style={{ marginTop: 10 }}>
                 <table className="dt">
                   <thead>
@@ -501,15 +577,20 @@ export function StockIssue() {
                   </tbody>
                 </table>
               </div>
-            )}
+            }
+          />
+        )}
 
-            <div style={{ marginTop: 10 }}>
-              <input
-                className="search"
-                placeholder="🔍 Tìm hàng khả dụng để thêm vào phiếu…"
-                value={pickQ}
-                onChange={(e) => setPickQ(e.target.value)}
-              />
+        <div style={{ marginTop: 10 }}>
+          <input
+            className="search ui-input"
+            placeholder="🔍 Tìm hàng khả dụng để thêm vào phiếu…"
+            value={pickQ}
+            onChange={(e) => setPickQ(e.target.value)}
+          />
+          <DataView
+            mobileMode="scroll"
+            desktop={
               <div className="table-wrap" style={{ maxHeight: "30vh", overflow: "auto", marginTop: 6 }}>
                 <table className="dt">
                   <tbody>
@@ -540,36 +621,56 @@ export function StockIssue() {
                   </tbody>
                 </table>
               </div>
-            </div>
-
-            <div className="modal-actions">
-              <button onClick={() => setCreating(false)}>Hủy</button>
-              <button
-                className="primary"
-                disabled={lines.length === 0 || lines.some((l) => l.so_luong <= 0)}
-                title={
-                  over.length > 0
-                    ? "Có dòng vượt khả dụng — khi ghi sổ sẽ hỏi lý do duyệt âm kho"
-                    : ""
-                }
-                onClick={save}
-              >
-                ✅ Ghi sổ phiếu xuất ({lines.length} dòng)
-              </button>
-            </div>
-          </div>
+            }
+          />
         </div>
-      )}
+      </AppModal>
 
-      {view && (
-        <div className="modal-backdrop" onClick={closeView}>
-          <div className="modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
-            <h3>
+      <AppModal
+        open={!!view}
+        onClose={closeView}
+        size="lg"
+        title={
+          view ? (
+            <span>
               Phiếu xuất {view.so_ct || `PX#${view.id}`}{" "}
               <span className={`chip sm ${(STATUS_CHIP[view.status] ?? ["gray"])[0]}`}>
                 {(STATUS_CHIP[view.status] ?? ["", view.status])[1]}
               </span>
-            </h3>
+            </span>
+          ) : (
+            "Chi tiết phiếu xuất"
+          )
+        }
+        footer={
+          view ? (
+            <>
+              <button onClick={closeView}>Đóng</button>
+              {view.status === "draft" && (
+                <>
+                  <button disabled={viewBusy} onClick={doViewSave}>
+                    💾 Lưu
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={viewBusy}
+                    title={
+                      view.lines.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                        ? "Có dòng vượt khả dụng — nếu ghi sổ sẽ hỏi lý do duyệt âm kho"
+                        : ""
+                    }
+                    onClick={doViewPost}
+                  >
+                    ✅ Ghi sổ lại
+                  </button>
+                </>
+              )}
+            </>
+          ) : undefined
+        }
+      >
+        {view && (
+          <>
             <div className="muted" style={{ fontSize: 13, margin: "2px 0 6px" }}>
               Mục đích: <b>{MUC_DICH_XUAT[view.muc_dich]?.label ?? view.muc_dich}</b> ·
               Định khoản <span className="chip gray sm">Nợ {view.tk_no}</span>{" "}
@@ -587,114 +688,119 @@ export function StockIssue() {
                 </button>
               </div>
             )}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+            <FormGrid cols={2} style={{ margin: "8px 0" }}>
               <label>
                 Ngày
                 <input
+                  className="ui-input"
                   type="date"
                   value={view.ngay}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, ngay: e.target.value })}
                 />
               </label>
-              <label style={{ flex: 1 }}>
+              <label>
                 Ghi chú
                 <input
+                  className="ui-input"
                   value={view.note}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, note: e.target.value })}
                 />
               </label>
-            </div>
-            <div className="table-wrap">
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>Mặt hàng</th>
-                    <th style={{ textAlign: "right" }}>SL</th>
-                    <th style={{ textAlign: "right" }}>Giá bán</th>
-                    <th style={{ textAlign: "right" }}>Thành tiền</th>
-                    <th style={{ textAlign: "right" }}>Giá vốn</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.lines.map((l) => {
-                    const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
-                    const over = kd !== null && l.so_luong > kd;
-                    return (
-                      <tr key={l.id} className={over ? "row-treo" : ""}>
-                        <td>
-                          {l.ma_hang} · {l.ten}
+            </FormGrid>
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap">
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Mặt hàng</th>
+                        <th style={{ textAlign: "right" }}>SL</th>
+                        <th style={{ textAlign: "right" }}>Giá bán</th>
+                        <th style={{ textAlign: "right" }}>Thành tiền</th>
+                        <th style={{ textAlign: "right" }}>Giá vốn</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {view.lines.map((l) => {
+                        const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
+                        const over = kd !== null && l.so_luong > kd;
+                        return (
+                          <tr key={l.id} className={over ? "row-treo" : ""}>
+                            <td>
+                              {l.ma_hang} · {l.ten}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {view.status === "draft" ? (
+                                <>
+                                  <input
+                                    style={{ width: 70, textAlign: "right" }}
+                                    type="number"
+                                    value={l.so_luong}
+                                    onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
+                                  />
+                                  <div className="muted" style={{ fontSize: 11 }}>
+                                    khả dụng {kd}
+                                    {over && <span className="chip red sm"> vượt!</span>}
+                                  </div>
+                                </>
+                              ) : (
+                                l.so_luong
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {view.status === "draft" ? (
+                                <input
+                                  style={{ width: 90, textAlign: "right" }}
+                                  type="number"
+                                  value={l.don_gia_ban}
+                                  onChange={(e) => patchViewLine(l.id, { don_gia_ban: Number(e.target.value) || 0 })}
+                                />
+                              ) : (
+                                vnd(l.don_gia_ban)
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right" }} className="muted">
+                              {vnd(l.so_luong * l.don_gia_ban)}
+                            </td>
+                            <td style={{ textAlign: "right" }} className="muted">
+                              {view.status === "posted" ? vnd(l.gia_von) : `~${vnd(l.gia_von_uoc)}`}
+                              {l.don_gia_von_uoc > 0 && (
+                                <div style={{ fontSize: 11 }}>
+                                  {view.status === "posted" && l.so_luong
+                                    ? vnd(l.gia_von / l.so_luong)
+                                    : `~${vnd(l.don_gia_von_uoc)}`}/đv
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={3} style={{ textAlign: "right" }}>
+                          <b>Cộng</b>
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          {view.status === "draft" ? (
-                            <>
-                              <input
-                                style={{ width: 70, textAlign: "right" }}
-                                type="number"
-                                value={l.so_luong}
-                                onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
-                              />
-                              <div className="muted" style={{ fontSize: 11 }}>
-                                khả dụng {kd}
-                                {over && <span className="chip red sm"> vượt!</span>}
-                              </div>
-                            </>
-                          ) : (
-                            l.so_luong
-                          )}
+                          <b>{vnd(view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0))}</b>
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          {view.status === "draft" ? (
-                            <input
-                              style={{ width: 90, textAlign: "right" }}
-                              type="number"
-                              value={l.don_gia_ban}
-                              onChange={(e) => patchViewLine(l.id, { don_gia_ban: Number(e.target.value) || 0 })}
-                            />
-                          ) : (
-                            vnd(l.don_gia_ban)
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }} className="muted">
-                          {vnd(l.so_luong * l.don_gia_ban)}
-                        </td>
-                        <td style={{ textAlign: "right" }} className="muted">
-                          {view.status === "posted" ? vnd(l.gia_von) : `~${vnd(l.gia_von_uoc)}`}
-                          {l.don_gia_von_uoc > 0 && (
-                            <div style={{ fontSize: 11 }}>
-                              {view.status === "posted" && l.so_luong
-                                ? vnd(l.gia_von / l.so_luong)
-                                : `~${vnd(l.don_gia_von_uoc)}`}/đv
-                            </div>
-                          )}
+                          <b>
+                            {view.status === "posted"
+                              ? vnd(view.lines.reduce((s, l) => s + l.gia_von, 0))
+                              : `~${vnd(view.lines.reduce((s, l) => s + l.gia_von_uoc, 0))}`}
+                          </b>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={3} style={{ textAlign: "right" }}>
-                      <b>Cộng</b>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <b>{vnd(view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0))}</b>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <b>
-                        {view.status === "posted"
-                          ? vnd(view.lines.reduce((s, l) => s + l.gia_von, 0))
-                          : `~${vnd(view.lines.reduce((s, l) => s + l.gia_von_uoc, 0))}`}
-                      </b>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                    </tfoot>
+                  </table>
+                </div>
+              }
+            />
 
-            {/* Loi nhuan tam tinh — nhan cong CHI tinh cho thanh pham SX (kho TP);
-                hang thuong mai (mua di ban lai, kho HH/NVL) xuat thang khong co NC */}
             {(() => {
               const posted = view.status === "posted";
               const tongBan = view.lines.reduce((s, l) => s + l.so_luong * l.don_gia_ban, 0);
@@ -716,12 +822,11 @@ export function StockIssue() {
                 );
               }
               if (nhanCong <= 0) {
-                // Xuat thuong mai thuan — khong co nhan cong
                 return (
                   <div className="warn-banner" style={{ marginTop: 8 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "4px 16px" }}>
                       <span>Lợi nhuận tạm tính (thương mại — không tính nhân công):</span>
-                      <b style={{ textAlign: "right" }} className={lnChuaNc < 0 ? "chip red sm" : ""}>
+                      <b className={lnChuaNc < 0 ? "chip red sm" : ""}>
                         {p}{vnd(lnChuaNc)} đ ({((lnChuaNc / tongBan) * 100).toFixed(1)}%)
                       </b>
                     </div>
@@ -734,19 +839,23 @@ export function StockIssue() {
               }
               return (
                 <div className="warn-banner" style={{ marginTop: 8 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 16px" }}>
-                    <span>Lợi nhuận tạm tính (chưa gồm nhân công):</span>
-                    <b style={{ textAlign: "right" }} className={lnChuaNc < 0 ? "chip red sm" : ""}>
-                      {p}{vnd(lnChuaNc)} đ{tongBan > 0 ? ` (${((lnChuaNc / tongBan) * 100).toFixed(1)}%)` : ""}
-                    </b>
-                    <span>
-                      Nhân công tạm tính ({vnd(NHAN_CONG_PER_SP)} đ × {slTP} thành phẩm SX):
-                    </span>
-                    <b style={{ textAlign: "right" }}>{vnd(nhanCong)} đ</b>
-                    <span>Lợi nhuận tạm tính (đã gồm nhân công):</span>
-                    <b style={{ textAlign: "right" }} className={lnGomNc < 0 ? "chip red sm" : ""}>
-                      {p}{vnd(lnGomNc)} đ{tongBan > 0 ? ` (${((lnGomNc / tongBan) * 100).toFixed(1)}%)` : ""}
-                    </b>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <span>Lợi nhuận tạm tính (chưa gồm nhân công):</span>
+                      <b className={lnChuaNc < 0 ? "chip red sm" : ""}>
+                        {p}{vnd(lnChuaNc)} đ{tongBan > 0 ? ` (${((lnChuaNc / tongBan) * 100).toFixed(1)}%)` : ""}
+                      </b>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <span>Nhân công tạm tính ({vnd(NHAN_CONG_PER_SP)} đ × {slTP} thành phẩm SX):</span>
+                      <b>{vnd(nhanCong)} đ</b>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <span>Lợi nhuận tạm tính (đã gồm nhân công):</span>
+                      <b className={lnGomNc < 0 ? "chip red sm" : ""}>
+                        {p}{vnd(lnGomNc)} đ{tongBan > 0 ? ` (${((lnGomNc / tongBan) * 100).toFixed(1)}%)` : ""}
+                      </b>
+                    </div>
                   </div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
                     Giá vốn {posted ? "theo sổ kho" : "ước tính theo giá BQ hiện tại"}; nhân công ước
@@ -755,32 +864,9 @@ export function StockIssue() {
                 </div>
               );
             })()}
-
-            <div className="modal-actions">
-              <button onClick={closeView}>Đóng</button>
-              {view.status === "draft" && (
-                <>
-                  <button disabled={viewBusy} onClick={doViewSave}>
-                    💾 Lưu
-                  </button>
-                  <button
-                    className="primary"
-                    disabled={viewBusy}
-                    title={
-                      view.lines.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
-                        ? "Có dòng vượt khả dụng — nếu ghi sổ sẽ hỏi lý do duyệt âm kho"
-                        : ""
-                    }
-                    onClick={doViewPost}
-                  >
-                    ✅ Ghi sổ lại
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AppModal>
       {negModal && (
         <NegStockModal
           violations={negModal.violations}

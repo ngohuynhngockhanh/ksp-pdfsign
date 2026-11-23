@@ -55,14 +55,37 @@ export function Verify({
   return (
     <div className="verify-layout verify-studio">
       <div className="verify-left">
-        <header className="verify-console-head"><span>DIGITAL TRUST CONSOLE</span><h1>Kiểm định chữ ký số.</h1><p>Đọc tính toàn vẹn, chuỗi tin cậy, thu hồi chứng thư và phạm vi ký của từng chữ ký trong PDF.</p></header>
+        <header className="verify-console-head">
+          <span>DIGITAL TRUST CONSOLE</span>
+          <h1>Kiểm định chữ ký số.</h1>
+          <p>Đọc tính toàn vẹn, chuỗi tin cậy, thu hồi chứng thư và phạm vi ký của từng chữ ký trong PDF.</p>
+        </header>
         <div className="verify-drop-card">
-          <label><input aria-label="PDF cần kiểm tra" type="file" accept="application/pdf" onChange={onFile} /><span>{busy ? "ĐANG KIỂM ĐỊNH" : "PDF NGUỒN"}</span><strong>{busy ? "Đang phân tích chữ ký…" : "Chọn PDF để kiểm tra"}</strong><small>File chỉ được dùng cho phiên kiểm tra hiện tại</small></label>
-          {source && <div className="verify-source"><small>Đang xem</small><b>{source}</b></div>}
-          {err && <div className="error">{err}</div>}
+          <label>
+            <input aria-label="PDF cần kiểm tra" type="file" accept="application/pdf" onChange={onFile} />
+            <span>{busy ? "ĐANG KIỂM ĐỊNH" : "PDF NGUỒN"}</span>
+            <strong>{busy ? "Đang phân tích chữ ký…" : "Chọn PDF để kiểm tra"}</strong>
+            <small>File chỉ được dùng cho phiên kiểm tra hiện tại</small>
+          </label>
+          {source && (
+            <div className="verify-source">
+              <small>Đang xem</small>
+              <b>{source}</b>
+            </div>
+          )}
+          {err && <div className="error" role="alert">{err}</div>}
         </div>
 
-        {reports && <div className={`verify-verdict ${validReports === reports.length && reports.length ? "pass" : "review"}`}><span>{reports.length ? `${validReports}/${reports.length} chữ ký đạt` : "Không có chữ ký"}</span><b>{reports.length && validReports === reports.length ? "Tài liệu vượt qua kiểm định chính" : "Tài liệu cần xem xét"}</b></div>}
+        {reports && (
+          <div className={`verify-verdict ${validReports === reports.length && reports.length ? "pass" : "review"}`}>
+            <span>{reports.length ? `${validReports}/${reports.length} chữ ký đạt` : "Không có chữ ký"}</span>
+            <b>
+              {reports.length && validReports === reports.length
+                ? "Tài liệu vượt qua kiểm định chính"
+                : "Tài liệu cần xem xét"}
+            </b>
+          </div>
+        )}
 
         {reports && reports.length === 0 && (
           <div className="card verify-empty">Tài liệu không có chữ ký số nào.</div>
@@ -75,45 +98,56 @@ export function Verify({
               <b>{s.field_name}</b>
               <span className="muted">{s.signer_name}</span>
             </div>
-            <table>
-              <tbody>
-                <Row label="Toàn vẹn (không sửa sau ký)" ok={s.intact} />
-                <Row label="Hợp lệ mật mã" ok={s.valid} />
-                <Row label="Chuỗi CA tin cậy" ok={s.trusted} />
-                {s.revocation_ok !== null && (
-                  <Row label="Không bị thu hồi" ok={s.revocation_ok} />
-                )}
-                <tr>
-                  <td>Timestamp</td>
-                  <td>{s.has_timestamp ? "Có" : "Không"}</td>
-                </tr>
-                {s.signing_time && (
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <tbody>
+                  <Row label="Toàn vẹn (không sửa sau ký)" ok={s.intact} />
+                  <Row label="Hợp lệ mật mã" ok={s.valid} />
+                  <Row label="Chuỗi CA tin cậy" ok={s.trusted} />
+                  {s.revocation_ok !== null && (
+                    <Row label="Không bị thu hồi" ok={s.revocation_ok} />
+                  )}
                   <tr>
-                    <td>Thời gian ký</td>
-                    <td>{new Date(s.signing_time).toLocaleString("vi-VN")}</td>
+                    <td>Timestamp</td>
+                    <td>{s.has_timestamp ? "Có" : "Không"}</td>
                   </tr>
-                )}
-                {s.certificate_issuer && (
-                  <tr><td>Nhà cung cấp chứng thư</td><td>{s.certificate_issuer}</td></tr>
-                )}
-                {s.certificate_valid_from && (
-                  <tr><td>Chứng thư có hiệu lực từ</td><td>{new Date(s.certificate_valid_from).toLocaleString("vi-VN")}</td></tr>
-                )}
-                {s.certificate_valid_to && (
-                  <tr><td>Chứng thư hết hạn</td><td>{new Date(s.certificate_valid_to).toLocaleString("vi-VN")}</td></tr>
-                )}
-                <tr>
-                  <td>Phạm vi ký</td>
-                  <td>{s.coverage}</td>
-                </tr>
-                {s.ltv && (
+                  {s.signing_time && (
+                    <tr>
+                      <td>Thời gian ký</td>
+                      <td>{new Date(s.signing_time).toLocaleString("vi-VN")}</td>
+                    </tr>
+                  )}
+                  {s.certificate_issuer && (
+                    <tr>
+                      <td>Nhà cung cấp chứng thư</td>
+                      <td style={{ overflowWrap: "anywhere" }}>{s.certificate_issuer}</td>
+                    </tr>
+                  )}
+                  {s.certificate_valid_from && (
+                    <tr>
+                      <td>Chứng thư có hiệu lực từ</td>
+                      <td>{new Date(s.certificate_valid_from).toLocaleString("vi-VN")}</td>
+                    </tr>
+                  )}
+                  {s.certificate_valid_to && (
+                    <tr>
+                      <td>Chứng thư hết hạn</td>
+                      <td>{new Date(s.certificate_valid_to).toLocaleString("vi-VN")}</td>
+                    </tr>
+                  )}
                   <tr>
-                    <td>LTV</td>
-                    <td>{s.ltv}</td>
+                    <td>Phạm vi ký</td>
+                    <td style={{ overflowWrap: "anywhere" }}>{s.coverage}</td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                  {s.ltv && (
+                    <tr>
+                      <td>LTV</td>
+                      <td>{s.ltv}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
             {s.problems.length > 0 && (
               <ul className="problems">
                 {s.problems.map((p, j) => (

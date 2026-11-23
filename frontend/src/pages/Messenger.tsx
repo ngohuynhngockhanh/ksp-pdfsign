@@ -56,7 +56,7 @@ function Metric({ value, label, warning = false }: { value: string | number; lab
 }
 
 function stageMetric(stats: MessengerStats | null, key: "queue" | "hermes" | "context" | "send") {
-  return stats ? duration(stats.stages[key]?.p95Ms || 0) : "—";
+  return stats?.stages ? duration(stats.stages[key]?.p95Ms || 0) : "—";
 }
 
 export function Messenger() {
@@ -88,8 +88,15 @@ export function Messenger() {
     setBusy(true);
     setError("");
     const [usage, inbox] = await Promise.allSettled([api.trainingStats(), api.facebookConversations(100)]);
-    if (usage.status === "fulfilled") setStats(usage.value.facebook);
-    if (inbox.status === "fulfilled") setConversations(inbox.value.items);
+    if (usage.status === "fulfilled" && usage.value?.facebook) setStats(usage.value.facebook);
+    if (inbox.status === "fulfilled") {
+      const items = Array.isArray(inbox.value?.items)
+        ? inbox.value.items
+        : Array.isArray(inbox.value)
+          ? (inbox.value as unknown as MessengerConversation[])
+          : [];
+      setConversations(items);
+    }
     if (usage.status === "rejected" || inbox.status === "rejected") {
       setError("Chưa tải đủ dữ liệu Messenger. Hãy bấm Làm mới để thử lại.");
     }
@@ -131,7 +138,7 @@ export function Messenger() {
           <Metric value={stats?.replied ?? "—"} label="Đã trả lời" />
           <Metric value={stats?.rejected ?? "—"} label="Bị chặn" />
           <Metric value={stats?.failed ?? "—"} label="Lỗi lịch sử" warning={Boolean(stats?.failed)} />
-          <Metric value={stats ? duration(stats.latency.averageMs) : "—"} label="Trung bình" />
+          <Metric value={stats?.latency ? duration(stats.latency.averageMs) : "—"} label="Trung bình" />
         </div>
         <div className="messenger-latency" aria-label="Độ trễ Messenger">
           <span>Độ trễ P95</span>
@@ -145,9 +152,9 @@ export function Messenger() {
       <section className="messenger-inbox" aria-labelledby="messenger-inbox-title">
         <div className="messenger-inbox-head"><div><span>INBOX</span><h2 id="messenger-inbox-title">Hội thoại gần đây</h2><p>Tìm theo tên, nội dung hoặc Page ID. Chọn một dòng để mở toàn bộ ngữ cảnh.</p></div><div className="messenger-inbox-count">{filtered.length}/{conversations.length} cuộc</div></div>
         <div className="messenger-toolbar">
-          <label className="messenger-search"><span>Tìm hội thoại</span><input aria-label="Tìm hội thoại Messenger" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên, nội dung hoặc Page ID…" /></label>
-          <label><span>Trạng thái</span><select aria-label="Lọc trạng thái Messenger" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}><option value="all">Tất cả</option><option value="processing">Đang xử lý</option><option value="replied">Đã trả lời</option><option value="rejected">Đã chặn</option><option value="failed">Lỗi</option></select></label>
-          <label><span>Sắp xếp</span><select aria-label="Sắp xếp hội thoại Messenger" value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="recent">Mới nhất</option><option value="messages">Nhiều tin nhất</option><option value="errors">Nhiều lỗi nhất</option></select></label>
+          <label className="messenger-search"><span>Tìm hội thoại</span><input className="ui-input" aria-label="Tìm hội thoại Messenger" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên, nội dung hoặc Page ID…" /></label>
+          <label><span>Trạng thái</span><select className="ui-select" aria-label="Lọc trạng thái Messenger" value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}><option value="all">Tất cả</option><option value="processing">Đang xử lý</option><option value="replied">Đã trả lời</option><option value="rejected">Đã chặn</option><option value="failed">Lỗi</option></select></label>
+          <label><span>Sắp xếp</span><select className="ui-select" aria-label="Sắp xếp hội thoại Messenger" value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="recent">Mới nhất</option><option value="messages">Nhiều tin nhất</option><option value="errors">Nhiều lỗi nhất</option></select></label>
         </div>
         {conversations.some((conversation) => conversation.failedCount > 0) && <div className="messenger-history-note"><strong>Lỗi lịch sử</strong><span>Các lỗi đã dừng ở lần xử lý trước, không có nghĩa Hermes đang chạy ngầm. Mở hội thoại để xem thời điểm và nguyên nhân.</span></div>}
         {conversations.length === 0 ? <p className="messenger-empty">Chưa có hội thoại Facebook. Khi fanpage nhận tin mới, hội thoại sẽ xuất hiện ở đây.</p> : filtered.length === 0 ? <p className="messenger-empty">Không có hội thoại khớp bộ lọc hiện tại.</p> : <div className="messenger-layout">

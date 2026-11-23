@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, InvItem, InvWarehouse, ItemFlow, OpeningImportResult, StockCardRow, StockRow } from "../api";
+import { AppModal, DataView } from "../components/ui";
 import { PurchaseFixModal } from "./PurchaseFixModal";
 import { getParam, setParam } from "../util";
 
@@ -259,16 +260,17 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                 <li key={i.id} style={{ marginBottom: 4 }}>
                   <b>{i.ma_hang}</b> · {i.ten.slice(0, 50)} — {i.note.replace("⚠️ ", "")}{" "}
                   {thieuDvt && (
-                    <span style={{ whiteSpace: "nowrap" }}>
+                    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 4 }}>
                       <input
-                        style={{ width: 90, padding: "2px 6px" }}
+                        className="ui-input"
+                        style={{ width: 120 }}
                         placeholder="Cái / Bộ…"
                         list="dvt-goi-y"
                         value={dvtInputs[i.id] ?? ""}
                         onChange={(e) => setDvtInputs({ ...dvtInputs, [i.id]: e.target.value })}
-                      />{" "}
+                      />
                       <button
-                        className="btn-sm"
+                        className="btn-sm ui-btn-chip"
                         disabled={!(dvtInputs[i.id] ?? "").trim()}
                         onClick={async () => {
                           const dvt = (dvtInputs[i.id] ?? "").trim();
@@ -320,269 +322,335 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
         </div>
       )}
 
-      <div className="table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("ma_hang")}>Mã{sortArrow("ma_hang")}</th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("ten")}>Tên hàng{sortArrow("ten")}</th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("dvt")}>ĐVT{sortArrow("dvt")}</th>
-              <th style={{ cursor: "pointer" }} onClick={() => toggleSort("warehouse_code")}>Kho{sortArrow("warehouse_code")}</th>
-              <th style={{ textAlign: "right", cursor: "pointer" }} onClick={() => toggleSort("ton")}>Tồn{sortArrow("ton")}</th>
-              <th style={{ textAlign: "right", cursor: "pointer" }} className="col-hide-sm" onClick={() => toggleSort("don_gia_bq")}>
-                Giá BQ{sortArrow("don_gia_bq")}
-              </th>
-              <th style={{ textAlign: "right", cursor: "pointer" }} onClick={() => toggleSort("gia_tri")}>Giá trị{sortArrow("gia_tri")}</th>
-              <th style={{ cursor: "pointer" }} className="col-hide-sm" onClick={() => toggleSort("nhap_cuoi")}>Nhập gần nhất{sortArrow("nhap_cuoi")}</th>
-            </tr>
-          </thead>
-          <tbody>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("ma_hang")}>Mã{sortArrow("ma_hang")}</th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("ten")}>Tên hàng{sortArrow("ten")}</th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("dvt")}>ĐVT{sortArrow("dvt")}</th>
+                  <th style={{ cursor: "pointer" }} onClick={() => toggleSort("warehouse_code")}>Kho{sortArrow("warehouse_code")}</th>
+                  <th style={{ textAlign: "right", cursor: "pointer" }} onClick={() => toggleSort("ton")}>Tồn{sortArrow("ton")}</th>
+                  <th style={{ textAlign: "right", cursor: "pointer" }} className="col-hide-sm" onClick={() => toggleSort("don_gia_bq")}>
+                    Giá BQ{sortArrow("don_gia_bq")}
+                  </th>
+                  <th style={{ textAlign: "right", cursor: "pointer" }} onClick={() => toggleSort("gia_tri")}>Giá trị{sortArrow("gia_tri")}</th>
+                  <th style={{ cursor: "pointer" }} className="col-hide-sm" onClick={() => toggleSort("nhap_cuoi")}>Nhập gần nhất{sortArrow("nhap_cuoi")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => {
+                  const amKho = r.ton < -1e-6; // ton am -> ban/xuat thu chua co dau vao
+                  const zeroTon = Math.abs(r.ton) < 1e-6;
+                  const treo = zeroTon && Math.abs(r.gia_tri) >= 0.5;
+                  const rowCls = amKho ? "row-neg" : treo ? "row-treo" : zeroTon ? "row-zero" : "";
+                  return (
+                    <tr
+                      key={`${r.item_id}-${r.warehouse_id}`}
+                      className={rowCls}
+                      style={{ cursor: "pointer" }}
+                      title={
+                        amKho
+                          ? "🔴 ÂM KHO — đã xuất/bán vượt tồn, cần nhập bù chứng từ trước ngày này"
+                          : treo
+                            ? "⚠️ Tồn = 0 nhưng còn treo giá trị — cần soát"
+                            : "Xem thẻ kho"
+                      }
+                      onClick={() => openCard(r)}
+                    >
+                      <td className="nowrap">
+                        {r.ma_hang}{" "}
+                        <button
+                          className="btn-sm ghost ui-btn-icon"
+                          title="Thẻ kho (lịch sử nhập/xuất)"
+                          aria-label={`Thẻ kho ${r.ma_hang}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCard(r);
+                          }}
+                        >
+                          📒
+                        </button>
+                        <button
+                          className="btn-sm ghost ui-btn-icon"
+                          title="Dòng chảy (vào từ đâu → chảy vào gì → kẹt ở đâu)"
+                          aria-label={`Dòng chảy ${r.ma_hang}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFlow(r);
+                          }}
+                        >
+                          🌊
+                        </button>
+                      </td>
+                      <td>
+                        {r.ten}
+                        {amKho && <span className="chip red sm" style={{ marginLeft: 6 }}>🔴 ÂM KHO</span>}
+                        {treo && <span className="chip amber sm" style={{ marginLeft: 6 }}>treo giá trị</span>}
+                      </td>
+                      <td className="muted">{r.dvt}</td>
+                      <td>
+                        <span className="chip gray sm">{r.warehouse_code}</span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {zeroTon ? <span className="muted">—</span> : <b>{qty(r.ton)}</b>}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="muted col-hide-sm">
+                        {zeroTon ? "—" : vnd(r.don_gia_bq)}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {zeroTon && !treo ? <span className="muted">—</span> : vnd(r.gia_tri)}
+                      </td>
+                      <td className="muted nowrap col-hide-sm">{r.nhap_cuoi || "—"}</td>
+                    </tr>
+                  );
+                })}
+                {shown.length === 0 && (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty">
+                        <div className="empty-ic">📦</div>
+                        <div>
+                          Chưa có tồn kho. Bấm <b>Nhập tồn đầu kỳ (Excel)</b> để import file tổng hợp
+                          tồn kho từ kế toán.
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
             {shown.map((r) => {
-              const amKho = r.ton < -1e-6; // ton am -> ban/xuat thu chua co dau vao
+              const amKho = r.ton < -1e-6;
               const zeroTon = Math.abs(r.ton) < 1e-6;
               const treo = zeroTon && Math.abs(r.gia_tri) >= 0.5;
-              const rowCls = amKho ? "row-neg" : treo ? "row-treo" : zeroTon ? "row-zero" : "";
               return (
-                <tr
+                <article
                   key={`${r.item_id}-${r.warehouse_id}`}
-                  className={rowCls}
-                  style={{ cursor: "pointer" }}
-                  title={
-                    amKho
-                      ? "🔴 ÂM KHO — đã xuất/bán vượt tồn, cần nhập bù chứng từ trước ngày này"
-                      : treo
-                        ? "⚠️ Tồn = 0 nhưng còn treo giá trị — cần soát"
-                        : "Xem thẻ kho"
-                  }
+                  className="ui-mobile-card"
                   onClick={() => openCard(r)}
+                  style={{
+                    cursor: "pointer",
+                    borderColor: amKho ? "var(--red)" : treo ? "var(--amber)" : undefined,
+                  }}
                 >
-                  <td className="nowrap">
-                    {r.ma_hang}{" "}
-                    <button
-                      className="btn-sm ghost"
-                      title="Thẻ kho (lịch sử nhập/xuất)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCard(r);
-                      }}
-                    >
-                      📒
-                    </button>
-                    <button
-                      className="btn-sm ghost"
-                      title="Dòng chảy (vào từ đâu → chảy vào gì → kẹt ở đâu)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openFlow(r);
-                      }}
-                    >
-                      🌊
-                    </button>
-                  </td>
-                  <td>
-                    {r.ten}
-                    {amKho && <span className="chip red sm" style={{ marginLeft: 6 }}>🔴 ÂM KHO</span>}
-                    {treo && <span className="chip amber sm" style={{ marginLeft: 6 }}>treo giá trị</span>}
-                  </td>
-                  <td className="muted">{r.dvt}</td>
-                  <td>
+                  <div className="ui-mobile-card-head">
+                    <strong className="ui-mobile-card-title">{r.ma_hang} · {r.ten}</strong>
                     <span className="chip gray sm">{r.warehouse_code}</span>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    {zeroTon ? <span className="muted">—</span> : <b>{qty(r.ton)}</b>}
-                  </td>
-                  <td style={{ textAlign: "right" }} className="muted col-hide-sm">
-                    {zeroTon ? "—" : vnd(r.don_gia_bq)}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    {zeroTon && !treo ? <span className="muted">—</span> : vnd(r.gia_tri)}
-                  </td>
-                  <td className="muted nowrap col-hide-sm">{r.nhap_cuoi || "—"}</td>
-                </tr>
+                  </div>
+                  <div className="ui-mobile-card-meta">
+                    <span>Tồn: <b>{zeroTon ? "—" : `${qty(r.ton)} ${r.dvt}`}</b></span>
+                    <span>Giá trị: <b style={{ fontVariantNumeric: "tabular-nums" }}>{zeroTon && !treo ? "—" : `${vnd(r.gia_tri)} đ`}</b></span>
+                    {amKho && <span className="chip red sm">🔴 ÂM KHO</span>}
+                    {treo && <span className="chip amber sm">treo giá trị</span>}
+                  </div>
+                  <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="ui-btn-chip" onClick={() => openCard(r)}>📒 Thẻ kho</button>
+                    <button type="button" className="ui-btn-chip" onClick={() => openFlow(r)}>🌊 Dòng chảy</button>
+                  </div>
+                </article>
               );
             })}
             {shown.length === 0 && (
-              <tr>
-                <td colSpan={8}>
-                  <div className="empty">
-                    <div className="empty-ic">📦</div>
-                    <div>
-                      Chưa có tồn kho. Bấm <b>Nhập tồn đầu kỳ (Excel)</b> để import file tổng hợp
-                      tồn kho từ kế toán.
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {mergeOpen && (
-        <div className="modal-backdrop" onClick={() => setMergeOpen(false)}>
-          <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-            <h3>🔀 Gộp mã hàng (dồn về 1 mã, tính lại giá bình quân)</h3>
-            <p className="muted">
-              Dùng khi 2 mã thật ra là cùng một mặt hàng (vd <b>HH9013</b> tự sinh trùng với{" "}
-              <b>HH0013</b> có sẵn). Chọn mã <b>nguồn</b> (sẽ biến mất) và mã <b>đích</b> (giữ lại).
-            </p>
-
-            {[
-              { key: "src" as const, label: "① Mã NGUỒN — sẽ biến mất", val: mSrc, set: setMSrc, color: "red" },
-              { key: "tgt" as const, label: "② Mã ĐÍCH — giữ lại", val: mTgt, set: setMTgt, color: "green" },
-            ].map((f) => (
-              <div key={f.key} style={{ marginTop: 10 }}>
-                <label>{f.label}</label>
-                {f.val ? (
-                  <div>
-                    <span className={`chip sm ${f.color}`}>{f.val.ma_hang}</span> {f.val.ten}{" "}
-                    <button className="btn-sm ghost" onClick={() => f.set(null)}>
-                      ✕ đổi
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      placeholder="gõ mã hoặc tên để tìm…"
-                      value={mQuery?.which === f.key ? mQuery.q : ""}
-                      onChange={(e) => searchMerge(f.key, e.target.value)}
-                    />
-                    {mQuery?.which === f.key &&
-                      mQuery.results.slice(0, 6).map((it) => (
-                        <div key={it.id}>
-                          <button
-                            className="btn-sm ghost"
-                            onClick={() => {
-                              f.set(it);
-                              setMQuery(null);
-                            }}
-                          >
-                            <b>{it.ma_hang}</b> · {it.ten.slice(0, 46)}
-                          </button>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {mSrc && mTgt && mSrc.id === mTgt.id && (
-              <div className="error" style={{ marginTop: 10 }}>
-                Hai mã đang trùng nhau — chọn 2 mã khác nhau.
+              <div className="empty">
+                <div className="empty-ic">📦</div>
+                <div>Chưa có tồn kho.</div>
               </div>
             )}
-            <div className="modal-actions">
-              <button onClick={() => setMergeOpen(false)}>Hủy</button>
-              <button
-                className="primary"
-                disabled={!mSrc || !mTgt || mSrc.id === mTgt.id}
-                onClick={doMerge}
-              >
-                🔀 Gộp {mSrc?.ma_hang ?? "?"} → {mTgt?.ma_hang ?? "?"}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        }
+      />
 
-      {card && (
-        <div className="modal-backdrop" onClick={() => setCard(null)}>
-          <div className="modal" style={{ maxWidth: 960 }} onClick={(e) => e.stopPropagation()}>
-            <h3>
+      <AppModal
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        title="🔀 Gộp mã hàng (dồn về 1 mã, tính lại giá bình quân)"
+        subtitle="Chọn mã nguồn (sẽ biến mất) và mã đích (giữ lại)."
+        size="md"
+        footer={
+          <>
+            <button onClick={() => setMergeOpen(false)}>Hủy</button>
+            <button
+              className="primary"
+              disabled={!mSrc || !mTgt || mSrc.id === mTgt.id}
+              onClick={doMerge}
+            >
+              🔀 Gộp {mSrc?.ma_hang ?? "?"} → {mTgt?.ma_hang ?? "?"}
+            </button>
+          </>
+        }
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          Dùng khi 2 mã thật ra là cùng một mặt hàng (vd <b>HH9013</b> tự sinh trùng với{" "}
+          <b>HH0013</b> có sẵn).
+        </p>
+
+        {[
+          { key: "src" as const, label: "① Mã NGUỒN — sẽ biến mất", val: mSrc, set: setMSrc, color: "red" },
+          { key: "tgt" as const, label: "② Mã ĐÍCH — giữ lại", val: mTgt, set: setMTgt, color: "green" },
+        ].map((f) => (
+          <div key={f.key} style={{ marginTop: 10 }}>
+            <label>{f.label}</label>
+            {f.val ? (
+              <div>
+                <span className={`chip sm ${f.color}`}>{f.val.ma_hang}</span> {f.val.ten}{" "}
+                <button className="btn-sm ghost" onClick={() => f.set(null)}>
+                  ✕ đổi
+                </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  className="ui-input"
+                  placeholder="gõ mã hoặc tên để tìm…"
+                  value={mQuery?.which === f.key ? mQuery.q : ""}
+                  onChange={(e) => searchMerge(f.key, e.target.value)}
+                />
+                {mQuery?.which === f.key &&
+                  mQuery.results.slice(0, 6).map((it) => (
+                    <div key={it.id}>
+                      <button
+                        className="btn-sm ghost"
+                        onClick={() => {
+                          f.set(it);
+                          setMQuery(null);
+                        }}
+                      >
+                        <b>{it.ma_hang}</b> · {it.ten.slice(0, 46)}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {mSrc && mTgt && mSrc.id === mTgt.id && (
+          <div className="error" style={{ marginTop: 10 }}>
+            Hai mã đang trùng nhau — chọn 2 mã khác nhau.
+          </div>
+        )}
+      </AppModal>
+
+      <AppModal
+        open={!!card}
+        onClose={() => setCard(null)}
+        size="lg"
+        title={
+          card ? (
+            <span>
               Thẻ kho: {card.row.ma_hang} · {card.row.ten}{" "}
               <span className="chip gray sm">{card.row.warehouse_code}</span>
-            </h3>
-            <div className="table-wrap" style={{ maxHeight: "60vh", overflow: "auto" }}>
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>Ngày</th>
-                    <th>Loại</th>
-                    <th>Số Lô / Serial</th>
-                    <th style={{ textAlign: "right" }}>Nhập</th>
-                    <th style={{ textAlign: "right" }}>Xuất</th>
-                    <th style={{ textAlign: "right" }}>Đơn giá</th>
-                    <th style={{ textAlign: "right" }}>Giá trị</th>
-                    <th style={{ textAlign: "right" }}>Tồn</th>
-                    <th>Chứng từ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {card.moves.map((m) => (
-                    <tr key={m.id}>
-                      <td className="nowrap">{m.ngay}</td>
-                      <td>
-                        <span className={"chip sm " + (m.xuat ? "amber" : "green")}>
-                          {m.loai_label}
-                        </span>
-                      </td>
-                      <td className="nowrap">
-                        {m.lot_number && (
-                          <span className="chip gray sm" style={{ marginRight: 4 }} title={`Số lô: ${m.lot_number}`}>
-                            Lô: {m.lot_number}
-                          </span>
-                        )}
-                        {m.serial_numbers && (
-                          <span className="chip gray sm" title={`Serial: ${m.serial_numbers}`}>
-                            SN: {m.serial_numbers}
-                          </span>
-                        )}
-                        {!m.lot_number && !m.serial_numbers && <span className="muted">—</span>}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{m.nhap ? qty(m.nhap) : ""}</td>
-                      <td style={{ textAlign: "right" }}>{m.xuat ? qty(m.xuat) : ""}</td>
-                      <td style={{ textAlign: "right" }} className="muted">
-                        {vnd(m.don_gia)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(m.gia_tri)}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <b>{qty(m.ton)}</b>
-                      </td>
-                      <td className="nowrap">
-                        {m.ref_type === "purchase" && m.ref_id ? (
-                          <span className="nowrap">
-                            <button
-                              className="btn-sm"
-                              title="Sửa lại đơn giá/số lượng hóa đơn này ngay tại đây"
-                              onClick={() => setFixId(m.ref_id as number)}
-                            >
-                              ✏️ Sửa HĐ #{m.ref_id}
-                            </button>{" "}
-                            <a
-                              href={`/api/inv/purchase/${m.ref_id}/file`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Mở file hóa đơn gốc"
-                            >
-                              ↗
-                            </a>
-                          </span>
-                        ) : m.ref_type === "production" && m.ref_id ? (
-                          <span className="muted">LSX #{m.ref_id}</span>
-                        ) : m.ref_type === "issue" && m.ref_id ? (
-                          <span className="muted">PX #{m.ref_id}</span>
-                        ) : (
-                          <span className="muted">{m.ref_type || "—"}</span>
-                        )}
-                      </td>
+            </span>
+          ) : (
+            "Thẻ kho"
+          )
+        }
+        footer={<button onClick={() => setCard(null)}>Đóng</button>}
+      >
+        {card && (
+          <DataView
+            mobileMode="scroll"
+            desktop={
+              <div className="table-wrap" style={{ maxHeight: "60vh", overflow: "auto" }}>
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th>Ngày</th>
+                      <th>Loại</th>
+                      <th>Số Lô / Serial</th>
+                      <th style={{ textAlign: "right" }}>Nhập</th>
+                      <th style={{ textAlign: "right" }}>Xuất</th>
+                      <th style={{ textAlign: "right" }}>Đơn giá</th>
+                      <th style={{ textAlign: "right" }}>Giá trị</th>
+                      <th style={{ textAlign: "right" }}>Tồn</th>
+                      <th>Chứng từ</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="modal-actions">
-              <button onClick={() => setCard(null)}>Đóng</button>
-            </div>
-          </div>
-        </div>
-      )}
+                  </thead>
+                  <tbody>
+                    {card.moves.map((m) => (
+                      <tr key={m.id}>
+                        <td className="nowrap">{m.ngay}</td>
+                        <td>
+                          <span className={"chip sm " + (m.xuat ? "amber" : "green")}>
+                            {m.loai_label}
+                          </span>
+                        </td>
+                        <td className="nowrap">
+                          {m.lot_number && (
+                            <span className="chip gray sm" style={{ marginRight: 4 }} title={`Số lô: ${m.lot_number}`}>
+                              Lô: {m.lot_number}
+                            </span>
+                          )}
+                          {m.serial_numbers && (
+                            <span className="chip gray sm" title={`Serial: ${m.serial_numbers}`}>
+                              SN: {m.serial_numbers}
+                            </span>
+                          )}
+                          {!m.lot_number && !m.serial_numbers && <span className="muted">—</span>}
+                        </td>
+                        <td style={{ textAlign: "right" }}>{m.nhap ? qty(m.nhap) : ""}</td>
+                        <td style={{ textAlign: "right" }}>{m.xuat ? qty(m.xuat) : ""}</td>
+                        <td style={{ textAlign: "right" }} className="muted">
+                          {vnd(m.don_gia)}
+                        </td>
+                        <td style={{ textAlign: "right" }}>{vnd(m.gia_tri)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <b>{qty(m.ton)}</b>
+                        </td>
+                        <td className="nowrap">
+                          {m.ref_type === "purchase" && m.ref_id ? (
+                            <span className="nowrap">
+                              <button
+                                className="btn-sm"
+                                title="Sửa lại đơn giá/số lượng hóa đơn này ngay tại đây"
+                                onClick={() => setFixId(m.ref_id as number)}
+                              >
+                                ✏️ Sửa HĐ #{m.ref_id}
+                              </button>{" "}
+                              <a
+                                href={`/api/inv/purchase/${m.ref_id}/file`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Mở file hóa đơn gốc"
+                              >
+                                ↗
+                              </a>
+                            </span>
+                          ) : m.ref_type === "production" && m.ref_id ? (
+                            <span className="muted">LSX #{m.ref_id}</span>
+                          ) : m.ref_type === "issue" && m.ref_id ? (
+                            <span className="muted">PX #{m.ref_id}</span>
+                          ) : (
+                            <span className="muted">{m.ref_type || "—"}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            }
+          />
+        )}
+      </AppModal>
 
-      {flow && (
-        <div className="modal-backdrop" onClick={closeFlow}>
-          <div className="modal" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
-            <h3>
-              🌊 Dòng chảy — {flow.item.ma_hang} · {flow.item.ten}
-            </h3>
+      <AppModal
+        open={!!flow}
+        onClose={closeFlow}
+        size="lg"
+        title={flow ? `🌊 Dòng chảy — ${flow.item.ma_hang} · ${flow.item.ten}` : "Dòng chảy"}
+        footer={<button onClick={closeFlow}>Đóng</button>}
+      >
+        {flow && (
+          <>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
               {flow.ton.length === 0 ? (
                 <span className="muted">Không còn tồn ở kho nào</span>
@@ -594,131 +662,151 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                 ))
               )}
             </div>
-            <div className="table-wrap" style={{ maxHeight: "50vh", overflow: "auto" }}>
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>Ngày</th>
-                    <th>Loại</th>
-                    <th>Chứng từ</th>
-                    <th>Số Lô / Serial</th>
-                    <th>Đích đến</th>
-                    <th style={{ textAlign: "right" }}>±SL</th>
-                    <th style={{ textAlign: "right" }}>Giá trị</th>
-                    <th style={{ textAlign: "right" }}>Số dư</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flow.steps.map((s, i) => (
-                    <tr key={i}>
-                      <td className="nowrap">{s.ngay}</td>
-                      <td className="nowrap">
-                        <span className={`chip sm ${loaiChipClass(s.loai)}`}>{s.loai_label}</span>{" "}
-                        <span className="chip gray sm">{s.warehouse_code}</span>
-                      </td>
-                      <td>
-                        {s.doc ? (
-                          <span>
-                            {s.doc.label}{" "}
-                            {s.doc.status && (
-                              <span className={`chip sm ${statusChipClass(s.doc.status)}`}>
-                                {s.doc.status}
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap" style={{ maxHeight: "50vh", overflow: "auto" }}>
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Ngày</th>
+                        <th>Loại</th>
+                        <th>Chứng từ</th>
+                        <th>Số Lô / Serial</th>
+                        <th>Đích đến</th>
+                        <th style={{ textAlign: "right" }}>±SL</th>
+                        <th style={{ textAlign: "right" }}>Giá trị</th>
+                        <th style={{ textAlign: "right" }}>Số dư</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {flow.steps.map((s, i) => (
+                        <tr key={i}>
+                          <td className="nowrap">{s.ngay}</td>
+                          <td className="nowrap">
+                            <span className={`chip sm ${loaiChipClass(s.loai)}`}>{s.loai_label}</span>{" "}
+                            <span className="chip gray sm">{s.warehouse_code}</span>
+                          </td>
+                          <td>
+                            {s.doc ? (
+                              <span>
+                                {s.doc.label}{" "}
+                                {s.doc.status && (
+                                  <span className={`chip sm ${statusChipClass(s.doc.status)}`}>
+                                    {s.doc.status}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td className="nowrap">
+                            {(s as { lot_number?: string }).lot_number && (
+                              <span className="chip gray sm" style={{ marginRight: 4 }}>
+                                Lô: {(s as { lot_number?: string }).lot_number}
                               </span>
                             )}
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td className="nowrap">
-                        {(s as { lot_number?: string }).lot_number && (
-                          <span className="chip gray sm" style={{ marginRight: 4 }}>
-                            Lô: {(s as { lot_number?: string }).lot_number}
-                          </span>
-                        )}
-                        {(s as { serial_numbers?: string }).serial_numbers && (
-                          <span className="chip gray sm">
-                            SN: {(s as { serial_numbers?: string }).serial_numbers}
-                          </span>
-                        )}
-                        {!(s as { lot_number?: string }).lot_number && !(s as { serial_numbers?: string }).serial_numbers && (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td className="muted">
-                        {s.flow_to && s.flow_to.length > 0
-                          ? "→ " +
-                            s.flow_to
-                                .map((f) => `${f.ma_hang} · ${f.ten} ×${qty(f.so_luong)}`)
-                                .join(", ")
-                          : "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {s.so_luong > 0 ? "+" : ""}
-                        {qty(s.so_luong)}
-                      </td>
-                      <td style={{ textAlign: "right" }} className="muted">
-                        {vnd(s.gia_tri)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <b>{qty(s.so_du)}</b>
-                      </td>
-                    </tr>
-                  ))}
-                  {flow.steps.length === 0 && (
-                    <tr>
-                      <td colSpan={8}>
-                        <span className="muted">Chưa có phát sinh</span>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            {(s as { serial_numbers?: string }).serial_numbers && (
+                              <span className="chip gray sm">
+                                SN: {(s as { serial_numbers?: string }).serial_numbers}
+                              </span>
+                            )}
+                            {!(s as { lot_number?: string }).lot_number && !(s as { serial_numbers?: string }).serial_numbers && (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td className="muted">
+                            {s.flow_to && s.flow_to.length > 0
+                              ? "→ " +
+                                s.flow_to
+                                    .map((f) => `${f.ma_hang} · ${f.ten} ×${qty(f.so_luong)}`)
+                                    .join(", ")
+                              : "—"}
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {s.so_luong > 0 ? "+" : ""}
+                            {qty(s.so_luong)}
+                          </td>
+                          <td style={{ textAlign: "right" }} className="muted">
+                            {vnd(s.gia_tri)}
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <b>{qty(s.so_du)}</b>
+                          </td>
+                        </tr>
+                      ))}
+                      {flow.steps.length === 0 && (
+                        <tr>
+                          <td colSpan={8}>
+                            <span className="muted">Chưa có phát sinh</span>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
 
             <h4 style={{ marginTop: 14 }}>⚠ Đang kẹt ở chứng từ nháp</h4>
             {flow.stuck.length === 0 ? (
               <div className="muted">Không có gì kẹt ✅</div>
             ) : (
-              <div className="table-wrap">
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Loại</th>
-                      <th>Chứng từ</th>
-                      <th>Ngày</th>
-                      <th>Kho</th>
-                      <th style={{ textAlign: "right" }}>SL giữ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {flow.stuck.map((s, i) => (
-                      <tr key={i}>
-                        <td>{s.kind === "issue" ? "Phiếu xuất" : "Lệnh SX"}</td>
-                        <td>{s.label}</td>
-                        <td className="nowrap">{s.ngay}</td>
-                        <td>
-                          <span className="chip gray sm">{s.warehouse_code}</span>
-                        </td>
-                        <td style={{ textAlign: "right" }}>{qty(s.so_luong)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap">
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Loại</th>
+                          <th>Chứng từ</th>
+                          <th>Ngày</th>
+                          <th>Kho</th>
+                          <th style={{ textAlign: "right" }}>SL giữ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {flow.stuck.map((s, i) => (
+                          <tr key={i}>
+                            <td>{s.kind === "issue" ? "Phiếu xuất" : "Lệnh SX"}</td>
+                            <td>{s.label}</td>
+                            <td className="nowrap">{s.ngay}</td>
+                            <td>
+                              <span className="chip gray sm">{s.warehouse_code}</span>
+                            </td>
+                            <td style={{ textAlign: "right" }}>{qty(s.so_luong)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
             )}
+          </>
+        )}
+      </AppModal>
 
-            <div className="modal-actions">
-              <button onClick={closeFlow}>Đóng</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {preview && (
-        <div className="modal-backdrop" onClick={() => setPreview(null)}>
-          <div className="modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
-            <h3>Xem trước import tồn đầu kỳ (31/12/2025)</h3>
+      <AppModal
+        open={!!preview}
+        onClose={() => setPreview(null)}
+        title="Xem trước import tồn đầu kỳ (31/12/2025)"
+        size="lg"
+        footer={
+          preview ? (
+            <>
+              <button onClick={() => setPreview(null)}>Hủy</button>
+              <button className="primary" disabled={importing} onClick={confirmImport}>
+                {importing ? "Đang import…" : `✅ Import ${preview.preview.length} dòng tồn`}
+              </button>
+            </>
+          ) : undefined
+        }
+      >
+        {preview && (
+          <>
             <p>
               {preview.tong.so_dong} dòng · {preview.tong.so_ma} mã hàng ·{" "}
               <b>{preview.tong.so_ma_ton}</b> mã còn tồn · tổng giá trị{" "}
@@ -734,45 +822,44 @@ export function Inventory(_props: { onOpenPurchase?: (id: number) => void }) {
                 </ul>
               </div>
             )}
-            <div className="table-wrap" style={{ maxHeight: "40vh", overflow: "auto" }}>
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>Mã</th>
-                    <th>Tên</th>
-                    <th>Kho</th>
-                    <th style={{ textAlign: "right" }}>SL</th>
-                    <th style={{ textAlign: "right" }}>Đơn giá</th>
-                    <th style={{ textAlign: "right" }}>Giá trị</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.preview.map((p, i) => (
-                    <tr key={i}>
-                      <td>{p.ma_hang}</td>
-                      <td>{p.ten}</td>
-                      <td>
-                        <span className="chip gray sm">{p.kho}</span>
-                      </td>
-                      <td style={{ textAlign: "right" }}>{qty(p.so_luong)}</td>
-                      <td style={{ textAlign: "right" }} className="muted">
-                        {vnd(p.don_gia)}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(p.gia_tri)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="modal-actions">
-              <button onClick={() => setPreview(null)}>Hủy</button>
-              <button className="primary" disabled={importing} onClick={confirmImport}>
-                {importing ? "Đang import…" : `✅ Import ${preview.preview.length} dòng tồn`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap" style={{ maxHeight: "40vh", overflow: "auto" }}>
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Mã</th>
+                        <th>Tên</th>
+                        <th>Kho</th>
+                        <th style={{ textAlign: "right" }}>SL</th>
+                        <th style={{ textAlign: "right" }}>Đơn giá</th>
+                        <th style={{ textAlign: "right" }}>Giá trị</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.preview.map((p, i) => (
+                        <tr key={i}>
+                          <td>{p.ma_hang}</td>
+                          <td>{p.ten}</td>
+                          <td>
+                            <span className="chip gray sm">{p.kho}</span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>{qty(p.so_luong)}</td>
+                          <td style={{ textAlign: "right" }} className="muted">
+                            {vnd(p.don_gia)}
+                          </td>
+                          <td style={{ textAlign: "right" }}>{vnd(p.gia_tri)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
+          </>
+        )}
+      </AppModal>
 
       {fixId != null && (
         <PurchaseFixModal

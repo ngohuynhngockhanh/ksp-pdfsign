@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { DataView, FormGrid, PageHeader } from "../components/ui";
+import { safeHttpUrl } from "../utils/url";
 
 interface GovSource {
   id: string;
@@ -57,11 +59,11 @@ interface VerifyResult {
 }
 
 const CATEGORY_LABELS: Record<string, { label: string; bg: string; fg: string }> = {
-  thue_ke_toan: { label: "Thuế & Kế toán (CS7)", bg: "#fef3c7", fg: "#92400e" },
-  lao_dong_y_te: { label: "Lao động & Y tế", bg: "#dcfce7", fg: "#166534" },
-  cong_nghe_ai_iot: { label: "KHCN · AI · Solar", bg: "#dbeafe", fg: "#1e40af" },
-  doanh_nghiep_tuy_hoa: { label: "ĐB Tuy Hòa · Đắk Lắk", bg: "#f3e8ff", fg: "#6b21a8" },
-  khac: { label: "Hành chính chung", bg: "#f1f5f9", fg: "#475569" },
+  thue_ke_toan: { label: "Thuế & Kế toán (CS7)", bg: "#fdf3de", fg: "#8a5710" },
+  lao_dong_y_te: { label: "Lao động & Y tế", bg: "var(--primary-soft)", fg: "var(--ink)" },
+  cong_nghe_ai_iot: { label: "KHCN · AI · Solar", bg: "#e6f2ef", fg: "var(--primary-dark)" },
+  doanh_nghiep_tuy_hoa: { label: "ĐB Tuy Hòa · Đắk Lắk", bg: "var(--paper)", fg: "var(--ink)" },
+  khac: { label: "Hành chính chung", bg: "var(--bg)", fg: "var(--text)" },
 };
 
 export function GovRadar() {
@@ -151,39 +153,30 @@ export function GovRadar() {
   };
 
   return (
-    <div className="page" style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 16px" }}>
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <div>
-          <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>
-            📡 Radar Công văn Chính phủ &amp; Thuế cơ sở 7 Đắk Lắk
-          </h2>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+    <div className="docs-page">
+      <PageHeader
+        eyebrow="INUT · PHÁP LÝ & THUẾ CS7"
+        title="📡 Radar Công văn Chính phủ & Thuế cơ sở 7 Đắk Lắk"
+        subtitle={
+          <>
             Chủ động theo dõi văn bản gốc từ <strong>.gov.vn</strong> &amp;{" "}
             <strong>Thuế cơ sở 7 tỉnh Đắk Lắk (Phường Tuy Hòa)</strong> — tự động phân tích mức độ áp dụng cho{" "}
             <strong>INUT (MST 4401053694 · 2 nhân sự Khánh &amp; Nhâm)</strong>.
-          </p>
+          </>
+        }
+        badges={
           <div
             style={{
-              marginTop: 6,
               fontSize: 12,
               display: "inline-flex",
               alignItems: "center",
+              flexWrap: "wrap",
               gap: 8,
-              background: "#eff6ff",
-              border: "1px solid #bfdbfe",
-              color: "#1e40af",
-              padding: "4px 10px",
-              borderRadius: 6,
+              background: "rgba(255,254,250,0.12)",
+              border: "1px solid rgba(255,254,250,0.24)",
+              color: "#eef5f2",
+              padding: "5px 10px",
+              borderRadius: 8,
               fontWeight: 500,
             }}
           >
@@ -191,28 +184,27 @@ export function GovRadar() {
             <span>·</span>
             <span>Công văn đã báo trong DB không báo trùng — chỉ <strong>nhắc lại 1 lần sau 3 ngày</strong> trong tuần nếu chưa bấm &ldquo;Đã nắm&rdquo;</span>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        }
+        actions={
           <button
             className="primary"
             onClick={handleSync}
             disabled={syncing}
-            style={{ padding: "8px 14px", fontWeight: 600 }}
           >
             {syncing ? "⏳ Đang quét .gov.vn…" : "↻ Quét công văn mới & Báo Telegram"}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {syncMsg && (
         <div
           style={{
             padding: "10px 14px",
             marginBottom: 16,
-            borderRadius: 8,
-            background: "#ecfdf5",
-            border: "1px solid #a7f3d0",
-            color: "#065f46",
+            borderRadius: 10,
+            background: "var(--primary-soft)",
+            border: "1px solid var(--border-strong)",
+            color: "var(--ink)",
             fontSize: 13,
             fontWeight: 500,
           }}
@@ -222,95 +214,92 @@ export function GovRadar() {
       )}
 
       {/* Official Portals Cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(275px, 1fr))",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        {sources.map((s) => (
-          <div
-            key={s.id}
-            className="card"
-            style={{
-              padding: 14,
-              border:
-                portalFilter === s.id
-                  ? "2px solid #2563eb"
-                  : s.id === "daklak_tax_cs7"
-                    ? "1px solid #f59e0b"
-                    : "1px solid #e2e8f0",
-              background: s.id === "daklak_tax_cs7" ? "#fffbeb" : "#fff",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              gap: 10,
-            }}
-          >
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: 99,
-                    background: s.id === "daklak_tax_cs7" ? "#fef3c7" : "#eff6ff",
-                    color: s.id === "daklak_tax_cs7" ? "#b45309" : "#1d4ed8",
-                  }}
-                >
-                  {s.badge}
-                </span>
-                <button
-                  className="ghost"
-                  style={{ fontSize: 11, padding: "2px 8px" }}
-                  onClick={() => setPortalFilter(portalFilter === s.id ? "" : s.id)}
-                >
-                  {portalFilter === s.id ? "✓ Đang lọc" : "Lọc nguồn này"}
-                </button>
+      <div className="ui-grid-cards-sm" style={{ marginBottom: 20 }}>
+        {sources.map((s) => {
+          const portalHref = safeHttpUrl(s.portal_url);
+          const fbHref = safeHttpUrl(s.fb_url);
+          return (
+            <div
+              key={s.id}
+              className="card"
+              style={{
+                padding: 14,
+                border:
+                  portalFilter === s.id
+                    ? "2px solid var(--primary)"
+                    : s.id === "daklak_tax_cs7"
+                      ? "1px solid var(--amber)"
+                      : "1px solid var(--border)",
+                background: s.id === "daklak_tax_cs7" ? "var(--paper)" : "var(--panel)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                gap: 10,
+                minWidth: 0,
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 99,
+                      background: s.id === "daklak_tax_cs7" ? "#fdf3de" : "var(--primary-soft)",
+                      color: s.id === "daklak_tax_cs7" ? "#8a5710" : "var(--primary-dark)",
+                    }}
+                  >
+                    {s.badge}
+                  </span>
+                  <button
+                    className="ghost ui-btn-chip"
+                    onClick={() => setPortalFilter(portalFilter === s.id ? "" : s.id)}
+                  >
+                    {portalFilter === s.id ? "✓ Đang lọc" : "Lọc nguồn này"}
+                  </button>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>{s.name}</div>
+                <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                  {s.jurisdiction}
+                </div>
               </div>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{s.name}</div>
-              <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
-                {s.jurisdiction}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                {portalHref && (
+                  <a
+                    href={portalHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ui-btn-chip"
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--primary-dark)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    🌐 Mở Cổng .gov.vn ↗
+                  </a>
+                )}
+                {fbHref && (
+                  <a
+                    href={fbHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ui-btn-chip"
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--ink)",
+                      textDecoration: "none",
+                      background: "var(--primary-soft)",
+                    }}
+                  >
+                    📘 Fanpage Thuế CS7 Đắk Lắk ↗
+                  </a>
+                )}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-              <a
-                href={s.portal_url}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#2563eb",
-                  textDecoration: "none",
-                }}
-              >
-                🌐 Mở Cổng .gov.vn ↗
-              </a>
-              {s.fb_url && (
-                <a
-                  href={s.fb_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "#0284c7",
-                    textDecoration: "none",
-                    background: "#e0f2fe",
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                  }}
-                >
-                  📘 Fanpage Thuế CS7 Đắk Lắk ↗
-                </a>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Fact-Checker Box */}
@@ -319,11 +308,11 @@ export function GovRadar() {
         style={{
           padding: 16,
           marginBottom: 20,
-          background: "#f8fafc",
-          border: "1px solid #cbd5e1",
+          background: "var(--paper)",
+          border: "1px solid var(--border-strong)",
         }}
       >
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 6 }}>
           🔍 Kiểm chứng nhanh số hiệu Công văn (Chống nhiễu thông tin từ TikTok / Facebook)
         </div>
         <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
@@ -334,22 +323,22 @@ export function GovRadar() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input
             type="text"
+            className="ui-input"
             value={verifyInput}
             onChange={(e) => setVerifyInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runVerify()}
             placeholder="Nhập số công văn hoặc từ khóa (VD: 16093/SYT-NVY, khám sức khỏe, hoàn thuế)..."
-            style={{ flex: 1, minWidth: 260, padding: "8px 12px" }}
+            style={{ flex: "1 1 220px", minWidth: 0 }}
           />
           <button
             className="primary"
             onClick={() => runVerify()}
             disabled={verifying || !verifyInput.trim()}
-            style={{ padding: "8px 16px" }}
           >
             {verifying ? "Đang tra cứu…" : "Kiểm chứng ngay"}
           </button>
           {verifyRes && (
-            <button className="ghost" onClick={() => setVerifyRes(null)}>
+            <button className="ghost ui-btn-chip" onClick={() => setVerifyRes(null)}>
               Đóng kết quả
             </button>
           )}
@@ -365,14 +354,7 @@ export function GovRadar() {
           ].map((chip) => (
             <button
               key={chip.q}
-              className="ghost"
-              style={{
-                fontSize: 11,
-                padding: "3px 8px",
-                borderRadius: 99,
-                background: "#fff",
-                border: "1px solid #cbd5e1",
-              }}
+              className="ghost ui-btn-chip"
               onClick={() => runVerify(chip.q)}
             >
               {chip.label}
@@ -385,14 +367,14 @@ export function GovRadar() {
             style={{
               marginTop: 14,
               padding: 14,
-              borderRadius: 8,
-              background: "#fff",
+              borderRadius: 10,
+              background: "var(--panel)",
               border:
                 verifyRes.verdict_color === "warning"
-                  ? "2px solid #f59e0b"
+                  ? "2px solid var(--amber)"
                   : verifyRes.verdict_color === "success"
-                    ? "2px solid #10b981"
-                    : "1px solid #cbd5e1",
+                    ? "2px solid var(--green)"
+                    : "1px solid var(--border-strong)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
@@ -404,23 +386,23 @@ export function GovRadar() {
                   borderRadius: 99,
                   background:
                     verifyRes.verdict_color === "warning"
-                      ? "#fef3c7"
+                      ? "#fdf3de"
                       : verifyRes.verdict_color === "success"
-                        ? "#dcfce7"
-                        : "#f1f5f9",
+                        ? "var(--primary-soft)"
+                        : "var(--bg)",
                   color:
                     verifyRes.verdict_color === "warning"
-                      ? "#b45309"
+                      ? "#8a5710"
                       : verifyRes.verdict_color === "success"
-                        ? "#166534"
-                        : "#334155",
+                        ? "var(--ink)"
+                        : "var(--text)",
                 }}
               >
                 {verifyRes.verdict_badge}
               </span>
-              <strong style={{ fontSize: 14 }}>Tra cứu: &ldquo;{verifyRes.query}&rdquo;</strong>
+              <strong style={{ fontSize: 14, color: "var(--ink)" }}>Tra cứu: &ldquo;{verifyRes.query}&rdquo;</strong>
             </div>
-            <div style={{ display: "grid", gap: 6, fontSize: 13, lineHeight: 1.5 }}>
+            <div style={{ display: "grid", gap: 6, fontSize: 13, lineHeight: 1.5, color: "var(--text)" }}>
               <div>
                 <strong>• Nguồn gốc ban hành:</strong> {verifyRes.origin}
               </div>
@@ -433,10 +415,10 @@ export function GovRadar() {
               <div
                 style={{
                   padding: "8px 10px",
-                  borderRadius: 6,
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
-                  color: "#14532d",
+                  borderRadius: 8,
+                  background: "var(--primary-soft)",
+                  border: "1px solid var(--border-strong)",
+                  color: "var(--ink)",
                 }}
               >
                 <strong>👉 Kết luận cho INUT:</strong> {verifyRes.inut_action}
@@ -447,51 +429,43 @@ export function GovRadar() {
       </div>
 
       {/* Filter Bar */}
-      <div
-        className="card"
-        style={{
-          padding: "12px 14px",
-          marginBottom: 14,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <select
-          value={portalFilter}
-          onChange={(e) => setPortalFilter(e.target.value)}
-          style={{ padding: "6px 10px", fontSize: 13 }}
-        >
-          <option value="">Tất cả nguồn ({total})</option>
-          <option value="daklak_tax_cs7">Thuế tỉnh Đắk Lắk &amp; Thuế cơ sở 7 (Tuy Hòa)</option>
-          <option value="daklak_ubnd">UBND Tỉnh Đắk Lắk (Chỉ đạo điều hành)</option>
-          <option value="daklak_syt">Sở Y tế Tỉnh Đắk Lắk</option>
-          <option value="chinhphu">Chính phủ &amp; Bộ ngành Trung ương</option>
-        </select>
+      <div className="card" style={{ padding: "12px 14px", marginBottom: 14 }}>
+        <FormGrid cols={3}>
+          <select
+            className="ui-select"
+            value={portalFilter}
+            onChange={(e) => setPortalFilter(e.target.value)}
+          >
+            <option value="">Tất cả nguồn ({total})</option>
+            <option value="daklak_tax_cs7">Thuế tỉnh Đắk Lắk &amp; Thuế cơ sở 7 (Tuy Hòa)</option>
+            <option value="daklak_ubnd">UBND Tỉnh Đắk Lắk (Chỉ đạo điều hành)</option>
+            <option value="daklak_syt">Sở Y tế Tỉnh Đắk Lắk</option>
+            <option value="chinhphu">Chính phủ &amp; Bộ ngành Trung ương</option>
+          </select>
 
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{ padding: "6px 10px", fontSize: 13 }}
-        >
-          <option value="">Tất cả lĩnh vực</option>
-          <option value="thue_ke_toan">Thuế &amp; Kế toán (CS7)</option>
-          <option value="lao_dong_y_te">Lao động, BHXH &amp; Khám sức khỏe</option>
-          <option value="cong_nghe_ai_iot">KHCN · AI · Chuyển đổi số · Solar</option>
-          <option value="doanh_nghiep_tuy_hoa">Địa bàn Tuy Hòa · Đắk Lắk</option>
-          <option value="khac">Hành chính khác</option>
-        </select>
+          <select
+            className="ui-select"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">Tất cả lĩnh vực</option>
+            <option value="thue_ke_toan">Thuế &amp; Kế toán (CS7)</option>
+            <option value="lao_dong_y_te">Lao động, BHXH &amp; Khám sức khỏe</option>
+            <option value="cong_nghe_ai_iot">KHCN · AI · Chuyển đổi số · Solar</option>
+            <option value="doanh_nghiep_tuy_hoa">Địa bàn Tuy Hòa · Đắk Lắk</option>
+            <option value="khac">Hành chính khác</option>
+          </select>
 
-        <input
-          type="text"
-          value={searchQ}
-          onChange={(e) => setSearchQ(e.target.value)}
-          placeholder="Lọc theo số hiệu, trích yếu, từ khóa..."
-          style={{ flex: 1, minWidth: 200, padding: "6px 10px", fontSize: 13 }}
-        />
+          <input
+            type="text"
+            className="ui-input"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Lọc theo số hiệu, trích yếu, từ khóa..."
+          />
+        </FormGrid>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", marginTop: 10 }}>
           <input
             type="checkbox"
             checked={appliesOnly}
@@ -501,9 +475,9 @@ export function GovRadar() {
         </label>
       </div>
 
-      {/* Document Table */}
+      {/* Document Table / Mobile Cards */}
       {loading ? (
-        <div className="center" style={{ padding: 40 }}>
+        <div className="panel" style={{ padding: 32, textAlign: "center" }}>
           Đang tải danh sách công văn Chính phủ &amp; Tỉnh Đắk Lắk…
         </div>
       ) : items.length === 0 ? (
@@ -511,160 +485,226 @@ export function GovRadar() {
           <p className="muted">Không có văn bản nào khớp bộ lọc hiện tại.</p>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-          <table className="table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                <th style={{ padding: "10px 12px", width: 150 }}>Số ký hiệu / Ngày</th>
-                <th style={{ padding: "10px 12px", width: 170 }}>Cơ quan &amp; Lĩnh vực</th>
-                <th style={{ padding: "10px 12px" }}>Trích yếu văn bản &amp; Đánh giá tác động tới INUT</th>
-                <th style={{ padding: "10px 12px", width: 110, textAlign: "center" }}>Độ liên quan</th>
-                <th style={{ padding: "10px 12px", width: 130 }}>Bản gốc (.gov.vn)</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DataView
+          mobileMode="card"
+          desktop={
+            <div className="table-wrap">
+              <table className="dt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 150 }}>Số ký hiệu / Ngày</th>
+                    <th style={{ width: 170 }}>Cơ quan &amp; Lĩnh vực</th>
+                    <th>Trích yếu văn bản &amp; Đánh giá tác động tới INUT</th>
+                    <th style={{ width: 110, textAlign: "center" }}>Độ liên quan</th>
+                    <th style={{ width: 140 }}>Bản gốc (.gov.vn)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
+                    const detailHref = safeHttpUrl(item.detail_url);
+                    const pdfHref = safeHttpUrl(item.pdf_url);
+                    return (
+                      <tr key={item.id} style={{ borderTop: "1px solid var(--border)", verticalAlign: "top" }}>
+                        <td>
+                          <div style={{ fontWeight: 700, color: "var(--ink)" }}>{item.doc_number || item.doc_type}</div>
+                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                            {item.doc_type} · {item.published_date}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>{item.source_label}</div>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: "2px 8px",
+                              borderRadius: 99,
+                              background: catMeta.bg,
+                              color: catMeta.fg,
+                            }}
+                          >
+                            {catMeta.label}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 6, lineHeight: 1.4 }}>
+                            {item.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              padding: "6px 10px",
+                              borderRadius: 6,
+                              background: item.applies_to_inut ? "var(--primary-soft)" : "var(--paper)",
+                              border: "1px solid var(--border)",
+                              color: item.applies_to_inut ? "var(--ink)" : "var(--text)",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {item.impact_summary}
+                          </div>
+                          {item.matched_keywords && (
+                            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                              Từ khóa khớp: <code>{item.matched_keywords}</code>
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              padding: "3px 8px",
+                              borderRadius: 6,
+                              background:
+                                item.relevance_score >= 60
+                                  ? "var(--primary-soft)"
+                                  : item.relevance_score >= 35
+                                    ? "#fdf3de"
+                                    : "var(--bg)",
+                              color:
+                                item.relevance_score >= 60
+                                  ? "var(--ink)"
+                                  : item.relevance_score >= 35
+                                    ? "#8a5710"
+                                    : "var(--muted)",
+                            }}
+                          >
+                            {item.relevance_score}%
+                          </span>
+                          <div style={{ marginTop: 6 }}>
+                            {item.acknowledged ? (
+                              <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 600 }}>
+                                ✓ Đã nắm (Tắt nhắc)
+                              </span>
+                            ) : item.notify_count >= 2 ? (
+                              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
+                                🔕 Đã nhắc đủ 2 lần
+                              </span>
+                            ) : item.notify_count === 1 || item.notified ? (
+                              <span style={{ fontSize: 11, color: "var(--amber)", fontWeight: 600 }}>
+                                🔔 Đã báo L1 (+3 ngày nhắc)
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {detailHref && (
+                              <a
+                                href={detailHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ui-btn-chip"
+                                style={{ fontWeight: 600, color: "var(--primary-dark)", textDecoration: "none" }}
+                              >
+                                🌐 Xem trên Cổng ↗
+                              </a>
+                            )}
+                            {pdfHref && (
+                              <a
+                                href={pdfHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ui-btn-chip"
+                                style={{
+                                  fontWeight: 600,
+                                  color: pdfHref.includes("facebook.com") ? "var(--primary-dark)" : "var(--red)",
+                                  textDecoration: "none",
+                                }}
+                              >
+                                {pdfHref.includes("facebook.com") ? "📘 Fanpage Thuế CS7 ↗" : "📄 Tải PDF ký số ↗"}
+                              </a>
+                            )}
+                            {item.applies_to_inut && (
+                              <button
+                                className="ghost ui-btn-chip"
+                                onClick={() => toggleAck(item)}
+                                style={{
+                                  background: item.acknowledged ? "var(--primary-soft)" : "var(--panel)",
+                                  color: item.acknowledged ? "var(--ink)" : "var(--text)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          }
+          mobileCards={
+            <div className="ui-mobile-card-list">
               {items.map((item) => {
                 const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
+                const detailHref = safeHttpUrl(item.detail_url);
+                const pdfHref = safeHttpUrl(item.pdf_url);
                 return (
-                  <tr key={item.id} style={{ borderTop: "1px solid #e2e8f0", verticalAlign: "top" }}>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontWeight: 700, color: "#0f172a" }}>{item.doc_number || item.doc_type}</div>
-                      <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                        {item.doc_type} · {item.published_date}
-                      </div>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>{item.source_label}</div>
+                  <article key={item.id} className="ui-mobile-card">
+                    <div className="ui-mobile-card-head">
+                      <strong className="ui-mobile-card-title">{item.doc_number || item.doc_type}</strong>
                       <span
+                        className="chip sm"
                         style={{
-                          display: "inline-block",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: 99,
-                          background: catMeta.bg,
-                          color: catMeta.fg,
-                        }}
-                      >
-                        {catMeta.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: 6, lineHeight: 1.4 }}>
-                        {item.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          background: item.applies_to_inut ? "#f0fdf4" : "#f8fafc",
-                          border: item.applies_to_inut ? "1px solid #bbf7d0" : "1px solid #e2e8f0",
-                          color: item.applies_to_inut ? "#166534" : "#475569",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {item.impact_summary}
-                      </div>
-                      {item.matched_keywords && (
-                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                          Từ khóa khớp: <code>{item.matched_keywords}</code>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          fontWeight: 700,
-                          fontSize: 12,
-                          padding: "3px 8px",
-                          borderRadius: 6,
-                          background:
-                            item.relevance_score >= 60
-                              ? "#dcfce7"
-                              : item.relevance_score >= 35
-                                ? "#fef9c3"
-                                : "#f1f5f9",
-                          color:
-                            item.relevance_score >= 60
-                              ? "#15803d"
-                              : item.relevance_score >= 35
-                                ? "#a16207"
-                                : "#64748b",
+                          background: item.relevance_score >= 60 ? "var(--primary-soft)" : "#fdf3de",
+                          color: item.relevance_score >= 60 ? "var(--ink)" : "#8a5710",
                         }}
                       >
                         {item.relevance_score}%
                       </span>
-                      <div style={{ marginTop: 6 }}>
-                        {item.acknowledged ? (
-                          <span style={{ fontSize: 11, color: "#15803d", fontWeight: 600 }}>
-                            ✓ Đã nắm (Tắt nhắc)
-                          </span>
-                        ) : item.notify_count >= 2 ? (
-                          <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
-                            🔕 Đã nhắc đủ 2 lần
-                          </span>
-                        ) : item.notify_count === 1 || item.notified ? (
-                          <span style={{ fontSize: 11, color: "#b45309", fontWeight: 600 }}>
-                            🔔 Đã báo L1 (+3 ngày nhắc)
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {item.detail_url && (
-                          <a
-                            href={item.detail_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: 12, fontWeight: 600, color: "#2563eb", textDecoration: "none" }}
-                          >
-                            🌐 Xem trên Cổng ↗
-                          </a>
-                        )}
-                        {item.pdf_url && (
-                          <a
-                            href={item.pdf_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 600,
-                              color: item.pdf_url.includes("facebook.com") ? "#0284c7" : "#dc2626",
-                              textDecoration: "none",
-                            }}
-                          >
-                            {item.pdf_url.includes("facebook.com") ? "📘 Fanpage Thuế CS7 ↗" : "📄 Tải PDF ký số ↗"}
-                          </a>
-                        )}
-                        {item.applies_to_inut && (
-                          <button
-                            className="ghost"
-                            onClick={() => toggleAck(item)}
-                            style={{
-                              fontSize: 11,
-                              padding: "3px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #cbd5e1",
-                              background: item.acknowledged ? "#dcfce7" : "#fff",
-                              color: item.acknowledged ? "#166534" : "#334155",
-                              fontWeight: 600,
-                              textAlign: "left",
-                            }}
-                          >
-                            {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                    </div>
+                    <div style={{ fontWeight: 600, color: "var(--ink)", lineHeight: 1.4 }}>{item.title}</div>
+                    <div className="ui-mobile-card-meta">
+                      <span>{item.published_date}</span>
+                      <span>{item.source_label}</span>
+                      <span style={{ background: catMeta.bg, color: catMeta.fg, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>
+                        {catMeta.label}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        background: item.applies_to_inut ? "var(--primary-soft)" : "var(--paper)",
+                        border: "1px solid var(--border)",
+                        color: "var(--text)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {item.impact_summary}
+                    </div>
+                    <div className="ui-mobile-card-actions">
+                      {detailHref && (
+                        <a href={detailHref} target="_blank" rel="noopener noreferrer" className="ui-btn-chip">
+                          🌐 Xem Cổng ↗
+                        </a>
+                      )}
+                      {pdfHref && (
+                        <a href={pdfHref} target="_blank" rel="noopener noreferrer" className="ui-btn-chip">
+                          {pdfHref.includes("facebook.com") ? "📘 Fanpage ↗" : "📄 PDF ↗"}
+                        </a>
+                      )}
+                      {item.applies_to_inut && (
+                        <button className="ghost ui-btn-chip" onClick={() => toggleAck(item)}>
+                          {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
+                        </button>
+                      )}
+                    </div>
+                  </article>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          }
+        />
       )}
     </div>
   );

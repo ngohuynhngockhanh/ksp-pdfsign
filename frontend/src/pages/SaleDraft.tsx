@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, IhoadonDashboard, IhoadonDraft, IhoadonDraftDeliveryResult, IhoadonDraftSyncResult, InvItem, SaleDraftLine, TaxPolicy } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
+import { DataView } from "../components/ui";
+import { safeHttpUrl } from "../utils/url";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
@@ -344,7 +346,7 @@ export function SaleDraft() {
     <div className="docs-page sale-draft-studio">
       <header className="sale-draft-hero">
         <div><span className="eyebrow">INVOICE WORKBENCH</span><h1>Tạo hóa đơn nháp</h1><p>Soạn, kiểm tra kho và đồng bộ sang iHOADON ở trạng thái GHI_TAM.</p></div>
-        <div className="sale-draft-hero-actions"><button onClick={syncIhoadon}>Đồng bộ iHOADON</button>{ihd && <a href={ihd.web_url} target="_blank" rel="noreferrer">Mở iHOADON ↗</a>}</div>
+        <div className="sale-draft-hero-actions"><button onClick={syncIhoadon}>Đồng bộ iHOADON</button>{safeHttpUrl(ihd?.web_url) && <a href={safeHttpUrl(ihd?.web_url)} target="_blank" rel="noopener noreferrer">Mở iHOADON ↗</a>}</div>
       </header>
       {policy && <div className="tax-policy-checkpoint">
         <b>Checkpoint thuế theo ngày {new Date(policy.date).toLocaleDateString("vi-VN")}</b>
@@ -367,24 +369,61 @@ export function SaleDraft() {
       {drafts.length > 0 && (
         <details className="panel ihd-drafts">
           <summary>Hóa đơn ghi tạm trên iHOADON ({drafts.length} bản mới nhất)</summary>
-          <div className="table-wrap">
-            <table className="ihd-draft-table"><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th><th></th></tr></thead>
-              <tbody>{drafts.map((d) => <tr key={d.id}>
-                <td data-label="Khách hàng" className="ihd-draft-customer">{d.customer_name || "Khách lẻ"}</td>
-                <td data-label="MST">{d.buyer_tax_code || "—"}</td>
-                <td data-label="Mẫu">{d.template_code}/{d.invoice_series}</td>
-                <td data-label="Thanh toán" className="num ihd-draft-total">{vnd(d.total_payment)} đ</td>
-                <td data-label="Ngày tạo" className="ihd-draft-date">{dateTime(d.created_at)}</td>
-                <td className="ihd-draft-action">
-                  <button disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
-                    {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
-                  </button>
-                  {draftSyncResults[d.id] && <a href={draftSyncResults[d.id].share_url} target="_blank" rel="noreferrer">Mở PDF trong CRM</a>}
-                  <a href={ihd?.web_url} target="_blank" rel="noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a>
-                </td>
-              </tr>)}</tbody>
-            </table>
-          </div>
+          <DataView
+            mobileMode="card"
+            desktop={
+              <div className="table-wrap">
+                <table className="ihd-draft-table"><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th><th></th></tr></thead>
+                  <tbody>{drafts.map((d) => {
+                    const crmHref = safeHttpUrl(draftSyncResults[d.id]?.share_url);
+                    const webHref = safeHttpUrl(ihd?.web_url);
+                    return <tr key={d.id}>
+                      <td data-label="Khách hàng" className="ihd-draft-customer">{d.customer_name || "Khách lẻ"}</td>
+                      <td data-label="MST">{d.buyer_tax_code || "—"}</td>
+                      <td data-label="Mẫu">{d.template_code}/{d.invoice_series}</td>
+                      <td data-label="Thanh toán" className="num ihd-draft-total">{vnd(d.total_payment)} đ</td>
+                      <td data-label="Ngày tạo" className="ihd-draft-date">{dateTime(d.created_at)}</td>
+                      <td className="ihd-draft-action">
+                        <button disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
+                          {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
+                        </button>
+                        {crmHref && <a href={crmHref} target="_blank" rel="noopener noreferrer">Mở PDF trong CRM</a>}
+                        {webHref && <a href={webHref} target="_blank" rel="noopener noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a>}
+                      </td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list">
+                {drafts.map((d) => {
+                  const crmHref = safeHttpUrl(draftSyncResults[d.id]?.share_url);
+                  const webHref = safeHttpUrl(ihd?.web_url);
+                  return (
+                    <article key={d.id} className="ui-mobile-card">
+                      <div className="ui-mobile-card-head">
+                        <strong className="ui-mobile-card-title">{d.customer_name || "Khách lẻ"}</strong>
+                        <strong style={{ fontVariantNumeric: "tabular-nums" }}>{vnd(d.total_payment)} đ</strong>
+                      </div>
+                      <div className="ui-mobile-card-meta">
+                        <span>MST: {d.buyer_tax_code || "—"}</span>
+                        <span>Mẫu: {d.template_code}/{d.invoice_series}</span>
+                        <span>{dateTime(d.created_at)}</span>
+                      </div>
+                      <div className="ui-mobile-card-actions">
+                        <button className="ui-btn-chip" disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
+                          {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
+                        </button>
+                        {crmHref && <a className="ui-btn-chip" href={crmHref} target="_blank" rel="noopener noreferrer">Mở PDF trong CRM</a>}
+                        {webHref && <a className="ui-btn-chip" href={webHref} target="_blank" rel="noopener noreferrer">Sửa trên iHOADON ↗</a>}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            }
+          />
         </details>
       )}
 
@@ -435,7 +474,7 @@ export function SaleDraft() {
       {deliveryResult && <section className="draft-delivery-result" aria-live="polite">
         <div><span className="draft-status-dot" /><div><b>{deliveryResult.status} · {deliveryResult.template_code}/{deliveryResult.invoice_series}</b><small>Link hết hạn {dateTime(deliveryResult.share_expires_at)} · PDF đã lưu vào hồ sơ khách hàng</small></div></div>
         <div className="draft-delivery-actions">
-          <a href={deliveryResult.share_url} target="_blank" rel="noreferrer">Xem PDF</a>
+          {safeHttpUrl(deliveryResult.share_url) && <a href={safeHttpUrl(deliveryResult.share_url)} target="_blank" rel="noopener noreferrer">Xem PDF</a>}
           <button onClick={copyDeliveryLink}>{copied ? "Đã copy" : "Copy link"}</button>
           <a href={deliveryResult.zip_url} download={deliveryResult.zip_filename}>Tải ZIP</a>
         </div>
@@ -472,94 +511,102 @@ export function SaleDraft() {
       )}
 
       <div className="sale-section-head sale-lines-head"><div><span>02 · NỘI DUNG HÓA ĐƠN</span><h3>Dòng hàng và dịch vụ</h3></div><small>Sync kho không thay đổi số lượng anh đã nhập</small></div>
-      <div className="table-wrap sale-lines-table">
-        <table className="doc-table">
-          <thead>
-            <tr>
-              <th style={{ width: "34%" }}>Tên hàng (từ kho)</th>
-              <th>ĐVT</th>
-              <th style={{ width: 70 }}>SL</th>
-              <th style={{ width: 110 }}>Đơn giá</th>
-              <th style={{ width: 120 }}>Thành tiền</th>
-              <th style={{ width: 130 }}>Thuế</th>
-              <th style={{ width: 110 }}>Tiền thuế</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, i) => (
-              <tr key={i}>
-                <td>
-                  <input
-                    style={{ width: "100%" }}
-                    value={l.ten}
-                    placeholder="gõ ≥2 ký tự để tìm mã kho…"
-                    onChange={(e) => {
-                      setLine(i, { ten: e.target.value });
-                      searchRow(i, e.target.value);
-                    }}
-                  />
-                  {l.ma_hang && <span className="chip green sm">{l.ma_hang}</span>}
-                  {l.ma_hang && stockByCode[l.ma_hang] != null && <span className={`chip sm ${stockByCode[l.ma_hang] + 1e-6 >= l.so_luong ? "green" : "red"}`}>Kho: {vnd(stockByCode[l.ma_hang])} {l.dvt}</span>}
-                  {l.is_dich_vu && <span className="chip gray sm">dịch vụ</span>}
-                  {search?.row === i &&
-                    search.results.slice(0, 6).map((it) => (
-                      <div key={it.id}>
-                        <button className="btn-sm ghost" onClick={() => pickItem(i, it)}>
-                          <b>{it.ma_hang}</b> · {it.ten}
-                        </button>
-                      </div>
-                    ))}
-                </td>
-                <td>
-                  <input className={l.ten.trim() && !l.is_dich_vu && !l.dvt.trim() ? "field-missing" : ""} style={{ width: 60 }} value={l.dvt} placeholder={!l.is_dich_vu ? "Thiếu" : ""} onChange={(e) => setLine(i, { dvt: e.target.value })} />
-                </td>
-                <td>
-                  <input
-                    style={{ width: 60, textAlign: "right" }}
-                    value={l.so_luong}
-                    onChange={(e) => setLine(i, { so_luong: parseNum(e.target.value) })}
-                  />
-                </td>
-                <td>
-                  <input
-                    style={{ width: 100, textAlign: "right" }}
-                    value={l.don_gia}
-                    onChange={(e) => setLine(i, { don_gia: parseNum(e.target.value) })}
-                  />
-                </td>
-                <td style={{ textAlign: "right" }}>{vnd(l.thanh_tien || l.so_luong * l.don_gia)}</td>
-                <td>
-                  <select value={l.vat_name} onChange={(e) => setLine(i, { vat_name: e.target.value })}>
-                    {!VAT_OPTIONS.includes(l.vat_name) && <option value={l.vat_name}>{l.vat_name}</option>}
-                    {VAT_OPTIONS.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={{ textAlign: "right" }} className="muted">
-                  {vnd(tienThue(l))}
-                </td>
-                <td>
-                  <label className="muted" style={{ fontSize: 11, display: "block" }}>
-                    <input
-                      type="checkbox"
-                      checked={l.is_dich_vu}
-                      onChange={(e) => setLine(i, { is_dich_vu: e.target.checked })}
-                    />{" "}
-                    DV
-                  </label>
-                  <button className="danger-link" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
-                    Xóa
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataView
+        mobileMode="scroll"
+        desktop={
+          <div className="table-wrap sale-lines-table">
+            <table className="doc-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "34%" }}>Tên hàng (từ kho)</th>
+                  <th>ĐVT</th>
+                  <th style={{ width: 70 }}>SL</th>
+                  <th style={{ width: 110 }}>Đơn giá</th>
+                  <th style={{ width: 120 }}>Thành tiền</th>
+                  <th style={{ width: 130 }}>Thuế</th>
+                  <th style={{ width: 110 }}>Tiền thuế</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input
+                        aria-label={`Tên hàng hóa, dịch vụ dòng ${i + 1}`}
+                        style={{ width: "100%" }}
+                        value={l.ten}
+                        placeholder="gõ ≥2 ký tự để tìm mã kho…"
+                        onChange={(e) => {
+                          setLine(i, { ten: e.target.value });
+                          searchRow(i, e.target.value);
+                        }}
+                      />
+                      {l.ma_hang && <span className="chip green sm">{l.ma_hang}</span>}
+                      {l.ma_hang && stockByCode[l.ma_hang] != null && <span className={`chip sm ${stockByCode[l.ma_hang] + 1e-6 >= l.so_luong ? "green" : "red"}`}>Kho: {vnd(stockByCode[l.ma_hang])} {l.dvt}</span>}
+                      {l.is_dich_vu && <span className="chip gray sm">dịch vụ</span>}
+                      {search?.row === i &&
+                        search.results.slice(0, 6).map((it) => (
+                          <div key={it.id}>
+                            <button className="btn-sm ghost" onClick={() => pickItem(i, it)}>
+                              <b>{it.ma_hang}</b> · {it.ten}
+                            </button>
+                          </div>
+                        ))}
+                    </td>
+                    <td>
+                      <input aria-label={`Đơn vị tính dòng ${i + 1}`} className={l.ten.trim() && !l.is_dich_vu && !l.dvt.trim() ? "field-missing" : ""} style={{ width: 60 }} value={l.dvt} placeholder={!l.is_dich_vu ? "Thiếu" : ""} onChange={(e) => setLine(i, { dvt: e.target.value })} />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`Số lượng dòng ${i + 1}`}
+                        style={{ width: 60, textAlign: "right" }}
+                        value={l.so_luong}
+                        onChange={(e) => setLine(i, { so_luong: parseNum(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label={`Đơn giá dòng ${i + 1}`}
+                        style={{ width: 100, textAlign: "right" }}
+                        value={l.don_gia}
+                        onChange={(e) => setLine(i, { don_gia: parseNum(e.target.value) })}
+                      />
+                    </td>
+                    <td style={{ textAlign: "right" }}>{vnd(l.thanh_tien || l.so_luong * l.don_gia)}</td>
+                    <td>
+                      <select aria-label={`Thuế suất dòng ${i + 1}`} value={l.vat_name} onChange={(e) => setLine(i, { vat_name: e.target.value })}>
+                        {!VAT_OPTIONS.includes(l.vat_name) && <option value={l.vat_name}>{l.vat_name}</option>}
+                        {VAT_OPTIONS.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ textAlign: "right" }} className="muted">
+                      {vnd(tienThue(l))}
+                    </td>
+                    <td>
+                      <label className="muted" style={{ fontSize: 11, display: "block" }}>
+                        <input
+                          type="checkbox"
+                          checked={l.is_dich_vu}
+                          onChange={(e) => setLine(i, { is_dich_vu: e.target.checked })}
+                        />{" "}
+                        DV
+                      </label>
+                      <button className="danger-link" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
+                        Xóa
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        }
+      />
       <button className="btn-sm" onClick={() => setLines([...lines, blankLine()])}>
         + Thêm dòng
       </button>

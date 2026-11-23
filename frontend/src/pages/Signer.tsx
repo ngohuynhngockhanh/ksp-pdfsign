@@ -31,6 +31,7 @@ export function Signer({
     docType: string;
     customerId: number | null;
     orderId?: number | null;
+    existingDocumentId?: number | null;
   } | null;
   onOpenDocument?: (docPk: number) => void;
 }) {
@@ -38,6 +39,7 @@ export function Signer({
   const [filename, setFilename] = useState("");
   const [rect, setRect] = useState<Rect | null>(null);
   const [zipFiles, setZipFiles] = useState<ZipFileEntry[]>([]);
+  const [mobileStep, setMobileStep] = useState<"doc" | "sign">("doc");
 
   const [ip, setIp] = useState(defaultIp);
   const [pin, setPin] = useState("");
@@ -67,6 +69,7 @@ export function Signer({
       setDownloadUrl("");
       setDocumentId(null);
       setZipFiles([]);
+      setMobileStep("doc");
       if (preSign.customerId != null) setCustomerId(String(preSign.customerId));
     }
   }, [preSign]);
@@ -91,18 +94,20 @@ export function Signer({
         setDocId(r.doc_id);
         setFilename(r.filename);
       }
+      setMobileStep("doc");
     } catch (ex) {
       setErr((ex as Error).message);
     }
   }
 
-  // Chon 1 file trong danh sach ZIP de xem/ky (khong dong tab, ky xong chon file ke)
+  // Chọn 1 file trong danh sách ZIP để xem/ký (không đóng tab, ký xong chọn file kế)
   function pickZipFile(zf: ZipFileEntry) {
     setDocId(zf.doc_id);
     setFilename(zf.filename);
     setRect(null);
     setDownloadUrl("");
     setDocumentId(null);
+    setMobileStep("doc");
   }
 
   async function doSign() {
@@ -123,6 +128,7 @@ export function Signer({
         customer_id: customerId === "" ? null : Number(customerId),
         doc_type: preSign?.docType || "",
         order_id: preSign?.orderId ?? null,
+        existing_document_id: preSign?.existingDocumentId ?? null,
       });
       setDownloadUrl(r.download_url);
       setDocumentId(r.document_id);
@@ -131,6 +137,7 @@ export function Signer({
           prev.map((z) => (z.doc_id === docId ? { ...z, signed: true } : z)),
         );
       }
+      setMobileStep("sign");
     } catch (ex) {
       setErr((ex as Error).message);
     } finally {
@@ -138,9 +145,33 @@ export function Signer({
     }
   }
 
+  const readyToSign = Boolean(docId && rect && certId && !busy);
+
   return (
     <div className="signer">
-      <aside className="panel">
+      {/* Mobile 2-step switcher (<=820px only; hidden on desktop) */}
+      <div className="signer-mobile-tabs" role="tablist" aria-label="Các bước ký số">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileStep === "doc"}
+          className={`signer-mobile-tab${mobileStep === "doc" ? " is-active" : ""}`}
+          onClick={() => setMobileStep("doc")}
+        >
+          1. Tài liệu &amp; Vị trí ký {rect ? "✓" : ""}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileStep === "sign"}
+          className={`signer-mobile-tab${mobileStep === "sign" ? " is-active" : ""}`}
+          onClick={() => setMobileStep("sign")}
+        >
+          2. Token &amp; Ký số {certId ? "✓" : ""}
+        </button>
+      </div>
+
+      <aside className={`panel${mobileStep === "doc" ? " signer-pane-hidden-mobile" : ""}`}>
         <h3>1. Tải PDF</h3>
         <input type="file" accept="application/pdf,.zip" onChange={onUpload} />
         {filename && zipFiles.length === 0 && <div className="muted">{filename}</div>}
@@ -150,7 +181,8 @@ export function Signer({
               {zipFiles.length} file trong ZIP — chọn từng file để ký lần lượt:
             </div>
             {zipFiles.map((zf) => (
-              <div
+              <button
+                type="button"
                 key={zf.doc_id}
                 className={
                   "zip-item" +
@@ -164,7 +196,7 @@ export function Signer({
                   {zf.filename}
                 </span>
                 <span className="muted">{formatSize(zf.size)}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -172,11 +204,11 @@ export function Signer({
         <h3>2. Vùng chữ ký</h3>
         {rect ? (
           <div className="muted">
-            Trang {rect.page + 1} — ({Math.round(rect.x1)}, {Math.round(rect.y1)}) →
-            ({Math.round(rect.x2)}, {Math.round(rect.y2)}) pt
+            Trang {rect.page + 1} — ({Math.round(rect.x1)}, {Math.round(rect.y1)}) → (
+            {Math.round(rect.x2)}, {Math.round(rect.y2)}) pt
           </div>
         ) : (
-          <div className="muted">Kéo chuột trên trang để chọn</div>
+          <div className="muted">Kéo chuột hoặc chạm kéo trên trang PDF để chọn</div>
         )}
 
         <h3>3. Máy token (WIN-CA)</h3>
@@ -237,36 +269,99 @@ export function Signer({
           <option value="__new__">+ Tạo khách hàng mới…</option>
         </select>
 
-        {err && <div className="error">{err}</div>}
+        {err && <div className="error" role="alert">{err}</div>}
         <button
           className="primary"
-          disabled={!docId || !rect || !certId || busy}
+          style={{ width: "100%", marginTop: 12 }}
+          disabled={!readyToSign}
           onClick={doSign}
         >
           {busy ? "Đang ký…" : "Ký số"}
         </button>
         {downloadUrl && (
           <>
-            <div className="ok-note">✅ Đã ký và lưu vào hồ sơ.</div>
+            <div className="ok-note">Đã ký và lưu vào hồ sơ.</div>
             <a className="download" href={downloadUrl}>
-              ⬇️ Tải PDF đã ký
+              Tải PDF đã ký
             </a>
             {documentId != null && onOpenDocument && (
               <button className="link-btn" onClick={() => onOpenDocument(documentId)}>
-                📁 Mở trong Hồ sơ
+                Mở trong Hồ sơ
               </button>
             )}
           </>
         )}
       </aside>
 
-      <section className="viewer">
+      <section className={`viewer${mobileStep === "sign" ? " signer-pane-hidden-mobile" : ""}`}>
+        {/* Mobile upload bar inside Step 1 so phone users pick a PDF immediately without switching tabs */}
+        <div className="signer-mobile-tabs" style={{ margin: "10px 10px 0", display: undefined }}>
+          <label style={{ gridColumn: "1 / -1", margin: 0 }}>
+            Tải PDF hoặc ZIP cần ký
+            <input type="file" accept="application/pdf,.zip" onChange={onUpload} />
+          </label>
+          {filename && (
+            <div className="muted" style={{ gridColumn: "1 / -1", padding: "0 4px" }}>
+              Đang mở: <b>{filename}</b>
+            </div>
+          )}
+          {zipFiles.length > 0 && (
+            <div className="zip-list" style={{ gridColumn: "1 / -1" }}>
+              {zipFiles.map((zf) => (
+                <button
+                  type="button"
+                  key={`m-${zf.doc_id}`}
+                  className={
+                    "zip-item" +
+                    (docId === zf.doc_id ? " active" : "") +
+                    (zf.signed ? " signed" : "")
+                  }
+                  onClick={() => pickZipFile(zf)}
+                >
+                  <span className="zip-name">
+                    {zf.signed ? "✅ " : ""}
+                    {zf.filename}
+                  </span>
+                  <span className="muted">{formatSize(zf.size)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {docId ? (
           <PdfCanvas url={api.docUrl(docId)} onSelect={setRect} />
         ) : (
-          <div className="center muted">Chưa có tài liệu. Hãy tải PDF lên.</div>
+          <div className="center muted">Chưa có tài liệu. Hãy tải PDF lên để xem và chọn vùng ký.</div>
         )}
       </section>
+
+      {/* Sticky mobile ready-state bar (<=820px only) */}
+      <div className="signer-ready-bar" aria-live="polite">
+        <div className="signer-ready-status">
+          <span className={`chip sm ${docId ? "green" : "gray"}`}>PDF {docId ? "✓" : "○"}</span>
+          <span className={`chip sm ${rect ? "green" : "gray"}`}>Vùng ký {rect ? "✓" : "○"}</span>
+          <span className={`chip sm ${certId ? "green" : "gray"}`}>Chứng thư {certId ? "✓" : "○"}</span>
+        </div>
+        {mobileStep === "doc" ? (
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setMobileStep("sign")}
+          >
+            Bước 2: Ký số →
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary"
+            disabled={!readyToSign}
+            onClick={doSign}
+          >
+            {busy ? "Đang ký…" : "Ký số ngay"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

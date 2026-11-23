@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, InvPurchase, InvPurchaseLine } from "../api";
+import { AppModal, DataView, FormGrid } from "../components/ui";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -102,20 +103,46 @@ export function PurchaseFixModal({
   const anyFlag = cur?.lines.some(lineFlag) ?? false;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal review-2col" style={{ maxWidth: 1180 }} onClick={(e) => e.stopPropagation()}>
+    <AppModal
+      open
+      onClose={onClose}
+      size="full"
+      title={
+        cur ? (
+          <span>
+            Sửa HĐ mua #{cur.id} · {cur.so_hd || "?"}{" "}
+            <span className={`chip sm ${cur.status === "posted" ? "green" : cur.status === "void" ? "gray" : "amber"}`}>
+              {cur.status === "posted" ? "Đã ghi sổ" : cur.status === "void" ? "Đã hủy" : "Nháp"}
+            </span>{" "}
+            <span className="chip gray sm">{cur.source}</span>
+          </span>
+        ) : (
+          "Sửa hóa đơn mua"
+        )
+      }
+      footer={
+        <>
+          <button type="button" onClick={onClose}>Đóng</button>
+          {cur && isDraft && (
+            <>
+              <button type="button" className="btn-sm" disabled={busy} title="Đặt lại Thành tiền = SL×ĐG cho mọi dòng" onClick={recomputeAll}>
+                🔧 Tính lại thành tiền
+              </button>
+              <button type="button" disabled={busy} onClick={saveDraft}>💾 Lưu nháp</button>
+              <button type="button" className="primary" disabled={busy} onClick={postCur}>
+                ✅ Ghi sổ lại
+              </button>
+            </>
+          )}
+        </>
+      }
+    >
+      <div className="review-2col">
         <div className="review-form">
           {!cur ? (
             <div style={{ padding: 24 }}>{err ? <div className="error">{err}</div> : "Đang tải hóa đơn…"}</div>
           ) : (
             <>
-              <h3>
-                Sửa HĐ mua #{cur.id} · {cur.so_hd || "?"}{" "}
-                <span className={`chip sm ${cur.status === "posted" ? "green" : cur.status === "void" ? "gray" : "amber"}`}>
-                  {cur.status === "posted" ? "Đã ghi sổ" : cur.status === "void" ? "Đã hủy" : "Nháp"}
-                </span>{" "}
-                <span className="chip gray sm">{cur.source}</span>
-              </h3>
               {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
 
               {cur.status === "posted" && (
@@ -131,92 +158,82 @@ export function PurchaseFixModal({
                 </div>
               )}
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+              <FormGrid cols={2} style={{ margin: "8px 0" }}>
                 <label>
                   Ngày
-                  <input value={cur.ngay} disabled={!isDraft} onChange={(e) => setCur({ ...cur, ngay: e.target.value })} />
+                  <input className="ui-input" value={cur.ngay} disabled={!isDraft} onChange={(e) => setCur({ ...cur, ngay: e.target.value })} />
                 </label>
-                <label style={{ flex: 1 }}>
+                <label>
                   Nhà cung cấp
-                  <input value={cur.ten_ban} disabled={!isDraft} onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })} />
+                  <input className="ui-input" value={cur.ten_ban} disabled={!isDraft} onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })} />
                 </label>
-                <div className="muted" style={{ alignSelf: "flex-end" }}>
-                  Tổng trước thuế HĐ: <b>{vnd(cur.tong_truoc_thue)}đ</b>
-                </div>
+              </FormGrid>
+              <div className="muted" style={{ marginBottom: 8 }}>
+                Tổng trước thuế HĐ: <b>{vnd(cur.tong_truoc_thue)}đ</b>
               </div>
 
-              <div className="table-wrap" style={{ maxHeight: "48vh", overflow: "auto" }}>
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Tên hàng</th>
-                      <th style={{ textAlign: "right" }}>SL</th>
-                      <th style={{ textAlign: "right" }}>Đơn giá</th>
-                      <th style={{ textAlign: "right" }}>Thành tiền (SL×ĐG)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cur.lines.map((ln, idx) => (
-                      <tr key={ln.id ?? idx} className={lineFlag(ln) ? "row-treo" : ""}>
-                        <td style={{ minWidth: 200, whiteSpace: "normal", wordBreak: "break-word" }}>
-                          <span className="chip green sm">{ln.item_ma_hang || "?"}</span> {ln.ten_raw}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {isDraft ? (
-                            <input
-                              style={{ width: 70, textAlign: "right" }}
-                              defaultValue={ln.so_luong}
-                              onChange={(e) => setLine(idx, { so_luong: num(e.target.value) })}
-                            />
-                          ) : (
-                            ln.so_luong
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {isDraft ? (
-                            <input
-                              style={{ width: 110, textAlign: "right" }}
-                              defaultValue={ln.don_gia}
-                              onChange={(e) => setLine(idx, { don_gia: num(e.target.value) })}
-                            />
-                          ) : (
-                            vnd(ln.don_gia)
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {vnd(ln.so_luong * ln.don_gia)}
-                          {lineFlag(ln) && (
-                            <div className="chip red sm" title="Thành tiền lưu trên hóa đơn khác SL×ĐG (lỗi parse PDF)">
-                              HĐ ghi {vnd(ln.thanh_tien)}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap" style={{ maxHeight: "48vh", overflow: "auto" }}>
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Tên hàng</th>
+                          <th style={{ textAlign: "right" }}>SL</th>
+                          <th style={{ textAlign: "right" }}>Đơn giá</th>
+                          <th style={{ textAlign: "right" }}>Thành tiền (SL×ĐG)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cur.lines.map((ln, idx) => (
+                          <tr key={ln.id ?? idx} className={lineFlag(ln) ? "row-treo" : ""}>
+                            <td style={{ minWidth: 200, whiteSpace: "normal", wordBreak: "break-word" }}>
+                              <span className="chip green sm">{ln.item_ma_hang || "?"}</span> {ln.ten_raw}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {isDraft ? (
+                                <input
+                                  style={{ width: 70, textAlign: "right" }}
+                                  defaultValue={ln.so_luong}
+                                  onChange={(e) => setLine(idx, { so_luong: num(e.target.value) })}
+                                />
+                              ) : (
+                                ln.so_luong
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {isDraft ? (
+                                <input
+                                  style={{ width: 110, textAlign: "right" }}
+                                  defaultValue={ln.don_gia}
+                                  onChange={(e) => setLine(idx, { don_gia: num(e.target.value) })}
+                                />
+                              ) : (
+                                vnd(ln.don_gia)
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {vnd(ln.so_luong * ln.don_gia)}
+                              {lineFlag(ln) && (
+                                <div className="chip red sm" title="Thành tiền lưu trên hóa đơn khác SL×ĐG (lỗi parse PDF)">
+                                  HĐ ghi {vnd(ln.thanh_tien)}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
 
               {anyFlag && isDraft && (
                 <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                   ⚠️ Có dòng thành tiền lệch SL×ĐG (lỗi parse PDF) — bấm <b>🔧 Tính lại thành tiền</b>.
                 </div>
               )}
-
-              <div className="modal-actions">
-                <button onClick={onClose}>Đóng</button>
-                {isDraft && (
-                  <>
-                    <button className="btn-sm" disabled={busy} title="Đặt lại Thành tiền = SL×ĐG cho mọi dòng" onClick={recomputeAll}>
-                      🔧 Tính lại thành tiền
-                    </button>
-                    <button disabled={busy} onClick={saveDraft}>💾 Lưu nháp</button>
-                    <button className="primary" disabled={busy} onClick={postCur}>
-                      ✅ Ghi sổ lại
-                    </button>
-                  </>
-                )}
-              </div>
             </>
           )}
         </div>
@@ -228,6 +245,6 @@ export function PurchaseFixModal({
           )}
         </div>
       </div>
-    </div>
+    </AppModal>
   );
 }

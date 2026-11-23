@@ -11,6 +11,8 @@ import {
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { CustomsDriveDossiers } from "../components/CustomsDriveDossiers";
 import { CustomsCheckManager } from "../components/CustomsCheckManager";
+import { AppModal, DataView, FormGrid, PromptDialog } from "../components/ui";
+import { openExternalSafe } from "../utils/url";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -292,6 +294,8 @@ export function CustomsDecl() {
     }
   }
 
+  const [createItemPrompt, setCreateItemPrompt] = useState<{ idx: number; label: string; suggested: string } | null>(null);
+
   async function createItemFromLine(idx: number) {
     if (!cur) return;
     const ln = cur.lines[idx];
@@ -301,10 +305,17 @@ export function CustomsDecl() {
     } catch {
       /* ignore */
     }
-    const ma = window.prompt("Mã hàng mới cho: " + ln.mo_ta, suggested);
-    if (!ma) return;
+    setCreateItemPrompt({ idx, label: ln.mo_ta, suggested });
+  }
+
+  async function confirmCreateItem(ma: string) {
+    if (!createItemPrompt || !cur) return;
+    const { idx } = createItemPrompt;
+    const ln = cur.lines[idx];
+    setCreateItemPrompt(null);
+    if (!ma.trim() || !ln) return;
     try {
-      const it = await api.invCreateItem({ ma_hang: ma, ten: ln.mo_ta, dvt: ln.dvt });
+      const it = await api.invCreateItem({ ma_hang: ma.trim(), ten: ln.mo_ta, dvt: ln.dvt });
       setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "new" });
     } catch (e) {
       setErr((e as Error).message);
@@ -363,379 +374,144 @@ export function CustomsDecl() {
         </div>
       )}
 
-      <div className="table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th>Số TK</th>
-              <th>Ngày ĐK</th>
-              <th>Loại hình</th>
-              <th>Phân luồng</th>
-              <th>Người XK</th>
-              <th style={{ textAlign: "right" }}>Trị giá</th>
-              <th style={{ textAlign: "right" }}>Thuế NK</th>
-              <th style={{ textAlign: "right" }}>VAT</th>
-              <th>Trạng thái</th>
-              <th style={{ width: 28 }}></th>
-            </tr>
-          </thead>
-          <tbody>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th>Số TK</th>
+                  <th>Ngày ĐK</th>
+                  <th>Loại hình</th>
+                  <th>Phân luồng</th>
+                  <th>Người XK</th>
+                  <th style={{ textAlign: "right" }}>Trị giá</th>
+                  <th style={{ textAlign: "right" }}>Thuế NK</th>
+                  <th style={{ textAlign: "right" }}>VAT</th>
+                  <th>Trạng thái</th>
+                  <th style={{ width: 28 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((d) => {
+                  const [lhColor, lhLabel] = loaiHinhChip(d.ma_loai_hinh);
+                  const [plColor, plLabel] = phanLuongChip(d.phan_luong);
+                  const [stColor, stLabel] = STATUS_CHIP[d.status] ?? ["gray", d.status];
+                  return (
+                    <tr key={d.id} style={{ cursor: "pointer" }} onClick={() => open(d.id)}>
+                      <td>{d.so_to_khai}</td>
+                      <td className="nowrap">{d.ngay_dang_ky}</td>
+                      <td>
+                        <span className={`chip sm ${lhColor}`}>{lhLabel}</span>
+                      </td>
+                      <td>
+                        <span className={`chip sm ${plColor}`}>{plLabel}</span>
+                      </td>
+                      <td>
+                        {d.nguoi_xk}
+                        {d.nuoc_xk ? ` (${d.nuoc_xk})` : ""}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div>
+                          {fmtCur(d.tri_gia_nt)} {d.nguyen_te}
+                        </div>
+                        <div className="muted" style={{ fontSize: "0.78rem" }}>{vnd(d.tri_gia_tinh_thue)}đ</div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>{vnd(d.tong_thue_nk)}đ</td>
+                      <td style={{ textAlign: "right" }}>{vnd(d.tong_thue_vat)}đ</td>
+                      <td>
+                        <span className={`chip sm ${stColor}`}>{stLabel}</span>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {d.status === "draft" && (
+                          <button className="btn-sm ghost ui-btn-icon" aria-label={`Xóa tờ khai ${d.so_to_khai}`} title="Xóa bản nháp" onClick={() => delOne(d.id)}>
+                            🗑
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {list.length === 0 && (
+                  <tr>
+                    <td colSpan={10}>
+                      <div className="empty">
+                        <div className="empty-ic">🛃</div>
+                        <div>Chưa có tờ khai nhập khẩu nào. Bấm "Tải tờ khai" để bắt đầu.</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
             {list.map((d) => {
               const [lhColor, lhLabel] = loaiHinhChip(d.ma_loai_hinh);
               const [plColor, plLabel] = phanLuongChip(d.phan_luong);
               const [stColor, stLabel] = STATUS_CHIP[d.status] ?? ["gray", d.status];
               return (
-                <tr key={d.id} style={{ cursor: "pointer" }} onClick={() => open(d.id)}>
-                  <td>{d.so_to_khai}</td>
-                  <td className="nowrap">{d.ngay_dang_ky}</td>
-                  <td>
-                    <span className={`chip sm ${lhColor}`}>{lhLabel}</span>
-                  </td>
-                  <td>
-                    <span className={`chip sm ${plColor}`}>{plLabel}</span>
-                  </td>
-                  <td>
-                    {d.nguoi_xk}
-                    {d.nuoc_xk ? ` (${d.nuoc_xk})` : ""}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div>
-                      {fmtCur(d.tri_gia_nt)} {d.nguyen_te}
-                    </div>
-                    <div className="muted" style={{ fontSize: "0.78rem" }}>{vnd(d.tri_gia_tinh_thue)}đ</div>
-                  </td>
-                  <td style={{ textAlign: "right" }}>{vnd(d.tong_thue_nk)}đ</td>
-                  <td style={{ textAlign: "right" }}>{vnd(d.tong_thue_vat)}đ</td>
-                  <td>
+                <article key={d.id} className="ui-mobile-card" onClick={() => open(d.id)} style={{ cursor: "pointer" }}>
+                  <div className="ui-mobile-card-head">
+                    <strong className="ui-mobile-card-title">{d.so_to_khai}</strong>
                     <span className={`chip sm ${stColor}`}>{stLabel}</span>
-                  </td>
-                  <td onClick={(e) => e.stopPropagation()}>
+                  </div>
+                  <div className="ui-mobile-card-meta">
+                    <span>{d.ngay_dang_ky}</span>
+                    <span className={`chip sm ${lhColor}`}>{lhLabel}</span>
+                    <span className={`chip sm ${plColor}`}>{plLabel}</span>
+                    <strong style={{ fontVariantNumeric: "tabular-nums" }}>{vnd(d.tri_gia_tinh_thue)}đ</strong>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {d.nguoi_xk}{d.nuoc_xk ? ` (${d.nuoc_xk})` : ""} · VAT {vnd(d.tong_thue_vat)}đ
+                  </div>
+                  <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="ui-btn-chip" onClick={() => open(d.id)}>Mở tờ khai</button>
                     {d.status === "draft" && (
-                      <button className="btn-sm ghost" title="Xóa bản nháp" onClick={() => delOne(d.id)}>
-                        🗑
-                      </button>
+                      <button type="button" className="ui-btn-icon" aria-label={`Xóa tờ khai ${d.so_to_khai}`} onClick={() => delOne(d.id)}>🗑</button>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </article>
               );
             })}
             {list.length === 0 && (
-              <tr>
-                <td colSpan={10}>
-                  <div className="empty">
-                    <div className="empty-ic">🛃</div>
-                    <div>Chưa có tờ khai nhập khẩu nào. Bấm "Tải tờ khai" để bắt đầu.</div>
-                  </div>
-                </td>
-              </tr>
+              <div className="empty">
+                <div className="empty-ic">🛃</div>
+                <div>Chưa có tờ khai nhập khẩu nào.</div>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+      />
 
-      {cur && (
-        <div className="modal-backdrop" onClick={closeCur}>
-          <div className="modal" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
-            <h3>
-              Tờ khai {cur.so_to_khai}{" "}
+      <AppModal
+        open={!!cur}
+        onClose={closeCur}
+        size="full"
+        title={
+          cur ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>Tờ khai {cur.so_to_khai}</span>
               <span className={`chip sm ${loaiHinhChip(cur.ma_loai_hinh)[0]}`}>
                 {loaiHinhChip(cur.ma_loai_hinh)[1]}
-              </span>{" "}
+              </span>
               <span className={`chip sm ${phanLuongChip(cur.phan_luong)[0]}`}>
                 {phanLuongChip(cur.phan_luong)[1]}
-              </span>{" "}
+              </span>
               <span className={`chip sm ${(STATUS_CHIP[cur.status] ?? ["gray"])[0]}`}>
                 {(STATUS_CHIP[cur.status] ?? ["", cur.status])[1]}
               </span>
-              {cur.doc_url && (
-                <a
-                  className="btn-sm"
-                  style={{ marginLeft: 8 }}
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.open(cur.doc_url, "_blank");
-                  }}
-                >
-                  📄 File tờ khai gốc
-                </a>
-              )}
-            </h3>
-            {cur.status === "posted" && (
-              <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span>
-                  🔒 <b>Tờ khai đã ghi sổ</b> nên các ô đang bị khóa. Muốn sửa lại, bấm <b>Hủy ghi sổ</b> → sửa →
-                  Ghi sổ lại (tồn kho tự tính lại).
-                </span>
-                <button className="btn-sm danger" disabled={busy} onClick={voidCur}>
-                  ↩️ Hủy ghi sổ để sửa
-                </button>
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px 16px", margin: "8px 0" }}>
-              <Info label="Ngày đăng ký" value={cur.ngay_dang_ky} />
-              <Info label="Cơ quan HQ" value={cur.co_quan_hq} />
-              <Info label="Người XK" value={cur.nguoi_xk + (cur.nuoc_xk ? ` (${cur.nuoc_xk})` : "")} />
-              <Info label="Số vận đơn" value={cur.so_van_don} />
-              <Info label="Số HĐ" value={cur.so_hoa_don + (cur.ngay_hoa_don ? ` · ${cur.ngay_hoa_don}` : "")} />
-              <Info label="PTTT" value={cur.phuong_thuc_tt} />
-              <Info label="Incoterm" value={cur.incoterm} />
-              <Info label="Nguyên tệ" value={cur.nguyen_te} />
-              <Info label="Trị giá NT" value={`${fmtCur(cur.tri_gia_nt)} ${cur.nguyen_te}`} />
-              <Info label="Phí ship NT" value={`${fmtCur(cur.phi_ship_nt)} ${cur.nguyen_te}`} />
-              <Info label="Tỉ giá" value={fmtCur(cur.ti_gia)} />
-              <Info label="Trị giá tính thuế" value={`${vnd(cur.tri_gia_tinh_thue)}đ`} />
-            </div>
-
-            <div className="table-wrap" style={{ marginTop: 10, maxHeight: "36vh", overflow: "auto" }}>
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Mã HS</th>
-                    <th>Mô tả</th>
-                    <th>SL</th>
-                    <th style={{ textAlign: "right" }}>Trị giá tính thuế</th>
-                    <th style={{ textAlign: "right" }}>Thuế NK</th>
-                    <th style={{ textAlign: "right" }}>VAT</th>
-                    <th>Kho</th>
-                    <th style={{ minWidth: 220 }}>Mặt hàng tồn kho</th>
-                    <th style={{ textAlign: "right" }}>Giá vốn</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cur.lines.map((ln, idx) => (
-                    <tr key={ln.id}>
-                      <td className="muted">{ln.stt}</td>
-                      <td>{ln.ma_hs}</td>
-                      <td>{ln.mo_ta}</td>
-                      <td className="nowrap">
-                        {ln.so_luong} {ln.dvt}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(ln.tri_gia_tinh_thue)}đ</td>
-                      <td style={{ textAlign: "right" }}>
-                        {ln.thue_suat_nk}% · {vnd(ln.tien_thue_nk)}đ
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {ln.thue_suat_vat}% · {vnd(ln.tien_thue_vat)}đ
-                      </td>
-                      <td>
-                        <select
-                          value={ln.warehouse_id ?? ""}
-                          disabled={cur.status !== "draft"}
-                          onChange={(e) => setLine(idx, { warehouse_id: Number(e.target.value) || null })}
-                        >
-                          <option value="">—</option>
-                          {whs.map((w) => (
-                            <option key={w.id} value={w.id}>
-                              {w.code}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        {ln.item_id ? (
-                          <span>
-                            <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
-                              {matchLabel(ln.match_kind)}
-                            </span>{" "}
-                            {ln.item_ma_hang || `#${ln.item_id}`}
-                            {cur.status === "draft" && (
-                              <button
-                                className="btn-sm ghost"
-                                onClick={() => setLine(idx, { item_id: null, item_ma_hang: "", match_kind: "none" })}
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </span>
-                        ) : cur.status === "draft" ? (
-                          <div>
-                            <input
-                              placeholder="tìm mã/tên…"
-                              value={itemQuery?.line === idx ? itemQuery.q : ""}
-                              onChange={(e) => searchItems(idx, e.target.value)}
-                            />
-                            {itemQuery?.line === idx &&
-                              itemQuery.results.slice(0, 5).map((it) => (
-                                <div key={it.id}>
-                                  <button
-                                    className="btn-sm ghost"
-                                    onClick={() => {
-                                      setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual" });
-                                      setItemQuery(null);
-                                    }}
-                                  >
-                                    {it.ma_hang} · {it.ten.slice(0, 45)}
-                                  </button>
-                                </div>
-                              ))}
-                            {ln.suggestions.length > 0 && (
-                              <div className="muted" style={{ margin: "3px 0 1px", fontSize: "0.75rem" }}>
-                                Gợi ý khớp:
-                              </div>
-                            )}
-                            {ln.suggestions.map((s) => (
-                              <div key={s.item_id} style={{ marginBottom: 3 }}>
-                                <button
-                                  className="btn-sm ghost"
-                                  style={{ textAlign: "left", whiteSpace: "normal", height: "auto" }}
-                                  title={s.reason || ""}
-                                  onClick={() => setLine(idx, { item_id: s.item_id, item_ma_hang: s.ma_hang, item_ten: s.ten, match_kind: "manual" })}
-                                >
-                                  {s.reason && (
-                                    <span
-                                      className={"chip sm " + ((s.score ?? 0) >= 0.99 ? "green" : (s.score ?? 0) >= 0.7 ? "amber" : "gray")}
-                                      style={{ marginRight: 5 }}
-                                    >
-                                      {s.reason}
-                                    </span>
-                                  )}
-                                  <b>{s.ma_hang}</b> · {s.ten}
-                                </button>
-                              </div>
-                            ))}
-                            <button className="btn-sm" onClick={() => createItemFromLine(idx)}>
-                              ＋ Tạo mã mới
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="chip red sm">chưa khớp</span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{cur.status === "posted" ? `${vnd(ln.gia_von)}đ` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <h4 style={{ marginTop: 14, marginBottom: 6 }}>💰 Chi phí tính vào giá vốn</h4>
-            <div className="table-wrap">
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>Loại</th>
-                    <th>Tên</th>
-                    <th style={{ textAlign: "right" }}>Số tiền</th>
-                    <th>Ghi chú</th>
-                    <th style={{ width: 70 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cur.costs.map((c, idx) => {
-                    const editable = cur.status === "draft" && !c.doc_url;
-                    return (
-                      <tr key={c.id}>
-                        <td>
-                          {editable ? (
-                            <select value={c.loai} onChange={(e) => setCost(idx, { loai: e.target.value })}>
-                              <option value="le_phi_hq">Lệ phí HQ</option>
-                              <option value="phi_ngan_hang">Phí ngân hàng</option>
-                              <option value="phi_ship">Phí vận chuyển</option>
-                              <option value="phi_khac">Phí khác</option>
-                            </select>
-                          ) : (
-                            COST_LOAI_LABEL[c.loai] ?? c.loai
-                          )}
-                        </td>
-                        <td>
-                          {editable ? (
-                            <input value={c.ten} onChange={(e) => setCost(idx, { ten: e.target.value })} />
-                          ) : (
-                            c.ten
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {editable ? (
-                            <input
-                              style={{ width: 110, textAlign: "right" }}
-                              value={c.so_tien}
-                              onChange={(e) => setCost(idx, { so_tien: vnNum(e.target.value) })}
-                            />
-                          ) : (
-                            `${vnd(c.so_tien)}đ`
-                          )}
-                        </td>
-                        <td>
-                          {editable ? (
-                            <input value={c.ghi_chu} onChange={(e) => setCost(idx, { ghi_chu: e.target.value })} />
-                          ) : (
-                            c.ghi_chu
-                          )}
-                        </td>
-                        <td>
-                          {c.doc_url && (
-                            <a
-                              className="btn-sm ghost"
-                              href="#"
-                              title="Tải chứng từ"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                window.open(c.doc_url, "_blank");
-                              }}
-                            >
-                              📎
-                            </a>
-                          )}
-                          {editable && (
-                            <button className="btn-sm ghost" onClick={() => removeCost(idx)}>
-                              🗑
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {cur.costs.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="muted">
-                        Chưa có chi phí nào.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {cur.status === "draft" && (
-              <div className="tb-group" style={{ margin: "6px 0" }}>
-                <button className="btn-sm" onClick={addCostRow}>
-                  ＋ Thêm phí
-                </button>
-                <input
-                  ref={attachRef}
-                  type="file"
-                  accept=".pdf"
-                  style={{ display: "none" }}
-                  onChange={(e) => attach(e.target.files)}
-                />
-                <button className="btn-sm" disabled={attachBusy} onClick={() => attachRef.current?.click()}>
-                  {attachBusy ? "Đang xử lý…" : "📎 Đính kèm chứng từ (PDF)"}
-                </button>
-              </div>
-            )}
-            {parseInfo && <div className="warn-banner">{parseInfoMsg(parseInfo)}</div>}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 24, marginTop: 8, fontSize: "0.9rem", flexWrap: "wrap" }}>
-              <span>
-                Trị giá tính thuế: <b>{vnd(cur.tri_gia_tinh_thue)}đ</b>
-              </span>
-              <span>
-                Thuế NK: <b>{vnd(cur.tong_thue_nk)}đ</b>
-              </span>
-              <span>
-                Σ Chi phí: <b>{vnd(cur.tong_costs)}đ</b>
-              </span>
-              <span style={{ fontSize: "1.05rem" }}>
-                Tổng giá vốn: <b style={{ color: "var(--primary)" }}>{vnd(tongGiaVon)}đ</b>
-              </span>
-            </div>
-            <div className="muted" style={{ textAlign: "right", fontSize: "0.8rem" }}>
-              VAT hàng NK (khấu trừ, không vào giá vốn): {vnd(cur.tong_thue_vat)}đ
-            </div>
-
-            <div className="modal-actions">
+            </span>
+          ) : (
+            "Chi tiết tờ khai"
+          )
+        }
+        footer={
+          cur ? (
+            <>
               {cur.status === "draft" && (
                 <>
                   <button className="btn-sm danger" onClick={deleteCur}>
@@ -758,10 +534,316 @@ export function CustomsDecl() {
                 </button>
               )}
               <button onClick={closeCur}>Đóng</button>
+            </>
+          ) : undefined
+        }
+      >
+        {cur && (
+          <>
+            {cur.doc_url && (
+              <div style={{ marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className="btn-sm ui-btn-chip"
+                  onClick={() => openExternalSafe(cur.doc_url)}
+                >
+                  📄 File tờ khai gốc
+                </button>
+              </div>
+            )}
+            {cur.status === "posted" && (
+              <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span>
+                  🔒 <b>Tờ khai đã ghi sổ</b> nên các ô đang bị khóa. Muốn sửa lại, bấm <b>Hủy ghi sổ</b> → sửa →
+                  Ghi sổ lại (tồn kho tự tính lại).
+                </span>
+                <button className="btn-sm danger" disabled={busy} onClick={voidCur}>
+                  ↩️ Hủy ghi sổ để sửa
+                </button>
+              </div>
+            )}
+
+            <FormGrid cols={4} style={{ margin: "8px 0" }}>
+              <Info label="Ngày đăng ký" value={cur.ngay_dang_ky} />
+              <Info label="Cơ quan HQ" value={cur.co_quan_hq} />
+              <Info label="Người XK" value={cur.nguoi_xk + (cur.nuoc_xk ? ` (${cur.nuoc_xk})` : "")} />
+              <Info label="Số vận đơn" value={cur.so_van_don} />
+              <Info label="Số HĐ" value={cur.so_hoa_don + (cur.ngay_hoa_don ? ` · ${cur.ngay_hoa_don}` : "")} />
+              <Info label="PTTT" value={cur.phuong_thuc_tt} />
+              <Info label="Incoterm" value={cur.incoterm} />
+              <Info label="Nguyên tệ" value={cur.nguyen_te} />
+              <Info label="Trị giá NT" value={`${fmtCur(cur.tri_gia_nt)} ${cur.nguyen_te}`} />
+              <Info label="Phí ship NT" value={`${fmtCur(cur.phi_ship_nt)} ${cur.nguyen_te}`} />
+              <Info label="Tỉ giá" value={fmtCur(cur.ti_gia)} />
+              <Info label="Trị giá tính thuế" value={`${vnd(cur.tri_gia_tinh_thue)}đ`} />
+            </FormGrid>
+
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap" style={{ marginTop: 10, maxHeight: "36vh", overflow: "auto" }}>
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Mã HS</th>
+                        <th>Mô tả</th>
+                        <th>SL</th>
+                        <th style={{ textAlign: "right" }}>Trị giá tính thuế</th>
+                        <th style={{ textAlign: "right" }}>Thuế NK</th>
+                        <th style={{ textAlign: "right" }}>VAT</th>
+                        <th>Kho</th>
+                        <th style={{ minWidth: 220 }}>Mặt hàng tồn kho</th>
+                        <th style={{ textAlign: "right" }}>Giá vốn</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cur.lines.map((ln, idx) => (
+                        <tr key={ln.id}>
+                          <td className="muted">{ln.stt}</td>
+                          <td>{ln.ma_hs}</td>
+                          <td>{ln.mo_ta}</td>
+                          <td className="nowrap">
+                            {ln.so_luong} {ln.dvt}
+                          </td>
+                          <td style={{ textAlign: "right" }}>{vnd(ln.tri_gia_tinh_thue)}đ</td>
+                          <td style={{ textAlign: "right" }}>
+                            {ln.thue_suat_nk}% · {vnd(ln.tien_thue_nk)}đ
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {ln.thue_suat_vat}% · {vnd(ln.tien_thue_vat)}đ
+                          </td>
+                          <td>
+                            <select
+                              value={ln.warehouse_id ?? ""}
+                              disabled={cur.status !== "draft"}
+                              onChange={(e) => setLine(idx, { warehouse_id: Number(e.target.value) || null })}
+                            >
+                              <option value="">—</option>
+                              {whs.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                  {w.code}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            {ln.item_id ? (
+                              <span>
+                                <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
+                                  {matchLabel(ln.match_kind)}
+                                </span>{" "}
+                                {ln.item_ma_hang || `#${ln.item_id}`}
+                                {cur.status === "draft" && (
+                                  <button
+                                    className="btn-sm ghost"
+                                    onClick={() => setLine(idx, { item_id: null, item_ma_hang: "", match_kind: "none" })}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </span>
+                            ) : cur.status === "draft" ? (
+                              <div>
+                                <input
+                                  placeholder="tìm mã/tên…"
+                                  value={itemQuery?.line === idx ? itemQuery.q : ""}
+                                  onChange={(e) => searchItems(idx, e.target.value)}
+                                />
+                                {itemQuery?.line === idx &&
+                                  itemQuery.results.slice(0, 5).map((it) => (
+                                    <div key={it.id}>
+                                      <button
+                                        className="btn-sm ghost"
+                                        onClick={() => {
+                                          setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual" });
+                                          setItemQuery(null);
+                                        }}
+                                      >
+                                        {it.ma_hang} · {it.ten.slice(0, 45)}
+                                      </button>
+                                    </div>
+                                  ))}
+                                {ln.suggestions.length > 0 && (
+                                  <div className="muted" style={{ margin: "3px 0 1px", fontSize: "0.75rem" }}>
+                                    Gợi ý khớp:
+                                  </div>
+                                )}
+                                {ln.suggestions.map((s) => (
+                                  <div key={s.item_id} style={{ marginBottom: 3 }}>
+                                    <button
+                                      className="btn-sm ghost"
+                                      style={{ textAlign: "left", whiteSpace: "normal", height: "auto" }}
+                                      title={s.reason || ""}
+                                      onClick={() => setLine(idx, { item_id: s.item_id, item_ma_hang: s.ma_hang, item_ten: s.ten, match_kind: "manual" })}
+                                    >
+                                      {s.reason && (
+                                        <span
+                                          className={"chip sm " + ((s.score ?? 0) >= 0.99 ? "green" : (s.score ?? 0) >= 0.7 ? "amber" : "gray")}
+                                          style={{ marginRight: 5 }}
+                                        >
+                                          {s.reason}
+                                        </span>
+                                      )}
+                                      <b>{s.ma_hang}</b> · {s.ten}
+                                    </button>
+                                  </div>
+                                ))}
+                                <button className="btn-sm" onClick={() => createItemFromLine(idx)}>
+                                  ＋ Tạo mã mới
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="chip red sm">chưa khớp</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right" }}>{cur.status === "posted" ? `${vnd(ln.gia_von)}đ` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
+
+            <h4 style={{ marginTop: 14, marginBottom: 6 }}>💰 Chi phí tính vào giá vốn</h4>
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap">
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>Loại</th>
+                        <th>Tên</th>
+                        <th style={{ textAlign: "right" }}>Số tiền</th>
+                        <th>Ghi chú</th>
+                        <th style={{ width: 70 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cur.costs.map((c, idx) => {
+                        const editable = cur.status === "draft" && !c.doc_url;
+                        return (
+                          <tr key={c.id}>
+                            <td>
+                              {editable ? (
+                                <select value={c.loai} onChange={(e) => setCost(idx, { loai: e.target.value })}>
+                                  <option value="le_phi_hq">Lệ phí HQ</option>
+                                  <option value="phi_ngan_hang">Phí ngân hàng</option>
+                                  <option value="phi_ship">Phí vận chuyển</option>
+                                  <option value="phi_khac">Phí khác</option>
+                                </select>
+                              ) : (
+                                COST_LOAI_LABEL[c.loai] ?? c.loai
+                              )}
+                            </td>
+                            <td>
+                              {editable ? (
+                                <input value={c.ten} onChange={(e) => setCost(idx, { ten: e.target.value })} />
+                              ) : (
+                                c.ten
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {editable ? (
+                                <input
+                                  style={{ width: 110, textAlign: "right" }}
+                                  value={c.so_tien}
+                                  onChange={(e) => setCost(idx, { so_tien: vnNum(e.target.value) })}
+                                />
+                              ) : (
+                                `${vnd(c.so_tien)}đ`
+                              )}
+                            </td>
+                            <td>
+                              {editable ? (
+                                <input value={c.ghi_chu} onChange={(e) => setCost(idx, { ghi_chu: e.target.value })} />
+                              ) : (
+                                c.ghi_chu
+                              )}
+                            </td>
+                            <td>
+                              {c.doc_url && (
+                                <button
+                                  type="button"
+                                  className="btn-sm ghost ui-btn-icon"
+                                  title="Tải chứng từ"
+                                  aria-label="Tải chứng từ"
+                                  onClick={() => openExternalSafe(c.doc_url)}
+                                >
+                                  📎
+                                </button>
+                              )}
+                              {editable && (
+                                <button type="button" className="btn-sm ghost ui-btn-icon" aria-label="Xóa chi phí" onClick={() => removeCost(idx)}>
+                                  🗑
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {cur.costs.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="muted">
+                            Chưa có chi phí nào.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
+            {cur.status === "draft" && (
+              <div className="tb-group" style={{ margin: "6px 0" }}>
+                <button className="btn-sm" onClick={addCostRow}>
+                  ＋ Thêm phí
+                </button>
+                <input
+                  ref={attachRef}
+                  type="file"
+                  accept=".pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => attach(e.target.files)}
+                />
+                <button className="btn-sm" disabled={attachBusy} onClick={() => attachRef.current?.click()}>
+                  {attachBusy ? "Đang xử lý…" : "📎 Đính kèm chứng từ (PDF)"}
+                </button>
+              </div>
+            )}
+            {parseInfo && <div className="warn-banner">{parseInfoMsg(parseInfo)}</div>}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 20, marginTop: 8, fontSize: "0.9rem", flexWrap: "wrap" }}>
+              <span>
+                Trị giá tính thuế: <b>{vnd(cur.tri_gia_tinh_thue)}đ</b>
+              </span>
+              <span>
+                Thuế NK: <b>{vnd(cur.tong_thue_nk)}đ</b>
+              </span>
+              <span>
+                Σ Chi phí: <b>{vnd(cur.tong_costs)}đ</b>
+              </span>
+              <span style={{ fontSize: "1.05rem" }}>
+                Tổng giá vốn: <b style={{ color: "var(--primary)" }}>{vnd(tongGiaVon)}đ</b>
+              </span>
             </div>
-          </div>
-        </div>
-      )}
+            <div className="muted" style={{ textAlign: "right", fontSize: "0.8rem" }}>
+              VAT hàng NK (khấu trừ, không vào giá vốn): {vnd(cur.tong_thue_vat)}đ
+            </div>
+          </>
+        )}
+      </AppModal>
+
+      <PromptDialog
+        open={!!createItemPrompt}
+        title="Tạo mã hàng mới"
+        label={createItemPrompt ? `Mã hàng mới cho: ${createItemPrompt.label}` : "Mã hàng mới"}
+        defaultValue={createItemPrompt?.suggested || ""}
+        onConfirm={confirmCreateItem}
+        onCancel={() => setCreateItemPrompt(null)}
+      />
     </div>
   );
 }

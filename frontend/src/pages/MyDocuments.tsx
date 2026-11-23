@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, DOC_TYPES, type CustomerInvoice, type DocRecord } from "../api";
+import { DataView, ResponsiveTabs } from "../components/ui";
 import { copyText } from "../util";
 
 export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void }) {
@@ -59,10 +60,14 @@ export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void })
         <button onClick={load} disabled={loading}>{loading ? "Đang tải..." : "Áp dụng"}</button>
       </div>
 
-      <div className="portal-tabs" role="tablist">
-        <button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>Hóa đơn <span>{invoices.length}</span></button>
-        <button className={tab === "documents" ? "active" : ""} onClick={() => setTab("documents")}>Hồ sơ <span>{shownDocs.length}</span></button>
-      </div>
+      <ResponsiveTabs
+        tabs={[
+          { id: "invoices", label: "Hóa đơn", badge: invoices.length },
+          { id: "documents", label: "Hồ sơ", badge: shownDocs.length },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as "invoices" | "documents")}
+      />
       {err && <div className="error">{err}</div>}
 
       {tab === "invoices" ? (
@@ -77,38 +82,73 @@ export function MyDocuments({ onVerify }: { onVerify: (docPk: number) => void })
               </div>
               <div className="invoice-ticket-total"><span>Tổng thanh toán</span><strong>{inv.total_payment.toLocaleString("vi-VN")} đ</strong></div>
               <div className="invoice-ticket-actions">
-                {inv.pdf_ready ? <a href={api.myInvoiceFileUrl(inv.id, "pdf")}>PDF</a> : <span>PDF</span>}
-                {inv.xml_ready ? <a href={api.myInvoiceFileUrl(inv.id, "xml")}>XML</a> : <span>XML</span>}
+                {inv.pdf_ready ? <a className="ui-btn-chip" href={api.myInvoiceFileUrl(inv.id, "pdf")}>PDF</a> : <span>PDF</span>}
+                {inv.xml_ready ? <a className="ui-btn-chip" href={api.myInvoiceFileUrl(inv.id, "xml")}>XML</a> : <span>XML</span>}
               </div>
             </article>
           ))}
           {!loading && invoices.length === 0 && <div className="portal-empty">Chưa có hóa đơn nào khớp tài khoản của bạn.</div>}
         </div>
       ) : (
-        <div className="table-wrap">
-          <table className="dt">
-            <thead><tr><th>Tên file</th><th>Loại</th><th className="col-hide-sm">Người ký</th><th className="col-hide-sm">Thời gian</th><th className="col-act"></th></tr></thead>
-            <tbody>
+        <DataView
+          mobileMode="card"
+          desktop={
+            <div className="table-wrap">
+              <table className="dt">
+                <thead><tr><th>Tên file</th><th>Loại</th><th className="col-hide-sm">Người ký</th><th className="col-hide-sm">Thời gian</th><th className="col-act"></th></tr></thead>
+                <tbody>
+                  {shownDocs.map((d) => {
+                    const k = d.doc_type || "";
+                    const canVerify = !d.filename.toLowerCase().endsWith(".docx") && !d.filename.toLowerCase().endsWith(".md");
+                    return <tr key={d.id}>
+                      <td className="fname"><span className="ft">{d.filename}</span>{d.signed_upload_name && <span className="chips"><span className="chip indigo sm">đã ký</span></span>}</td>
+                      <td><span className={"badge tb-" + (k || "khac")}>{DOC_TYPES[k]}</span></td>
+                      <td className="muted col-hide-sm">{d.signer_name}</td>
+                      <td className="muted col-hide-sm nowrap">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
+                      <td className="col-act"><div className="row-actions">
+                        <a className="ui-btn-chip" href={d.view_url || api.documentViewUrl(d.id)} target="_blank" rel="noopener noreferrer" title="Xem trước trực tiếp">Xem</a>
+                        <a className="ui-btn-chip" href={d.download_url} title="Tải xuống">Tải</a>
+                        <button className="ui-btn-chip" onClick={() => share(d.id, d.filename)} title="Chia sẻ">Link</button>
+                        {canVerify && <button className="ui-btn-chip" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">Kiểm tra</button>}
+                        {d.signed_upload_name && <a className="ui-btn-chip" href={api.signedFileUrl(d.id, true)} target="_blank" rel="noopener noreferrer">Bản ký</a>}
+                      </div></td>
+                    </tr>;
+                  })}
+                  {!loading && shownDocs.length === 0 && <tr><td colSpan={5}><div className="portal-empty">Chưa có hồ sơ nào trong phạm vi đã lọc.</div></td></tr>}
+                </tbody>
+              </table>
+            </div>
+          }
+          mobileCards={
+            <div className="ui-mobile-card-list">
               {shownDocs.map((d) => {
                 const k = d.doc_type || "";
-                return <tr key={d.id}>
-                  <td className="fname"><span className="ft">{d.filename}</span>{d.signed_upload_name && <span className="chips"><span className="chip indigo sm">đã ký</span></span>}</td>
-                  <td><span className={"badge tb-" + (k || "khac")}>{DOC_TYPES[k]}</span></td>
-                  <td className="muted col-hide-sm">{d.signer_name}</td>
-                  <td className="muted col-hide-sm nowrap">{new Date(d.created_at).toLocaleString("vi-VN")}</td>
-                  <td className="col-act"><div className="row-actions">
-                    <a className="iact" href={d.view_url || api.documentViewUrl(d.id)} target="_blank" rel="noreferrer" title="Xem trước trực tiếp">Xem</a>
-                    <a className="iact" href={d.download_url} title="Tải xuống">Tải</a>
-                    <button className="iact" onClick={() => share(d.id, d.filename)} title="Chia sẻ">Link</button>
-                    {!d.filename.toLowerCase().endsWith(".docx") && !d.filename.toLowerCase().endsWith(".md") && <button className="iact" onClick={() => onVerify(d.id)} title="Kiểm tra chữ ký">Kiểm tra</button>}
-                    {d.signed_upload_name && <a className="iact" href={api.signedFileUrl(d.id, true)} target="_blank" rel="noreferrer">Bản ký</a>}
-                  </div></td>
-                </tr>;
+                const canVerify = !d.filename.toLowerCase().endsWith(".docx") && !d.filename.toLowerCase().endsWith(".md");
+                return (
+                  <article className="ui-mobile-card" key={d.id}>
+                    <div className="ui-mobile-card-head">
+                      <strong className="ui-mobile-card-title">{d.filename}</strong>
+                      <span className={"badge tb-" + (k || "khac")}>{DOC_TYPES[k]}</span>
+                    </div>
+                    <div className="ui-mobile-card-meta">
+                      <span>{d.signer_name || "INUT"}</span>
+                      <span>{new Date(d.created_at).toLocaleString("vi-VN")}</span>
+                      {d.signed_upload_name && <span className="chip indigo sm">đã ký</span>}
+                    </div>
+                    <div className="ui-mobile-card-actions">
+                      <a className="ui-btn-chip" href={d.view_url || api.documentViewUrl(d.id)} target="_blank" rel="noopener noreferrer">Xem</a>
+                      <a className="ui-btn-chip" href={d.download_url}>Tải</a>
+                      <button className="ui-btn-chip" onClick={() => share(d.id, d.filename)}>Link</button>
+                      {canVerify && <button className="ui-btn-chip" onClick={() => onVerify(d.id)}>Kiểm tra</button>}
+                      {d.signed_upload_name && <a className="ui-btn-chip" href={api.signedFileUrl(d.id, true)} target="_blank" rel="noopener noreferrer">Bản ký</a>}
+                    </div>
+                  </article>
+                );
               })}
-              {!loading && shownDocs.length === 0 && <tr><td colSpan={5}><div className="portal-empty">Chưa có hồ sơ nào trong phạm vi đã lọc.</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
+              {!loading && shownDocs.length === 0 && <div className="portal-empty">Chưa có hồ sơ nào trong phạm vi đã lọc.</div>}
+            </div>
+          }
+        />
       )}
     </div>
   );

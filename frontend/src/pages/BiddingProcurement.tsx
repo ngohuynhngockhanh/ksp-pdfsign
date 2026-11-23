@@ -18,6 +18,14 @@ import {
   type BiddingDossierFileReviewItem,
   type BiddingDossierItemReviewItem,
 } from "../api";
+import {
+  AppModal,
+  DataView,
+  FormGrid,
+  PromptDialog,
+  ResponsiveTabs,
+} from "../components/ui";
+import { openExternalSafe, safeHttpUrl } from "../utils/url";
 
 // ─── Helpers: Format tiền tệ, ngày giờ, countdown ───────────────────────────
 function formatVnd(val?: number | null): string {
@@ -101,21 +109,21 @@ function getDeadlineMeta(deadlineStr?: string | null): {
 
 // Map lĩnh vực sang tên và badge style
 const FIELD_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  HH: { label: "Hàng hóa", color: "#0f5132", bg: "#d1e7dd" },
-  "Hàng hóa": { label: "Hàng hóa", color: "#0f5132", bg: "#d1e7dd" },
-  XL: { label: "Xây lắp", color: "#664d03", bg: "#fff3cd" },
-  "Xây lắp": { label: "Xây lắp", color: "#664d03", bg: "#fff3cd" },
-  TV: { label: "Tư vấn", color: "#055160", bg: "#cff4fc" },
-  "Tư vấn": { label: "Tư vấn", color: "#055160", bg: "#cff4fc" },
-  PTV: { label: "Phi tư vấn", color: "#491217", bg: "#f8d7da" },
-  "Phi tư vấn": { label: "Phi tư vấn", color: "#491217", bg: "#f8d7da" },
-  HHOP: { label: "Hỗn hợp", color: "#383d41", bg: "#e2e3e5" },
-  "Hỗn hợp": { label: "Hỗn hợp", color: "#383d41", bg: "#e2e3e5" },
+  HH: { label: "Hàng hóa", color: "var(--primary-dark)", bg: "var(--primary-soft)" },
+  "Hàng hóa": { label: "Hàng hóa", color: "var(--primary-dark)", bg: "var(--primary-soft)" },
+  XL: { label: "Xây lắp", color: "color-mix(in srgb, var(--amber) 74%, var(--ink))", bg: "color-mix(in srgb, var(--gold) 18%, var(--panel))" },
+  "Xây lắp": { label: "Xây lắp", color: "color-mix(in srgb, var(--amber) 74%, var(--ink))", bg: "color-mix(in srgb, var(--gold) 18%, var(--panel))" },
+  TV: { label: "Tư vấn", color: "var(--ink)", bg: "var(--mint, var(--primary-soft))" },
+  "Tư vấn": { label: "Tư vấn", color: "var(--ink)", bg: "var(--mint, var(--primary-soft))" },
+  PTV: { label: "Phi tư vấn", color: "color-mix(in srgb, var(--red) 82%, var(--ink))", bg: "color-mix(in srgb, var(--coral) 15%, var(--panel))" },
+  "Phi tư vấn": { label: "Phi tư vấn", color: "color-mix(in srgb, var(--red) 82%, var(--ink))", bg: "color-mix(in srgb, var(--coral) 15%, var(--panel))" },
+  HHOP: { label: "Hỗn hợp", color: "var(--ink-2, var(--text))", bg: "var(--surface-subtle, var(--paper))" },
+  "Hỗn hợp": { label: "Hỗn hợp", color: "var(--ink-2, var(--text))", bg: "var(--surface-subtle, var(--paper))" },
 };
 
 function getFieldBadge(field?: string) {
-  if (!field) return { label: "Khác", color: "#495057", bg: "#e9ecef" };
-  return FIELD_MAP[field] || { label: field, color: "#145846", bg: "#e7f2ed" };
+  if (!field) return { label: "Khác", color: "var(--ink-2, var(--text))", bg: "var(--surface-subtle, var(--paper))" };
+  return FIELD_MAP[field] || { label: field, color: "var(--primary-dark)", bg: "var(--primary-soft)" };
 }
 
 // Pipeline status definitions
@@ -203,26 +211,38 @@ function WinRateProgressBar({
   // Gradient và màu sắc theo mức độ thắng thầu
   const isHigh = percent >= 60;
   const isMid = percent >= 30;
-  const badgeColor = isHigh ? "#065f46" : isMid ? "#92400e" : "#991b1b";
-  const badgeBg = isHigh ? "#d1fae5" : isMid ? "#fef3c7" : "#fee2e2";
-  const badgeBorder = isHigh ? "#a7f3d0" : isMid ? "#fde68a" : "#fecaca";
-  const barGradient = isHigh
-    ? "linear-gradient(90deg, #10b981 0%, #059669 100%)"
+  const badgeColor = isHigh
+    ? "color-mix(in srgb, var(--green) 76%, var(--ink))"
     : isMid
-    ? "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)"
-    : "linear-gradient(90deg, #f87171 0%, #dc2626 100%)";
+    ? "color-mix(in srgb, var(--amber) 74%, var(--ink))"
+    : "color-mix(in srgb, var(--red) 82%, var(--ink))";
+  const badgeBg = isHigh
+    ? "color-mix(in srgb, var(--green) 14%, var(--panel))"
+    : isMid
+    ? "color-mix(in srgb, var(--gold) 18%, var(--panel))"
+    : "color-mix(in srgb, var(--red) 12%, var(--panel))";
+  const badgeBorder = isHigh
+    ? "color-mix(in srgb, var(--green) 36%, var(--border))"
+    : isMid
+    ? "color-mix(in srgb, var(--gold) 45%, var(--border))"
+    : "color-mix(in srgb, var(--red) 35%, var(--border))";
+  const barGradient = isHigh
+    ? "linear-gradient(90deg, var(--green) 0%, var(--primary) 100%)"
+    : isMid
+    ? "linear-gradient(90deg, var(--gold) 0%, var(--amber) 100%)"
+    : "linear-gradient(90deg, var(--coral) 0%, var(--red) 100%)";
 
   const height = size === "lg" ? "12px" : size === "sm" ? "7px" : "9px";
 
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "5px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: size === "lg" ? "13px" : "11px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: size === "lg" ? "13px" : "11px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style={{ fontWeight: 700, color: "#475569" }}>
-            🏆 Trúng: <strong style={{ color: "#0f172a" }}>{won}</strong> / {total} gói
+          <span style={{ fontWeight: 700, color: "var(--ink-2, var(--text))" }}>
+            🏆 Trúng: <strong style={{ color: "var(--ink)" }}>{won}</strong> / {total} gói
           </span>
           {lost > 0 && (
-            <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+            <span style={{ fontSize: "10px", color: "var(--muted)" }}>
               ({lost} trượt)
             </span>
           )}
@@ -252,7 +272,7 @@ function WinRateProgressBar({
         style={{
           width: "100%",
           height,
-          background: "#e2e8f0",
+          background: "var(--border)",
           borderRadius: "999px",
           overflow: "hidden",
           position: "relative",
@@ -414,7 +434,8 @@ export function BiddingProcurement() {
   const fetchDossierReviews = async (selectFirst = true) => {
     setDossierLoading(true);
     try {
-      const list = await api.bidding.listDossierReviews();
+      const rawList = await api.bidding.listDossierReviews();
+      const list = Array.isArray(rawList) ? rawList : ((rawList as any)?.items || []);
       setDossierReviews(list);
       if (selectFirst && list.length > 0) {
         const detail = await api.bidding.getDossierReview(list[0].id);
@@ -504,6 +525,7 @@ export function BiddingProcurement() {
     note: string;
     existingId?: number;
   } | null>(null);
+  const [notePromptBookmark, setNotePromptBookmark] = useState<BiddingBookmarkItem | null>(null);
 
   // Watchlist Create/Edit Modal State
   const [watchlistModalRule, setWatchlistModalRule] = useState<Partial<BiddingWatchlistItem> | null>(null);
@@ -684,8 +706,8 @@ export function BiddingProcurement() {
     } catch (e) {
       console.warn("Clipboard copy error:", e);
     }
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(tender?.source_url || "https://muasamcong.mpi.gov.vn")}&text=${encodeURIComponent(tgText)}`;
-    window.open(shareUrl, "_blank");
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(safeHttpUrl(tender?.source_url) || "https://muasamcong.mpi.gov.vn")}&text=${encodeURIComponent(tgText)}`;
+    openExternalSafe(shareUrl);
     showToast("📨 Đã sao chép nội dung và mở cửa sổ gửi cảnh báo Telegram!", "success");
   };
 
@@ -708,7 +730,7 @@ export function BiddingProcurement() {
       console.warn("Clipboard copy error:", e);
     }
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent("https://muasamcong.mpi.gov.vn")}&text=${encodeURIComponent(tgText)}`;
-    window.open(shareUrl, "_blank");
+    openExternalSafe(shareUrl);
     showToast(`📨 Đã sao chép cảnh báo Telegram cho nhà thầu ${c.name}!`, "success");
   };
 
@@ -1084,7 +1106,7 @@ export function BiddingProcurement() {
       `📋 Đã tự động sao chép mã ${tbmtCode} vào Clipboard! Bạn chỉ cần Paste (Ctrl+V) vào ô tìm kiếm trên Cổng Mua Sắm Công.`,
       "success"
     );
-    window.open(sourceUrl || "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection", "_blank");
+    openExternalSafe(safeHttpUrl(sourceUrl) || "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection");
   };
 
 
@@ -1123,14 +1145,15 @@ export function BiddingProcurement() {
         <div
           style={{
             position: "fixed",
-            bottom: "24px",
-            right: "24px",
+            bottom: "max(16px, env(safe-area-inset-bottom))",
+            right: "16px",
+            maxWidth: "calc(100vw - 32px)",
             zIndex: 9999,
             padding: "14px 20px",
             borderRadius: "14px",
             color: "#fff",
-            background: toast.type === "success" ? "#168579" : toast.type === "error" ? "#c53929" : "#173c35",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+            background: toast.type === "success" ? "var(--primary)" : toast.type === "error" ? "var(--red)" : "var(--ink)",
+            boxShadow: "var(--shadow-md)",
             display: "flex",
             alignItems: "center",
             gap: "10px",
@@ -1147,15 +1170,15 @@ export function BiddingProcurement() {
       {/* ─── Hero Section ──────────────────────────────────────────────────────── */}
       <section className="ops-hero" style={{ marginBottom: "20px" }}>
         <div>
-          <span className="eyebrow" style={{ color: "#79cbb5", fontSize: "11px", letterSpacing: ".18em", fontWeight: 900 }}>
+          <span className="eyebrow" style={{ color: "var(--mint, var(--primary-soft))", fontSize: "11px", letterSpacing: ".18em", fontWeight: 900 }}>
             MẠNG ĐẤU THẦU QUỐC GIA (E-GP) — MUASAMCONG.MPI.GOV.VN
           </span>
-          <h1 style={{ fontFamily: "Georgia, serif", margin: "6px 0 10px", fontSize: "clamp(26px, 3.5vw, 42px)" }}>
+          <h1 style={{ fontFamily: "var(--font-serif, Georgia, serif)", margin: "6px 0 10px", fontSize: "clamp(26px, 3.5vw, 42px)" }}>
             Săn Gói Thầu & Phân Tích E-HSMT Bằng AI
           </h1>
-          <p style={{ maxWidth: "780px", color: "#bcd0ca", fontSize: "14px", lineHeight: 1.6 }}>
+          <p style={{ maxWidth: "780px", color: "rgba(255, 255, 255, 0.84)", fontSize: "14px", lineHeight: 1.6 }}>
             Hệ thống tự động quét, trích xuất dữ liệu năng lực, tính điểm tương thích chiến lược INUT{" "}
-            <strong style={{ color: "#f2bd62" }}>(MST 4401053694)</strong> và gửi cảnh báo thời gian thực qua Telegram Bot.
+            <strong style={{ color: "var(--gold)" }}>(MST 4401053694)</strong> và gửi cảnh báo thời gian thực qua Telegram Bot.
           </p>
         </div>
 
@@ -1165,16 +1188,17 @@ export function BiddingProcurement() {
             onClick={handleScanAll}
             disabled={scanningId !== null}
             style={{
-              background: "linear-gradient(135deg, #e89c3e, #d88e2f)",
-              color: "#17342f",
+              background: "linear-gradient(135deg, var(--gold), color-mix(in srgb, var(--amber) 85%, var(--gold)))",
+              color: "var(--ink)",
               border: "0",
               fontWeight: 800,
+              minHeight: "44px",
               padding: "11px 18px",
               borderRadius: "12px",
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              boxShadow: "0 6px 18px rgba(216,142,47,0.3)",
+              boxShadow: "var(--shadow)",
               cursor: "pointer",
             }}
           >
@@ -1184,158 +1208,52 @@ export function BiddingProcurement() {
       </section>
 
       {/* ─── Main Navigation Tabs ──────────────────────────────────────────────── */}
-      <div
-        className="portal-tabs"
-        style={{
-          display: "flex",
-          gap: "8px",
-          borderBottom: "1px solid #dce4e0",
-          marginBottom: "20px",
-          overflowX: "auto",
-          paddingBottom: "2px",
-        }}
-      >
-        <button
-          className={activeTab === "search" ? "active" : ""}
-          onClick={() => { setActiveTab("search"); syncBiddingUrl("search", contractorSubTab); }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-            fontSize: "14px",
-            fontWeight: activeTab === "search" ? 800 : 600,
-            padding: "12px 18px",
-            borderRadius: "12px 12px 0 0",
-            border: "0",
-            background: activeTab === "search" ? "#fff" : "transparent",
-            color: activeTab === "search" ? "#168579" : "#5a6e67",
-            boxShadow: activeTab === "search" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
-            cursor: "pointer",
+      <div style={{ marginBottom: "20px" }}>
+        <ResponsiveTabs
+          ariaLabel="Chuyển mục săn thầu & thẩm định"
+          active={activeTab}
+          onChange={(tabId) => {
+            setActiveTab(tabId);
+            syncBiddingUrl(tabId, contractorSubTab);
+            if (tabId === "bookmarks") {
+              fetchBookmarks();
+            } else if (tabId === "contractors") {
+              if (!crmScanResult) handleScanCrmContractors();
+              if (!wonPackagesResult) handleFetchWonPackages();
+            } else if (tabId === "watchlist") {
+              fetchWatchlist();
+            } else if (tabId === "dossier_reviews") {
+              fetchDossierReviews();
+            }
           }}
-        >
-          <span>🔎</span> Tra Cứu Gói Thầu
-          {searchResult && <span className="chip gray sm" style={{ marginLeft: "4px" }}>{searchResult.total}</span>}
-        </button>
-
-        <button
-          className={activeTab === "bookmarks" ? "active" : ""}
-          onClick={() => {
-            setActiveTab("bookmarks");
-            syncBiddingUrl("bookmarks", contractorSubTab);
-            fetchBookmarks();
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-            fontSize: "14px",
-            fontWeight: activeTab === "bookmarks" ? 800 : 600,
-            padding: "12px 18px",
-            borderRadius: "12px 12px 0 0",
-            border: "0",
-            background: activeTab === "bookmarks" ? "#fff" : "transparent",
-            color: activeTab === "bookmarks" ? "#168579" : "#5a6e67",
-            boxShadow: activeTab === "bookmarks" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
-            cursor: "pointer",
-          }}
-        >
-          <span>⭐</span> Gói Thầu Quan Tâm
-          <span
-            className="chip amber sm"
-            style={{ marginLeft: "4px", background: "#fef3c7", color: "#92400e", fontWeight: 800 }}
-          >
-            {bookmarks.length}
-          </span>
-        </button>
-
-        <button
-          className={activeTab === "contractors" ? "active" : ""}
-          onClick={() => {
-            setActiveTab("contractors");
-            syncBiddingUrl("contractors", contractorSubTab);
-            if (!crmScanResult) handleScanCrmContractors();
-            if (!wonPackagesResult) handleFetchWonPackages();
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-            fontSize: "14px",
-            fontWeight: activeTab === "contractors" ? 800 : 600,
-            padding: "12px 18px",
-            borderRadius: "12px 12px 0 0",
-            border: "0",
-            background: activeTab === "contractors" ? "#fff" : "transparent",
-            color: activeTab === "contractors" ? "#168579" : "#5a6e67",
-            boxShadow: activeTab === "contractors" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
-            cursor: "pointer",
-          }}
-        >
-          <span>🏢</span> Năng Lực Nhà Thầu & Khách Hàng CRM
-          <span
-            className="chip sm"
-            style={{ marginLeft: "4px", background: "#ea580c", color: "#fff", fontWeight: 800 }}
-          >
-            {crmScanResult ? crmScanResult.total_won_contractors : "CRM"}
-          </span>
-        </button>
-
-        <button
-          className={activeTab === "watchlist" ? "active" : ""}
-          onClick={() => {
-            setActiveTab("watchlist");
-            syncBiddingUrl("watchlist", contractorSubTab);
-            fetchWatchlist();
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-            fontSize: "14px",
-            fontWeight: activeTab === "watchlist" ? 800 : 600,
-            padding: "12px 18px",
-            borderRadius: "12px 12px 0 0",
-            border: "0",
-            background: activeTab === "watchlist" ? "#fff" : "transparent",
-            color: activeTab === "watchlist" ? "#168579" : "#5a6e67",
-            boxShadow: activeTab === "watchlist" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
-            cursor: "pointer",
-          }}
-        >
-          <span>⚙️</span> Bộ Lọc Tự Động & Cảnh Báo
-          <span className="chip indigo sm" style={{ marginLeft: "4px" }}>{watchlists.length}</span>
-        </button>
-
-        <button
-          className={activeTab === "dossier_reviews" ? "active" : ""}
-          onClick={() => {
-            setActiveTab("dossier_reviews");
-            syncBiddingUrl("dossier_reviews", contractorSubTab);
-            fetchDossierReviews();
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-            fontSize: "14px",
-            fontWeight: activeTab === "dossier_reviews" ? 800 : 600,
-            padding: "12px 18px",
-            borderRadius: "12px 12px 0 0",
-            border: "0",
-            background: activeTab === "dossier_reviews" ? "#fff" : "transparent",
-            color: activeTab === "dossier_reviews" ? "#0284c7" : "#5a6e67",
-            boxShadow: activeTab === "dossier_reviews" ? "0 -2px 10px rgba(0,0,0,0.04)" : "none",
-            cursor: "pointer",
-          }}
-        >
-          <span>📑</span> Thẩm Định Hồ Sơ Thầu (Dossier Review)
-          <span
-            className="chip sm"
-            style={{ marginLeft: "4px", background: "#0284c7", color: "#fff", fontWeight: 800 }}
-          >
-            {dossierReviews.length > 0 ? `${dossierReviews[0].overall_score}/100` : "Mới"}
-          </span>
-        </button>
+          tabs={[
+            {
+              id: "search",
+              label: "🔎 Tra Cứu Gói Thầu",
+              badge: searchResult ? searchResult.total : undefined,
+            },
+            {
+              id: "bookmarks",
+              label: "⭐ Gói Thầu Quan Tâm",
+              badge: bookmarks.length,
+            },
+            {
+              id: "contractors",
+              label: "🏢 Năng Lực Nhà Thầu & CRM",
+              badge: crmScanResult ? crmScanResult.total_won_contractors : "CRM",
+            },
+            {
+              id: "watchlist",
+              label: "⚙️ Bộ Lọc Tự Động & Cảnh Báo",
+              badge: watchlists.length,
+            },
+            {
+              id: "dossier_reviews",
+              label: "📑 Thẩm Định Hồ Sơ Thầu",
+              badge: dossierReviews.length > 0 ? `${dossierReviews[0].overall_score}/100` : "Mới",
+            },
+          ]}
+        />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
@@ -1347,11 +1265,11 @@ export function BiddingProcurement() {
           <div
             className="panel"
             style={{
-              background: "#fff",
+              background: "var(--panel)",
               borderRadius: "18px",
-              padding: "20px 24px",
-              border: "1px solid #dce4df",
-              boxShadow: "0 8px 24px rgba(22,133,121,0.05)",
+              padding: "clamp(14px, 2.5vw, 22px)",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
               marginBottom: "20px",
             }}
           >
@@ -1362,18 +1280,21 @@ export function BiddingProcurement() {
               }}
             >
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ flex: "1 1 320px", position: "relative" }}>
+                <div style={{ flex: "1 1 240px", minWidth: 0, position: "relative" }}>
                   <input
+                    className="ui-input"
                     type="text"
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     placeholder="Nhập tên gói thầu, số TBMT (VD: IB2600...), bên mời thầu, từ khóa IoT / SCADA..."
                     style={{
                       width: "100%",
-                      padding: "13px 16px",
+                      minHeight: "44px",
+                      padding: "11px 16px",
                       borderRadius: "12px",
-                      border: "1px solid #c8dbd3",
-                      fontSize: "16px", // >=16px for iOS auto-zoom prevention
+                      border: "1px solid var(--border-strong)",
+                      background: "var(--panel)",
+                      color: "var(--ink)",
                       outline: "none",
                       boxShadow: "inset 0 1px 3px rgba(0,0,0,0.04)",
                     }}
@@ -1385,9 +1306,10 @@ export function BiddingProcurement() {
                     type="submit"
                     disabled={searchLoading}
                     style={{
-                      padding: "13px 24px",
+                      minHeight: "44px",
+                      padding: "11px 22px",
                       borderRadius: "12px",
-                      background: "#168579",
+                      background: "var(--primary)",
                       color: "#fff",
                       border: "0",
                       fontWeight: 800,
@@ -1406,11 +1328,12 @@ export function BiddingProcurement() {
                     type="button"
                     onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                     style={{
-                      padding: "13px 16px",
+                      minHeight: "44px",
+                      padding: "11px 16px",
                       borderRadius: "12px",
-                      background: showAdvancedFilters ? "#eaf4f1" : "#f5f8f7",
-                      color: showAdvancedFilters ? "#168579" : "#476159",
-                      border: "1px solid #d0dfd8",
+                      background: showAdvancedFilters ? "var(--primary-soft)" : "var(--surface-subtle, var(--paper))",
+                      color: showAdvancedFilters ? "var(--primary-dark)" : "var(--ink-2, var(--text))",
+                      border: "1px solid var(--border-strong)",
                       fontWeight: 700,
                       fontSize: "13px",
                       cursor: "pointer",
@@ -1428,11 +1351,12 @@ export function BiddingProcurement() {
                       type="button"
                       onClick={handleResetFilters}
                       style={{
-                        padding: "13px 14px",
+                        minHeight: "44px",
+                        padding: "11px 14px",
                         borderRadius: "12px",
                         background: "transparent",
-                        color: "#963c2d",
-                        border: "1px solid #f1c8bf",
+                        color: "color-mix(in srgb, var(--red) 82%, var(--ink))",
+                        border: "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
                         fontSize: "13px",
                         fontWeight: 700,
                         cursor: "pointer",
@@ -1450,27 +1374,29 @@ export function BiddingProcurement() {
                   style={{
                     marginTop: "18px",
                     paddingTop: "18px",
-                    borderTop: "1px dashed #dce4df",
+                    borderTop: "1px dashed var(--border)",
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))",
                     gap: "14px",
                   }}
                 >
                   {/* Province */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
                       📍 TỈNH / THÀNH PHỐ
                     </label>
                     <select
+                      className="ui-select"
                       value={province}
                       onChange={(e) => setProvince(e.target.value)}
                       style={{
                         width: "100%",
+                        minHeight: "44px",
                         padding: "10px 12px",
                         borderRadius: "10px",
-                        border: "1px solid #c8dbd3",
-                        fontSize: "16px",
-                        background: "#fff",
+                        border: "1px solid var(--border-strong)",
+                        background: "var(--panel)",
+                        color: "var(--ink)",
                       }}
                     >
                       {PROVINCES.map((p) => (
@@ -1482,20 +1408,22 @@ export function BiddingProcurement() {
                   </div>
 
                   {/* Field */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
                       📂 LĨNH VỰC
                     </label>
                     <select
+                      className="ui-select"
                       value={field}
                       onChange={(e) => setField(e.target.value)}
                       style={{
                         width: "100%",
+                        minHeight: "44px",
                         padding: "10px 12px",
                         borderRadius: "10px",
-                        border: "1px solid #c8dbd3",
-                        fontSize: "16px",
-                        background: "#fff",
+                        border: "1px solid var(--border-strong)",
+                        background: "var(--panel)",
+                        color: "var(--ink)",
                       }}
                     >
                       {FIELDS.map((f) => (
@@ -1507,20 +1435,22 @@ export function BiddingProcurement() {
                   </div>
 
                   {/* Status */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
                       ⏳ TRẠNG THÁI MỞ / ĐÓNG THẦU
                     </label>
                     <select
+                      className="ui-select"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value as any)}
                       style={{
                         width: "100%",
+                        minHeight: "44px",
                         padding: "10px 12px",
                         borderRadius: "10px",
-                        border: "1px solid #c8dbd3",
-                        fontSize: "16px",
-                        background: "#fff",
+                        border: "1px solid var(--border-strong)",
+                        background: "var(--panel)",
+                        color: "var(--ink)",
                       }}
                     >
                       <option value="all">Tất cả trạng thái</option>
@@ -1530,23 +1460,25 @@ export function BiddingProcurement() {
                   </div>
 
                   {/* Price Presets & Range */}
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#168579", marginBottom: "6px" }}>
+                  <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "6px" }}>
                       💰 KHOẢNG GIÁ GÓI THẦU (VND)
                     </label>
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleSetPricePreset(0, 500_000_000)}
                           style={{
-                            padding: "6px 12px",
+                            minHeight: "40px",
+                            padding: "8px 12px",
                             borderRadius: "999px",
-                            fontSize: "11px",
+                            fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #c8dbd3",
-                            background: minPrice === 0 && maxPrice === 500_000_000 ? "#168579" : "#fff",
-                            color: minPrice === 0 && maxPrice === 500_000_000 ? "#fff" : "#33554d",
+                            border: "1px solid var(--border-strong)",
+                            background: minPrice === 0 && maxPrice === 500_000_000 ? "var(--primary)" : "var(--panel)",
+                            color: minPrice === 0 && maxPrice === 500_000_000 ? "#fff" : "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -1554,15 +1486,17 @@ export function BiddingProcurement() {
                         </button>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleSetPricePreset(500_000_000, 2_000_000_000)}
                           style={{
-                            padding: "6px 12px",
+                            minHeight: "40px",
+                            padding: "8px 12px",
                             borderRadius: "999px",
-                            fontSize: "11px",
+                            fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #c8dbd3",
-                            background: minPrice === 500_000_000 && maxPrice === 2_000_000_000 ? "#168579" : "#fff",
-                            color: minPrice === 500_000_000 && maxPrice === 2_000_000_000 ? "#fff" : "#33554d",
+                            border: "1px solid var(--border-strong)",
+                            background: minPrice === 500_000_000 && maxPrice === 2_000_000_000 ? "var(--primary)" : "var(--panel)",
+                            color: minPrice === 500_000_000 && maxPrice === 2_000_000_000 ? "#fff" : "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -1570,15 +1504,17 @@ export function BiddingProcurement() {
                         </button>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleSetPricePreset(2_000_000_000, 10_000_000_000)}
                           style={{
-                            padding: "6px 12px",
+                            minHeight: "40px",
+                            padding: "8px 12px",
                             borderRadius: "999px",
-                            fontSize: "11px",
+                            fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #c8dbd3",
-                            background: minPrice === 2_000_000_000 && maxPrice === 10_000_000_000 ? "#168579" : "#fff",
-                            color: minPrice === 2_000_000_000 && maxPrice === 10_000_000_000 ? "#fff" : "#33554d",
+                            border: "1px solid var(--border-strong)",
+                            background: minPrice === 2_000_000_000 && maxPrice === 10_000_000_000 ? "var(--primary)" : "var(--panel)",
+                            color: minPrice === 2_000_000_000 && maxPrice === 10_000_000_000 ? "#fff" : "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -1586,15 +1522,17 @@ export function BiddingProcurement() {
                         </button>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleSetPricePreset(10_000_000_000, "")}
                           style={{
-                            padding: "6px 12px",
+                            minHeight: "40px",
+                            padding: "8px 12px",
                             borderRadius: "999px",
-                            fontSize: "11px",
+                            fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #c8dbd3",
-                            background: minPrice === 10_000_000_000 && maxPrice === "" ? "#168579" : "#fff",
-                            color: minPrice === 10_000_000_000 && maxPrice === "" ? "#fff" : "#33554d",
+                            border: "1px solid var(--border-strong)",
+                            background: minPrice === 10_000_000_000 && maxPrice === "" ? "var(--primary)" : "var(--panel)",
+                            color: minPrice === 10_000_000_000 && maxPrice === "" ? "#fff" : "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -1602,32 +1540,38 @@ export function BiddingProcurement() {
                         </button>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginLeft: "auto", maxWidth: "100%" }}>
                         <input
+                          className="ui-input"
                           type="number"
                           value={minPrice}
                           onChange={(e) => setMinPrice(e.target.value ? Number(e.target.value) : "")}
                           placeholder="Giá từ (VND)"
                           style={{
-                            width: "140px",
+                            width: "min(100%, 150px)",
+                            minHeight: "44px",
                             padding: "8px 10px",
                             borderRadius: "8px",
-                            border: "1px solid #c8dbd3",
-                            fontSize: "16px",
+                            border: "1px solid var(--border-strong)",
+                            background: "var(--panel)",
+                            color: "var(--ink)",
                           }}
                         />
                         <span>–</span>
                         <input
+                          className="ui-input"
                           type="number"
                           value={maxPrice}
                           onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : "")}
                           placeholder="Đến (VND)"
                           style={{
-                            width: "140px",
+                            width: "min(100%, 150px)",
+                            minHeight: "44px",
                             padding: "8px 10px",
                             borderRadius: "8px",
-                            border: "1px solid #c8dbd3",
-                            fontSize: "16px",
+                            border: "1px solid var(--border-strong)",
+                            background: "var(--panel)",
+                            color: "var(--ink)",
                           }}
                         />
                       </div>
@@ -1649,12 +1593,12 @@ export function BiddingProcurement() {
               gap: "8px",
             }}
           >
-            <div style={{ fontSize: "14px", color: "#475e56" }}>
+            <div style={{ fontSize: "14px", color: "var(--ink-2, var(--text))" }}>
               {searchLoading ? (
                 <span>⏳ Đang kết nối Mạng Đấu Thầu Quốc Gia...</span>
               ) : searchResult ? (
                 <span>
-                  Tìm thấy <strong style={{ color: "#168579" }}>{searchResult.total}</strong> gói thầu phù hợp
+                  Tìm thấy <strong style={{ color: "var(--primary-dark)" }}>{searchResult.total}</strong> gói thầu phù hợp
                   {searchResult.is_mock && (
                     <span
                       style={{
@@ -1662,9 +1606,9 @@ export function BiddingProcurement() {
                         padding: "2px 8px",
                         borderRadius: "999px",
                         fontSize: "11px",
-                        background: "#fff3cd",
-                        color: "#856404",
-                        border: "1px solid #ffeeba",
+                        background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                        color: "color-mix(in srgb, var(--amber) 74%, var(--ink))",
+                        border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))",
                       }}
                     >
                       🧪 Smart Resilient Mock
@@ -1675,7 +1619,7 @@ export function BiddingProcurement() {
             </div>
 
             {searchResult && searchResult.total_pages > 1 && (
-              <div style={{ fontSize: "12px", color: "#6a7d77" }}>
+              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
                 Trang {searchResult.page} / {searchResult.total_pages}
               </div>
             )}
@@ -1687,9 +1631,9 @@ export function BiddingProcurement() {
               style={{
                 padding: "16px 20px",
                 borderRadius: "14px",
-                background: "#fdf2f2",
-                border: "1px solid #f8b4b4",
-                color: "#9b1c1c",
+                background: "color-mix(in srgb, var(--red) 10%, var(--panel))",
+                border: "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
+                color: "color-mix(in srgb, var(--red) 82%, var(--ink))",
                 marginBottom: "20px",
               }}
             >
@@ -1704,16 +1648,16 @@ export function BiddingProcurement() {
                 <div
                   key={i}
                   style={{
-                    padding: "24px",
+                    padding: "clamp(14px, 2.5vw, 22px)",
                     borderRadius: "16px",
-                    background: "#fff",
-                    border: "1px solid #e2e8e5",
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.03)",
+                    background: "var(--panel)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow)",
                   }}
                 >
-                  <div style={{ height: "20px", width: "40%", background: "#edf2ef", borderRadius: "4px", marginBottom: "12px" }} />
-                  <div style={{ height: "28px", width: "80%", background: "#edf2ef", borderRadius: "4px", marginBottom: "16px" }} />
-                  <div style={{ height: "16px", width: "60%", background: "#edf2ef", borderRadius: "4px" }} />
+                  <div style={{ height: "20px", width: "40%", background: "var(--surface-subtle, var(--paper))", borderRadius: "4px", marginBottom: "12px" }} />
+                  <div style={{ height: "28px", width: "80%", background: "var(--surface-subtle, var(--paper))", borderRadius: "4px", marginBottom: "16px" }} />
+                  <div style={{ height: "16px", width: "60%", background: "var(--surface-subtle, var(--paper))", borderRadius: "4px" }} />
                 </div>
               ))}
             </div>
@@ -1723,16 +1667,16 @@ export function BiddingProcurement() {
           {!searchLoading && searchResult && searchResult.items.length === 0 && (
             <div
               style={{
-                padding: "48px 24px",
+                padding: "clamp(24px, 5vw, 48px) 20px",
                 textAlign: "center",
-                background: "#fff",
+                background: "var(--panel)",
                 borderRadius: "20px",
-                border: "1px dashed #cdded7",
-                color: "#6c7d77",
+                border: "1px dashed var(--border-strong)",
+                color: "var(--muted)",
               }}
             >
               <div style={{ fontSize: "42px", marginBottom: "10px" }}>🏛️</div>
-              <h3 style={{ fontFamily: "Georgia, serif", color: "#173c35", margin: "0 0 8px" }}>
+              <h3 style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)", margin: "0 0 8px" }}>
                 Không tìm thấy gói thầu phù hợp
               </h3>
               <p style={{ maxWidth: "480px", margin: "0 auto 16px", fontSize: "13px" }}>
@@ -1742,9 +1686,10 @@ export function BiddingProcurement() {
                 className="btn"
                 onClick={handleResetFilters}
                 style={{
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
-                  padding: "9px 18px",
+                  minHeight: "44px",
+                  padding: "10px 18px",
                   borderRadius: "10px",
                   fontWeight: 700,
                 }}
@@ -1766,11 +1711,11 @@ export function BiddingProcurement() {
                   <div
                     key={item.tbmt_code}
                     style={{
-                      background: "#fff",
+                      background: "var(--panel)",
                       borderRadius: "18px",
-                      padding: "22px 24px",
-                      border: "1px solid #dce4df",
-                      boxShadow: "0 4px 18px rgba(16,45,43,0.04)",
+                      padding: "clamp(14px, 2.5vw, 22px)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "var(--shadow)",
                       transition: "transform 0.15s ease, box-shadow 0.15s ease",
                       position: "relative",
                     }}
@@ -1794,8 +1739,8 @@ export function BiddingProcurement() {
                             fontWeight: 800,
                             padding: "4px 9px",
                             borderRadius: "7px",
-                            background: "#eaf4f1",
-                            color: "#168579",
+                            background: "var(--primary-soft)",
+                            color: "var(--primary-dark)",
                             letterSpacing: ".04em",
                           }}
                         >
@@ -1822,8 +1767,8 @@ export function BiddingProcurement() {
                               fontWeight: 700,
                               padding: "4px 8px",
                               borderRadius: "7px",
-                              background: "#f0f4f8",
-                              color: "#334e68",
+                              background: "var(--surface-subtle, var(--paper))",
+                              color: "var(--ink-2, var(--text))",
                             }}
                           >
                             📍 {item.province}
@@ -1841,16 +1786,16 @@ export function BiddingProcurement() {
                             borderRadius: "999px",
                             background:
                               deadlineMeta.status === "closed"
-                                ? "#fbe1da"
+                                ? "color-mix(in srgb, var(--red) 12%, var(--panel))"
                                 : deadlineMeta.status === "urgent"
-                                ? "#fff0ce"
-                                : "#dff3e9",
+                                ? "color-mix(in srgb, var(--gold) 20%, var(--panel))"
+                                : "color-mix(in srgb, var(--green) 14%, var(--panel))",
                             color:
                               deadlineMeta.status === "closed"
-                                ? "#9e3e2f"
+                                ? "color-mix(in srgb, var(--red) 82%, var(--ink))"
                                 : deadlineMeta.status === "urgent"
-                                ? "#8a6417"
-                                : "#176448",
+                                ? "color-mix(in srgb, var(--amber) 74%, var(--ink))"
+                                : "color-mix(in srgb, var(--green) 76%, var(--ink))",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "5px",
@@ -1866,13 +1811,14 @@ export function BiddingProcurement() {
                     <h3
                       onClick={() => handleOpenTenderDetail(item.tbmt_code)}
                       style={{
-                        fontFamily: "Georgia, serif",
+                        fontFamily: "var(--font-serif, Georgia, serif)",
                         fontSize: "18px",
                         fontWeight: 600,
-                        color: "#123b36",
+                        color: "var(--ink)",
                         margin: "0 0 12px",
                         lineHeight: 1.4,
                         cursor: "pointer",
+                        overflowWrap: "anywhere",
                       }}
                       title="Bấm xem chi tiết gói thầu"
                     >
@@ -1883,41 +1829,41 @@ export function BiddingProcurement() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
                         gap: "8px 18px",
                         padding: "14px 16px",
                         borderRadius: "12px",
-                        background: "#f9fcfa",
-                        border: "1px solid #e7f0ec",
+                        background: "var(--surface-subtle, var(--paper))",
+                        border: "1px solid var(--border)",
                         marginBottom: "16px",
                         fontSize: "13px",
                       }}
                     >
-                      <div>
-                        <span style={{ color: "#71857f", fontSize: "11px", display: "block", fontWeight: 700 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", fontSize: "11px", display: "block", fontWeight: 700 }}>
                           🏢 BÊN MỜI THẦU
                         </span>
-                        <strong style={{ color: "#22443c" }}>{item.procuring_entity || "—"}</strong>
+                        <strong style={{ color: "var(--ink)" }}>{item.procuring_entity || "—"}</strong>
                       </div>
 
                       {item.investor && (
-                        <div>
-                          <span style={{ color: "#71857f", fontSize: "11px", display: "block", fontWeight: 700 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ color: "var(--muted)", fontSize: "11px", display: "block", fontWeight: 700 }}>
                             🏛️ CHỦ ĐẦU TƯ
                           </span>
-                          <span style={{ color: "#36574f" }}>{item.investor}</span>
+                          <span style={{ color: "var(--ink-2, var(--text))" }}>{item.investor}</span>
                         </div>
                       )}
 
-                      <div>
-                        <span style={{ color: "#71857f", fontSize: "11px", display: "block", fontWeight: 700 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", fontSize: "11px", display: "block", fontWeight: 700 }}>
                           💰 GIÁ GÓI THẦU (DỰ TOÁN)
                         </span>
                         <strong
                           style={{
-                            color: "#168579",
+                            color: "var(--primary-dark)",
                             fontSize: "16px",
-                            fontFamily: "Georgia, serif",
+                            fontFamily: "var(--font-serif, Georgia, serif)",
                             fontWeight: 700,
                           }}
                         >
@@ -1925,11 +1871,11 @@ export function BiddingProcurement() {
                         </strong>
                       </div>
 
-                      <div>
-                        <span style={{ color: "#71857f", fontSize: "11px", display: "block", fontWeight: 700 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", fontSize: "11px", display: "block", fontWeight: 700 }}>
                           ⏳ THỜI ĐIỂM ĐÓNG THẦU
                         </span>
-                        <span style={{ color: "#22443c", fontWeight: 600 }}>{formatDate(item.bid_deadline)}</span>
+                        <span style={{ color: "var(--ink)", fontWeight: 600 }}>{formatDate(item.bid_deadline)}</span>
                       </div>
                     </div>
 
@@ -1947,6 +1893,7 @@ export function BiddingProcurement() {
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                         {/* Bookmark Button */}
                         <button
+                          className="ui-btn-chip"
                           onClick={() => {
                             const existing = bookmarks.find((b) => b.tbmt_code === item.tbmt_code);
                             setBookmarkModalItem({
@@ -1957,13 +1904,14 @@ export function BiddingProcurement() {
                             });
                           }}
                           style={{
+                            minHeight: "44px",
                             padding: "9px 14px",
                             borderRadius: "10px",
                             fontSize: "12px",
                             fontWeight: 750,
-                            border: "1px solid #d4dfda",
-                            background: isBookmarked ? "#fff8e8" : "#fff",
-                            color: isBookmarked ? "#925f17" : "#245247",
+                            border: "1px solid var(--border-strong)",
+                            background: isBookmarked ? "color-mix(in srgb, var(--gold) 18%, var(--panel))" : "var(--panel)",
+                            color: isBookmarked ? "color-mix(in srgb, var(--amber) 74%, var(--ink))" : "var(--ink)",
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
@@ -1976,20 +1924,22 @@ export function BiddingProcurement() {
 
                         {/* AI Analyze Button */}
                         <button
+                          className="ui-btn-chip"
                           onClick={() => handleOpenAiAnalysis(item)}
                           style={{
+                            minHeight: "44px",
                             padding: "9px 15px",
                             borderRadius: "10px",
                             fontSize: "12px",
                             fontWeight: 800,
-                            border: "1px solid #b8dfd4",
-                            background: "linear-gradient(110deg, #e9f7f2, #fff9ed)",
-                            color: "#146c59",
+                            border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                            background: "linear-gradient(110deg, var(--primary-soft), var(--paper))",
+                            color: "var(--primary-dark)",
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
                             gap: "6px",
-                            boxShadow: "0 2px 8px rgba(22,133,121,0.08)",
+                            boxShadow: "var(--shadow)",
                           }}
                         >
                           <span>🧠</span>
@@ -1998,15 +1948,17 @@ export function BiddingProcurement() {
 
                         {/* Details Button */}
                         <button
+                          className="ui-btn-chip"
                           onClick={() => handleOpenTenderDetail(item.tbmt_code)}
                           style={{
+                            minHeight: "44px",
                             padding: "9px 13px",
                             borderRadius: "10px",
                             fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #d4dfda",
-                            background: "#fff",
-                            color: "#3a564e",
+                            border: "1px solid var(--border-strong)",
+                            background: "var(--panel)",
+                            color: "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -2018,18 +1970,20 @@ export function BiddingProcurement() {
                       <div>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleOpenExternalPortal(item.tbmt_code, item.source_url)}
                           style={{
+                            minHeight: "44px",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "5px",
                             fontSize: "12px",
                             fontWeight: 700,
-                            color: "#168579",
-                            border: "1px solid #c9e4db",
-                            padding: "8px 12px",
-                            borderRadius: "8px",
-                            background: "#f0f8f5",
+                            color: "var(--primary-dark)",
+                            border: "1px solid color-mix(in srgb, var(--primary) 30%, var(--border))",
+                            padding: "9px 14px",
+                            borderRadius: "10px",
+                            background: "var(--primary-soft)",
                             cursor: "pointer",
                           }}
                           title="Tự động sao chép mã TBMT và mở Cổng Mua Sắm Công"
@@ -2059,13 +2013,16 @@ export function BiddingProcurement() {
               }}
             >
               <button
+                className="ui-btn-chip"
                 disabled={page <= 1}
                 onClick={() => handleSearch(1)}
                 style={{
+                  minHeight: "44px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid #c8dbd3",
-                  background: "#fff",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
                   cursor: page <= 1 ? "not-allowed" : "pointer",
                   opacity: page <= 1 ? 0.5 : 1,
                   fontWeight: 700,
@@ -2076,13 +2033,16 @@ export function BiddingProcurement() {
               </button>
 
               <button
+                className="ui-btn-chip"
                 disabled={page <= 1}
                 onClick={() => handleSearch(page - 1)}
                 style={{
+                  minHeight: "44px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid #c8dbd3",
-                  background: "#fff",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
                   cursor: page <= 1 ? "not-allowed" : "pointer",
                   opacity: page <= 1 ? 0.5 : 1,
                   fontWeight: 700,
@@ -2092,18 +2052,21 @@ export function BiddingProcurement() {
                 ‹ Trước
               </button>
 
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "#168579", padding: "0 8px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--primary-dark)", padding: "0 8px" }}>
                 Trang {page} / {searchResult.total_pages}
               </span>
 
               <button
+                className="ui-btn-chip"
                 disabled={page >= searchResult.total_pages}
                 onClick={() => handleSearch(page + 1)}
                 style={{
+                  minHeight: "44px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid #c8dbd3",
-                  background: "#fff",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
                   cursor: page >= searchResult.total_pages ? "not-allowed" : "pointer",
                   opacity: page >= searchResult.total_pages ? 0.5 : 1,
                   fontWeight: 700,
@@ -2114,13 +2077,16 @@ export function BiddingProcurement() {
               </button>
 
               <button
+                className="ui-btn-chip"
                 disabled={page >= searchResult.total_pages}
                 onClick={() => handleSearch(searchResult.total_pages)}
                 style={{
+                  minHeight: "44px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid #c8dbd3",
-                  background: "#fff",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
                   cursor: page >= searchResult.total_pages ? "not-allowed" : "pointer",
                   opacity: page >= searchResult.total_pages ? 0.5 : 1,
                   fontWeight: 700,
@@ -2150,16 +2116,18 @@ export function BiddingProcurement() {
             }}
           >
             <button
+              className="ui-btn-chip"
               onClick={() => setBookmarkPipelineFilter("all")}
               style={{
+                minHeight: "44px",
                 padding: "8px 14px",
                 borderRadius: "999px",
                 fontSize: "12px",
                 fontWeight: 800,
                 border: "1px solid",
-                borderColor: bookmarkPipelineFilter === "all" ? "#168579" : "#ccdcd5",
-                background: bookmarkPipelineFilter === "all" ? "#168579" : "#fff",
-                color: bookmarkPipelineFilter === "all" ? "#fff" : "#37544c",
+                borderColor: bookmarkPipelineFilter === "all" ? "var(--primary)" : "var(--border-strong)",
+                background: bookmarkPipelineFilter === "all" ? "var(--primary)" : "var(--panel)",
+                color: bookmarkPipelineFilter === "all" ? "#fff" : "var(--ink-2, var(--text))",
                 cursor: "pointer",
               }}
             >
@@ -2172,16 +2140,18 @@ export function BiddingProcurement() {
               return (
                 <button
                   key={stKey}
+                  className="ui-btn-chip"
                   onClick={() => setBookmarkPipelineFilter(stKey)}
                   style={{
+                    minHeight: "44px",
                     padding: "8px 14px",
                     borderRadius: "999px",
                     fontSize: "12px",
                     fontWeight: 800,
                     border: "1px solid",
-                    borderColor: isActive ? "#168579" : "#ccdcd5",
-                    background: isActive ? "#168579" : "#fff",
-                    color: isActive ? "#fff" : "#37544c",
+                    borderColor: isActive ? "var(--primary)" : "var(--border-strong)",
+                    background: isActive ? "var(--primary)" : "var(--panel)",
+                    color: isActive ? "#fff" : "var(--ink-2, var(--text))",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -2195,7 +2165,7 @@ export function BiddingProcurement() {
                       padding: "1px 6px",
                       borderRadius: "999px",
                       fontSize: "10px",
-                      background: isActive ? "rgba(255,255,255,0.2)" : "#edf2ef",
+                      background: isActive ? "rgba(255,255,255,0.2)" : "var(--surface-subtle, var(--paper))",
                     }}
                   >
                     {count}
@@ -2208,24 +2178,26 @@ export function BiddingProcurement() {
           {/* Quick Search within Bookmarks */}
           <div style={{ marginBottom: "18px" }}>
             <input
+              className="ui-input"
               type="text"
               value={bookmarkSearchKeyword}
               onChange={(e) => setBookmarkSearchKeyword(e.target.value)}
               placeholder="🔍 Tìm nhanh trong danh sách quan tâm (tên gói thầu, mã TBMT, bên mời thầu)..."
               style={{
                 width: "100%",
+                minHeight: "44px",
                 padding: "11px 16px",
                 borderRadius: "12px",
-                border: "1px solid #c8dbd3",
-                fontSize: "16px",
-                background: "#fff",
+                border: "1px solid var(--border-strong)",
+                background: "var(--panel)",
+                color: "var(--ink)",
               }}
             />
           </div>
 
           {/* Bookmarks Loading / Empty */}
           {bookmarksLoading && (
-            <div style={{ textAlign: "center", padding: "40px", color: "#60756e" }}>
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
               ⏳ Đang tải danh sách cơ hội dự thầu...
             </div>
           )}
@@ -2233,16 +2205,16 @@ export function BiddingProcurement() {
           {!bookmarksLoading && filteredBookmarks.length === 0 && (
             <div
               style={{
-                padding: "48px 24px",
+                padding: "clamp(24px, 5vw, 48px) 20px",
                 textAlign: "center",
-                background: "#fff",
+                background: "var(--panel)",
                 borderRadius: "20px",
-                border: "1px dashed #cdded7",
-                color: "#6c7d77",
+                border: "1px dashed var(--border-strong)",
+                color: "var(--muted)",
               }}
             >
               <div style={{ fontSize: "40px", marginBottom: "8px" }}>⭐</div>
-              <h3 style={{ fontFamily: "Georgia, serif", color: "#173c35", margin: "0 0 8px" }}>
+              <h3 style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)", margin: "0 0 8px" }}>
                 Chưa có gói thầu nào trong danh sách này
               </h3>
               <p style={{ maxWidth: "440px", margin: "0 auto 16px", fontSize: "13px" }}>
@@ -2252,9 +2224,10 @@ export function BiddingProcurement() {
                 className="btn"
                 onClick={() => { setActiveTab("search"); syncBiddingUrl("search", contractorSubTab); }}
                 style={{
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
-                  padding: "9px 18px",
+                  minHeight: "44px",
+                  padding: "10px 18px",
                   borderRadius: "10px",
                   fontWeight: 700,
                 }}
@@ -2270,17 +2243,17 @@ export function BiddingProcurement() {
               {filteredBookmarks.map((b) => {
                 const deadlineMeta = getDeadlineMeta(b.bid_deadline);
                 const fieldBadge = getFieldBadge(b.field);
-                const statusMeta = BOOKMARK_STATUS_MAP[b.status] || BOOKMARK_STATUS_MAP.watching;
+                const safeSourceUrl = safeHttpUrl(b.source_url);
 
                 return (
                   <div
                     key={b.id}
                     style={{
-                      background: "#fff",
+                      background: "var(--panel)",
                       borderRadius: "18px",
-                      padding: "22px 24px",
-                      border: "1px solid #dce4df",
-                      boxShadow: "0 4px 18px rgba(16,45,43,0.04)",
+                      padding: "clamp(14px, 2.5vw, 22px)",
+                      border: "1px solid var(--border)",
+                      boxShadow: "var(--shadow)",
                     }}
                   >
                     {/* Header */}
@@ -2302,8 +2275,8 @@ export function BiddingProcurement() {
                             fontWeight: 800,
                             padding: "4px 8px",
                             borderRadius: "7px",
-                            background: "#eaf4f1",
-                            color: "#168579",
+                            background: "var(--primary-soft)",
+                            color: "var(--primary-dark)",
                           }}
                         >
                           🏷️ {b.tbmt_code}
@@ -2329,8 +2302,8 @@ export function BiddingProcurement() {
                               fontWeight: 700,
                               padding: "4px 8px",
                               borderRadius: "7px",
-                              background: "#f0f4f8",
-                              color: "#334e68",
+                              background: "var(--surface-subtle, var(--paper))",
+                              color: "var(--ink-2, var(--text))",
                             }}
                           >
                             📍 {b.province}
@@ -2339,28 +2312,29 @@ export function BiddingProcurement() {
                       </div>
 
                       {/* Status Selector Dropdown */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <label style={{ fontSize: "11px", fontWeight: 700, color: "#6a7d77" }}>Pipeline:</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                        <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted)" }}>Pipeline:</label>
                         <select
+                          className="ui-select"
                           value={b.status}
                           onChange={(e) => handleUpdateBookmarkStatus(b.id, e.target.value as any)}
                           style={{
-                            padding: "6px 10px",
+                            minHeight: "44px",
+                            padding: "8px 12px",
                             borderRadius: "8px",
-                            fontSize: "13px",
                             fontWeight: 800,
-                            border: "1px solid #c8dbd3",
-                            background: "#fff",
+                            border: "1px solid var(--border-strong)",
+                            background: "var(--panel)",
                             color:
                               b.status === "won"
-                                ? "#176448"
+                                ? "color-mix(in srgb, var(--green) 76%, var(--ink))"
                                 : b.status === "lost"
-                                ? "#9e3e2f"
+                                ? "color-mix(in srgb, var(--red) 82%, var(--ink))"
                                 : b.status === "submitted"
-                                ? "#5b21b6"
+                                ? "var(--primary-dark)"
                                 : b.status === "preparing"
-                                ? "#1e40af"
-                                : "#854d0e",
+                                ? "var(--primary)"
+                                : "color-mix(in srgb, var(--amber) 74%, var(--ink))",
                           }}
                         >
                           {Object.entries(BOOKMARK_STATUS_MAP).map(([sKey, sMeta]) => (
@@ -2376,12 +2350,13 @@ export function BiddingProcurement() {
                     <h3
                       onClick={() => handleOpenTenderDetail(b.tbmt_code)}
                       style={{
-                        fontFamily: "Georgia, serif",
+                        fontFamily: "var(--font-serif, Georgia, serif)",
                         fontSize: "18px",
                         fontWeight: 600,
-                        color: "#123b36",
+                        color: "var(--ink)",
                         margin: "0 0 10px",
                         cursor: "pointer",
+                        overflowWrap: "anywhere",
                       }}
                     >
                       {b.tender_name}
@@ -2391,29 +2366,29 @@ export function BiddingProcurement() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))",
                         gap: "8px 16px",
                         padding: "12px 14px",
                         borderRadius: "10px",
-                        background: "#f9fcfa",
-                        border: "1px solid #e7f0ec",
+                        background: "var(--surface-subtle, var(--paper))",
+                        border: "1px solid var(--border)",
                         marginBottom: "12px",
                         fontSize: "12px",
                       }}
                     >
-                      <div>
-                        <span style={{ color: "#71857f", display: "block" }}>🏢 Bên mời thầu:</span>
-                        <strong style={{ color: "#22443c" }}>{b.procuring_entity || "—"}</strong>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", display: "block" }}>🏢 Bên mời thầu:</span>
+                        <strong style={{ color: "var(--ink)" }}>{b.procuring_entity || "—"}</strong>
                       </div>
-                      <div>
-                        <span style={{ color: "#71857f", display: "block" }}>💰 Giá gói thầu:</span>
-                        <strong style={{ color: "#168579", fontSize: "15px", fontFamily: "Georgia, serif" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", display: "block" }}>💰 Giá gói thầu:</span>
+                        <strong style={{ color: "var(--primary-dark)", fontSize: "15px", fontFamily: "var(--font-serif, Georgia, serif)" }}>
                           {formatVnd(b.bid_price)}
                         </strong>
                       </div>
-                      <div>
-                        <span style={{ color: "#71857f", display: "block" }}>⏳ Hạn nộp E-HSDT:</span>
-                        <span style={{ color: "#22443c", fontWeight: 600 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ color: "var(--muted)", display: "block" }}>⏳ Hạn nộp E-HSDT:</span>
+                        <span style={{ color: "var(--ink)", fontWeight: 600 }}>
                           {formatDate(b.bid_deadline)} ({deadlineMeta.label})
                         </span>
                       </div>
@@ -2424,34 +2399,28 @@ export function BiddingProcurement() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: "10px",
-                        background: "#fffaf0",
-                        border: "1px solid #ead8b8",
+                        background: "var(--paper)",
+                        border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))",
                         marginBottom: "14px",
                         fontSize: "13px",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#8a5814" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "color-mix(in srgb, var(--amber) 74%, var(--ink))" }}>
                           📝 GHI CHÚ NỘI BỘ (CHIẾN LƯỢC DỰ THẦU):
                         </span>
                         <button
-                          onClick={() => {
-                            const newNote = window.prompt("Nhập ghi chú chiến lược dự thầu:", b.note);
-                            if (newNote !== null) {
-                              api.bidding
-                                .updateBookmark(b.id, { note: newNote })
-                                .then((up) => {
-                                  setBookmarks((prev) => prev.map((item) => (item.id === b.id ? up : item)));
-                                  showToast("Đã cập nhật ghi chú", "success");
-                                })
-                                .catch((e) => showToast(e.message, "error"));
-                            }
-                          }}
+                          type="button"
+                          className="ui-btn-chip"
+                          onClick={() => setNotePromptBookmark(b)}
                           style={{
-                            border: "0",
-                            background: "transparent",
-                            color: "#168579",
-                            fontSize: "11px",
+                            minHeight: "40px",
+                            padding: "6px 10px",
+                            borderRadius: "8px",
+                            border: "1px solid color-mix(in srgb, var(--primary) 28%, var(--border))",
+                            background: "var(--panel)",
+                            color: "var(--primary-dark)",
+                            fontSize: "12px",
                             fontWeight: 800,
                             cursor: "pointer",
                           }}
@@ -2459,7 +2428,7 @@ export function BiddingProcurement() {
                           ✏️ Sửa ghi chú
                         </button>
                       </div>
-                      <p style={{ margin: 0, color: "#544633", fontStyle: b.note ? "normal" : "italic" }}>
+                      <p style={{ margin: 0, color: "var(--ink-2, var(--text))", fontStyle: b.note ? "normal" : "italic" }}>
                         {b.note || "Chưa có ghi chú nội bộ. Bấm 'Sửa ghi chú' để nhập phân công, tính giá hoặc ghi nhớ đối tác."}
                       </p>
                     </div>
@@ -2476,6 +2445,7 @@ export function BiddingProcurement() {
                     >
                       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                         <button
+                          className="ui-btn-chip"
                           onClick={() =>
                             handleOpenAiAnalysis({
                               tbmt_code: b.tbmt_code,
@@ -2490,13 +2460,14 @@ export function BiddingProcurement() {
                             })
                           }
                           style={{
-                            padding: "8px 14px",
+                            minHeight: "44px",
+                            padding: "9px 14px",
                             borderRadius: "8px",
                             fontSize: "12px",
                             fontWeight: 800,
-                            border: "1px solid #b8dfd4",
-                            background: "#eaf6f2",
-                            color: "#146c59",
+                            border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                            background: "var(--primary-soft)",
+                            color: "var(--primary-dark)",
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
@@ -2508,15 +2479,17 @@ export function BiddingProcurement() {
                         </button>
 
                         <button
+                          className="ui-btn-chip"
                           onClick={() => handleOpenTenderDetail(b.tbmt_code)}
                           style={{
-                            padding: "8px 12px",
+                            minHeight: "44px",
+                            padding: "9px 14px",
                             borderRadius: "8px",
                             fontSize: "12px",
                             fontWeight: 700,
-                            border: "1px solid #d4dfda",
-                            background: "#fff",
-                            color: "#3a564e",
+                            border: "1px solid var(--border-strong)",
+                            background: "var(--panel)",
+                            color: "var(--ink-2, var(--text))",
                             cursor: "pointer",
                           }}
                         >
@@ -2524,37 +2497,63 @@ export function BiddingProcurement() {
                         </button>
                       </div>
 
-                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                        <a
-                          href={b.source_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: 700,
-                            color: "#168579",
-                            textDecoration: "none",
-                            padding: "7px 11px",
-                            borderRadius: "8px",
-                            background: "#f0f8f5",
-                          }}
-                        >
-                          🔗 Mua Sắm Công ↗
-                        </a>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                        {safeSourceUrl ? (
+                          <a
+                            href={safeSourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ui-btn-chip"
+                            style={{
+                              minHeight: "44px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              color: "var(--primary-dark)",
+                              textDecoration: "none",
+                              padding: "9px 12px",
+                              borderRadius: "8px",
+                              background: "var(--primary-soft)",
+                            }}
+                          >
+                            🔗 Mua Sắm Công ↗
+                          </a>
+                        ) : (
+                          <span
+                            style={{
+                              minHeight: "44px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "var(--muted)",
+                              padding: "9px 12px",
+                              borderRadius: "8px",
+                              background: "var(--surface-subtle, var(--paper))",
+                            }}
+                          >
+                            🔗 Không có link nguồn
+                          </span>
+                        )}
 
                         <button
+                          className="ui-btn-icon"
                           onClick={() => handleDeleteBookmark(b.id, b.tender_name)}
                           style={{
-                            padding: "7px 11px",
+                            minHeight: "44px",
+                            minWidth: "44px",
+                            padding: "9px 12px",
                             borderRadius: "8px",
-                            fontSize: "12px",
+                            fontSize: "14px",
                             fontWeight: 700,
-                            border: "1px solid #f1c8bf",
-                            background: "#fff0ec",
-                            color: "#963c2d",
+                            border: "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
+                            background: "color-mix(in srgb, var(--red) 10%, var(--panel))",
+                            color: "color-mix(in srgb, var(--red) 82%, var(--ink))",
                             cursor: "pointer",
                           }}
                           title="Xóa khỏi danh sách quan tâm"
+                          aria-label="Xóa khỏi danh sách quan tâm"
                         >
                           🗑️
                         </button>
@@ -2585,10 +2584,10 @@ export function BiddingProcurement() {
             }}
           >
             <div>
-              <h2 style={{ fontFamily: "Georgia, serif", fontSize: "20px", margin: "0 0 4px", color: "#143b38" }}>
+              <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "20px", margin: "0 0 4px", color: "var(--ink)" }}>
                 Quy Tắc Quét Tự Động & Bắn Tin Telegram
               </h2>
-              <p style={{ margin: 0, fontSize: "13px", color: "#617770" }}>
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>
                 Hệ thống định kỳ tìm kiếm các gói thầu mới thỏa mãn điều kiện và tự động gửi thông báo đến kênh Telegram của Admin.
               </p>
             </div>
@@ -2608,9 +2607,10 @@ export function BiddingProcurement() {
                   })
                 }
                 style={{
+                  minHeight: "44px",
                   padding: "11px 18px",
                   borderRadius: "12px",
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
                   border: "0",
                   fontWeight: 800,
@@ -2619,7 +2619,7 @@ export function BiddingProcurement() {
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  boxShadow: "0 4px 14px rgba(22,133,121,0.25)",
+                  boxShadow: "var(--shadow)",
                 }}
               >
                 <span>➕</span>
@@ -2630,10 +2630,11 @@ export function BiddingProcurement() {
                 onClick={handleScanAll}
                 disabled={scanningId !== null}
                 style={{
+                  minHeight: "44px",
                   padding: "11px 18px",
                   borderRadius: "12px",
-                  background: "#f0a64a",
-                  color: "#102d2b",
+                  background: "var(--gold)",
+                  color: "var(--ink)",
                   border: "0",
                   fontWeight: 800,
                   fontSize: "13px",
@@ -2650,7 +2651,7 @@ export function BiddingProcurement() {
 
           {/* Watchlist Loading / Empty */}
           {watchlistLoading && (
-            <div style={{ textAlign: "center", padding: "40px", color: "#60756e" }}>
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
               ⏳ Đang tải danh sách bộ lọc tự động...
             </div>
           )}
@@ -2658,16 +2659,16 @@ export function BiddingProcurement() {
           {!watchlistLoading && watchlists.length === 0 && (
             <div
               style={{
-                padding: "48px 24px",
+                padding: "clamp(24px, 5vw, 48px) 20px",
                 textAlign: "center",
-                background: "#fff",
+                background: "var(--panel)",
                 borderRadius: "20px",
-                border: "1px dashed #cdded7",
-                color: "#6c7d77",
+                border: "1px dashed var(--border-strong)",
+                color: "var(--muted)",
               }}
             >
               <div style={{ fontSize: "40px", marginBottom: "8px" }}>⚙️</div>
-              <h3 style={{ fontFamily: "Georgia, serif", color: "#173c35", margin: "0 0 8px" }}>
+              <h3 style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)", margin: "0 0 8px" }}>
                 Chưa có quy tắc quét tự động nào
               </h3>
               <p style={{ maxWidth: "460px", margin: "0 auto 16px", fontSize: "13px" }}>
@@ -2688,9 +2689,10 @@ export function BiddingProcurement() {
                   })
                 }
                 style={{
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
-                  padding: "9px 18px",
+                  minHeight: "44px",
+                  padding: "10px 18px",
                   borderRadius: "10px",
                   fontWeight: 700,
                 }}
@@ -2707,11 +2709,11 @@ export function BiddingProcurement() {
                 <div
                   key={rule.id}
                   style={{
-                    background: "#fff",
+                    background: "var(--panel)",
                     borderRadius: "18px",
-                    padding: "20px 24px",
-                    border: "1px solid #dce4df",
-                    boxShadow: "0 4px 18px rgba(16,45,43,0.04)",
+                    padding: "clamp(14px, 2.5vw, 22px)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow)",
                   }}
                 >
                   <div
@@ -2725,13 +2727,13 @@ export function BiddingProcurement() {
                     }}
                   >
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
                         <h3
                           style={{
-                            fontFamily: "Georgia, serif",
+                            fontFamily: "var(--font-serif, Georgia, serif)",
                             fontSize: "18px",
                             fontWeight: 600,
-                            color: "#143b38",
+                            color: "var(--ink)",
                             margin: 0,
                           }}
                         >
@@ -2744,8 +2746,12 @@ export function BiddingProcurement() {
                             fontWeight: 900,
                             padding: "3px 8px",
                             borderRadius: "999px",
-                            background: rule.is_active ? "#dff3e9" : "#fbe1da",
-                            color: rule.is_active ? "#176448" : "#a13f2e",
+                            background: rule.is_active
+                              ? "color-mix(in srgb, var(--green) 14%, var(--panel))"
+                              : "color-mix(in srgb, var(--red) 12%, var(--panel))",
+                            color: rule.is_active
+                              ? "color-mix(in srgb, var(--green) 76%, var(--ink))"
+                              : "color-mix(in srgb, var(--red) 82%, var(--ink))",
                             textTransform: "uppercase",
                             letterSpacing: ".06em",
                           }}
@@ -2754,7 +2760,7 @@ export function BiddingProcurement() {
                         </span>
                       </div>
 
-                      <div style={{ fontSize: "12px", color: "#6a7d77" }}>
+                      <div style={{ fontSize: "12px", color: "var(--muted)" }}>
                         Lần quét gần nhất: {rule.last_checked_at ? formatDate(rule.last_checked_at) : "Chưa quét lần nào"}
                       </div>
                     </div>
@@ -2766,10 +2772,11 @@ export function BiddingProcurement() {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "6px",
-                          fontSize: "12px",
+                          gap: "8px",
+                          minHeight: "44px",
+                          fontSize: "13px",
                           fontWeight: 700,
-                          color: "#37544c",
+                          color: "var(--ink-2, var(--text))",
                           cursor: "pointer",
                         }}
                       >
@@ -2777,7 +2784,7 @@ export function BiddingProcurement() {
                           type="checkbox"
                           checked={rule.is_active}
                           onChange={() => handleToggleWatchlistActive(rule)}
-                          style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                          style={{ width: "18px", height: "18px", cursor: "pointer" }}
                         />
                         <span>Tự động quét</span>
                       </label>
@@ -2787,10 +2794,11 @@ export function BiddingProcurement() {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "6px",
-                          fontSize: "12px",
+                          gap: "8px",
+                          minHeight: "44px",
+                          fontSize: "13px",
                           fontWeight: 700,
-                          color: rule.notify_telegram ? "#0088cc" : "#6a7d77",
+                          color: rule.notify_telegram ? "var(--primary-dark)" : "var(--muted)",
                           cursor: "pointer",
                         }}
                       >
@@ -2798,7 +2806,7 @@ export function BiddingProcurement() {
                           type="checkbox"
                           checked={rule.notify_telegram}
                           onChange={() => handleToggleWatchlistTelegram(rule)}
-                          style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                          style={{ width: "18px", height: "18px", cursor: "pointer" }}
                         />
                         <span>✈️ Bắn Telegram</span>
                       </label>
@@ -2813,13 +2821,13 @@ export function BiddingProcurement() {
                       flexWrap: "wrap",
                       padding: "12px 14px",
                       borderRadius: "10px",
-                      background: "#f9fcfa",
-                      border: "1px solid #e7f0ec",
+                      background: "var(--surface-subtle, var(--paper))",
+                      border: "1px solid var(--border)",
                       marginBottom: "14px",
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#168579" }}>TIÊU CHÍ LỌC:</span>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)" }}>TIÊU CHÍ LỌC:</span>
 
                     {rule.keyword && (
                       <span
@@ -2827,8 +2835,8 @@ export function BiddingProcurement() {
                           fontSize: "12px",
                           padding: "3px 8px",
                           borderRadius: "6px",
-                          background: "#eaf4f1",
-                          color: "#168579",
+                          background: "var(--primary-soft)",
+                          color: "var(--primary-dark)",
                           fontWeight: 700,
                         }}
                       >
@@ -2842,8 +2850,9 @@ export function BiddingProcurement() {
                           fontSize: "12px",
                           padding: "3px 8px",
                           borderRadius: "6px",
-                          background: "#f0f4f8",
-                          color: "#334e68",
+                          background: "var(--panel)",
+                          border: "1px solid var(--border)",
+                          color: "var(--ink-2, var(--text))",
                           fontWeight: 700,
                         }}
                       >
@@ -2872,8 +2881,8 @@ export function BiddingProcurement() {
                           fontSize: "12px",
                           padding: "3px 8px",
                           borderRadius: "6px",
-                          background: "#fef3c7",
-                          color: "#92400e",
+                          background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                          color: "color-mix(in srgb, var(--amber) 74%, var(--ink))",
                           fontWeight: 700,
                         }}
                       >
@@ -2883,18 +2892,20 @@ export function BiddingProcurement() {
                   </div>
 
                   {/* Actions Strip */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", flexWrap: "wrap" }}>
                     <button
+                      className="ui-btn-chip"
                       onClick={() => handleScanRule(rule.id)}
                       disabled={scanningId === rule.id}
                       style={{
-                        padding: "8px 14px",
+                        minHeight: "44px",
+                        padding: "9px 14px",
                         borderRadius: "8px",
                         fontSize: "12px",
                         fontWeight: 800,
-                        border: "1px solid #168579",
-                        background: "#eaf6f2",
-                        color: "#168579",
+                        border: "1px solid var(--primary)",
+                        background: "var(--primary-soft)",
+                        color: "var(--primary-dark)",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
@@ -2905,15 +2916,17 @@ export function BiddingProcurement() {
                     </button>
 
                     <button
+                      className="ui-btn-chip"
                       onClick={() => setWatchlistModalRule(rule)}
                       style={{
-                        padding: "8px 12px",
+                        minHeight: "44px",
+                        padding: "9px 14px",
                         borderRadius: "8px",
                         fontSize: "12px",
                         fontWeight: 700,
-                        border: "1px solid #c8dbd3",
-                        background: "#fff",
-                        color: "#37544c",
+                        border: "1px solid var(--border-strong)",
+                        background: "var(--panel)",
+                        color: "var(--ink-2, var(--text))",
                         cursor: "pointer",
                       }}
                     >
@@ -2921,15 +2934,17 @@ export function BiddingProcurement() {
                     </button>
 
                     <button
+                      className="ui-btn-chip"
                       onClick={() => handleDeleteWatchlist(rule.id, rule.name)}
                       style={{
-                        padding: "8px 12px",
+                        minHeight: "44px",
+                        padding: "9px 14px",
                         borderRadius: "8px",
                         fontSize: "12px",
                         fontWeight: 700,
-                        border: "1px solid #f1c8bf",
-                        background: "#fff0ec",
-                        color: "#963c2d",
+                        border: "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
+                        background: "color-mix(in srgb, var(--red) 10%, var(--panel))",
+                        color: "color-mix(in srgb, var(--red) 82%, var(--ink))",
                         cursor: "pointer",
                       }}
                     >
@@ -2957,23 +2972,23 @@ export function BiddingProcurement() {
               alignItems: "center",
               flexWrap: "wrap",
               gap: "14px",
-              background: "#fff",
-              padding: "20px 24px",
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 22px)",
               borderRadius: "18px",
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 2px 10px rgba(16,45,43,0.04)",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
             }}
           >
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: 0, color: "#143b38" }}>
+                <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "22px", margin: 0, color: "var(--ink)" }}>
                   Hồ Sơ Năng Lực Nhà Thầu & Đối Soát Khách Hàng CRM
                 </h2>
                 <span className="chip green sm" style={{ fontWeight: 800 }}>
                   ● Dữ liệu e-GP & Quyết định LCNT
                 </span>
               </div>
-              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#617770" }}>
+              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--muted)" }}>
                 Tự động rà soát toàn bộ khách hàng trong CSDL INUT, thống kê lịch sử trúng thầu, win rate và các chủ đầu tư ruột.
               </p>
             </div>
@@ -2983,9 +2998,10 @@ export function BiddingProcurement() {
                 onClick={handleScanCrmContractors}
                 disabled={crmScanLoading}
                 style={{
+                  minHeight: "44px",
                   padding: "11px 20px",
                   borderRadius: "12px",
-                  background: "linear-gradient(135deg, #168579, #0d473f)",
+                  background: "linear-gradient(135deg, var(--primary), var(--primary-dark))",
                   color: "#fff",
                   border: "0",
                   fontWeight: 800,
@@ -2994,7 +3010,7 @@ export function BiddingProcurement() {
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
-                  boxShadow: "0 4px 14px rgba(22,133,121,0.25)",
+                  boxShadow: "var(--shadow)",
                 }}
               >
                 <span>{crmScanLoading ? "⏳ Đang Quét..." : "⚡ Quét Lại Năng Lực CRM"}</span>
@@ -3003,73 +3019,31 @@ export function BiddingProcurement() {
           </div>
 
           {/* Sub-Tabs Switcher */}
-          <div
-            style={{
-              display: "flex",
-              gap: "10px",
-              background: "#f1f5f9",
-              padding: "6px",
-              borderRadius: "14px",
-              width: "fit-content",
-            }}
-          >
-            <button
-              onClick={() => {
-                setContractorSubTab("won_packages_playbook");
-                syncBiddingUrl("contractors", "won_packages_playbook");
+          <ResponsiveTabs
+            ariaLabel="Chuyển mục nhà thầu"
+            active={contractorSubTab}
+            onChange={(subId) => {
+              setContractorSubTab(subId);
+              syncBiddingUrl("contractors", subId);
+              if (subId === "won_packages_playbook") {
                 if (!wonPackagesResult) handleFetchWonPackages();
-              }}
-              style={{
-                padding: "8px 18px",
-                borderRadius: "10px",
-                border: "none",
-                fontSize: "13px",
-                fontWeight: contractorSubTab === "won_packages_playbook" ? 800 : 600,
-                background: contractorSubTab === "won_packages_playbook" ? "#168579" : "transparent",
-                color: contractorSubTab === "won_packages_playbook" ? "#fff" : "#475569",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                boxShadow: contractorSubTab === "won_packages_playbook" ? "0 2px 8px rgba(22,133,121,0.25)" : "none",
-              }}
-            >
-              <span>📚</span>
-              <span>Kho Gói Thầu Đã Trúng & Cẩm Nang INUT</span>
-              {wonPackagesResult && (
-                <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "999px", background: "rgba(255,255,255,0.25)", color: "#fff", fontWeight: 800 }}>
-                  {wonPackagesResult.total_packages}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setContractorSubTab("crm_contractors");
-                syncBiddingUrl("contractors", "crm_contractors");
+              } else {
                 if (!crmScanResult) handleScanCrmContractors();
-              }}
-              style={{
-                padding: "8px 18px",
-                borderRadius: "10px",
-                border: "none",
-                fontSize: "13px",
-                fontWeight: contractorSubTab === "crm_contractors" ? 800 : 600,
-                background: contractorSubTab === "crm_contractors" ? "#168579" : "transparent",
-                color: contractorSubTab === "crm_contractors" ? "#fff" : "#475569",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                boxShadow: contractorSubTab === "crm_contractors" ? "0 2px 8px rgba(22,133,121,0.25)" : "none",
-              }}
-            >
-              <span>🏢</span>
-              <span>Danh Sách Khách Hàng CRM ({crmScanResult ? crmScanResult.total_crm_customers : 14})</span>
-            </button>
-          </div>
-
-
+              }
+            }}
+            tabs={[
+              {
+                id: "won_packages_playbook",
+                label: "📚 Kho Gói Thầu Đã Trúng & Cẩm Nang INUT",
+                badge: wonPackagesResult ? wonPackagesResult.total_packages : undefined,
+              },
+              {
+                id: "crm_contractors",
+                label: "🏢 Danh Sách Khách Hàng CRM",
+                badge: crmScanResult ? crmScanResult.total_crm_customers : 14,
+              },
+            ]}
+          />
 
           {/* ══════════════════════════════════════════════════════════════════════════ */}
           {/* SUB-VIEW A: 📚 KHO GÓI THẦU ĐÃ TRÚNG & CẨM NANG ĐẤU THẦU INUT              */}
@@ -3079,42 +3053,42 @@ export function BiddingProcurement() {
               {/* Playbook Highlight Banner */}
               <div
                 style={{
-                  background: "linear-gradient(135deg, #0d473f, #168579)",
+                  background: "linear-gradient(135deg, var(--ink), var(--primary))",
                   borderRadius: "18px",
-                  padding: "24px",
+                  padding: "clamp(16px, 3vw, 24px)",
                   color: "#fff",
-                  boxShadow: "0 8px 30px rgba(13,71,63,0.18)",
+                  boxShadow: "var(--shadow-md)",
                   position: "relative",
                   overflow: "hidden",
                 }}
               >
                 <div style={{ position: "relative", zIndex: 1, maxWidth: "880px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".15em", color: "#a7f3d0" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".15em", color: "var(--mint, var(--primary-soft))" }}>
                     CẨM NANG HÀNH ĐỘNG ĐẤU THẦU THỰC CHIẾN • DÀNH CHO INUT (MST 4401053694)
                   </span>
-                  <h3 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: "6px 0 10px", color: "#ffffff" }}>
+                  <h3 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "22px", margin: "6px 0 10px", color: "#fff" }}>
                     Công Thức Định Giá Dự Thầu & 3 Bộ Kit Hồ Sơ Chuẩn Mẫu
                   </h3>
-                  <p style={{ fontSize: "13px", color: "#e2e8f0", lineHeight: 1.6, margin: 0 }}>
+                  <p style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.86)", lineHeight: 1.6, margin: 0 }}>
                     Phân tích từ hơn 100 gói thầu đã trúng của các nhà thầu lớn (Gdata, Tân Thanh Phương, Merap): Mức giảm giá tối ưu luôn nằm ở vùng <strong>3.2% - 4.5%</strong> so với Giá dự toán gói thầu để tối đa hóa điểm số tài chính mà vẫn giữ biên lợi nhuận ròng $\ge 30\%$.
                   </p>
                 </div>
 
                 {/* 3 Standard E-HSDT Kits */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px", marginTop: "18px" }}>
-                  <div style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <div style={{ fontWeight: 800, fontSize: "13px", color: "#fef08a" }}>💧 Kit 1: Quan Trắc Môi Trường TT10</div>
-                    <div style={{ fontSize: "11px", color: "#e2e8f0", marginTop: "4px" }}>Datalogger 4G + Web SCADA truyền FTP/MQTT chuẩn Sở TN&MT. (Mẫu: 1,15 Tỷ ₫)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: "12px", marginTop: "18px" }}>
+                  <div style={{ minWidth: 0, background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontWeight: 800, fontSize: "13px", color: "var(--gold)" }}>💧 Kit 1: Quan Trắc Môi Trường TT10</div>
+                    <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.88)", marginTop: "4px" }}>Datalogger 4G + Web SCADA truyền FTP/MQTT chuẩn Sở TN&MT. (Mẫu: 1,15 Tỷ ₫)</div>
                   </div>
 
-                  <div style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <div style={{ fontWeight: 800, fontSize: "13px", color: "#bae6fd" }}>⚡ Kit 2: Đo Xa Điện Năng AMR/AMI</div>
-                    <div style={{ fontSize: "11px", color: "#e2e8f0", marginTop: "4px" }}>Modem đọc xa công tơ điện tử Elster/Gelex + MDMS biểu đồ phụ tải. (Mẫu: 760 Tr ₫)</div>
+                  <div style={{ minWidth: 0, background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontWeight: 800, fontSize: "13px", color: "var(--mint, var(--primary-soft))" }}>⚡ Kit 2: Đo Xa Điện Năng AMR/AMI</div>
+                    <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.88)", marginTop: "4px" }}>Modem đọc xa công tơ điện tử Elster/Gelex + MDMS biểu đồ phụ tải. (Mẫu: 760 Tr ₫)</div>
                   </div>
 
-                  <div style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <div style={{ fontWeight: 800, fontSize: "13px", color: "#bbf7d0" }}>🏭 Kit 3: Tự Động Hóa SCADA FUXA</div>
-                    <div style={{ fontSize: "11px", color: "#e2e8f0", marginTop: "4px" }}>Tủ điều khiển PLC/Inverter + FUXA Web SCADA trạm bơm & cấp nước. (Mẫu: 945 Tr ₫)</div>
+                  <div style={{ minWidth: 0, background: "rgba(255,255,255,0.12)", backdropFilter: "blur(8px)", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.2)" }}>
+                    <div style={{ fontWeight: 800, fontSize: "13px", color: "var(--mint, var(--primary-soft))" }}>🏭 Kit 3: Tự Động Hóa SCADA FUXA</div>
+                    <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.88)", marginTop: "4px" }}>Tủ điều khiển PLC/Inverter + FUXA Web SCADA trạm bơm & cấp nước. (Mẫu: 945 Tr ₫)</div>
                   </div>
                 </div>
               </div>
@@ -3126,14 +3100,15 @@ export function BiddingProcurement() {
                   gap: "10px",
                   flexWrap: "wrap",
                   alignItems: "center",
-                  background: "#fff",
-                  padding: "16px 20px",
+                  background: "var(--panel)",
+                  padding: "16px",
                   borderRadius: "16px",
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid var(--border)",
                 }}
               >
-                <div style={{ flex: 1, minWidth: "260px" }}>
+                <div style={{ flex: "1 1 240px", minWidth: 0 }}>
                   <input
+                    className="ui-input"
                     type="text"
                     value={wonPackagesQuery}
                     onChange={(e) => {
@@ -3143,31 +3118,31 @@ export function BiddingProcurement() {
                     placeholder="Tìm gói thầu đã trúng: Nhập tên gói, số TBMT, đơn vị trúng (Gdata, Tân Thanh Phương, Merap...)"
                     style={{
                       width: "100%",
-                      height: "42px",
+                      minHeight: "44px",
                       padding: "0 14px",
                       borderRadius: "10px",
-                      border: "1px solid #cbd5e1",
-                      background: "#f8fafc",
-                      fontSize: "13px",
+                      border: "1px solid var(--border-strong)",
+                      background: "var(--surface-subtle, var(--paper))",
+                      color: "var(--ink)",
                       outline: "none",
                     }}
                   />
                 </div>
 
                 <select
+                  className="ui-select"
                   value={wonPackagesFieldFilter}
                   onChange={(e) => {
                     setWonPackagesFieldFilter(e.target.value);
                     handleFetchWonPackages(wonPackagesQuery, e.target.value);
                   }}
                   style={{
-                    height: "42px",
+                    minHeight: "44px",
                     padding: "0 14px",
                     borderRadius: "10px",
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    fontSize: "13px",
-                    color: "#334155",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
                     cursor: "pointer",
                   }}
                 >
@@ -3180,10 +3155,10 @@ export function BiddingProcurement() {
                 <button
                   onClick={() => handleFetchWonPackages(wonPackagesQuery, wonPackagesFieldFilter)}
                   style={{
-                    height: "42px",
+                    minHeight: "44px",
                     padding: "0 18px",
                     borderRadius: "10px",
-                    background: "#168579",
+                    background: "var(--primary)",
                     color: "#fff",
                     border: 0,
                     fontWeight: 700,
@@ -3197,12 +3172,12 @@ export function BiddingProcurement() {
 
               {/* Won Packages List */}
               {wonPackagesLoading ? (
-                <div style={{ textAlign: "center", padding: "60px", color: "#64748b", background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0" }}>
+                <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)", background: "var(--panel)", borderRadius: "18px", border: "1px solid var(--border)" }}>
                   <span className="animate-spin" style={{ fontSize: "28px", display: "inline-block", marginBottom: "10px" }}>⏳</span>
-                  <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>Đang tải danh sách gói thầu đã trúng...</p>
+                  <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--ink)" }}>Đang tải danh sách gói thầu đã trúng...</p>
                 </div>
               ) : !wonPackagesResult || wonPackagesResult.packages.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "60px", color: "#64748b", background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0" }}>
+                <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)", background: "var(--panel)", borderRadius: "18px", border: "1px solid var(--border)" }}>
                   <p style={{ margin: 0, fontSize: "15px", fontWeight: 700 }}>Không tìm thấy gói thầu đã trúng phù hợp</p>
                 </div>
               ) : (
@@ -3211,11 +3186,11 @@ export function BiddingProcurement() {
                     <div
                       key={pkg.id}
                       style={{
-                        background: "#fff",
+                        background: "var(--panel)",
                         borderRadius: "18px",
-                        border: "1px solid #fed7aa",
-                        padding: "20px 24px",
-                        boxShadow: "0 4px 20px rgba(234, 88, 12, 0.05)",
+                        border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))",
+                        padding: "clamp(14px, 2.5vw, 22px)",
+                        boxShadow: "var(--shadow)",
                         display: "flex",
                         flexDirection: "column",
                         gap: "12px",
@@ -3223,15 +3198,15 @@ export function BiddingProcurement() {
                     >
                       {/* Top row */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                        <div>
+                        <div style={{ flex: "1 1 240px", minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
-                            <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 800, color: "#0f766e", background: "#e6fffa", padding: "2px 8px", borderRadius: "6px" }}>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", background: "var(--primary-soft)", padding: "2px 8px", borderRadius: "6px" }}>
                               {pkg.tbmt_code}
                             </span>
-                            <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "6px", background: "#fef3c7", color: "#92400e" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "6px", background: "color-mix(in srgb, var(--gold) 18%, var(--panel))", color: "color-mix(in srgb, var(--amber) 74%, var(--ink))" }}>
                               📂 {pkg.field_label || pkg.field}
                             </span>
-                            <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "999px", background: "#dcfce7", color: "#166534" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--green) 14%, var(--panel))", color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>
                               ✓ ĐÃ TRÚNG THẦU
                             </span>
                           </div>
@@ -3242,42 +3217,43 @@ export function BiddingProcurement() {
                               margin: 0,
                               fontSize: "16px",
                               fontWeight: 800,
-                              color: "#0f172a",
+                              color: "var(--ink)",
                               lineHeight: 1.4,
                               cursor: "pointer",
+                              overflowWrap: "anywhere",
                               transition: "color 0.15s ease",
                             }}
-                            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#0f766e")}
-                            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "#0f172a")}
+                            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--primary)")}
+                            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--ink)")}
                           >
                             {pkg.tender_name} ↗
                           </h3>
 
-                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                            Chủ đầu tư: <strong style={{ color: "#334155" }}>{pkg.procuring_entity}</strong>
+                          <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                            Chủ đầu tư: <strong style={{ color: "var(--ink-2, var(--text))" }}>{pkg.procuring_entity}</strong>
                           </div>
                         </div>
 
-                        <div style={{ textAlign: "right", minWidth: "160px" }}>
-                          <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Giá Trúng Thầu</span>
-                          <div style={{ fontSize: "18px", fontWeight: 800, color: "#ea580c", fontFamily: "var(--font-mono)" }}>
+                        <div style={{ textAlign: "right", minWidth: 0 }}>
+                          <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Giá Trúng Thầu</span>
+                          <div style={{ fontSize: "18px", fontWeight: 800, color: "color-mix(in srgb, var(--coral) 82%, var(--ink))", fontFamily: "var(--font-mono)" }}>
                             {formatVnd(pkg.won_price)}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#047857", fontWeight: 700 }}>
+                          <div style={{ fontSize: "11px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontWeight: 700 }}>
                             Dự toán: {formatVnd(pkg.bid_price)} (Giảm {pkg.discount_percent}%)
                           </div>
                         </div>
                       </div>
 
                       {/* Contractor & Decision Strip */}
-                      <div style={{ display: "flex", gap: "14px", fontSize: "12px", background: "#f8fafc", padding: "10px 14px", borderRadius: "10px", border: "1px solid #f1f5f9", flexWrap: "wrap", alignItems: "center" }}>
-                        <span>🏆 Đơn vị trúng: <strong style={{ color: "#0f172a" }}>{pkg.contractor_name}</strong></span>
-                        <span>📜 Quyết định: <strong style={{ color: "#475569", fontFamily: "var(--font-mono)" }}>{pkg.decision_number}</strong> ({pkg.award_date})</span>
+                      <div style={{ display: "flex", gap: "14px", fontSize: "12px", background: "var(--surface-subtle, var(--paper))", padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--border)", flexWrap: "wrap", alignItems: "center", color: "var(--ink-2, var(--text))" }}>
+                        <span>🏆 Đơn vị trúng: <strong style={{ color: "var(--ink)" }}>{pkg.contractor_name}</strong></span>
+                        <span>📜 Quyết định: <strong style={{ color: "var(--ink-2, var(--text))", fontFamily: "var(--font-mono)" }}>{pkg.decision_number}</strong> ({pkg.award_date})</span>
                       </div>
 
                       {/* Winning Factors */}
                       {pkg.winning_factors && pkg.winning_factors.length > 0 && (
-                        <div style={{ background: "#f0fdf4", padding: "12px 14px", borderRadius: "10px", border: "1px solid #bbf7d0", fontSize: "12px", color: "#166534" }}>
+                        <div style={{ background: "color-mix(in srgb, var(--green) 10%, var(--panel))", padding: "12px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--green) 32%, var(--border))", fontSize: "12px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>
                           <div style={{ fontWeight: 800, marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
                             <span>🌟</span> Yếu Tố Quyết Định Trúng Thầu:
                           </div>
@@ -3291,25 +3267,27 @@ export function BiddingProcurement() {
 
                       {/* INUT Takeaway & Action Plan */}
                       {pkg.inut_playbook_takeaway && (
-                        <div style={{ background: "linear-gradient(135deg, #fffbeb, #fef2f2)", padding: "12px 14px", borderRadius: "10px", border: "1px solid #fde68a", fontSize: "12px", color: "#854d0e", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                        <div style={{ background: "var(--paper)", padding: "12px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))", fontSize: "12px", color: "var(--ink-2, var(--text))", display: "flex", gap: "8px", alignItems: "flex-start" }}>
                           <span style={{ fontSize: "16px" }}>💡</span>
                           <div>
-                            <strong style={{ color: "#713f12" }}>Bài học & Cơ hội hợp tác cho INUT: </strong>
+                            <strong style={{ color: "color-mix(in srgb, var(--amber) 74%, var(--ink))" }}>Bài học & Cơ hội hợp tác cho INUT: </strong>
                             {pkg.inut_playbook_takeaway}
                           </div>
                         </div>
                       )}
 
                       {/* Action Bar for Won Package */}
-                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "info")}
                           style={{
-                            padding: "8px 16px",
+                            minHeight: "44px",
+                            padding: "9px 16px",
                             borderRadius: "10px",
                             border: "none",
-                            background: "#0f766e",
+                            background: "var(--primary)",
                             color: "#fff",
                             fontWeight: 700,
                             fontSize: "12px",
@@ -3317,7 +3295,7 @@ export function BiddingProcurement() {
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "6px",
-                            boxShadow: "0 2px 6px rgba(15,118,110,0.2)",
+                            boxShadow: "var(--shadow)",
                           }}
                         >
                           <span>👁️</span>
@@ -3326,13 +3304,15 @@ export function BiddingProcurement() {
 
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "attachments")}
                           style={{
-                            padding: "8px 16px",
+                            minHeight: "44px",
+                            padding: "9px 16px",
                             borderRadius: "10px",
-                            border: "1px solid #0f766e",
-                            background: "#f0fdfa",
-                            color: "#0f766e",
+                            border: "1px solid var(--primary)",
+                            background: "var(--primary-soft)",
+                            color: "var(--primary-dark)",
                             fontWeight: 700,
                             fontSize: "12px",
                             cursor: "pointer",
@@ -3347,13 +3327,15 @@ export function BiddingProcurement() {
 
                         <button
                           type="button"
+                          className="ui-btn-chip"
                           onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "competitors")}
                           style={{
-                            padding: "8px 16px",
+                            minHeight: "44px",
+                            padding: "9px 16px",
                             borderRadius: "10px",
-                            border: "1px solid #ea580c",
-                            background: "#fff7ed",
-                            color: "#ea580c",
+                            border: "1px solid color-mix(in srgb, var(--coral) 50%, var(--border))",
+                            background: "color-mix(in srgb, var(--coral) 11%, var(--panel))",
+                            color: "color-mix(in srgb, var(--coral) 82%, var(--ink))",
                             fontWeight: 700,
                             fontSize: "12px",
                             cursor: "pointer",
@@ -3367,14 +3349,16 @@ export function BiddingProcurement() {
                         </button>
 
                         <a
-                          href={api.bidding.getFullDossierZipUrl(pkg.tbmt_code)}
+                          href={safeHttpUrl(api.bidding.getFullDossierZipUrl(pkg.tbmt_code))}
                           download
+                          className="ui-btn-chip"
                           style={{
-                            padding: "8px 16px",
+                            minHeight: "44px",
+                            padding: "9px 16px",
                             borderRadius: "10px",
-                            background: "#fef08a",
-                            color: "#854d0e",
-                            border: "1px solid #fde047",
+                            background: "color-mix(in srgb, var(--gold) 24%, var(--panel))",
+                            color: "var(--ink)",
+                            border: "1px solid color-mix(in srgb, var(--gold) 55%, var(--border))",
                             fontWeight: 800,
                             fontSize: "12px",
                             textDecoration: "none",
@@ -3400,65 +3384,64 @@ export function BiddingProcurement() {
           {contractorSubTab === "crm_contractors" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
 
-
           {/* 4 Metric Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "14px" }}>
             <div
               className="metric-card teal"
-              style={{ padding: "18px 20px", borderRadius: "16px", background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer" }}
+              style={{ minWidth: 0, padding: "18px 20px", borderRadius: "16px", background: "var(--panel)", border: "1px solid var(--border)", cursor: "pointer" }}
               onClick={() => setContractorCategoryFilter("all")}
             >
-              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "#64748b" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "var(--muted)" }}>
                 Tổng Khách Hàng CRM
               </span>
-              <b style={{ fontFamily: "Georgia, serif", fontSize: "28px", color: "#0f172a", margin: "8px 0 4px", display: "block" }}>
+              <b style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "28px", color: "var(--ink)", margin: "8px 0 4px", display: "block" }}>
                 {crmScanResult ? crmScanResult.total_crm_customers : "..."}
               </b>
-              <small style={{ color: "#64748b" }}>Doanh nghiệp trong CSDL</small>
+              <small style={{ color: "var(--muted)" }}>Doanh nghiệp trong CSDL</small>
             </div>
 
             <div
               className="metric-card coral"
-              style={{ padding: "18px 20px", borderRadius: "16px", background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer" }}
+              style={{ minWidth: 0, padding: "18px 20px", borderRadius: "16px", background: "var(--panel)", border: "1px solid var(--border)", cursor: "pointer" }}
               onClick={() => setContractorCategoryFilter("won")}
             >
-              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "#ea580c" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "color-mix(in srgb, var(--coral) 82%, var(--ink))" }}>
                 🏆 Khách Hàng Trúng Thầu
               </span>
-              <b style={{ fontFamily: "Georgia, serif", fontSize: "28px", color: "#ea580c", margin: "8px 0 4px", display: "block" }}>
+              <b style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "28px", color: "color-mix(in srgb, var(--coral) 82%, var(--ink))", margin: "8px 0 4px", display: "block" }}>
                 {crmScanResult ? crmScanResult.total_won_contractors : "..."}
               </b>
-              <small style={{ color: "#ea580c" }}>Trúng thầu cấp Bộ & Tỉnh</small>
+              <small style={{ color: "color-mix(in srgb, var(--coral) 82%, var(--ink))" }}>Trúng thầu cấp Bộ & Tỉnh</small>
             </div>
 
             <div
               className="metric-card amber"
-              style={{ padding: "18px 20px", borderRadius: "16px", background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer" }}
+              style={{ minWidth: 0, padding: "18px 20px", borderRadius: "16px", background: "var(--panel)", border: "1px solid var(--border)", cursor: "pointer" }}
               onClick={() => setContractorCategoryFilter("won")}
             >
-              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "#047857" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>
                 💰 Tổng Giá Trị Trúng Thầu
               </span>
-              <b style={{ fontFamily: "Georgia, serif", fontSize: "26px", color: "#047857", margin: "8px 0 4px", display: "block" }}>
+              <b style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "26px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", margin: "8px 0 4px", display: "block" }}>
                 {crmScanResult ? crmScanResult.total_won_value_formatted : "..."}
               </b>
-              <small style={{ color: "#047857" }}>Giá trị gói thầu thắng lũy kế</small>
+              <small style={{ color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>Giá trị gói thầu thắng lũy kế</small>
             </div>
 
             <div
               className="metric-card ink"
-              style={{ padding: "18px 20px", borderRadius: "16px", background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer" }}
+              style={{ minWidth: 0, padding: "18px 20px", borderRadius: "16px", background: "var(--panel)", border: "1px solid var(--border)", cursor: "pointer" }}
               onClick={() => setContractorCategoryFilter("registered")}
             >
-              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "#4338ca" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: "var(--primary-dark)" }}>
                 📝 Nhà Thầu Công Nghệ / OEM
               </span>
-              <b style={{ fontFamily: "Georgia, serif", fontSize: "28px", color: "#4338ca", margin: "8px 0 4px", display: "block" }}>
+              <b style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "28px", color: "var(--primary-dark)", margin: "8px 0 4px", display: "block" }}>
                 {crmScanResult
                   ? crmScanResult.items.filter((i) => i.bidding_status === "REGISTERED_BIDDER" || i.bidding_status === "OEM_SUBCONTRACTOR").length
                   : "..."}
               </b>
-              <small style={{ color: "#4338ca" }}>Đối tác sản xuất & lắp đặt IoT</small>
+              <small style={{ color: "var(--primary-dark)" }}>Đối tác sản xuất & lắp đặt IoT</small>
             </div>
           </div>
 
@@ -3468,15 +3451,16 @@ export function BiddingProcurement() {
               display: "flex",
               flexDirection: "column",
               gap: "12px",
-              background: "#fff",
-              padding: "16px 20px",
+              background: "var(--panel)",
+              padding: "16px",
               borderRadius: "16px",
-              border: "1px solid #e2e8f0",
+              border: "1px solid var(--border)",
             }}
           >
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ flex: 1, minWidth: "260px", position: "relative" }}>
+              <div style={{ flex: "1 1 240px", minWidth: 0, position: "relative" }}>
                 <input
+                  className="ui-input"
                   type="text"
                   value={contractorSearchQuery}
                   onChange={(e) => setContractorSearchQuery(e.target.value)}
@@ -3484,31 +3468,40 @@ export function BiddingProcurement() {
                   placeholder="Tra cứu bất kỳ doanh nghiệp / đối thủ nào: Nhập Tên công ty hoặc Mã Số Thuế (VD: Gdata, 0105365128, Tân Thanh Phương...)"
                   style={{
                     width: "100%",
-                    height: "44px",
-                    padding: "0 40px 0 14px",
+                    minHeight: "44px",
+                    padding: "0 46px 0 14px",
                     borderRadius: "12px",
-                    border: "1px solid #cbd5e1",
-                    background: "#f8fafc",
-                    fontSize: "13px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--surface-subtle, var(--paper))",
+                    color: "var(--ink)",
                     outline: "none",
                   }}
                 />
                 {contractorSearchQuery && (
                   <button
+                    type="button"
+                    className="ui-btn-icon"
+                    aria-label="Xóa từ khóa tìm kiếm"
                     onClick={() => {
                       setContractorSearchQuery("");
                       handleScanCrmContractors();
                     }}
                     style={{
                       position: "absolute",
-                      right: "12px",
+                      right: "4px",
                       top: "50%",
                       transform: "translateY(-50%)",
+                      width: "36px",
+                      height: "36px",
+                      minWidth: "36px",
+                      minHeight: "36px",
                       background: "none",
                       border: "none",
-                      color: "#94a3b8",
+                      color: "var(--muted)",
                       cursor: "pointer",
-                      fontSize: "14px",
+                      fontSize: "15px",
+                      display: "inline-grid",
+                      placeItems: "center",
                     }}
                   >
                     ✕
@@ -3519,10 +3512,10 @@ export function BiddingProcurement() {
               <button
                 onClick={() => handleSearchContractorsDirect(contractorSearchQuery)}
                 style={{
-                  height: "44px",
+                  minHeight: "44px",
                   padding: "0 22px",
                   borderRadius: "12px",
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
                   border: "0",
                   fontWeight: 800,
@@ -3539,45 +3532,49 @@ export function BiddingProcurement() {
             </div>
 
             {/* Quick Filter Tags */}
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", paddingTop: "8px", borderTop: "1px solid #f1f5f9" }}>
-              <span style={{ fontSize: "11px", fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>Gợi ý nhanh:</span>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", paddingTop: "8px", borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--muted)", textTransform: "uppercase" }}>Gợi ý nhanh:</span>
               <button
                 onClick={() => {
                   setContractorCategoryFilter("all");
                   handleScanCrmContractors();
                 }}
-                className={`btn-date ${contractorCategoryFilter === "all" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", background: contractorCategoryFilter === "all" ? "#168579" : "#f8fafc", color: contractorCategoryFilter === "all" ? "#fff" : "#334155", cursor: "pointer" }}
+                className={`ui-btn-chip btn-date ${contractorCategoryFilter === "all" ? "active" : ""}`}
+                style={{ minHeight: "40px", padding: "6px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid var(--border-strong)", background: contractorCategoryFilter === "all" ? "var(--primary)" : "var(--surface-subtle, var(--paper))", color: contractorCategoryFilter === "all" ? "#fff" : "var(--ink-2, var(--text))", cursor: "pointer" }}
               >
                 ⚡ Tất cả KH CRM ({crmScanResult ? crmScanResult.total_crm_customers : 14})
               </button>
 
               <button
+                className="ui-btn-chip"
                 onClick={() => {
                   setContractorCategoryFilter("won");
                 }}
-                style={{ padding: "5px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid #fed7aa", background: contractorCategoryFilter === "won" ? "#ea580c" : "#fff7ed", color: contractorCategoryFilter === "won" ? "#fff" : "#c2410c", fontWeight: 700, cursor: "pointer" }}
+                style={{ minHeight: "40px", padding: "6px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid color-mix(in srgb, var(--coral) 45%, var(--border))", background: contractorCategoryFilter === "won" ? "color-mix(in srgb, var(--coral) 82%, var(--ink))" : "color-mix(in srgb, var(--coral) 11%, var(--panel))", color: contractorCategoryFilter === "won" ? "#fff" : "color-mix(in srgb, var(--coral) 82%, var(--ink))", fontWeight: 700, cursor: "pointer" }}
               >
                 🏆 Top Trúng Thầu (Gdata, Tân Thanh Phương, Merap)
               </button>
 
               <button
+                className="ui-btn-chip"
                 onClick={() => handleSearchContractorsDirect("4401053694")}
-                style={{ padding: "5px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid #a7f3d0", background: "#ecfdf5", color: "#047857", fontWeight: 700, cursor: "pointer" }}
+                style={{ minHeight: "40px", padding: "6px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid color-mix(in srgb, var(--green) 36%, var(--border))", background: "color-mix(in srgb, var(--green) 11%, var(--panel))", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontWeight: 700, cursor: "pointer" }}
               >
                 🌟 iNut Technology (4401053694)
               </button>
 
               <button
+                className="ui-btn-chip"
                 onClick={() => handleSearchContractorsDirect("5500649200")}
-                style={{ padding: "5px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid #c7d2fe", background: "#eef2ff", color: "#4338ca", fontWeight: 700, cursor: "pointer" }}
+                style={{ minHeight: "40px", padding: "6px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))", background: "var(--primary-soft)", color: "var(--primary-dark)", fontWeight: 700, cursor: "pointer" }}
               >
                 ⚙️ Tự Động Hóa IoT Sơn La (5500649200)
               </button>
 
               <button
+                className="ui-btn-chip"
                 onClick={() => handleSearchContractorsDirect("0314360282")}
-                style={{ padding: "5px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#475569", fontWeight: 700, cursor: "pointer" }}
+                style={{ minHeight: "40px", padding: "6px 12px", fontSize: "12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--surface-subtle, var(--paper))", color: "var(--ink-2, var(--text))", fontWeight: 700, cursor: "pointer" }}
               >
                 ⚙️ Bảo Toàn Tech (0314360282)
               </button>
@@ -3586,23 +3583,23 @@ export function BiddingProcurement() {
 
           {/* Contractors Cards List */}
           {crmScanLoading ? (
-            <div style={{ textAlign: "center", padding: "60px", color: "#64748b", background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0" }}>
+            <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)", background: "var(--panel)", borderRadius: "18px", border: "1px solid var(--border)" }}>
               <span className="animate-spin" style={{ fontSize: "28px", display: "inline-block", marginBottom: "10px" }}>⏳</span>
-              <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#1e293b" }}>Đang quét và đối soát hồ sơ đấu thầu từ e-GP...</p>
+              <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "var(--ink)" }}>Đang quét và đối soát hồ sơ đấu thầu từ e-GP...</p>
             </div>
           ) : !crmScanResult || crmScanResult.items.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px", color: "#64748b", background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0" }}>
+            <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--muted)", background: "var(--panel)", borderRadius: "18px", border: "1px solid var(--border)" }}>
               <span style={{ fontSize: "36px", display: "block", marginBottom: "10px" }}>🏢</span>
-              <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#1e293b" }}>Chưa có dữ liệu nhà thầu</p>
+              <p style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "var(--ink)" }}>Chưa có dữ liệu nhà thầu</p>
               <button
                 onClick={handleScanCrmContractors}
-                style={{ marginTop: "14px", padding: "9px 18px", borderRadius: "10px", background: "#168579", color: "#fff", border: 0, fontWeight: 700, cursor: "pointer" }}
+                style={{ marginTop: "14px", minHeight: "44px", padding: "10px 18px", borderRadius: "10px", background: "var(--primary)", color: "#fff", border: 0, fontWeight: 700, cursor: "pointer" }}
               >
                 ⚡ Quét Ngay
               </button>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               {crmScanResult.items
                 .filter((item) => {
                   if (contractorCategoryFilter === "won") return item.total_won > 0;
@@ -3613,11 +3610,11 @@ export function BiddingProcurement() {
                   <div
                     key={c.tax_code + (c.customer_id || "")}
                     style={{
-                      background: "#ffffff",
+                      background: "var(--panel)",
                       borderRadius: "18px",
-                      border: c.total_won > 0 ? "1px solid #fed7aa" : "1px solid #e2e8f0",
-                      padding: "20px 24px",
-                      boxShadow: c.total_won > 0 ? "0 4px 20px rgba(234, 88, 12, 0.06)" : "0 2px 8px rgba(16,45,43,0.03)",
+                      border: c.total_won > 0 ? "1px solid color-mix(in srgb, var(--gold) 48%, var(--border))" : "1px solid var(--border)",
+                      padding: "clamp(14px, 2.5vw, 22px)",
+                      boxShadow: "var(--shadow)",
                       display: "flex",
                       flexDirection: "column",
                       gap: "14px",
@@ -3625,9 +3622,9 @@ export function BiddingProcurement() {
                   >
                     {/* Header */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                      <div>
+                      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
+                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "var(--ink)", overflowWrap: "anywhere" }}>
                             {c.name}
                           </h3>
                           <span
@@ -3636,18 +3633,28 @@ export function BiddingProcurement() {
                               borderRadius: "999px",
                               fontSize: "11px",
                               fontWeight: 800,
-                              background: c.total_won > 0 ? "#fff7ed" : c.bidding_status === "REGISTERED_BIDDER" ? "#eef2ff" : "#f1f5f9",
-                              color: c.total_won > 0 ? "#c2410c" : c.bidding_status === "REGISTERED_BIDDER" ? "#4338ca" : "#475569",
-                              border: c.total_won > 0 ? "1px solid #fed7aa" : "1px solid #cbd5e1",
+                              background: c.total_won > 0
+                                ? "color-mix(in srgb, var(--coral) 12%, var(--panel))"
+                                : c.bidding_status === "REGISTERED_BIDDER"
+                                ? "var(--primary-soft)"
+                                : "var(--surface-subtle, var(--paper))",
+                              color: c.total_won > 0
+                                ? "color-mix(in srgb, var(--coral) 82%, var(--ink))"
+                                : c.bidding_status === "REGISTERED_BIDDER"
+                                ? "var(--primary-dark)"
+                                : "var(--ink-2, var(--text))",
+                              border: c.total_won > 0
+                                ? "1px solid color-mix(in srgb, var(--coral) 40%, var(--border))"
+                                : "1px solid var(--border-strong)",
                             }}
                           >
                             {c.bidding_status_label}
                           </span>
                         </div>
 
-                        <div style={{ display: "flex", gap: "14px", marginTop: "4px", fontSize: "12px", color: "#64748b", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", gap: "14px", marginTop: "4px", fontSize: "12px", color: "var(--muted)", flexWrap: "wrap" }}>
                           <span>
-                            Mã số thuế: <strong style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>{c.tax_code}</strong>
+                            Mã số thuế: <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{c.tax_code}</strong>
                           </span>
                           {c.address && <span>📍 {c.address}</span>}
                           {c.email && <span>✉️ {c.email}</span>}
@@ -3655,11 +3662,15 @@ export function BiddingProcurement() {
                       </div>
 
                       <button
+                        className="ui-btn-chip"
                         onClick={() => { setSelectedContractorDetail(c); syncBiddingUrl(activeTab, contractorSubTab, null, "info", c.tax_code); }}
                         style={{
-                          padding: "8px 16px",
+                          minHeight: "44px",
+                          padding: "9px 16px",
                           borderRadius: "10px",
-                          background: c.total_won > 0 ? "linear-gradient(135deg, #ea580c, #c2410c)" : "#168579",
+                          background: c.total_won > 0
+                            ? "linear-gradient(135deg, color-mix(in srgb, var(--coral) 82%, var(--ink)), var(--ink))"
+                            : "var(--primary)",
                           color: "#fff",
                           border: 0,
                           fontWeight: 700,
@@ -3668,7 +3679,7 @@ export function BiddingProcurement() {
                           display: "flex",
                           alignItems: "center",
                           gap: "6px",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                          boxShadow: "var(--shadow)",
                         }}
                       >
                         <span>👁️</span>
@@ -3680,39 +3691,39 @@ export function BiddingProcurement() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))",
                         gap: "12px",
-                        background: "#f8fafc",
+                        background: "var(--surface-subtle, var(--paper))",
                         padding: "12px 16px",
                         borderRadius: "14px",
-                        border: "1px solid #f1f5f9",
+                        border: "1px solid var(--border)",
                         alignItems: "center",
                       }}
                     >
-                      <div>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Số Gói Tham Gia</span>
-                        <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
-                          {c.total_bids} gói <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>({c.total_won} trúng)</span>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Số Gói Tham Gia</span>
+                        <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--ink)", marginTop: "2px" }}>
+                          {c.total_bids} gói <span style={{ fontSize: "12px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontWeight: 700 }}>({c.total_won} trúng)</span>
                         </div>
                       </div>
 
-                      <div style={{ minWidth: "190px" }}>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tỷ Lệ Trúng Thầu (Win Rate)</span>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tỷ Lệ Trúng Thầu (Win Rate)</span>
                         <div style={{ marginTop: "4px" }}>
                           <WinRateProgressBar won={c.total_won} total={c.total_bids} rate={c.win_rate_percent} size="sm" />
                         </div>
                       </div>
 
-                      <div>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tổng Tiền Trúng Thầu</span>
-                        <div style={{ fontSize: "16px", fontWeight: 800, color: "#ea580c", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tổng Tiền Trúng Thầu</span>
+                        <div style={{ fontSize: "16px", fontWeight: 800, color: "color-mix(in srgb, var(--coral) 82%, var(--ink))", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
                           {c.total_won_value_formatted}
                         </div>
                       </div>
 
-                      <div>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Giảm Giá TB</span>
-                        <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f766e", marginTop: "2px" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Giảm Giá TB</span>
+                        <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--primary-dark)", marginTop: "2px" }}>
                           {c.average_discount_percent > 0 ? `${c.average_discount_percent}%` : "—"}
                         </div>
                       </div>
@@ -3721,7 +3732,7 @@ export function BiddingProcurement() {
                     {/* Top Procuring Entities & Won Highlights */}
                     {c.top_procuring_entities && c.top_procuring_entities.length > 0 && (
                       <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#475569", textTransform: "uppercase" }}>Chủ đầu tư quen thuộc:</span>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--ink-2, var(--text))", textTransform: "uppercase" }}>Chủ đầu tư quen thuộc:</span>
                         {c.top_procuring_entities.map((p, idx) => (
                           <span
                             key={idx}
@@ -3729,8 +3740,9 @@ export function BiddingProcurement() {
                               fontSize: "11px",
                               padding: "3px 8px",
                               borderRadius: "6px",
-                              background: "#f1f5f9",
-                              color: "#334155",
+                              background: "var(--surface-subtle, var(--paper))",
+                              border: "1px solid var(--border)",
+                              color: "var(--ink-2, var(--text))",
                               fontWeight: 600,
                             }}
                           >
@@ -3744,12 +3756,12 @@ export function BiddingProcurement() {
                     {c.ai_insight && (
                       <div
                         style={{
-                          background: "linear-gradient(135deg, #f0fdf4, #fffbeb)",
+                          background: "linear-gradient(135deg, var(--primary-soft), var(--paper))",
                           padding: "12px 16px",
                           borderRadius: "12px",
-                          border: "1px solid #bbf7d0",
+                          border: "1px solid color-mix(in srgb, var(--green) 32%, var(--border))",
                           fontSize: "12px",
-                          color: "#14532d",
+                          color: "var(--ink)",
                           lineHeight: 1.5,
                           display: "flex",
                           gap: "10px",
@@ -3758,7 +3770,7 @@ export function BiddingProcurement() {
                       >
                         <span style={{ fontSize: "16px" }}>💡</span>
                         <div>
-                          <strong style={{ color: "#166534" }}>Gợi ý chiến lược & Cơ hội hợp tác INUT: </strong>
+                          <strong style={{ color: "var(--primary-dark)" }}>Gợi ý chiến lược & Cơ hội hợp tác INUT: </strong>
                           {c.ai_insight}
                         </div>
                       </div>
@@ -3778,16 +3790,16 @@ export function BiddingProcurement() {
       {activeTab === "dossier_reviews" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {dossierLoading && !activeDossierReview ? (
-            <div className="panel" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+            <div className="panel" style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
               ⏳ Đang tải báo cáo thẩm định hồ sơ thầu đa tác nhân...
             </div>
           ) : !activeDossierReview ? (
-            <div className="panel" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
-              <h3>Chưa có báo cáo thẩm định hồ sơ thầu nào.</h3>
+            <div className="panel" style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
+              <h3 style={{ color: "var(--ink)" }}>Chưa có báo cáo thẩm định hồ sơ thầu nào.</h3>
               <button
                 type="button"
                 className="btn primary"
-                style={{ background: "#0284c7", color: "#fff", marginTop: "12px" }}
+                style={{ background: "var(--primary)", color: "#fff", marginTop: "12px", minHeight: "44px" }}
                 onClick={() => setShowImportDriveModal(true)}
               >
                 ➕ Thẩm Định Thầu Mới (Nhập Link Google Drive)
@@ -3796,29 +3808,35 @@ export function BiddingProcurement() {
           ) : (
             <>
               {/* Hero Banner Card */}
-              <div className="bidding-dossier-hero">
+              <div
+                className="bidding-dossier-hero"
+                style={{
+                  background: "linear-gradient(135deg, var(--ink) 0%, var(--primary-dark) 100%)",
+                }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
-                  <div style={{ flex: 1, minWidth: "280px" }}>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#0284c7", color: "#fff", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: 800, textTransform: "uppercase" }}>
+                  <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "var(--primary)", color: "#fff", padding: "4px 10px", borderRadius: "8px", fontSize: "11px", fontWeight: 800, textTransform: "uppercase" }}>
                       🏛️ THẨM ĐỊNH HỒ SƠ DỰ THẦU CHUYÊN SÂU · MULTI-AGENT REVIEW
                     </div>
-                    <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: "10px 0 6px 0", color: "#fff", lineHeight: 1.3 }}>
+                    <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "22px", margin: "10px 0 6px 0", color: "#fff", lineHeight: 1.3, overflowWrap: "anywhere" }}>
                       {activeDossierReview.package_name}
                     </h2>
-                    <div style={{ fontSize: "13px", color: "#cbd5e1" }}>
-                      Mã TBMT: <b style={{ color: "#38bdf8" }}>{activeDossierReview.tbmt_code}</b> · Bên mời thầu: <b>{activeDossierReview.procuring_entity}</b>
+                    <div style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.85)" }}>
+                      Mã TBMT: <b style={{ color: "var(--gold)" }}>{activeDossierReview.tbmt_code}</b> · Bên mời thầu: <b>{activeDossierReview.procuring_entity}</b>
                     </div>
-                    <div style={{ fontSize: "12.5px", color: "#94a3b8", marginTop: "4px" }}>
-                      Nhà thầu lập hồ sơ: <b>{activeDossierReview.contractor_name}</b> (MST: {activeDossierReview.contractor_tax_code}) · Đối tác công nghệ lõi: <b style={{ color: "#38bdf8" }}>INUT Technology</b>
+                    <div style={{ fontSize: "12.5px", color: "rgba(255, 255, 255, 0.78)", marginTop: "4px" }}>
+                      Nhà thầu lập hồ sơ: <b>{activeDossierReview.contractor_name}</b> (MST: {activeDossierReview.contractor_tax_code}) · Đối tác công nghệ lõi: <b style={{ color: "var(--mint, var(--primary-soft))" }}>INUT Technology</b>
                     </div>
                   </div>
 
                   {/* Dossier Selector Dropdown if multiple */}
                   {dossierReviews.length > 1 && (
                     <select
+                      className="ui-select"
                       value={activeDossierReview.id}
                       onChange={(e) => handleSelectDossierReview(Number(e.target.value))}
-                      style={{ padding: "8px 12px", borderRadius: "8px", background: "#1e293b", color: "#fff", border: "1px solid #334155", fontSize: "13px" }}
+                      style={{ minHeight: "44px", padding: "8px 12px", borderRadius: "8px", background: "var(--ink)", color: "#fff", border: "1px solid rgba(255,255,255,0.28)", maxWidth: "100%" }}
                     >
                       {dossierReviews.map((r) => (
                         <option key={r.id} value={r.id}>
@@ -3831,87 +3849,92 @@ export function BiddingProcurement() {
 
                 {/* KPI Grid */}
                 <div className="bidding-dossier-kpi-grid">
-                  <div className="bidding-dossier-kpi-card" style={{ borderColor: "#22c55e" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#86efac", fontWeight: 700 }}>Điểm số tuân thủ tổng thể</div>
-                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#4ade80", margin: "4px 0" }}>
+                  <div className="bidding-dossier-kpi-card" style={{ borderColor: "var(--green)" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--mint, var(--primary-soft))", fontWeight: 700 }}>Điểm số tuân thủ tổng thể</div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#fff", margin: "4px 0" }}>
                       {activeDossierReview.overall_score} / 100
                     </div>
-                    <div style={{ fontSize: "11.5px", color: "#bbf7d0", fontWeight: 600 }}>🟢 Tiềm năng trúng thầu số 1</div>
+                    <div style={{ fontSize: "11.5px", color: "var(--mint, var(--primary-soft))", fontWeight: 600 }}>🟢 Tiềm năng trúng thầu số 1</div>
                   </div>
 
                   <div className="bidding-dossier-kpi-card">
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700 }}>Giá dự thầu (Mẫu 12.1A)</div>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "rgba(255,255,255,0.78)", fontWeight: 700 }}>Giá dự thầu (Mẫu 12.1A)</div>
                     <div style={{ fontSize: "22px", fontWeight: 800, color: "#fff", margin: "4px 0" }}>
                       {formatVnd(activeDossierReview.total_bid_price)}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.78)" }}>
                       Dự toán: {formatVnd(activeDossierReview.estimated_package_price)} (Giảm 0.39%)
                     </div>
                   </div>
 
-                  <div className="bidding-dossier-kpi-card" style={{ borderColor: activeDossierReview.files.some(f => f.compliance_status === "fail") ? "#f87171" : "#38bdf8" }}>
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#cbd5e1", fontWeight: 700 }}>Đánh giá 9 tài liệu</div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#f87171", margin: "4px 0" }}>
+                  <div className="bidding-dossier-kpi-card" style={{ borderColor: activeDossierReview.files.some(f => f.compliance_status === "fail") ? "var(--coral)" : "var(--mint, var(--primary-soft))" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "rgba(255,255,255,0.85)", fontWeight: 700 }}>Đánh giá 9 tài liệu</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--gold)", margin: "4px 0" }}>
                       {activeDossierReview.files.filter(f => f.compliance_status === "pass").length} Đạt · 1 Cảnh báo · 1 Lỗi
                     </div>
-                    <div style={{ fontSize: "11px", color: "#fca5a5" }}>🚨 File 06 có 12 ô placeholder cần sửa</div>
+                    <div style={{ fontSize: "11px", color: "rgba(255, 224, 214, 0.96)" }}>🚨 File 06 có 12 ô placeholder cần sửa</div>
                   </div>
 
                   <div className="bidding-dossier-kpi-card">
-                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#fde047", fontWeight: 700 }}>Lợi nhuận gộp dự kiến</div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#facc15", margin: "4px 0" }}>
+                    <div style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--gold)", fontWeight: 700 }}>Lợi nhuận gộp dự kiến</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--gold)", margin: "4px 0" }}>
                       ~759.900.000 ₫ (63.6%)
                     </div>
-                    <div style={{ fontSize: "11px", color: "#fef08a" }}>Nhờ tự chủ công nghệ iNut & SCADA</div>
+                    <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.84)" }}>Nhờ tự chủ công nghệ iNut & SCADA</div>
                   </div>
                 </div>
 
                 {/* Action Toolbar */}
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: "14px" }}>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.14)", paddingTop: "14px" }}>
                   <a
-                    href={api.bidding.getDossierExportMarkdownUrl(activeDossierReview.id)}
+                    href={safeHttpUrl(api.bidding.getDossierExportMarkdownUrl(activeDossierReview.id))}
                     download={`Bao_cao_tham_dinh_${activeDossierReview.tbmt_code}.md`}
-                    style={{ background: "#0284c7", color: "#fff", textDecoration: "none", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    className="ui-btn-chip"
+                    style={{ minHeight: "44px", background: "var(--primary)", color: "#fff", textDecoration: "none", padding: "9px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
                     📥 Tải Báo Cáo Markdown
                   </a>
 
                   <button
                     type="button"
+                    className="ui-btn-chip"
                     onClick={() => window.print()}
-                    style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    style={{ minHeight: "44px", background: "rgba(255,255,255,0.12)", color: "#fff", border: "1px solid rgba(255,255,255,0.24)", padding: "9px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
                     🖨️ In Báo Cáo
                   </button>
 
                   <button
                     type="button"
+                    className="ui-btn-chip"
                     onClick={() => {
                       const text = `Kính gửi anh Thắng Cty IoT, INUT Technology gửi kết quả thẩm định hồ sơ thầu Sơn La (${activeDossierReview.tbmt_code}): Điểm tuân thủ 96/100. Lưu ý sửa ngay 12 ô placeholder ở File 06 và nhận Giấy cam kết kỹ thuật của INUT để thắng thầu. Xem chi tiết: ${window.location.origin}/bidding/dossier-reviews`;
                       const zaloUrl = `https://zalo.me/share?url=${encodeURIComponent(window.location.href)}&message=${encodeURIComponent(text)}`;
-                      window.open(zaloUrl, "_blank", "noopener,noreferrer");
+                      openExternalSafe(zaloUrl);
                     }}
-                    style={{ background: "#0068ff", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    style={{ minHeight: "44px", background: "var(--gold)", color: "var(--ink)", border: "0", padding: "9px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
                     💬 Gửi Zalo Cho Anh Thắng Cty IoT
                   </button>
 
                   <button
                     type="button"
+                    className="ui-btn-chip"
                     onClick={() => {
                       const subject = `Kết quả Thẩm định Hồ sơ thầu Sơn La IB2600557773 - INUT & Cty IOT`;
                       const body = `Kính gửi anh Thắng,\n\nHội đồng kỹ thuật INUT Technology đã thẩm định toàn diện 9 tài liệu dự thầu gói thầu Sơn La (IB2600557773):\n- Điểm tuân thủ tổng thể: 96/100 điểm.\n- Giá dự thầu: 1.194.900.000 đ.\n\nĐặc biệt lưu ý 3 điểm cần sửa gấp trước khi nộp thầu:\n1. Điền cự ly và tuyến đường cụ thể vào File 06 (hiện đang để [CẦN XÁC NHẬN]).\n2. Kẹp Giấy cam kết hỗ trợ kỹ thuật và bảo hành 5 năm của INUT Technology.\n3. Sửa lỗi chính tả cơ quan cấp ĐKKD trong File 01.\n\nChi tiết báo cáo tại: ${window.location.href}`;
                       window.location.href = `mailto:${activeDossierReview.contractor_tax_code ? "kythuattudonghoaiot@gmail.com" : ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                     }}
-                    style={{ background: "#ea4335", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                    style={{ minHeight: "44px", background: "color-mix(in srgb, var(--coral) 82%, var(--ink))", color: "#fff", border: "0", padding: "9px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
                     ✉️ Gửi Email
                   </button>
 
                   <button
                     type="button"
+                    className="ui-btn-chip"
                     onClick={() => setShowImportDriveModal(true)}
-                    style={{ background: "#0f766e", color: "#fff", border: "0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}
+                    style={{ minHeight: "44px", background: "rgba(255,255,255,0.16)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", padding: "9px 14px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px", marginLeft: "auto" }}
                   >
                     ➕ Nhập Hồ Sơ Thầu Mới (Google Drive)
                   </button>
@@ -3919,87 +3942,68 @@ export function BiddingProcurement() {
               </div>
 
               {/* Dossier Sub-Tabs Bar */}
-              <div className="bidding-dossier-subtabs">
-                <button
-                  type="button"
-                  className={`bidding-dossier-subtab ${dossierSubTab === "executive" ? "active" : ""}`}
-                  onClick={() => setDossierSubTab("executive")}
-                >
-                  📋 Tóm Tắt Chiến Lược & 3 Điểm Nóng (Executive Briefing)
-                </button>
-                <button
-                  type="button"
-                  className={`bidding-dossier-subtab ${dossierSubTab === "files" ? "active" : ""}`}
-                  onClick={() => setDossierSubTab("files")}
-                >
-                  📁 Thẩm Định Độc Lập 9 Tài Liệu ({activeDossierReview.files.length})
-                </button>
-                <button
-                  type="button"
-                  className={`bidding-dossier-subtab ${dossierSubTab === "items" ? "active" : ""}`}
-                  onClick={() => setDossierSubTab("items")}
-                >
-                  🛠️ Ma Trận Kỹ Thuật 18 Hạng Mục ({activeDossierReview.items.length})
-                </button>
-                <button
-                  type="button"
-                  className={`bidding-dossier-subtab ${dossierSubTab === "pricing" ? "active" : ""}`}
-                  onClick={() => setDossierSubTab("pricing")}
-                >
-                  💰 Cơ Cấu Giá & Thư Giảm Giá Chiến Lược
-                </button>
-              </div>
+              <ResponsiveTabs
+                ariaLabel="Chuyển mục thẩm định hồ sơ thầu"
+                active={dossierSubTab}
+                onChange={setDossierSubTab}
+                tabs={[
+                  { id: "executive", label: "📋 Tóm Tắt Chiến Lược & 3 Điểm Nóng" },
+                  { id: "files", label: "📁 Thẩm Định 9 Tài Liệu", badge: activeDossierReview.files.length },
+                  { id: "items", label: "🛠️ Ma Trận Kỹ Thuật 18 Hạng Mục", badge: activeDossierReview.items.length },
+                  { id: "pricing", label: "💰 Cơ Cấu Giá & Thư Giảm Giá" },
+                ]}
+              />
 
               {/* SUBTAB 1: EXECUTIVE BRIEFING */}
               {dossierSubTab === "executive" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   {/* RED ALERT CALLOUT BOX */}
-                  <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: "14px", padding: "20px 24px", color: "#991b1b" }}>
+                  <div style={{ background: "color-mix(in srgb, var(--red) 9%, var(--panel))", border: "2px solid var(--red)", borderRadius: "14px", padding: "clamp(14px, 2.5vw, 22px)", color: "color-mix(in srgb, var(--red) 82%, var(--ink))" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
                       <span style={{ fontSize: "28px" }}>🚨</span>
                       <div>
-                        <h3 style={{ margin: 0, fontSize: "16px", color: "#b91c1c", fontWeight: 800, textTransform: "uppercase" }}>
+                        <h3 style={{ margin: 0, fontSize: "16px", color: "color-mix(in srgb, var(--red) 85%, var(--ink))", fontWeight: 800, textTransform: "uppercase" }}>
                           CẢNH BÁO ĐỎ: 3 ĐIỂM CHÍ MẠNG CẦN SỬA GẤP TRƯỚC KHI NỘP THẦU
                         </h3>
-                        <div style={{ fontSize: "12.5px", color: "#7f1d1d", marginTop: "2px" }}>
+                        <div style={{ fontSize: "12.5px", color: "var(--ink)", marginTop: "2px" }}>
                           Nếu không sửa ngay, Tổ chuyên gia chấm thầu có căn cứ đánh LOẠI BỎ (FAIL) hồ sơ dự thầu!
                         </div>
                       </div>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
-                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                      <div style={{ background: "var(--panel)", padding: "14px 16px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--red) 32%, var(--border))" }}>
+                        <div style={{ fontWeight: 800, color: "color-mix(in srgb, var(--red) 85%, var(--ink))", fontSize: "13.5px" }}>
                           1. Lỗi Placeholder chưa điền trong File 06 (Biện pháp vận chuyển) — NGUY HIỂM NHẤT!
                         </div>
-                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                        <div style={{ fontSize: "12.5px", color: "var(--ink-2, var(--text))", marginTop: "4px", lineHeight: 1.5 }}>
                           Bảng cung đường Table 2 File 06 còn để nguyên văn các dòng mẫu <code>[CẦN NHÀ THẦU XÁC NHẬN TUYẾN ĐƯỜNG THỰC TẾ]</code> và <code>[CẦN XÁC NHẬN] km</code>. Nộp lên E-GP sẽ bị đánh Không Đạt ngay tại Tiêu chí 2.2!
                         </div>
-                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "color-mix(in srgb, var(--green) 11%, var(--panel))", borderRadius: "6px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontSize: "12px", fontWeight: 600 }}>
                           👉 Khắc phục ngay: Điền cự ly chuẩn: Bản Mòn <b>22 km</b> (xe tải 1.5T), Chiềng Khoi <b>64 km</b> (xe tải 2.5T), Suối Chiếu <b>128 km</b> (xe 2.5T gầm cao), Suối Hòm <b>145 km</b> (xe 2.5T gầm cao).
                         </div>
                       </div>
 
-                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
-                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                      <div style={{ background: "var(--panel)", padding: "14px 16px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--red) 32%, var(--border))" }}>
+                        <div style={{ fontWeight: 800, color: "color-mix(in srgb, var(--red) 85%, var(--ink))", fontSize: "13.5px" }}>
                           2. Bổ sung Giấy xác nhận hỗ trợ kỹ thuật của Hãng INUT cho Mục 4 & Mục 17 (File 04)
                         </div>
-                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                        <div style={{ fontSize: "12.5px", color: "var(--ink-2, var(--text))", marginTop: "4px", lineHeight: 1.5 }}>
                           Bảng đối chiếu kỹ thuật ghi rõ: <i>"CHƯA ĐỦ CĂN CỨ VỀ LAN/P2P"</i> và <i>"CẦN XÁC NHẬN GIẢI PHÁP CHỐNG SÉT"</i>. Cần tài liệu chứng minh chính thức từ nhà sản xuất.
                         </div>
-                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "color-mix(in srgb, var(--green) 11%, var(--panel))", borderRadius: "6px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontSize: "12px", fontWeight: 600 }}>
                           👉 Khắc phục ngay: INUT Technology (MST 4401053694) ký số và cung cấp ngay Văn bản Cam kết kỹ thuật P2P/LAN và giải pháp chống sét SPD tích hợp để kẹp vào hồ sơ.
                         </div>
                       </div>
 
-                      <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "10px", border: "1px solid #fecaca" }}>
-                        <div style={{ fontWeight: 800, color: "#dc2626", fontSize: "13.5px" }}>
+                      <div style={{ background: "var(--panel)", padding: "14px 16px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--red) 32%, var(--border))" }}>
+                        <div style={{ fontWeight: 800, color: "color-mix(in srgb, var(--red) 85%, var(--ink))", fontSize: "13.5px" }}>
                           3. Sửa lỗi chính tả cơ quan cấp ĐKKD trong File 01 (Pháp lý)
                         </div>
-                        <div style={{ fontSize: "12.5px", color: "#4b5563", marginTop: "4px", lineHeight: 1.5 }}>
+                        <div style={{ fontSize: "12.5px", color: "var(--ink-2, var(--text))", marginTop: "4px", lineHeight: 1.5 }}>
                           Kê khai nhầm thành "Phòng ĐKKD - Sở Tài chính tỉnh Sơn La". Thẩm quyền chuẩn theo Nghị định 01/2021/NĐ-CP là Sở Kế hoạch và Đầu tư.
                         </div>
-                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "#f0fdf4", borderRadius: "6px", color: "#166534", fontSize: "12px", fontWeight: 600 }}>
+                        <div style={{ marginTop: "6px", padding: "8px 12px", background: "color-mix(in srgb, var(--green) 11%, var(--panel))", borderRadius: "6px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontSize: "12px", fontWeight: 600 }}>
                           👉 Khắc phục ngay: Đổi lại thành <b>"Phòng Đăng ký kinh doanh - Sở Kế hoạch và Đầu tư tỉnh Sơn La"</b>.
                         </div>
                       </div>
@@ -4007,23 +4011,23 @@ export function BiddingProcurement() {
                   </div>
 
                   {/* Executive Summary Narrative */}
-                  <div className="panel" style={{ padding: "24px 28px" }}>
-                    <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", color: "#0f172a", fontFamily: "Georgia, serif" }}>
+                  <div className="panel" style={{ padding: "clamp(14px, 2.5vw, 24px)" }}>
+                    <h3 style={{ margin: "0 0 12px 0", fontSize: "17px", color: "var(--ink)", fontFamily: "var(--font-serif, Georgia, serif)" }}>
                       1. Tổng Quan Đánh Giá & Điểm Mạnh Vượt Trội Của Nhà Thầu
                     </h3>
-                    <div style={{ fontSize: "13.5px", color: "#334155", lineHeight: 1.6 }}>
+                    <div style={{ fontSize: "13.5px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
                       {activeDossierReview.executive_summary}
                     </div>
 
                     <div style={{ marginTop: "18px" }}>
-                      <h4 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#0f172a" }}>
+                      <h4 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "var(--ink)" }}>
                         Các Khuyến Nghị Chiến Lược Cốt Lõi:
                       </h4>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         {activeDossierReview.recommendations.map((rec, idx) => (
-                          <div key={idx} style={{ display: "flex", gap: "10px", alignItems: "flex-start", background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px" }}>
-                            <span style={{ fontWeight: 800, color: "#0284c7" }}>#{idx + 1}</span>
-                            <span style={{ color: "#334155" }}>{rec}</span>
+                          <div key={idx} style={{ display: "flex", gap: "10px", alignItems: "flex-start", background: "var(--surface-subtle, var(--paper))", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "13px" }}>
+                            <span style={{ fontWeight: 800, color: "var(--primary-dark)" }}>#{idx + 1}</span>
+                            <span style={{ color: "var(--ink-2, var(--text))" }}>{rec}</span>
                           </div>
                         ))}
                       </div>
@@ -4034,50 +4038,50 @@ export function BiddingProcurement() {
 
               {/* SUBTAB 2: INDEPENDENT 9 FILES AUDIT */}
               {dossierSubTab === "files" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "14px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                   {activeDossierReview.files.map((f) => {
                     const isPass = f.compliance_status === "pass";
                     const isWarning = f.compliance_status === "warning";
                     const isFail = f.compliance_status === "fail";
                     return (
-                      <div key={f.id} className="bidding-dossier-file-card" style={{ borderLeft: `5px solid ${isPass ? "#22c55e" : (isWarning ? "#f59e0b" : "#ef4444")}` }}>
+                      <div key={f.id} className="bidding-dossier-file-card" style={{ borderLeft: `5px solid ${isPass ? "var(--green)" : (isWarning ? "var(--amber)" : "var(--red)")}` }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
-                          <div>
-                            <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: "11.5px", color: "var(--muted)", fontWeight: 700 }}>
                               TÀI LIỆU {f.file_code} · {f.file_name}
                             </div>
-                            <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
+                            <div style={{ fontSize: "16px", fontWeight: 800, color: "var(--ink)", marginTop: "2px", overflowWrap: "anywhere" }}>
                               {f.file_title}
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span style={{ fontSize: "14px", fontWeight: 900, color: isPass ? "#16a34a" : (isWarning ? "#d97706" : "#dc2626") }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 900, color: isPass ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : (isWarning ? "color-mix(in srgb, var(--amber) 74%, var(--ink))" : "color-mix(in srgb, var(--red) 82%, var(--ink))") }}>
                               {f.score}/100 điểm
                             </span>
-                            <span style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 800, background: isPass ? "#dcfce7" : (isWarning ? "#fef3c7" : "#fee2e2"), color: isPass ? "#15803d" : (isWarning ? "#b45309" : "#b91c1c") }}>
+                            <span style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 800, background: isPass ? "color-mix(in srgb, var(--green) 14%, var(--panel))" : (isWarning ? "color-mix(in srgb, var(--gold) 18%, var(--panel))" : "color-mix(in srgb, var(--red) 12%, var(--panel))"), color: isPass ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : (isWarning ? "color-mix(in srgb, var(--amber) 74%, var(--ink))" : "color-mix(in srgb, var(--red) 82%, var(--ink))") }}>
                               {isPass ? "✓ ĐẠT" : (isWarning ? "⚠️ CẢNH BÁO" : "🚨 CẦN SỬA GẤP")}
                             </span>
                           </div>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "6px", fontSize: "13px" }}>
-                          <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                            <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: "4px" }}>🔍 Phát hiện chính:</div>
-                            <div style={{ color: "#475569", lineHeight: 1.45 }}>{f.findings}</div>
+                        <FormGrid cols={2} style={{ marginTop: "6px", fontSize: "13px" }}>
+                          <div style={{ minWidth: 0, background: "var(--surface-subtle, var(--paper))", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                            <div style={{ fontWeight: 700, color: "var(--ink)", marginBottom: "4px" }}>🔍 Phát hiện chính:</div>
+                            <div style={{ color: "var(--ink-2, var(--text))", lineHeight: 1.45 }}>{f.findings}</div>
                           </div>
 
-                          <div style={{ background: isFail ? "#fef2f2" : "#fff", padding: "10px 14px", borderRadius: "8px", border: `1px solid ${isFail ? "#fecaca" : "#e2e8f0"}` }}>
-                            <div style={{ fontWeight: 700, color: isFail ? "#dc2626" : "#b45309", marginBottom: "4px" }}>
+                          <div style={{ minWidth: 0, background: isFail ? "color-mix(in srgb, var(--red) 9%, var(--panel))" : "var(--panel)", padding: "10px 14px", borderRadius: "8px", border: `1px solid ${isFail ? "color-mix(in srgb, var(--red) 35%, var(--border))" : "var(--border)"}` }}>
+                            <div style={{ fontWeight: 700, color: isFail ? "color-mix(in srgb, var(--red) 82%, var(--ink))" : "color-mix(in srgb, var(--amber) 74%, var(--ink))", marginBottom: "4px" }}>
                               {isFail ? "🚨 Rủi ro loại thầu:" : "⚠️ Rủi ro cần lưu ý:"}
                             </div>
-                            <div style={{ color: isFail ? "#991b1b" : "#475569", lineHeight: 1.45 }}>{f.critical_risks}</div>
+                            <div style={{ color: isFail ? "color-mix(in srgb, var(--red) 82%, var(--ink))" : "var(--ink-2, var(--text))", lineHeight: 1.45 }}>{f.critical_risks}</div>
                           </div>
-                        </div>
+                        </FormGrid>
 
-                        <div style={{ background: "#f0fdf4", padding: "10px 14px", borderRadius: "8px", border: "1px solid #bbf7d0", fontSize: "12.5px" }}>
-                          <b style={{ color: "#166534" }}>💡 Biện pháp khắc phục / Khuyến nghị: </b>
-                          <span style={{ color: "#14532d" }}>{f.remediation}</span>
+                        <div style={{ background: "color-mix(in srgb, var(--green) 11%, var(--panel))", padding: "10px 14px", borderRadius: "8px", border: "1px solid color-mix(in srgb, var(--green) 32%, var(--border))", fontSize: "12.5px" }}>
+                          <b style={{ color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>💡 Biện pháp khắc phục / Khuyến nghị: </b>
+                          <span style={{ color: "var(--ink)" }}>{f.remediation}</span>
                         </div>
                       </div>
                     );
@@ -4087,101 +4091,166 @@ export function BiddingProcurement() {
 
               {/* SUBTAB 3: TECHNICAL MATRIX (18 EQUIPMENT ITEMS) */}
               {dossierSubTab === "items" && (
-                <div style={{ background: "#fff", borderRadius: "14px", border: "1px solid #e2e8f0", overflowX: "auto", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "980px" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569", fontSize: "12px" }}>
-                        <th style={{ padding: "12px 14px", width: "40px" }}>STT</th>
-                        <th style={{ padding: "12px 14px" }}>Tên thiết bị & Thông số</th>
-                        <th style={{ padding: "12px 14px" }}>Ký mã hiệu & Hãng SX</th>
-                        <th style={{ padding: "12px 14px", textAlign: "center" }}>SL</th>
-                        <th style={{ padding: "12px 14px", textAlign: "right" }}>Đơn giá (VNĐ)</th>
-                        <th style={{ padding: "12px 14px", textAlign: "right" }}>Thành tiền (VNĐ)</th>
-                        <th style={{ padding: "12px 14px" }}>Vai trò INUT</th>
-                        <th style={{ padding: "12px 14px", textAlign: "center" }}>Trạng thái</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <DataView
+                  mobileMode="card"
+                  desktop={
+                    <div className="ui-table-scroll-wrap" style={{ background: "var(--panel)", borderRadius: "14px", border: "1px solid var(--border)", overflowX: "auto", boxShadow: "var(--shadow)" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "980px" }}>
+                        <thead>
+                          <tr style={{ background: "var(--surface-subtle, var(--paper))", borderBottom: "1px solid var(--border)", color: "var(--ink-2, var(--text))", fontSize: "12px" }}>
+                            <th style={{ padding: "12px 14px", width: "40px" }}>STT</th>
+                            <th style={{ padding: "12px 14px" }}>Tên thiết bị & Thông số</th>
+                            <th style={{ padding: "12px 14px" }}>Ký mã hiệu & Hãng SX</th>
+                            <th style={{ padding: "12px 14px", textAlign: "center" }}>SL</th>
+                            <th style={{ padding: "12px 14px", textAlign: "right" }}>Đơn giá (VNĐ)</th>
+                            <th style={{ padding: "12px 14px", textAlign: "right" }}>Thành tiền (VNĐ)</th>
+                            <th style={{ padding: "12px 14px" }}>Vai trò INUT</th>
+                            <th style={{ padding: "12px 14px", textAlign: "center" }}>Trạng thái</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeDossierReview.items.map((it) => {
+                            const isOk = it.compliance_status === "compliant";
+                            return (
+                              <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "12px 14px", fontWeight: 700, color: "var(--muted)" }}>{it.item_no}</td>
+                                <td style={{ padding: "12px 14px", maxWidth: "260px" }}>
+                                  <div style={{ fontWeight: 700, color: "var(--ink)" }}>{it.item_name}</div>
+                                  <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>Id: {it.system_id}</div>
+                                  <div style={{ fontSize: "11.5px", color: "var(--primary-dark)", marginTop: "2px" }}>{it.notes}</div>
+                                </td>
+                                <td style={{ padding: "12px 14px" }}>
+                                  <div style={{ fontWeight: 600, color: "var(--ink-2, var(--text))" }}>{it.proposed_model}</div>
+                                  <div style={{ fontSize: "12px", color: "var(--muted)" }}>{it.manufacturer} ({it.origin})</div>
+                                </td>
+                                <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600 }}>
+                                  {it.quantity} {it.unit}
+                                </td>
+                                <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                                  {it.unit_price.toLocaleString("vi-VN")} đ
+                                </td>
+                                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "var(--ink)" }}>
+                                  {it.total_price.toLocaleString("vi-VN")} đ
+                                </td>
+                                <td style={{ padding: "12px 14px" }}>
+                                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: it.inut_role.includes("OEM") ? "color-mix(in srgb, var(--green) 14%, var(--panel))" : "var(--surface-subtle, var(--paper))", color: it.inut_role.includes("OEM") ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : "var(--ink-2, var(--text))", fontWeight: 700 }}>
+                                    {it.inut_role}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                                  <span style={{ fontSize: "11.5px", padding: "4px 8px", borderRadius: "6px", background: isOk ? "color-mix(in srgb, var(--green) 14%, var(--panel))" : "color-mix(in srgb, var(--gold) 18%, var(--panel))", color: isOk ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : "color-mix(in srgb, var(--amber) 74%, var(--ink))", fontWeight: 700 }}>
+                                    {isOk ? "✓ ĐÁP ỨNG" : "⚠️ CẦN XÁC NHẬN"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                  mobileCards={
+                    <div className="ui-mobile-card-list" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                       {activeDossierReview.items.map((it) => {
                         const isOk = it.compliance_status === "compliant";
                         return (
-                          <tr key={it.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                            <td style={{ padding: "12px 14px", fontWeight: 700, color: "#64748b" }}>{it.item_no}</td>
-                            <td style={{ padding: "12px 14px", maxWidth: "260px" }}>
-                              <div style={{ fontWeight: 700, color: "#0f172a" }}>{it.item_name}</div>
-                              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Id: {it.system_id}</div>
-                              <div style={{ fontSize: "11.5px", color: "#0284c7", marginTop: "2px" }}>{it.notes}</div>
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <div style={{ fontWeight: 600, color: "#334155" }}>{it.proposed_model}</div>
-                              <div style={{ fontSize: "12px", color: "#64748b" }}>{it.manufacturer} ({it.origin})</div>
-                            </td>
-                            <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600 }}>
-                              {it.quantity} {it.unit}
-                            </td>
-                            <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                              {it.unit_price.toLocaleString("vi-VN")} đ
-                            </td>
-                            <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: "#0f172a" }}>
-                              {it.total_price.toLocaleString("vi-VN")} đ
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", background: it.inut_role.includes("OEM") ? "#f0fdf4" : "#f1f5f9", color: it.inut_role.includes("OEM") ? "#166534" : "#475569", fontWeight: 700 }}>
+                          <div
+                            key={it.id}
+                            className="ui-mobile-card"
+                            style={{
+                              background: "var(--panel)",
+                              borderRadius: "14px",
+                              border: "1px solid var(--border)",
+                              padding: "14px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "10px",
+                            }}
+                          >
+                            {/* Band 1: Header */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--muted)" }}>#{it.item_no} · Id: {it.system_id}</span>
+                                <div style={{ fontWeight: 800, fontSize: "14px", color: "var(--ink)", marginTop: "2px", overflowWrap: "anywhere" }}>
+                                  {it.item_name}
+                                </div>
+                              </div>
+                              <span style={{ flexShrink: 0, fontSize: "11px", padding: "4px 8px", borderRadius: "6px", background: isOk ? "color-mix(in srgb, var(--green) 14%, var(--panel))" : "color-mix(in srgb, var(--gold) 18%, var(--panel))", color: isOk ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : "color-mix(in srgb, var(--amber) 74%, var(--ink))", fontWeight: 700 }}>
+                                {isOk ? "✓ ĐÁP ỨNG" : "⚠️ XÁC NHẬN"}
+                              </span>
+                            </div>
+
+                            {/* Band 2: Specs & Quantity */}
+                            <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "10px 12px", borderRadius: "10px", border: "1px solid var(--border)", fontSize: "12.5px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                              <div style={{ color: "var(--ink-2, var(--text))" }}>
+                                <strong>Model:</strong> {it.proposed_model} — {it.manufacturer} ({it.origin})
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", color: "var(--muted)" }}>
+                                <span>SL: <strong style={{ color: "var(--ink)" }}>{it.quantity} {it.unit}</strong></span>
+                                <span>Đơn giá: <strong style={{ color: "var(--ink)" }}>{it.unit_price.toLocaleString("vi-VN")} đ</strong></span>
+                              </div>
+                              {it.notes && (
+                                <div style={{ fontSize: "11.5px", color: "var(--primary-dark)", marginTop: "2px" }}>{it.notes}</div>
+                              )}
+                            </div>
+
+                            {/* Band 3: Role & Total */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", paddingTop: "4px", borderTop: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "11px", padding: "3px 8px", borderRadius: "6px", background: it.inut_role.includes("OEM") ? "color-mix(in srgb, var(--green) 14%, var(--panel))" : "var(--surface-subtle, var(--paper))", color: it.inut_role.includes("OEM") ? "color-mix(in srgb, var(--green) 76%, var(--ink))" : "var(--ink-2, var(--text))", fontWeight: 700 }}>
                                 {it.inut_role}
                               </span>
-                            </td>
-                            <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                              <span style={{ fontSize: "11.5px", padding: "4px 8px", borderRadius: "6px", background: isOk ? "#dcfce7" : "#fef3c7", color: isOk ? "#15803d" : "#b45309", fontWeight: 700 }}>
-                                {isOk ? "✓ ĐÁP ỨNG" : "⚠️ CẦN XÁC NHẬN"}
-                              </span>
-                            </td>
-                          </tr>
+                              <div style={{ fontWeight: 800, fontSize: "15px", color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+                                {it.total_price.toLocaleString("vi-VN")} đ
+                              </div>
+                            </div>
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  }
+                />
               )}
 
               {/* SUBTAB 4: PRICING BREAKDOWN & DISCOUNT STRATEGY */}
               {dossierSubTab === "pricing" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   {/* Cost Structure Cards */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
-                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>PHẦN MỀM SCADA (MỤC 18)</div>
-                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#0284c7", marginTop: "4px" }}>302.400.000 đ</div>
-                      <div style={{ fontSize: "12px", color: "#16a34a", marginTop: "2px" }}>Chiếm 25.31% · Lãi gộp ~90%</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "12px" }}>
+                    <div style={{ minWidth: 0, background: "var(--panel)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: "11.5px", color: "var(--muted)", fontWeight: 700 }}>PHẦN MỀM SCADA (MỤC 18)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--primary)", marginTop: "4px" }}>302.400.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", marginTop: "2px" }}>Chiếm 25.31% · Lãi gộp ~90%</div>
                     </div>
-                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>THIẾT BỊ INUT (MỤC 4 & 17)</div>
-                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f766e", marginTop: "4px" }}>237.600.000 đ</div>
-                      <div style={{ fontSize: "12px", color: "#16a34a", marginTop: "2px" }}>Chiếm 19.88% · Tự chủ OEM</div>
+                    <div style={{ minWidth: 0, background: "var(--panel)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: "11.5px", color: "var(--muted)", fontWeight: 700 }}>THIẾT BỊ INUT (MỤC 4 & 17)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--primary-dark)", marginTop: "4px" }}>237.600.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", marginTop: "2px" }}>Chiếm 19.88% · Tự chủ OEM</div>
                     </div>
-                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>CẢM BIẾN QUAN TRẮC (MỤC 1-3, 14)</div>
-                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#334155", marginTop: "4px" }}>329.400.000 đ</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>Chiếm 27.57% · Radar, gầu lật</div>
+                    <div style={{ minWidth: 0, background: "var(--panel)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: "11.5px", color: "var(--muted)", fontWeight: 700 }}>CẢM BIẾN QUAN TRẮC (MỤC 1-3, 14)</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--ink)", marginTop: "4px" }}>329.400.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>Chiếm 27.57% · Radar, gầu lật</div>
                     </div>
-                    <div style={{ background: "#fff", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700 }}>MÁY CHỦ DELL & CAMERA</div>
-                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#334155", marginTop: "4px" }}>325.500.000 đ</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>Chiếm 27.24% · Dell + Hikvision</div>
+                    <div style={{ minWidth: 0, background: "var(--panel)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: "11.5px", color: "var(--muted)", fontWeight: 700 }}>MÁY CHỦ DELL & CAMERA</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--ink)", marginTop: "4px" }}>325.500.000 đ</div>
+                      <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>Chiếm 27.24% · Dell + Hikvision</div>
                     </div>
                   </div>
 
                   {/* Strategic Discount Letter Template Box */}
-                  <div className="panel" style={{ padding: "24px 28px", border: "1.5px solid #0284c7" }}>
+                  <div className="panel" style={{ padding: "clamp(14px, 2.5vw, 24px)", border: "1.5px solid var(--primary)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
                       <div>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284c7", textTransform: "uppercase" }}>CHIẾN LƯỢC TRÚNG THẦU TUYỆT ĐỐI</span>
-                        <h3 style={{ margin: "2px 0 0 0", fontSize: "17px", color: "#0f172a" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", textTransform: "uppercase" }}>CHIẾN LƯỢC TRÚNG THẦU TUYỆT ĐỐI</span>
+                        <h3 style={{ margin: "2px 0 0 0", fontSize: "17px", color: "var(--ink)" }}>
                           Mẫu Thư Giảm Giá Chiến Lược (Đề Xuất Giảm 6% ~ 71.694.000 VNĐ)
                         </h3>
                       </div>
                       <button
                         type="button"
                         className="btn secondary"
+                        style={{ minHeight: "44px" }}
                         onClick={() => {
                           const letter = `THƯ GIẢM GIÁ\nKính gửi: Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La\nGói thầu: Lắp đặt thiết bị quan trắc khí tượng thuỷ văn chuyên dùng và tài nguyên nước các hồ chứa (Bản Mòn, Suối Hòm, Suối Chiếu, Chiềng Khoi)\nMã TBMT: IB2600557773\n\nNhà thầu CÔNG TY CỔ PHẦN KỸ THUẬT TỰ ĐỘNG HÓA IOT tự nguyện giảm giá 6.0% trên tổng giá dự thầu.\nGiá sau giảm giá: 1.123.206.000 VNĐ (Một tỷ một trăm hai mươi ba triệu hai trăm linh sáu nghìn đồng).`;
                           navigator.clipboard.writeText(letter).then(() => alert("✓ Đã sao chép Mẫu Thư giảm giá vào Clipboard!"));
@@ -4190,7 +4259,7 @@ export function BiddingProcurement() {
                         📋 Sao Chép Mẫu Thư Giảm Giá
                       </button>
                     </div>
-                    <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", fontFamily: "monospace", color: "#0f172a", whiteSpace: "pre-line", lineHeight: 1.6 }}>
+                    <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "16px", borderRadius: "8px", border: "1px solid var(--border-strong)", fontSize: "13px", fontFamily: "var(--font-mono, monospace)", color: "var(--ink)", whiteSpace: "pre-line", lineHeight: 1.6, overflowWrap: "anywhere" }}>
                       {`CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\n\nTHƯ GIẢM GIÁ DỰ THẦU\nKính gửi: Công ty TNHH MTV Quản lý, khai thác công trình thủy lợi Sơn La\n\nCăn cứ E-HSMT gói thầu IB2600557773;\nNhà thầu Công ty Cổ phần Kỹ thuật Tự động hóa IOT xin đề xuất mức giảm giá tự nguyện như sau:\n- Tỷ lệ giảm giá: 6,0% (Sáu phần trăm) trên tổng giá dự thầu ghi tại Mẫu số 12.1A.\n- Giá trị giảm giá: 71.694.000 VNĐ (Bảy mươi mốt triệu sáu trăm chín mươi tư nghìn đồng).\n- GIÁ DỰ THẦU SAU GIẢM GIÁ: 1.123.206.000 VNĐ (Một tỷ một trăm hai mươi ba triệu hai trăm linh sáu nghìn đồng chẵn).\n\n(Mức giá này đảm bảo Cty IOT chiến thắng tuyệt đối trước mọi đối thủ cạnh tranh mà vẫn duy trì biên lợi nhuận ròng >55%).`}
                     </div>
                   </div>
@@ -4204,211 +4273,58 @@ export function BiddingProcurement() {
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL: HỒ SƠ CHI TIẾT NHÀ THẦU & DANH SÁCH GÓI THẦU                        */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {selectedContractorDetail && (
-        <div className="modal-backdrop" onClick={() => setSelectedContractorDetail(null)}>
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "920px", padding: "28px 32px" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                  <h2 style={{ fontFamily: "Georgia, serif", fontSize: "20px", margin: 0, color: "#0f172a" }}>
-                    {selectedContractorDetail.name}
-                  </h2>
-                  <span
-                    style={{
-                      padding: "3px 10px",
-                      borderRadius: "999px",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      background: selectedContractorDetail.total_won > 0 ? "#fff7ed" : "#f1f5f9",
-                      color: selectedContractorDetail.total_won > 0 ? "#c2410c" : "#475569",
-                      border: selectedContractorDetail.total_won > 0 ? "1px solid #fed7aa" : "1px solid #cbd5e1",
-                    }}
-                  >
-                    {selectedContractorDetail.bidding_status_label}
-                  </span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>
-                  Mã số thuế: <strong style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>{selectedContractorDetail.tax_code}</strong> • {selectedContractorDetail.address}
-                </div>
-              </div>
-
-              <button
-                onClick={() => setSelectedContractorDetail(null)}
+      <AppModal
+        open={Boolean(selectedContractorDetail)}
+        onClose={() => setSelectedContractorDetail(null)}
+        size="lg"
+        title={
+          selectedContractorDetail ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+                {selectedContractorDetail.name}
+              </span>
+              <span
                 style={{
-                  background: "transparent",
-                  border: "none",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                  color: "#94a3b8",
-                  padding: "4px 8px",
+                  padding: "3px 10px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  background: selectedContractorDetail.total_won > 0
+                    ? "color-mix(in srgb, var(--coral) 12%, var(--panel))"
+                    : "var(--surface-subtle, var(--paper))",
+                  color: selectedContractorDetail.total_won > 0
+                    ? "color-mix(in srgb, var(--coral) 82%, var(--ink))"
+                    : "var(--ink-2, var(--text))",
+                  border: selectedContractorDetail.total_won > 0
+                    ? "1px solid color-mix(in srgb, var(--coral) 40%, var(--border))"
+                    : "1px solid var(--border-strong)",
                 }}
               >
-                ✕
-              </button>
+                {selectedContractorDetail.bidding_status_label}
+              </span>
             </div>
-
-            {/* Metrics Overview */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "12px",
-                background: "#f8fafc",
-                padding: "16px 20px",
-                borderRadius: "14px",
-                border: "1px solid #e2e8f0",
-                marginBottom: "20px",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tổng Gói Tham Gia</span>
-                <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
-                  {selectedContractorDetail.total_bids} gói
-                </div>
-              </div>
-
-              <div>
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Gói Đã Trúng Thầu</span>
-                <div style={{ fontSize: "20px", fontWeight: 800, color: "#047857", marginTop: "2px" }}>
-                  {selectedContractorDetail.total_won} gói
-                </div>
-              </div>
-
-              <div style={{ minWidth: "220px" }}>
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tiến Độ Thắng Thầu (Win Rate)</span>
-                <div style={{ marginTop: "6px" }}>
-                  <WinRateProgressBar
-                    won={selectedContractorDetail.total_won}
-                    total={selectedContractorDetail.total_bids}
-                    rate={selectedContractorDetail.win_rate_percent}
-                    size="md"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tổng Giá Trị Thắng</span>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: "#ea580c", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
-                  {selectedContractorDetail.total_won_value_formatted}
-                </div>
-              </div>
-            </div>
-
-            {/* List of Won Packages Table */}
-            <div style={{ marginBottom: "20px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>📋</span> Danh Sách Gói Thầu Tiêu Biểu & Quyết Định Phê Duyệt
-              </h3>
-
-              {selectedContractorDetail.highlight_won_packages && selectedContractorDetail.highlight_won_packages.length > 0 ? (
-                <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: "12px" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569" }}>
-                        <th style={{ padding: "10px 12px" }}>Số TBMT</th>
-                        <th style={{ padding: "10px 12px" }}>Tên Gói Thầu</th>
-                        <th style={{ padding: "10px 12px" }}>Bên Mời Thầu</th>
-                        <th style={{ padding: "10px 12px" }}>Giá Trúng Thầu</th>
-                        <th style={{ padding: "10px 12px" }}>Tiết Kiệm</th>
-                        <th style={{ padding: "10px 12px" }}>Quyết Định</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedContractorDetail.highlight_won_packages.map((pkg, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "10px 12px" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "iframe")}
-                              style={{
-                                background: "#eaf4f1",
-                                border: "1px solid #c8dbd3",
-                                color: "#168579",
-                                padding: "4px 8px",
-                                borderRadius: "6px",
-                                fontFamily: "var(--font-mono, monospace)",
-                                fontWeight: 800,
-                                fontSize: "12px",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                transition: "all 0.15s ease",
-                              }}
-                              title={`Bấm để xem chi tiết & E-HSMT ${pkg.tbmt_code}`}
-                            >
-                              <span>🏷️</span>
-                              <span style={{ textDecoration: "underline" }}>{pkg.tbmt_code}</span>
-                              <span style={{ fontSize: "10px" }}>↗</span>
-                            </button>
-                          </td>
-                          <td style={{ padding: "10px 12px", fontWeight: 600, color: "#1e293b", maxWidth: "260px" }}>
-                            {pkg.tender_name}
-                          </td>
-                          <td style={{ padding: "10px 12px", color: "#475569" }}>
-                            {pkg.procuring_entity}
-                          </td>
-                          <td style={{ padding: "10px 12px", fontFamily: "var(--font-mono)", fontWeight: 800, color: "#ea580c" }}>
-                            {formatVnd(pkg.won_price)}
-                          </td>
-                          <td style={{ padding: "10px 12px", color: "#047857", fontWeight: 700 }}>
-                            {pkg.discount_percent}%
-                          </td>
-                          <td style={{ padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "#64748b" }}>
-                            {pkg.decision_number} ({pkg.award_date})
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8", background: "#f8fafc", borderRadius: "12px" }}>
-                  Chưa ghi nhận gói thầu công lập trực tiếp trên cổng e-GP (Đơn vị thường tham gia dưới tư cách thầu phụ/OEM).
-                </div>
-              )}
-            </div>
-
-            {/* AI Strategic Analysis Box */}
-            {selectedContractorDetail.ai_insight && (
-              <div
-                style={{
-                  background: "linear-gradient(135deg, #f0fdf4, #fffbeb)",
-                  padding: "16px",
-                  borderRadius: "14px",
-                  border: "1px solid #bbf7d0",
-                  fontSize: "13px",
-                  color: "#14532d",
-                  lineHeight: 1.6,
-                }}
-              >
-                <div style={{ fontWeight: 800, color: "#166534", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>🤖</span> Đánh Giá Chiến Lược & Cơ Hội Hợp Tác Bằng AI:
-                </div>
-                <div>{selectedContractorDetail.ai_insight}</div>
-              </div>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "10px",
-                marginTop: "20px",
-                paddingTop: "16px",
-                borderTop: "1px solid #e2e8f0",
-              }}
-            >
+          ) : (
+            ""
+          )
+        }
+        subtitle={
+          selectedContractorDetail ? (
+            <span>
+              Mã số thuế:{" "}
+              <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+                {selectedContractorDetail.tax_code}
+              </strong>
+              {selectedContractorDetail.address ? ` • ${selectedContractorDetail.address}` : ""}
+            </span>
+          ) : undefined
+        }
+        footer={
+          selectedContractorDetail ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", width: "100%" }}>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
+                  className="ui-btn-chip"
                   onClick={() => {
                     const md = generateContractorDossierMarkdown(selectedContractorDetail);
                     try {
@@ -4421,11 +4337,12 @@ export function BiddingProcurement() {
                     showToast(`📋 Đã sao chép Hồ sơ Năng lực (Markdown) của ${selectedContractorDetail.name}!`, "success");
                   }}
                   style={{
+                    minHeight: "44px",
                     padding: "10px 16px",
                     borderRadius: "10px",
-                    background: "#ecfdf5",
-                    color: "#065f46",
-                    border: "1px solid #a7f3d0",
+                    background: "var(--primary-soft)",
+                    color: "var(--primary-dark)",
+                    border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
                     fontWeight: 800,
                     fontSize: "13px",
                     cursor: "pointer",
@@ -4441,11 +4358,13 @@ export function BiddingProcurement() {
 
                 <button
                   type="button"
+                  className="ui-btn-chip"
                   onClick={() => handleShareContractorTelegram(selectedContractorDetail)}
                   style={{
+                    minHeight: "44px",
                     padding: "10px 16px",
                     borderRadius: "10px",
-                    background: "linear-gradient(135deg, #0284c7, #0369a1)",
+                    background: "linear-gradient(135deg, var(--primary), var(--primary-dark))",
                     color: "#fff",
                     border: 0,
                     fontWeight: 800,
@@ -4454,7 +4373,7 @@ export function BiddingProcurement() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
-                    boxShadow: "0 2px 8px rgba(2,132,199,0.25)",
+                    boxShadow: "var(--shadow)",
                   }}
                   title="Gửi cảnh báo hồ sơ nhà thầu qua Telegram"
                 >
@@ -4467,9 +4386,10 @@ export function BiddingProcurement() {
                 type="button"
                 onClick={() => setSelectedContractorDetail(null)}
                 style={{
+                  minHeight: "44px",
                   padding: "10px 22px",
                   borderRadius: "10px",
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
                   border: 0,
                   fontWeight: 700,
@@ -4480,119 +4400,396 @@ export function BiddingProcurement() {
                 Đóng
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          ) : undefined
+        }
+      >
+        {selectedContractorDetail && (
+          <>
+            {/* Metrics Overview */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+                gap: "12px",
+                background: "var(--surface-subtle, var(--paper))",
+                padding: "16px",
+                borderRadius: "14px",
+                border: "1px solid var(--border)",
+                marginBottom: "20px",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tổng Gói Tham Gia</span>
+                <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--ink)", marginTop: "2px" }}>
+                  {selectedContractorDetail.total_bids} gói
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Gói Đã Trúng Thầu</span>
+                <div style={{ fontSize: "20px", fontWeight: 800, color: "color-mix(in srgb, var(--green) 76%, var(--ink))", marginTop: "2px" }}>
+                  {selectedContractorDetail.total_won} gói
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tiến Độ Thắng Thầu (Win Rate)</span>
+                <div style={{ marginTop: "6px" }}>
+                  <WinRateProgressBar
+                    won={selectedContractorDetail.total_won}
+                    total={selectedContractorDetail.total_bids}
+                    rate={selectedContractorDetail.win_rate_percent}
+                    size="md"
+                  />
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tổng Giá Trị Thắng</span>
+                <div style={{ fontSize: "18px", fontWeight: 800, color: "color-mix(in srgb, var(--coral) 82%, var(--ink))", fontFamily: "var(--font-mono)", marginTop: "2px" }}>
+                  {selectedContractorDetail.total_won_value_formatted}
+                </div>
+              </div>
+            </div>
+
+            {/* List of Won Packages Table */}
+            <div style={{ marginBottom: "20px" }}>
+              <h3 style={{ fontSize: "14px", fontWeight: 800, color: "var(--ink)", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>📋</span> Danh Sách Gói Thầu Tiêu Biểu & Quyết Định Phê Duyệt
+              </h3>
+
+              {selectedContractorDetail.highlight_won_packages && selectedContractorDetail.highlight_won_packages.length > 0 ? (
+                <DataView
+                  mobileMode="card"
+                  desktop={
+                    <div className="ui-table-scroll-wrap" style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: "12px" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                        <thead>
+                          <tr style={{ background: "var(--surface-subtle, var(--paper))", borderBottom: "1px solid var(--border)", color: "var(--ink-2, var(--text))" }}>
+                            <th style={{ padding: "10px 12px" }}>Số TBMT</th>
+                            <th style={{ padding: "10px 12px" }}>Tên Gói Thầu</th>
+                            <th style={{ padding: "10px 12px" }}>Bên Mời Thầu</th>
+                            <th style={{ padding: "10px 12px" }}>Giá Trúng Thầu</th>
+                            <th style={{ padding: "10px 12px" }}>Tiết Kiệm</th>
+                            <th style={{ padding: "10px 12px" }}>Quyết Định</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedContractorDetail.highlight_won_packages.map((pkg, idx) => (
+                            <tr key={idx} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "10px 12px" }}>
+                                <button
+                                  type="button"
+                                  className="ui-btn-chip"
+                                  onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "iframe")}
+                                  style={{
+                                    minHeight: "38px",
+                                    background: "var(--primary-soft)",
+                                    border: "1px solid var(--border-strong)",
+                                    color: "var(--primary-dark)",
+                                    padding: "6px 10px",
+                                    borderRadius: "6px",
+                                    fontFamily: "var(--font-mono, monospace)",
+                                    fontWeight: 800,
+                                    fontSize: "12px",
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                  title={`Bấm để xem chi tiết & E-HSMT ${pkg.tbmt_code}`}
+                                >
+                                  <span>🏷️</span>
+                                  <span style={{ textDecoration: "underline" }}>{pkg.tbmt_code}</span>
+                                  <span style={{ fontSize: "10px" }}>↗</span>
+                                </button>
+                              </td>
+                              <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--ink)", maxWidth: "260px" }}>
+                                {pkg.tender_name}
+                              </td>
+                              <td style={{ padding: "10px 12px", color: "var(--ink-2, var(--text))" }}>
+                                {pkg.procuring_entity}
+                              </td>
+                              <td style={{ padding: "10px 12px", fontFamily: "var(--font-mono)", fontWeight: 800, color: "color-mix(in srgb, var(--coral) 82%, var(--ink))" }}>
+                                {formatVnd(pkg.won_price)}
+                              </td>
+                              <td style={{ padding: "10px 12px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontWeight: 700 }}>
+                                {pkg.discount_percent}%
+                              </td>
+                              <td style={{ padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--muted)" }}>
+                                {pkg.decision_number} ({pkg.award_date})
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                  mobileCards={
+                    <div className="ui-mobile-card-list" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {selectedContractorDetail.highlight_won_packages.map((pkg, idx) => (
+                        <div
+                          key={idx}
+                          className="ui-mobile-card"
+                          style={{
+                            background: "var(--panel)",
+                            borderRadius: "12px",
+                            border: "1px solid var(--border)",
+                            padding: "12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "8px",
+                          }}
+                        >
+                          {/* Band 1: TBMT & Discount */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="ui-btn-chip"
+                              onClick={() => handleOpenTenderDetail(pkg.tbmt_code, "iframe")}
+                              style={{
+                                minHeight: "40px",
+                                background: "var(--primary-soft)",
+                                border: "1px solid var(--border-strong)",
+                                color: "var(--primary-dark)",
+                                padding: "6px 10px",
+                                borderRadius: "6px",
+                                fontFamily: "var(--font-mono, monospace)",
+                                fontWeight: 800,
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              <span>🏷️</span>
+                              <span style={{ textDecoration: "underline" }}>{pkg.tbmt_code}</span>
+                              <span>↗</span>
+                            </button>
+                            <span style={{ fontSize: "11px", fontWeight: 800, padding: "3px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--green) 14%, var(--panel))", color: "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>
+                              Tiết kiệm {pkg.discount_percent}%
+                            </span>
+                          </div>
+
+                          {/* Band 2: Tender Name & Procuring Entity */}
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--ink)", lineHeight: 1.4, overflowWrap: "anywhere" }}>
+                              {pkg.tender_name}
+                            </div>
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "3px" }}>
+                              🏛️ {pkg.procuring_entity}
+                            </div>
+                          </div>
+
+                          {/* Band 3: Won Price & Decision */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", paddingTop: "6px", borderTop: "1px solid var(--border)" }}>
+                            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 800, fontSize: "14px", color: "color-mix(in srgb, var(--coral) 82%, var(--ink))" }}>
+                              {formatVnd(pkg.won_price)}
+                            </span>
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--muted)" }}>
+                              {pkg.decision_number} ({pkg.award_date})
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  }
+                />
+              ) : (
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", background: "var(--surface-subtle, var(--paper))", borderRadius: "12px" }}>
+                  Chưa ghi nhận gói thầu công lập trực tiếp trên cổng e-GP (Đơn vị thường tham gia dưới tư cách thầu phụ/OEM).
+                </div>
+              )}
+            </div>
+
+            {/* AI Strategic Analysis Box */}
+            {selectedContractorDetail.ai_insight && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, var(--primary-soft), var(--paper))",
+                  padding: "16px",
+                  borderRadius: "14px",
+                  border: "1px solid color-mix(in srgb, var(--green) 32%, var(--border))",
+                  fontSize: "13px",
+                  color: "var(--ink)",
+                  lineHeight: 1.6,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: "var(--primary-dark)", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>🤖</span> Đánh Giá Chiến Lược & Cơ Hội Hợp Tác Bằng AI:
+                </div>
+                <div>{selectedContractorDetail.ai_insight}</div>
+              </div>
+            )}
+          </>
+        )}
+      </AppModal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 1: CHI TIẾT GÓI THẦU (TENDER DETAILS MODAL)                         */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {detailModalTender && (
-        <div className="modal-backdrop" onClick={() => { setDetailModalTender(null); syncBiddingUrl(activeTab, contractorSubTab, null); }}>
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "840px", padding: "28px 32px" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-              <div>
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "12px",
-                    fontWeight: 900,
-                    color: "#168579",
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    background: "#eaf4f1",
+      <AppModal
+        open={Boolean(detailModalTender)}
+        onClose={() => {
+          setDetailModalTender(null);
+          syncBiddingUrl(activeTab, contractorSubTab, null);
+        }}
+        size="lg"
+        title={
+          detailModalTender ? (
+            <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+              {detailModalTender.tender_name}
+            </span>
+          ) : (
+            ""
+          )
+        }
+        subtitle={
+          detailModalTender ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                  color: "var(--primary-dark)",
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  background: "var(--primary-soft)",
+                }}
+              >
+                🏷️ {detailModalTender.tbmt_code}
+              </span>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  background: getFieldBadge(detailModalTender.field).bg,
+                  color: getFieldBadge(detailModalTender.field).color,
+                }}
+              >
+                {getFieldBadge(detailModalTender.field).label}
+              </span>
+            </span>
+          ) : undefined
+        }
+        footer={
+          detailModalTender ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", width: "100%" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => {
+                    const tender = detailModalTender;
+                    setDetailModalTender(null);
+                    handleOpenAiAnalysis(tender);
                   }}
-                >
-                  🏷️ {detailModalTender.tbmt_code}
-                </span>
-                <span
                   style={{
-                    marginLeft: "8px",
-                    fontSize: "11px",
+                    minHeight: "44px",
+                    padding: "10px 18px",
+                    borderRadius: "10px",
+                    background: "linear-gradient(110deg, var(--primary), var(--primary-dark))",
+                    color: "#fff",
+                    border: "0",
                     fontWeight: 800,
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    background: getFieldBadge(detailModalTender.field).bg,
-                    color: getFieldBadge(detailModalTender.field).color,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  {getFieldBadge(detailModalTender.field).label}
-                </span>
+                  <span>🧠</span>
+                  <span>AI Phân Tích HSMT</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => {
+                    const tender = detailModalTender;
+                    const existing = bookmarks.find((b) => b.tbmt_code === tender.tbmt_code);
+                    setBookmarkModalItem({
+                      tender,
+                      status: existing?.status || "watching",
+                      note: existing?.note || "",
+                      existingId: existing?.id,
+                    });
+                    setDetailModalTender(null);
+                  }}
+                  style={{
+                    minHeight: "44px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                    color: "color-mix(in srgb, var(--amber) 74%, var(--ink))",
+                    border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))",
+                    fontWeight: 750,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ⭐ Lưu vào danh sách theo dõi
+                </button>
               </div>
 
-              <button
-                onClick={() => { setDetailModalTender(null); syncBiddingUrl(activeTab, contractorSubTab, null); }}
-                style={{
-                  border: "0",
-                  background: "#f0f4f2",
-                  borderRadius: "50%",
-                  width: "32px",
-                  height: "32px",
-                  fontSize: "16px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => handleOpenExternalPortal(detailModalTender.tbmt_code, detailModalTender.source_url)}
+                  style={{
+                    minHeight: "44px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "var(--primary-dark)",
+                    border: "1px solid color-mix(in srgb, var(--primary) 30%, var(--border))",
+                    padding: "9px 14px",
+                    borderRadius: "8px",
+                    background: "var(--primary-soft)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                  title="Tự động sao chép mã TBMT vào clipboard và mở Cổng Mua Sắm Công"
+                >
+                  <span>📋 Sao Chép Mã & Mở e-GP</span>
+                  <span>↗</span>
+                </button>
+              </div>
             </div>
-
-            <h2
-              style={{
-                fontFamily: "Georgia, serif",
-                fontSize: "22px",
-                color: "#123b36",
-                margin: "0 0 16px",
-                lineHeight: 1.35,
-              }}
-            >
-              {detailModalTender.tender_name}
-            </h2>
-
+          ) : undefined
+        }
+      >
+        {detailModalTender && (
+          <>
             {/* Tab Navigation inside Detail Modal */}
-            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #e2ece7", marginBottom: "18px", paddingBottom: "8px" }}>
-              <button
-                type="button"
-                onClick={() => { setDetailModalTab("info"); if (detailModalTender) syncBiddingUrl(activeTab, contractorSubTab, detailModalTender.tbmt_code, "info"); }}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  background: detailModalTab === "info" ? "#168579" : "#f0f4f2",
-                  color: detailModalTab === "info" ? "#ffffff" : "#4a685f",
-                  transition: "all 0.15s ease",
+            <div style={{ marginBottom: "18px" }}>
+              <ResponsiveTabs
+                ariaLabel="Chuyển mục chi tiết gói thầu"
+                active={detailModalTab}
+                onChange={(t) => {
+                  setDetailModalTab(t);
+                  syncBiddingUrl(activeTab, contractorSubTab, detailModalTender.tbmt_code, t);
                 }}
-              >
-                📋 Tóm Tắt Thông Tin
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setDetailModalTab("iframe"); if (detailModalTender) syncBiddingUrl(activeTab, contractorSubTab, detailModalTender.tbmt_code, "iframe"); }}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  background: detailModalTab === "iframe" ? "#168579" : "#f0f4f2",
-                  color: detailModalTab === "iframe" ? "#ffffff" : "#4a685f",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <span>📄</span>
-                <span>Toàn Văn E-HSMT (Trình Xem iFrame)</span>
-              </button>
+                tabs={[
+                  { id: "info", label: "📋 Tóm Tắt Thông Tin" },
+                  { id: "iframe", label: "📄 Toàn Văn E-HSMT (Trình Xem iFrame)" },
+                  ...(detailModalTab === "attachments" || modalAttachments.length > 0
+                    ? [{ id: "attachments" as const, label: "📎 Hồ Sơ Mời Thầu", badge: modalAttachments.length || undefined }]
+                    : []),
+                  ...(detailModalTab === "competitors" || modalCompetitors.length > 0
+                    ? [{ id: "competitors" as const, label: "👥 Nhà Thầu Đối Thủ", badge: modalCompetitors.length || undefined }]
+                    : []),
+                ]}
+              />
             </div>
 
             {detailModalTab === "competitors" ? (
@@ -4600,42 +4797,44 @@ export function BiddingProcurement() {
                 {/* Full Competitors ZIP Download Banner */}
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #7c2d12, #ea580c)",
+                    background: "linear-gradient(135deg, var(--ink), color-mix(in srgb, var(--coral) 82%, var(--ink)))",
                     borderRadius: "16px",
-                    padding: "20px 24px",
+                    padding: "clamp(14px, 2.5vw, 22px)",
                     color: "#fff",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     flexWrap: "wrap",
                     gap: "14px",
-                    boxShadow: "0 6px 20px rgba(234,88,12,0.25)",
+                    boxShadow: "var(--shadow)",
                   }}
                 >
-                  <div>
+                  <div style={{ flex: "1 1 240px", minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#fff" }}>
                       📦 Tải Trọn Bộ E-HSDT Của Tất Cả Nhà Thầu Tham Gia (Full Competitors ZIP)
                     </h3>
-                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#fed7aa" }}>
+                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.85)" }}>
                       Bao gồm toàn bộ đề xuất kỹ thuật, biểu giá chào thầu và hồ sơ năng lực của cả 3 nhà thầu (Thắng / Xếp hạng 2 / Bị loại).
                     </p>
                   </div>
 
                   <a
-                    href={api.bidding.getAllCompetitorsZipUrl(detailModalTender.tbmt_code)}
+                    href={safeHttpUrl(api.bidding.getAllCompetitorsZipUrl(detailModalTender.tbmt_code))}
                     download
+                    className="ui-btn-chip"
                     style={{
+                      minHeight: "44px",
                       padding: "11px 22px",
                       borderRadius: "12px",
-                      background: "#fef08a",
-                      color: "#78350f",
+                      background: "var(--gold)",
+                      color: "var(--ink)",
                       textDecoration: "none",
                       fontWeight: 800,
                       fontSize: "13px",
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                      boxShadow: "var(--shadow)",
                     }}
                   >
                     <span>📥</span>
@@ -4653,11 +4852,15 @@ export function BiddingProcurement() {
                     <div
                       key={comp.tax_code}
                       style={{
-                        background: "#fff",
+                        background: "var(--panel)",
                         borderRadius: "16px",
-                        border: comp.ranking === 1 ? "1px solid #bbf7d0" : comp.ranking === 2 ? "1px solid #fed7aa" : "1px solid #fecaca",
-                        padding: "18px 20px",
-                        boxShadow: comp.ranking === 1 ? "0 4px 14px rgba(22,101,52,0.06)" : "0 2px 8px rgba(0,0,0,0.03)",
+                        border: comp.ranking === 1
+                          ? "1px solid color-mix(in srgb, var(--green) 36%, var(--border))"
+                          : comp.ranking === 2
+                          ? "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))"
+                          : "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
+                        padding: "clamp(14px, 2vw, 18px)",
+                        boxShadow: "var(--shadow)",
                         display: "flex",
                         flexDirection: "column",
                         gap: "12px",
@@ -4665,40 +4868,52 @@ export function BiddingProcurement() {
                     >
                       {/* Competitor Header */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                        <div>
+                        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                            <strong style={{ fontSize: "15px", color: "#0f172a" }}>{comp.contractor_name}</strong>
+                            <strong style={{ fontSize: "15px", color: "var(--ink)" }}>{comp.contractor_name}</strong>
                             <span
                               style={{
                                 fontSize: "11px",
                                 fontWeight: 800,
                                 padding: "3px 10px",
                                 borderRadius: "999px",
-                                background: comp.ranking === 1 ? "#dcfce7" : comp.ranking === 2 ? "#fff7ed" : "#fee2e2",
-                                color: comp.ranking === 1 ? "#166534" : comp.ranking === 2 ? "#c2410c" : "#991b1b",
-                                border: comp.ranking === 1 ? "1px solid #86efac" : comp.ranking === 2 ? "1px solid #fed7aa" : "1px solid #fca5a5",
+                                background: comp.ranking === 1
+                                  ? "color-mix(in srgb, var(--green) 14%, var(--panel))"
+                                  : comp.ranking === 2
+                                  ? "color-mix(in srgb, var(--coral) 12%, var(--panel))"
+                                  : "color-mix(in srgb, var(--red) 12%, var(--panel))",
+                                color: comp.ranking === 1
+                                  ? "color-mix(in srgb, var(--green) 76%, var(--ink))"
+                                  : comp.ranking === 2
+                                  ? "color-mix(in srgb, var(--coral) 82%, var(--ink))"
+                                  : "color-mix(in srgb, var(--red) 82%, var(--ink))",
+                                border: comp.ranking === 1
+                                  ? "1px solid color-mix(in srgb, var(--green) 36%, var(--border))"
+                                  : comp.ranking === 2
+                                  ? "1px solid color-mix(in srgb, var(--coral) 38%, var(--border))"
+                                  : "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
                               }}
                             >
                               {comp.status_label}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                            MST: <strong style={{ color: "#334155", fontFamily: "var(--font-mono)" }}>{comp.tax_code}</strong> • {comp.address}
+                          <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
+                            MST: <strong style={{ color: "var(--ink-2, var(--text))", fontFamily: "var(--font-mono)" }}>{comp.tax_code}</strong> • {comp.address}
                           </div>
                         </div>
 
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: "15px", fontWeight: 800, color: "#ea580c", fontFamily: "var(--font-mono)" }}>
+                          <div style={{ fontSize: "15px", fontWeight: 800, color: "color-mix(in srgb, var(--coral) 82%, var(--ink))", fontFamily: "var(--font-mono)" }}>
                             {comp.bid_price_formatted}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#047857", fontWeight: 700 }}>
+                          <div style={{ fontSize: "11px", color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontWeight: 700 }}>
                             Điểm kỹ thuật: {comp.tech_score}/100 • Giảm {comp.discount_percent}%
                           </div>
                         </div>
                       </div>
 
                       {/* Evaluation note */}
-                      <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", color: "#475569", border: "1px solid #f1f5f9" }}>
+                      <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", color: "var(--ink-2, var(--text))", border: "1px solid var(--border)" }}>
                         <strong>Nhận xét Tổ chuyên gia:</strong> {comp.eval_result}
                       </div>
 
@@ -4707,25 +4922,27 @@ export function BiddingProcurement() {
                         {comp.files.map((f: any) => (
                           <a
                             key={f.file_id}
-                            href={api.bidding.getCompetitorFileDownloadUrl(detailModalTender.tbmt_code, comp.tax_code, f.file_id)}
+                            href={safeHttpUrl(api.bidding.getCompetitorFileDownloadUrl(detailModalTender.tbmt_code, comp.tax_code, f.file_id))}
                             download
+                            className="ui-btn-chip"
                             style={{
-                              padding: "6px 12px",
+                              minHeight: "40px",
+                              padding: "8px 12px",
                               borderRadius: "8px",
-                              border: "1px solid #cbd5e1",
-                              background: "#ffffff",
-                              color: "#1e293b",
+                              border: "1px solid var(--border-strong)",
+                              background: "var(--panel)",
+                              color: "var(--ink)",
                               textDecoration: "none",
-                              fontSize: "11px",
+                              fontSize: "12px",
                               fontWeight: 700,
-                              display: "flex",
+                              display: "inline-flex",
                               alignItems: "center",
                               gap: "5px",
                             }}
                           >
                             <span>📥</span>
                             <span>{f.title}</span>
-                            <span style={{ color: "#94a3b8" }}>({f.size})</span>
+                            <span style={{ color: "var(--muted)" }}>({f.size})</span>
                           </a>
                         ))}
                       </div>
@@ -4738,42 +4955,44 @@ export function BiddingProcurement() {
                 {/* Full ZIP Download Banner */}
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #0f4c3a, #168579)",
+                    background: "linear-gradient(135deg, var(--ink), var(--primary))",
                     borderRadius: "16px",
-                    padding: "20px 24px",
+                    padding: "clamp(14px, 2.5vw, 22px)",
                     color: "#fff",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     flexWrap: "wrap",
                     gap: "14px",
-                    boxShadow: "0 6px 20px rgba(15,76,58,0.2)",
+                    boxShadow: "var(--shadow)",
                   }}
                 >
-                  <div>
+                  <div style={{ flex: "1 1 240px", minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#fff" }}>
                       📦 Tải Trọn Bộ Hồ Sơ Mời Thầu & Biểu Mẫu (Full Package ZIP)
                     </h3>
-                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#e2e8f0" }}>
+                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.85)" }}>
                       Gói nén ZIP bao gồm tất cả 5 file: E-HSMT Yêu cầu kỹ thuật, Tiêu chuẩn đánh giá, Biểu mẫu Word và Quyết định pháp lý.
                     </p>
                   </div>
 
                   <a
-                    href={api.bidding.getFullDossierZipUrl(detailModalTender.tbmt_code)}
+                    href={safeHttpUrl(api.bidding.getFullDossierZipUrl(detailModalTender.tbmt_code))}
                     download
+                    className="ui-btn-chip"
                     style={{
+                      minHeight: "44px",
                       padding: "11px 22px",
                       borderRadius: "12px",
-                      background: "#fef08a",
-                      color: "#166534",
+                      background: "var(--gold)",
+                      color: "var(--ink)",
                       textDecoration: "none",
                       fontWeight: 800,
                       fontSize: "13px",
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                      boxShadow: "var(--shadow)",
                     }}
                   >
                     <span>📥</span>
@@ -4793,10 +5012,10 @@ export function BiddingProcurement() {
                     <div
                       key={att.file_id}
                       style={{
-                        background: "#fff",
+                        background: "var(--panel)",
                         borderRadius: "14px",
-                        border: "1px solid #e2e8f0",
-                        padding: "14px 18px",
+                        border: "1px solid var(--border)",
+                        padding: "14px 16px",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -4804,37 +5023,39 @@ export function BiddingProcurement() {
                         flexWrap: "wrap",
                       }}
                     >
-                      <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: "12px", alignItems: "center", flex: "1 1 240px", minWidth: 0 }}>
                         <span style={{ fontSize: "28px" }}>{att.icon || (att.file_type === "docx" ? "📝" : "📄")}</span>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                            <strong style={{ fontSize: "14px", color: "#0f172a" }}>{att.title}</strong>
-                            <span style={{ fontSize: "10px", fontWeight: 800, padding: "2px 7px", borderRadius: "6px", background: att.file_type === "docx" ? "#eff6ff" : "#f0fdf4", color: att.file_type === "docx" ? "#1d4ed8" : "#15803d" }}>
+                            <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{att.title}</strong>
+                            <span style={{ fontSize: "10px", fontWeight: 800, padding: "2px 7px", borderRadius: "6px", background: att.file_type === "docx" ? "var(--primary-soft)" : "color-mix(in srgb, var(--green) 14%, var(--panel))", color: att.file_type === "docx" ? "var(--primary-dark)" : "color-mix(in srgb, var(--green) 76%, var(--ink))" }}>
                               {att.badge || att.file_type.toUpperCase()}
                             </span>
-                            <span style={{ fontSize: "11px", color: "#94a3b8" }}>({att.file_size})</span>
+                            <span style={{ fontSize: "11px", color: "var(--muted)" }}>({att.file_size})</span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                          <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
                             {att.description}
                           </div>
                         </div>
                       </div>
 
                       <a
-                        href={api.bidding.getAttachmentDownloadUrl(detailModalTender.tbmt_code, att.file_id)}
+                        href={safeHttpUrl(api.bidding.getAttachmentDownloadUrl(detailModalTender.tbmt_code, att.file_id))}
                         download
+                        className="ui-btn-chip"
                         style={{
-                          padding: "8px 16px",
+                          minHeight: "44px",
+                          padding: "9px 16px",
                           borderRadius: "10px",
-                          background: att.file_type === "docx" ? "#2563eb" : "#168579",
+                          background: att.file_type === "docx" ? "var(--primary-dark)" : "var(--primary)",
                           color: "#fff",
                           textDecoration: "none",
                           fontWeight: 700,
                           fontSize: "12px",
-                          display: "flex",
+                          display: "inline-flex",
                           alignItems: "center",
                           gap: "6px",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                          boxShadow: "var(--shadow)",
                         }}
                       >
                         <span>📥</span>
@@ -4845,21 +5066,22 @@ export function BiddingProcurement() {
                 </div>
               </div>
             ) : detailModalTab === "iframe" ? (
-              <div style={{ marginBottom: "20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", fontSize: "12px", color: "#54736b" }}>
+              <div style={{ marginBottom: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "8px", fontSize: "12px", color: "var(--muted)" }}>
                   <span>Trình xem trực quan E-HSMT định dạng Cổng Mua Sắm Công:</span>
                   <a
-                    href={api.bidding.getHtmlPreviewUrl(detailModalTender.tbmt_code)}
+                    href={safeHttpUrl(api.bidding.getHtmlPreviewUrl(detailModalTender.tbmt_code))}
                     target="_blank"
-                    rel="noreferrer"
-                    style={{ color: "#168579", fontWeight: 700, textDecoration: "none" }}
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--primary-dark)", fontWeight: 700, textDecoration: "none" }}
                   >
                     🌐 Mở tab toàn màn hình ↗
                   </a>
                 </div>
-                <div style={{ borderRadius: "12px", overflow: "hidden", border: "1px solid #d4e3dc", height: "540px", background: "#f8fafc" }}>
+                <div style={{ borderRadius: "12px", overflow: "hidden", border: "1px solid var(--border-strong)", height: "min(540px, 60dvh)", background: "var(--surface-subtle, var(--paper))" }}>
                   <iframe
-                    src={api.bidding.getHtmlPreviewUrl(detailModalTender.tbmt_code)}
+                    src={safeHttpUrl(api.bidding.getHtmlPreviewUrl(detailModalTender.tbmt_code))}
+                    sandbox=""
                     style={{ width: "100%", height: "100%", border: "none" }}
                     title={`E-HSMT ${detailModalTender.tbmt_code}`}
                   />
@@ -4871,26 +5093,26 @@ export function BiddingProcurement() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
                     gap: "14px",
                     padding: "16px 20px",
                     borderRadius: "14px",
-                    background: "linear-gradient(135deg, #102e2c, #174f46)",
+                    background: "linear-gradient(135deg, var(--ink), var(--primary-dark))",
                     color: "#fff",
                     marginBottom: "20px",
                   }}
                 >
-                  <div>
-                    <span style={{ fontSize: "11px", color: "#a5d8cc", display: "block", fontWeight: 700 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: "11px", color: "var(--mint, var(--primary-soft))", display: "block", fontWeight: 700 }}>
                       GIÁ GÓI THẦU (DỰ TOÁN)
                     </span>
-                    <strong style={{ fontSize: "22px", fontFamily: "Georgia, serif", color: "#f4c76b" }}>
+                    <strong style={{ fontSize: "22px", fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--gold)" }}>
                       {formatVnd(detailModalTender.bid_price)}
                     </strong>
                   </div>
 
-                  <div>
-                    <span style={{ fontSize: "11px", color: "#a5d8cc", display: "block", fontWeight: 700 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: "11px", color: "var(--mint, var(--primary-soft))", display: "block", fontWeight: 700 }}>
                       THỜI ĐIỂM ĐÓNG THẦU
                     </span>
                     <strong style={{ fontSize: "14px", color: "#fff" }}>
@@ -4898,8 +5120,8 @@ export function BiddingProcurement() {
                     </strong>
                   </div>
 
-                  <div>
-                    <span style={{ fontSize: "11px", color: "#a5d8cc", display: "block", fontWeight: 700 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: "11px", color: "var(--mint, var(--primary-soft))", display: "block", fontWeight: 700 }}>
                       ĐỊA BÀN THỰC HIỆN
                     </span>
                     <strong style={{ fontSize: "14px", color: "#fff" }}>
@@ -4909,646 +5131,557 @@ export function BiddingProcurement() {
                 </div>
 
                 {/* Specifications Grid */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px 18px",
-                    marginBottom: "20px",
-                    fontSize: "13px",
-                  }}
-                >
-                  <div>
-                    <strong style={{ color: "#168579" }}>Bên mời thầu:</strong>
-                    <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.procuring_entity || "—"}</div>
+                <FormGrid cols={2} style={{ marginBottom: "20px", fontSize: "13px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ color: "var(--primary-dark)" }}>Bên mời thầu:</strong>
+                    <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.procuring_entity || "—"}</div>
                   </div>
 
-                  <div>
-                    <strong style={{ color: "#168579" }}>Chủ đầu tư:</strong>
-                    <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.investor || "—"}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ color: "var(--primary-dark)" }}>Chủ đầu tư:</strong>
+                    <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.investor || "—"}</div>
                   </div>
 
-                  <div>
-                    <strong style={{ color: "#168579" }}>Hình thức lựa chọn:</strong>
-                    <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.bidding_method || "Đấu thầu rộng rãi qua mạng"}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ color: "var(--primary-dark)" }}>Hình thức lựa chọn:</strong>
+                    <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.bidding_method || "Đấu thầu rộng rãi qua mạng"}</div>
                   </div>
 
                   {detailModalTender.decision_number && (
-                    <div>
-                      <strong style={{ color: "#168579" }}>Số quyết định phê duyệt:</strong>
-                      <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.decision_number}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ color: "var(--primary-dark)" }}>Số quyết định phê duyệt:</strong>
+                      <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.decision_number}</div>
                     </div>
                   )}
 
                   {detailModalTender.bid_validity_period_days != null && (
-                    <div>
-                      <strong style={{ color: "#168579" }}>Hiệu lực HSDT:</strong>
-                      <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.bid_validity_period_days} ngày</div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ color: "var(--primary-dark)" }}>Hiệu lực HSDT:</strong>
+                      <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.bid_validity_period_days} ngày</div>
                     </div>
                   )}
 
                   {detailModalTender.execution_period_days != null && (
-                    <div>
-                      <strong style={{ color: "#168579" }}>Thời gian thực hiện hợp đồng:</strong>
-                      <div style={{ color: "#22443c", marginTop: "2px" }}>{detailModalTender.execution_period_days} ngày</div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ color: "var(--primary-dark)" }}>Thời gian thực hiện hợp đồng:</strong>
+                      <div style={{ color: "var(--ink)", marginTop: "2px" }}>{detailModalTender.execution_period_days} ngày</div>
                     </div>
                   )}
-                </div>
+                </FormGrid>
 
                 {/* Description / Summary if available */}
                 {detailModalTender.description && (
                   <div
                     style={{
-                      padding: "14px 18px",
+                      padding: "14px 16px",
                       borderRadius: "12px",
-                      background: "#f8faf9",
-                      border: "1px solid #e2ece7",
-                      marginBottom: "20px",
+                      background: "var(--surface-subtle, var(--paper))",
+                      border: "1px solid var(--border)",
+                      marginBottom: "8px",
                       fontSize: "13px",
                       lineHeight: 1.6,
-                      color: "#334e46",
+                      color: "var(--ink-2, var(--text))",
                     }}
                   >
-                    <strong style={{ display: "block", color: "#168579", marginBottom: "6px" }}>MÔ TẢ PHẠM VI CÔNG VIỆC:</strong>
+                    <strong style={{ display: "block", color: "var(--primary-dark)", marginBottom: "6px" }}>MÔ TẢ PHẠM VI CÔNG VIỆC:</strong>
                     {detailModalTender.description}
                   </div>
                 )}
               </>
             )}
+          </>
+        )}
+      </AppModal>
 
-            {/* Actions */}
-            <div
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 2: BÁO CÁO AI PHÂN TÍCH HSMT & ĐIỂM CHIẾN LƯỢC INUT                */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <AppModal
+        open={Boolean(aiModalTender || aiModalResult || aiLoading)}
+        dismissible={!aiLoading}
+        onClose={() => {
+          if (!aiLoading) {
+            setAiModalTender(null);
+            setAiModalResult(null);
+          }
+        }}
+        size="lg"
+        title={
+          <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+            Phân Tích Hồ Sơ Mời Thầu & Độ Phù Hợp Chiến Lược
+          </span>
+        }
+        subtitle={
+          <span>
+            <span
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "10px",
-                paddingTop: "14px",
-                borderTop: "1px solid #e7f0ec",
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 900,
+                letterSpacing: ".12em",
+                color: "var(--primary-dark)",
+                textTransform: "uppercase",
               }}
             >
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              🧠 AI TENDER STRATEGIC RADAR — INUT CORPS (MST 4401053694)
+            </span>
+            {aiModalTender && (
+              <span style={{ display: "block", marginTop: "3px" }}>
+                Gói thầu: <strong>{aiModalTender.tender_name}</strong> ({aiModalTender.tbmt_code})
+              </span>
+            )}
+          </span>
+        }
+        footer={
+          !aiLoading && aiModalResult ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", width: "100%" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
+                  className="ui-btn-chip"
                   onClick={() => {
-                    const tender = detailModalTender;
-                    setDetailModalTender(null);
-                    handleOpenAiAnalysis(tender);
+                    const md = generateAiAnalysisMarkdown(aiModalTender, aiModalResult.analysis);
+                    try {
+                      if (navigator && navigator.clipboard) {
+                        navigator.clipboard.writeText(md);
+                      }
+                    } catch (err) {
+                      console.warn(err);
+                    }
+                    showToast("📋 Đã sao chép Báo Cáo Phân Tích AI HSMT (Markdown) vào Clipboard!", "success");
                   }}
                   style={{
+                    minHeight: "44px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    background: "var(--primary-soft)",
+                    color: "var(--primary-dark)",
+                    border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                  title="Sao chép toàn bộ báo cáo phân tích AI dạng Markdown"
+                >
+                  <span>📋</span>
+                  <span>Xuất Báo Cáo Markdown / Sao chép</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => handleShareAiTelegram(aiModalTender, aiModalResult.analysis)}
+                  style={{
+                    minHeight: "44px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    background: "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                    color: "#fff",
+                    border: 0,
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "var(--shadow)",
+                  }}
+                  title="Gửi cảnh báo phân tích HSMT qua Telegram"
+                >
+                  <span>✈️</span>
+                  <span>Gửi cảnh báo Telegram</span>
+                </button>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => {
+                    if (aiModalTender) {
+                      const existing = bookmarks.find((b) => b.tbmt_code === aiModalTender.tbmt_code);
+                      setBookmarkModalItem({
+                        tender: aiModalTender,
+                        status: existing?.status || "preparing",
+                        note: `[AI Score: ${aiModalResult.analysis.inut_fit_analysis?.score || 85}/100 - ${aiModalResult.analysis.inut_fit_analysis?.recommendation || "Nên tham gia"}]\n${existing?.note || ""}`,
+                        existingId: existing?.id,
+                      });
+                      setAiModalTender(null);
+                      setAiModalResult(null);
+                    }
+                  }}
+                  style={{
+                    minHeight: "44px",
                     padding: "10px 18px",
                     borderRadius: "10px",
-                    background: "linear-gradient(110deg, #168579, #126359)",
+                    background: "var(--primary)",
                     color: "#fff",
                     border: "0",
                     fontWeight: 800,
                     fontSize: "13px",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
                   }}
                 >
-                  <span>🧠</span>
-                  <span>AI Phân Tích HSMT</span>
+                  ⭐ Lưu Vào Theo Dõi
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    const tender = detailModalTender;
-                    const existing = bookmarks.find((b) => b.tbmt_code === tender.tbmt_code);
-                    setBookmarkModalItem({
-                      tender,
-                      status: existing?.status || "watching",
-                      note: existing?.note || "",
-                      existingId: existing?.id,
-                    });
-                    setDetailModalTender(null);
-                  }}
-                  style={{
-                    padding: "10px 16px",
-                    borderRadius: "10px",
-                    background: "#fff8e8",
-                    color: "#925f17",
-                    border: "1px solid #eed6a6",
-                    fontWeight: 750,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ⭐ Lưu vào danh sách theo dõi
-                </button>
-              </div>
-
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  onClick={() => handleOpenExternalPortal(detailModalTender.tbmt_code, detailModalTender.source_url)}
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    color: "#168579",
-                    border: "1px solid #c9e4db",
-                    padding: "9px 14px",
-                    borderRadius: "8px",
-                    background: "#f0f8f5",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                  title="Tự động sao chép mã TBMT vào clipboard và mở Cổng Mua Sắm Công"
-                >
-                  <span>📋 Sao Chép Mã & Mở e-GP</span>
-                  <span>↗</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODAL 2: BÁO CÁO AI PHÂN TÍCH HSMT & ĐIỂM CHIẾN LƯỢC INUT                */}
-      {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {(aiModalTender || aiModalResult || aiLoading) && (
-        <div
-          className="modal-backdrop"
-          onClick={() => {
-            if (!aiLoading) {
-              setAiModalTender(null);
-              setAiModalResult(null);
-            }
-          }}
-        >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "920px", padding: "28px 34px" }}
-          >
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 900,
-                    letterSpacing: ".15em",
-                    color: "#168579",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  🧠 AI TENDER STRATEGIC RADAR — INUT CORPS (MST 4401053694)
-                </span>
-                <h2
-                  style={{
-                    fontFamily: "Georgia, serif",
-                    fontSize: "22px",
-                    color: "#102f2b",
-                    margin: "4px 0 0",
-                  }}
-                >
-                  Phân Tích Hồ Sơ Mời Thầu & Độ Phù Hợp Chiến Lược
-                </h2>
-                {aiModalTender && (
-                  <div style={{ fontSize: "13px", color: "#60756e", marginTop: "4px" }}>
-                    Gói thầu: <strong>{aiModalTender.tender_name}</strong> ({aiModalTender.tbmt_code})
-                  </div>
-                )}
-              </div>
-
-              {!aiLoading && (
-                <button
+                  className="ui-btn-chip"
                   onClick={() => {
                     setAiModalTender(null);
                     setAiModalResult(null);
                   }}
                   style={{
-                    border: "0",
-                    background: "#f0f4f2",
-                    borderRadius: "50%",
-                    width: "32px",
-                    height: "32px",
-                    fontSize: "16px",
+                    minHeight: "44px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    background: "var(--surface-subtle, var(--paper))",
+                    color: "var(--ink-2, var(--text))",
+                    border: "1px solid var(--border-strong)",
+                    fontWeight: 700,
+                    fontSize: "13px",
                     cursor: "pointer",
                   }}
                 >
-                  ✕
+                  Đóng
                 </button>
-              )}
+              </div>
             </div>
+          ) : undefined
+        }
+      >
+        {/* AI Loading State */}
+        {aiLoading && (
+          <div
+            style={{
+              padding: "48px 20px",
+              textAlign: "center",
+              background: "linear-gradient(135deg, var(--surface-subtle, var(--paper)), var(--paper))",
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                border: "4px solid var(--primary)",
+                borderTopColor: "transparent",
+                margin: "0 auto 18px",
+                animation: "spin 1s linear infinite",
+              }}
+            />
+            <h3 style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)", margin: "0 0 8px" }}>
+              AI Đang Bóc Tách & Đánh Giá E-HSMT...
+            </h3>
+            <p style={{ maxWidth: "520px", margin: "0 auto", fontSize: "13px", color: "var(--muted)" }}>
+              Trích xuất điều kiện năng lực, doanh thu, thời hạn nộp thầu và đối chiếu với năng lực sản xuất IoT / SCADA của INUT.
+            </p>
+          </div>
+        )}
 
-            {/* AI Loading State */}
-            {aiLoading && (
-              <div
-                style={{
-                  padding: "60px 20px",
-                  textAlign: "center",
-                  background: "linear-gradient(135deg, #f8fbf9, #fbf7ee)",
-                  borderRadius: "18px",
-                  border: "1px solid #dbeae2",
-                }}
-              >
+        {/* AI Error */}
+        {aiError && (
+          <div
+            style={{
+              padding: "18px 20px",
+              borderRadius: "14px",
+              background: "color-mix(in srgb, var(--red) 10%, var(--panel))",
+              border: "1px solid color-mix(in srgb, var(--red) 35%, var(--border))",
+              color: "color-mix(in srgb, var(--red) 82%, var(--ink))",
+              marginBottom: "20px",
+            }}
+          >
+            <strong>Không thể phân tích:</strong> {aiError}
+          </div>
+        )}
+
+        {/* AI Result Content */}
+        {!aiLoading && aiModalResult && (
+          <div style={{ display: "grid", gap: "18px" }}>
+            {/* ─── INUT Strategic Fit Score Banner ──────────────────────────── */}
+            {(() => {
+              const fit = aiModalResult.analysis.inut_fit_analysis;
+              const score = fit?.score ?? aiModalResult.analysis.inut_compatibility_score ?? 85;
+              const scoreColor =
+                score >= 80
+                  ? "color-mix(in srgb, var(--green) 76%, var(--ink))"
+                  : score >= 60
+                  ? "color-mix(in srgb, var(--amber) 74%, var(--ink))"
+                  : "color-mix(in srgb, var(--red) 82%, var(--ink))";
+              const scoreBg =
+                score >= 80
+                  ? "var(--primary-soft)"
+                  : score >= 60
+                  ? "color-mix(in srgb, var(--gold) 22%, var(--panel))"
+                  : "color-mix(in srgb, var(--red) 14%, var(--panel))";
+
+              return (
                 <div
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "50%",
-                    border: "4px solid #168579",
-                    borderTopColor: "transparent",
-                    margin: "0 auto 18px",
-                    animation: "spin 1s linear infinite",
-                  }}
-                />
-                <h3 style={{ fontFamily: "Georgia, serif", color: "#143b38", margin: "0 0 8px" }}>
-                  AI Đang Bóc Tách & Đánh Giá E-HSMT...
-                </h3>
-                <p style={{ maxWidth: "520px", margin: "0 auto", fontSize: "13px", color: "#627771" }}>
-                  Trích xuất điều kiện năng lực, doanh thu, thời hạn nộp thầu và đối chiếu với năng lực sản xuất IoT / SCADA của INUT.
-                </p>
-              </div>
-            )}
-
-            {/* AI Error */}
-            {aiError && (
-              <div
-                style={{
-                  padding: "18px 22px",
-                  borderRadius: "14px",
-                  background: "#fdf2f2",
-                  border: "1px solid #f8b4b4",
-                  color: "#9b1c1c",
-                  marginBottom: "20px",
-                }}
-              >
-                <strong>Không thể phân tích:</strong> {aiError}
-              </div>
-            )}
-
-            {/* AI Result Content */}
-            {!aiLoading && aiModalResult && (
-              <div style={{ display: "grid", gap: "18px" }}>
-                {/* ─── INUT Strategic Fit Score Banner ──────────────────────────── */}
-                {(() => {
-                  const fit = aiModalResult.analysis.inut_fit_analysis;
-                  const score = fit?.score ?? aiModalResult.analysis.inut_compatibility_score ?? 85;
-                  const scoreColor = score >= 80 ? "#176448" : score >= 60 ? "#8a6417" : "#9e3e2f";
-                  const scoreBg = score >= 80 ? "#dff3e9" : score >= 60 ? "#fff0ce" : "#fbe1da";
-
-                  return (
-                    <div
-                      style={{
-                        padding: "20px 24px",
-                        borderRadius: "18px",
-                        background: "linear-gradient(135deg, #102e2c, #164f45 65%, #c88a37)",
-                        color: "#fff",
-                        display: "grid",
-                        gridTemplateColumns: "110px 1fr",
-                        alignItems: "center",
-                        gap: "24px",
-                        boxShadow: "0 14px 40px rgba(16,46,44,0.18)",
-                      }}
-                    >
-                      {/* Big Score Radial Badge */}
-                      <div
-                        style={{
-                          width: "96px",
-                          height: "96px",
-                          borderRadius: "50%",
-                          background: "rgba(255,255,255,0.12)",
-                          border: "3px solid #f4c76b",
-                          display: "grid",
-                          placeItems: "center",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontSize: "28px", fontWeight: 900, fontFamily: "Georgia, serif", color: "#f4c76b", lineHeight: 1 }}>
-                            {score}
-                          </span>
-                          <span style={{ fontSize: "10px", display: "block", color: "#bdd6cf", letterSpacing: ".1em" }}>
-                            / 100 ĐIỂM
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Score Summary Copy */}
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "6px" }}>
-                          <span
-                            style={{
-                              fontSize: "11px",
-                              fontWeight: 900,
-                              padding: "4px 10px",
-                              borderRadius: "999px",
-                              background: scoreBg,
-                              color: scoreColor,
-                              letterSpacing: ".08em",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            ĐỘ PHÙ HỢP: {fit?.match_level || (score >= 80 ? "RẤT CAO" : score >= 60 ? "TRUNG BÌNH" : "THẤP")}
-                          </span>
-
-                          <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffd899" }}>
-                            Khuyến nghị: {fit?.recommendation || (score >= 80 ? "Nên tham gia độc lập" : "Khuyến nghị liên danh")}
-                          </span>
-                        </div>
-
-                        <p style={{ margin: 0, fontSize: "13px", color: "#d2e5df", lineHeight: 1.55 }}>
-                          {aiModalResult.analysis.executive_summary || aiModalResult.analysis.summary || "Đánh giá chi tiết năng lực dự thầu."}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ─── Capacity & Financial Requirements 2-Column ─────────────────── */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "16px" }}>
-                  {/* Capacity & Experience */}
-                  <div
-                    style={{
-                      padding: "18px 20px",
-                      borderRadius: "14px",
-                      background: "#fff",
-                      border: "1px solid #dce4df",
-                    }}
-                  >
-                    <h4 style={{ color: "#168579", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>📜</span> Yêu Cầu Năng Lực & Kinh Nghiệm
-                    </h4>
-                    {Array.isArray(aiModalResult.analysis.capacity_requirements) ? (
-                      <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#36534b", lineHeight: 1.6 }}>
-                        {aiModalResult.analysis.capacity_requirements.map((req, idx) => (
-                          <li key={idx}>{req}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p style={{ margin: 0, fontSize: "13px", color: "#36534b", lineHeight: 1.6 }}>
-                        {aiModalResult.analysis.capacity_requirements || "Không có yêu cầu đặc biệt."}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Financial Requirements */}
-                  <div
-                    style={{
-                      padding: "18px 20px",
-                      borderRadius: "14px",
-                      background: "#fff",
-                      border: "1px solid #dce4df",
-                    }}
-                  >
-                    <h4 style={{ color: "#168579", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>💰</span> Điều Kiện Tài Chính & Doanh Thu
-                    </h4>
-                    {typeof aiModalResult.analysis.financial_requirements === "object" && aiModalResult.analysis.financial_requirements !== null ? (
-                      <div style={{ fontSize: "13px", color: "#36534b", display: "grid", gap: "6px" }}>
-                        {aiModalResult.analysis.financial_requirements.min_annual_revenue && (
-                          <div>
-                            <strong>Doanh thu bình quân:</strong> {formatVnd(aiModalResult.analysis.financial_requirements.min_annual_revenue)}
-                          </div>
-                        )}
-                        {aiModalResult.analysis.financial_requirements.bid_security_amount && (
-                          <div>
-                            <strong>Bảo lãnh dự thầu:</strong> {formatVnd(aiModalResult.analysis.financial_requirements.bid_security_amount)}
-                          </div>
-                        )}
-                        {aiModalResult.analysis.financial_requirements.summary && (
-                          <div style={{ color: "#617770", marginTop: "4px" }}>
-                            {aiModalResult.analysis.financial_requirements.summary}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p style={{ margin: 0, fontSize: "13px", color: "#36534b", lineHeight: 1.6 }}>
-                        {aiModalResult.analysis.revenue_requirements || String(aiModalResult.analysis.financial_requirements || "Đáp ứng theo quy định e-GP.")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* ─── Strengths & Challenges / Action Plan ───────────────────────── */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "16px" }}>
-                  {/* Strengths */}
-                  <div
-                    style={{
-                      padding: "18px 20px",
-                      borderRadius: "14px",
-                      background: "#f3faf7",
-                      border: "1px solid #cce8dd",
-                    }}
-                  >
-                    <h4 style={{ color: "#176448", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>✅</span> Lợi Thế Cạnh Tranh Của INUT
-                    </h4>
-                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#235142", lineHeight: 1.6 }}>
-                      {(aiModalResult.analysis.inut_fit_analysis?.strengths || aiModalResult.analysis.strengths || [
-                        "Làm chủ 100% công nghệ phần cứng Gateway 4G và nền tảng Web SCADA",
-                        "Giá thành sản xuất trong nước tối ưu hơn các giải pháp ngoại nhập",
-                        "Đội ngũ kỹ thuật hỗ trợ triển khai và bảo hành tận nơi nhanh chóng",
-                      ]).map((str, idx) => (
-                        <li key={idx}>{str}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Challenges & Action Plan */}
-                  <div
-                    style={{
-                      padding: "18px 20px",
-                      borderRadius: "14px",
-                      background: "#fffaf0",
-                      border: "1px solid #eed6a6",
-                    }}
-                  >
-                    <h4 style={{ color: "#8a5814", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>⚠️</span> Thách Thức & Kế Hoạch Hành Động
-                    </h4>
-                    {aiModalResult.analysis.inut_fit_analysis?.strategic_action_plan ? (
-                      <p style={{ margin: 0, fontSize: "13px", color: "#59472f", lineHeight: 1.6 }}>
-                        {aiModalResult.analysis.inut_fit_analysis.strategic_action_plan}
-                      </p>
-                    ) : (
-                      <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#59472f", lineHeight: 1.6 }}>
-                        {(aiModalResult.analysis.inut_fit_analysis?.challenges || aiModalResult.analysis.risks || [
-                          "Kiểm tra yêu cầu số lượng hợp đồng tương tự trước khi lập E-HSDT",
-                          "Liên hệ ngân hàng chuẩn bị thư bảo lãnh dự thầu trước thời hạn 48 giờ",
-                        ]).map((chk, idx) => (
-                          <li key={idx}>{chk}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                {/* Foot Actions */}
-                <div
-                  style={{
+                    padding: "clamp(14px, 2.5vw, 22px)",
+                    borderRadius: "18px",
+                    background: "linear-gradient(135deg, var(--ink), var(--primary-dark) 65%, var(--amber))",
+                    color: "#fff",
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
                     flexWrap: "wrap",
-                    gap: "10px",
-                    paddingTop: "14px",
-                    borderTop: "1px solid #e7f0ec",
+                    alignItems: "center",
+                    gap: "18px 24px",
+                    boxShadow: "var(--shadow-md)",
                   }}
                 >
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const md = generateAiAnalysisMarkdown(aiModalTender, aiModalResult.analysis);
-                        try {
-                          if (navigator && navigator.clipboard) {
-                            navigator.clipboard.writeText(md);
-                          }
-                        } catch (err) {
-                          console.warn(err);
-                        }
-                        showToast("📋 Đã sao chép Báo Cáo Phân Tích AI HSMT (Markdown) vào Clipboard!", "success");
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: "10px",
-                        background: "#ecfdf5",
-                        color: "#065f46",
-                        border: "1px solid #a7f3d0",
-                        fontWeight: 800,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                      title="Sao chép toàn bộ báo cáo phân tích AI dạng Markdown"
-                    >
-                      <span>📋</span>
-                      <span>Xuất Báo Cáo Markdown / Sao chép</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleShareAiTelegram(aiModalTender, aiModalResult.analysis)}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: "10px",
-                        background: "linear-gradient(135deg, #0284c7, #0369a1)",
-                        color: "#fff",
-                        border: 0,
-                        fontWeight: 800,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        boxShadow: "0 2px 8px rgba(2,132,199,0.25)",
-                      }}
-                      title="Gửi cảnh báo phân tích HSMT qua Telegram"
-                    >
-                      <span>✈️</span>
-                      <span>Gửi cảnh báo Telegram</span>
-                    </button>
+                  {/* Big Score Radial Badge */}
+                  <div
+                    style={{
+                      flex: "0 0 auto",
+                      width: "96px",
+                      height: "96px",
+                      borderRadius: "50%",
+                      background: "rgba(255,255,255,0.12)",
+                      border: "3px solid var(--gold)",
+                      display: "grid",
+                      placeItems: "center",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: "28px", fontWeight: 900, fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--gold)", lineHeight: 1 }}>
+                        {score}
+                      </span>
+                      <span style={{ fontSize: "10px", display: "block", color: "rgba(255,255,255,0.82)", letterSpacing: ".1em" }}>
+                        / 100 ĐIỂM
+                      </span>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (aiModalTender) {
-                          const existing = bookmarks.find((b) => b.tbmt_code === aiModalTender.tbmt_code);
-                          setBookmarkModalItem({
-                            tender: aiModalTender,
-                            status: existing?.status || "preparing",
-                            note: `[AI Score: ${aiModalResult.analysis.inut_fit_analysis?.score || 85}/100 - ${aiModalResult.analysis.inut_fit_analysis?.recommendation || "Nên tham gia"}]\n${existing?.note || ""}`,
-                            existingId: existing?.id,
-                          });
-                          setAiModalTender(null);
-                          setAiModalResult(null);
-                        }
-                      }}
-                      style={{
-                        padding: "10px 18px",
-                        borderRadius: "10px",
-                        background: "#168579",
-                        color: "#fff",
-                        border: "0",
-                        fontWeight: 800,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      ⭐ Lưu Vào Theo Dõi
-                    </button>
+                  {/* Score Summary Copy */}
+                  <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "6px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 900,
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          background: scoreBg,
+                          color: scoreColor,
+                          letterSpacing: ".08em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        ĐỘ PHÙ HỢP: {fit?.match_level || (score >= 80 ? "RẤT CAO" : score >= 60 ? "TRUNG BÌNH" : "THẤP")}
+                      </span>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiModalTender(null);
-                        setAiModalResult(null);
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: "10px",
-                        background: "#f0f4f2",
-                        color: "#37544c",
-                        border: "1px solid #d4dfda",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Đóng
-                    </button>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--gold)" }}>
+                        Khuyến nghị: {fit?.recommendation || (score >= 80 ? "Nên tham gia độc lập" : "Khuyến nghị liên danh")}
+                      </span>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.88)", lineHeight: 1.55 }}>
+                      {aiModalResult.analysis.executive_summary || aiModalResult.analysis.summary || "Đánh giá chi tiết năng lực dự thầu."}
+                    </p>
                   </div>
                 </div>
+              );
+            })()}
+
+            {/* ─── Capacity & Financial Requirements 2-Column ─────────────────── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: "16px" }}>
+              {/* Capacity & Experience */}
+              <div
+                style={{
+                  minWidth: 0,
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  background: "var(--panel)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <h4 style={{ color: "var(--primary-dark)", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>📜</span> Yêu Cầu Năng Lực & Kinh Nghiệm
+                </h4>
+                {Array.isArray(aiModalResult.analysis.capacity_requirements) ? (
+                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                    {aiModalResult.analysis.capacity_requirements.map((req, idx) => (
+                      <li key={idx}>{req}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                    {aiModalResult.analysis.capacity_requirements || "Không có yêu cầu đặc biệt."}
+                  </p>
+                )}
               </div>
-            )}
+
+              {/* Financial Requirements */}
+              <div
+                style={{
+                  minWidth: 0,
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  background: "var(--panel)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <h4 style={{ color: "var(--primary-dark)", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>💰</span> Điều Kiện Tài Chính & Doanh Thu
+                </h4>
+                {typeof aiModalResult.analysis.financial_requirements === "object" && aiModalResult.analysis.financial_requirements !== null ? (
+                  <div style={{ fontSize: "13px", color: "var(--ink-2, var(--text))", display: "grid", gap: "6px" }}>
+                    {aiModalResult.analysis.financial_requirements.min_annual_revenue && (
+                      <div>
+                        <strong>Doanh thu bình quân:</strong> {formatVnd(aiModalResult.analysis.financial_requirements.min_annual_revenue)}
+                      </div>
+                    )}
+                    {aiModalResult.analysis.financial_requirements.bid_security_amount && (
+                      <div>
+                        <strong>Bảo lãnh dự thầu:</strong> {formatVnd(aiModalResult.analysis.financial_requirements.bid_security_amount)}
+                      </div>
+                    )}
+                    {aiModalResult.analysis.financial_requirements.summary && (
+                      <div style={{ color: "var(--muted)", marginTop: "4px" }}>
+                        {aiModalResult.analysis.financial_requirements.summary}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                    {aiModalResult.analysis.revenue_requirements || String(aiModalResult.analysis.financial_requirements || "Đáp ứng theo quy định e-GP.")}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Strengths & Challenges / Action Plan ───────────────────────── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: "16px" }}>
+              {/* Strengths */}
+              <div
+                style={{
+                  minWidth: 0,
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  background: "var(--primary-soft)",
+                  border: "1px solid color-mix(in srgb, var(--green) 32%, var(--border))",
+                }}
+              >
+                <h4 style={{ color: "color-mix(in srgb, var(--green) 76%, var(--ink))", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>✅</span> Lợi Thế Cạnh Tranh Của INUT
+                </h4>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink)", lineHeight: 1.6 }}>
+                  {(aiModalResult.analysis.inut_fit_analysis?.strengths || aiModalResult.analysis.strengths || [
+                    "Làm chủ 100% công nghệ phần cứng Gateway 4G và nền tảng Web SCADA",
+                    "Giá thành sản xuất trong nước tối ưu hơn các giải pháp ngoại nhập",
+                    "Đội ngũ kỹ thuật hỗ trợ triển khai và bảo hành tận nơi nhanh chóng",
+                  ]).map((str, idx) => (
+                    <li key={idx}>{str}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Challenges & Action Plan */}
+              <div
+                style={{
+                  minWidth: 0,
+                  padding: "16px 18px",
+                  borderRadius: "14px",
+                  background: "var(--paper)",
+                  border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))",
+                }}
+              >
+                <h4 style={{ color: "color-mix(in srgb, var(--amber) 74%, var(--ink))", fontSize: "14px", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>⚠️</span> Thách Thức & Kế Hoạch Hành Động
+                </h4>
+                {aiModalResult.analysis.inut_fit_analysis?.strategic_action_plan ? (
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                    {aiModalResult.analysis.inut_fit_analysis.strategic_action_plan}
+                  </p>
+                ) : (
+                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                    {(aiModalResult.analysis.inut_fit_analysis?.challenges || aiModalResult.analysis.risks || [
+                      "Kiểm tra yêu cầu số lượng hợp đồng tương tự trước khi lập E-HSDT",
+                      "Liên hệ ngân hàng chuẩn bị thư bảo lãnh dự thầu trước thời hạn 48 giờ",
+                    ]).map((chk, idx) => (
+                      <li key={idx}>{chk}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 3: LƯU / SỬA GÓI THẦU QUAN TÂM (BOOKMARK MODAL)                     */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {bookmarkModalItem && (
-        <div className="modal-backdrop" onClick={() => setBookmarkModalItem(null)}>
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "600px", padding: "26px 30px" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-              <div>
-                <span style={{ fontSize: "11px", fontWeight: 900, color: "#168579", letterSpacing: ".15em" }}>
-                  ⭐ QUẢN LÝ CƠ HỘI DỰ THẦU
-                </span>
-                <h3 style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "#123b36", margin: "4px 0 0" }}>
-                  {bookmarkModalItem.existingId ? "Cập Nhật Thông Tin Gói Thầu" : "Thêm Vào Danh Sách Quan Tâm"}
-                </h3>
-              </div>
+      <AppModal
+        open={Boolean(bookmarkModalItem)}
+        onClose={() => setBookmarkModalItem(null)}
+        size="md"
+        title={
+          bookmarkModalItem ? (
+            <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+              {bookmarkModalItem.existingId ? "Cập Nhật Thông Tin Gói Thầu" : "Thêm Vào Danh Sách Quan Tâm"}
+            </span>
+          ) : (
+            ""
+          )
+        }
+        subtitle={
+          <span style={{ fontSize: "11px", fontWeight: 900, color: "var(--primary-dark)", letterSpacing: ".12em" }}>
+            ⭐ QUẢN LÝ CƠ HỘI DỰ THẦU
+          </span>
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setBookmarkModalItem(null)}
+              style={{
+                minHeight: "44px",
+                padding: "10px 16px",
+                borderRadius: "10px",
+                background: "var(--surface-subtle, var(--paper))",
+                color: "var(--ink-2, var(--text))",
+                border: "1px solid var(--border-strong)",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              Hủy
+            </button>
 
-              <button
-                onClick={() => setBookmarkModalItem(null)}
-                style={{
-                  border: "0",
-                  background: "#f0f4f2",
-                  borderRadius: "50%",
-                  width: "30px",
-                  height: "30px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ marginBottom: "16px", fontSize: "13px", color: "#476159" }}>
+            <button
+              type="button"
+              onClick={handleSaveBookmark}
+              style={{
+                minHeight: "44px",
+                padding: "10px 20px",
+                borderRadius: "10px",
+                background: "var(--primary)",
+                color: "#fff",
+                border: "0",
+                fontWeight: 800,
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              Lưu vào theo dõi ⭐
+            </button>
+          </>
+        }
+      >
+        {bookmarkModalItem && (
+          <>
+            <div style={{ marginBottom: "16px", fontSize: "13px", color: "var(--ink-2, var(--text))" }}>
               <strong>{bookmarkModalItem.tender.tender_name}</strong>
-              <div style={{ color: "#71857f", marginTop: "2px" }}>
+              <div style={{ color: "var(--muted)", marginTop: "2px" }}>
                 Mã TBMT: {bookmarkModalItem.tender.tbmt_code} · Giá gói: {formatVnd(bookmarkModalItem.tender.bid_price)}
               </div>
             </div>
@@ -5556,10 +5689,11 @@ export function BiddingProcurement() {
             <div style={{ display: "grid", gap: "14px" }}>
               {/* Status Select */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
                   TRẠNG THÁI PIPELINE DỰ THẦU:
                 </label>
                 <select
+                  className="ui-select"
                   value={bookmarkModalItem.status}
                   onChange={(e) =>
                     setBookmarkModalItem({
@@ -5569,11 +5703,12 @@ export function BiddingProcurement() {
                   }
                   style={{
                     width: "100%",
+                    minHeight: "44px",
                     padding: "10px 12px",
                     borderRadius: "10px",
-                    border: "1px solid #c8dbd3",
-                    fontSize: "16px",
-                    background: "#fff",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
                   }}
                 >
                   {Object.entries(BOOKMARK_STATUS_MAP).map(([sKey, sMeta]) => (
@@ -5586,10 +5721,11 @@ export function BiddingProcurement() {
 
               {/* Note Textarea */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
                   GHI CHÚ NỘI BỘ (CHIẾN LƯỢC / GIÁ / LIÊN DANH):
                 </label>
                 <textarea
+                  className="ui-textarea"
                   rows={4}
                   value={bookmarkModalItem.note}
                   onChange={(e) =>
@@ -5603,274 +5739,52 @@ export function BiddingProcurement() {
                     width: "100%",
                     padding: "10px 12px",
                     borderRadius: "10px",
-                    border: "1px solid #c8dbd3",
-                    fontSize: "16px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
                     fontFamily: "inherit",
                   }}
                 />
               </div>
             </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-              <button
-                type="button"
-                onClick={() => setBookmarkModalItem(null)}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: "10px",
-                  background: "#f0f4f2",
-                  color: "#476159",
-                  border: "1px solid #d0dfd8",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
-              >
-                Hủy
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveBookmark}
-                style={{
-                  padding: "10px 20px",
-                  borderRadius: "10px",
-                  background: "#168579",
-                  color: "#fff",
-                  border: "0",
-                  fontWeight: 800,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
-              >
-                Lưu vào theo dõi ⭐
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AppModal>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* MODAL 4: THÊM / SỬA QUY TẮC WATCHLIST (WATCHLIST MODAL)                    */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {watchlistModalRule && (
-        <div className="modal-backdrop" onClick={() => setWatchlistModalRule(null)}>
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "640px", padding: "26px 32px" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-              <div>
-                <span style={{ fontSize: "11px", fontWeight: 900, color: "#168579", letterSpacing: ".15em" }}>
-                  ⚙️ BỘ LỌC SĂN THẦU TỰ ĐỘNG
-                </span>
-                <h3 style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "#123b36", margin: "4px 0 0" }}>
-                  {watchlistModalRule.id ? "Sửa Quy Tắc Săn Thầu" : "Tạo Quy Tắc Săn Thầu Mới"}
-                </h3>
-              </div>
-
-              <button
-                onClick={() => setWatchlistModalRule(null)}
-                style={{
-                  border: "0",
-                  background: "#f0f4f2",
-                  borderRadius: "50%",
-                  width: "30px",
-                  height: "30px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: "14px" }}>
-              {/* Name */}
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                  TÊN QUY TẮC BỘ LỌC (*):
-                </label>
-                <input
-                  type="text"
-                  value={watchlistModalRule.name || ""}
-                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, name: e.target.value })}
-                  placeholder="VD: Thiết bị SCADA & IoT TP.HCM"
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: "10px",
-                    border: "1px solid #c8dbd3",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-
-              {/* Keyword & Field Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                    TỪ KHÓA TÌM KIẾM:
-                  </label>
-                  <input
-                    type="text"
-                    value={watchlistModalRule.keyword || ""}
-                    onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, keyword: e.target.value })}
-                    placeholder="VD: SCADA, IoT, quan trắc"
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "10px",
-                      border: "1px solid #c8dbd3",
-                      fontSize: "16px",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                    LĨNH VỰC:
-                  </label>
-                  <select
-                    value={watchlistModalRule.field || ""}
-                    onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, field: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "10px",
-                      border: "1px solid #c8dbd3",
-                      fontSize: "16px",
-                      background: "#fff",
-                    }}
-                  >
-                    {FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Province */}
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                  TỈNH / THÀNH PHỐ MỤC TIÊU:
-                </label>
-                <select
-                  value={watchlistModalRule.province || ""}
-                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, province: e.target.value })}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: "10px",
-                    border: "1px solid #c8dbd3",
-                    fontSize: "16px",
-                    background: "#fff",
-                  }}
-                >
-                  {PROVINCES.map((p) => (
-                    <option key={p} value={p === "Tất cả" ? "" : p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Min - Max Price */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                    GIÁ TỐI THIỂU (VND):
-                  </label>
-                  <input
-                    type="number"
-                    value={watchlistModalRule.min_price ?? ""}
-                    onChange={(e) =>
-                      setWatchlistModalRule({
-                        ...watchlistModalRule,
-                        min_price: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    placeholder="0"
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "10px",
-                      border: "1px solid #c8dbd3",
-                      fontSize: "16px",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#168579", marginBottom: "5px" }}>
-                    GIÁ TỐI ĐA (VND):
-                  </label>
-                  <input
-                    type="number"
-                    value={watchlistModalRule.max_price ?? ""}
-                    onChange={(e) =>
-                      setWatchlistModalRule({
-                        ...watchlistModalRule,
-                        max_price: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    placeholder="Không giới hạn"
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "10px",
-                      border: "1px solid #c8dbd3",
-                      fontSize: "16px",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Toggles */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: "20px",
-                  padding: "12px 14px",
-                  borderRadius: "10px",
-                  background: "#f9fcfa",
-                  border: "1px solid #e7f0ec",
-                }}
-              >
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={watchlistModalRule.is_active ?? true}
-                    onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, is_active: e.target.checked })}
-                    style={{ width: "16px", height: "16px" }}
-                  />
-                  <span>Kích hoạt tự động quét</span>
-                </label>
-
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#0088cc", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={watchlistModalRule.notify_telegram ?? true}
-                    onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, notify_telegram: e.target.checked })}
-                    style={{ width: "16px", height: "16px" }}
-                  />
-                  <span>✈️ Bắn tin cảnh báo Telegram</span>
-                </label>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+      <AppModal
+        open={Boolean(watchlistModalRule)}
+        onClose={() => setWatchlistModalRule(null)}
+        size="md"
+        title={
+          watchlistModalRule ? (
+            <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+              {watchlistModalRule.id ? "Sửa Quy Tắc Săn Thầu" : "Tạo Quy Tắc Săn Thầu Mới"}
+            </span>
+          ) : (
+            ""
+          )
+        }
+        subtitle={
+          <span style={{ fontSize: "11px", fontWeight: 900, color: "var(--primary-dark)", letterSpacing: ".12em" }}>
+            ⚙️ BỘ LỌC SĂN THẦU TỰ ĐỘNG
+          </span>
+        }
+        footer={
+          watchlistModalRule ? (
+            <>
               <button
                 type="button"
                 onClick={() => setWatchlistModalRule(null)}
                 style={{
+                  minHeight: "44px",
                   padding: "10px 16px",
                   borderRadius: "10px",
-                  background: "#f0f4f2",
-                  color: "#476159",
-                  border: "1px solid #d0dfd8",
+                  background: "var(--surface-subtle, var(--paper))",
+                  color: "var(--ink-2, var(--text))",
+                  border: "1px solid var(--border-strong)",
                   fontWeight: 700,
                   fontSize: "13px",
                   cursor: "pointer",
@@ -5883,9 +5797,10 @@ export function BiddingProcurement() {
                 type="button"
                 onClick={handleSaveWatchlistRule}
                 style={{
+                  minHeight: "44px",
                   padding: "10px 20px",
                   borderRadius: "10px",
-                  background: "#168579",
+                  background: "var(--primary)",
                   color: "#fff",
                   border: "0",
                   fontWeight: 800,
@@ -5895,64 +5810,300 @@ export function BiddingProcurement() {
               >
                 {watchlistModalRule.id ? "Lưu thay đổi" : "Tạo quy tắc mới"}
               </button>
+            </>
+          ) : undefined
+        }
+      >
+        {watchlistModalRule && (
+          <div style={{ display: "grid", gap: "14px" }}>
+            {/* Name */}
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                TÊN QUY TẮC BỘ LỌC (*):
+              </label>
+              <input
+                className="ui-input"
+                type="text"
+                value={watchlistModalRule.name || ""}
+                onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, name: e.target.value })}
+                placeholder="VD: Thiết bị SCADA & IoT TP.HCM"
+                style={{
+                  width: "100%",
+                  minHeight: "44px",
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
+              />
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* MODAL: NHẬP HỒ SƠ THẦU MỚI TỪ GOOGLE DRIVE */}
-      {showImportDriveModal && (
-        <div className="modal-backdrop" onClick={() => setShowImportDriveModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px", padding: "28px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: 800, color: "#0284c7", textTransform: "uppercase" }}>TỰ ĐỘNG HÓA THẨM ĐỊNH THẦU</div>
-                <h3 style={{ margin: "4px 0 0 0", fontSize: "18px", color: "#0f172a" }}>Nhập Hồ Sơ Thầu Từ Google Drive</h3>
-              </div>
-              <button type="button" onClick={() => setShowImportDriveModal(false)} style={{ border: 0, background: "none", fontSize: "22px", cursor: "pointer", color: "#64748b" }}>✕</button>
-            </div>
-
-            <form onSubmit={handleImportDossierFromDrive} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                  Đường dẫn thư mục Google Drive chứa hồ sơ thầu (DOCX / PDF):
+            {/* Keyword & Field Grid */}
+            <FormGrid cols={2}>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                  TỪ KHÓA TÌM KIẾM:
                 </label>
                 <input
-                  type="url"
-                  required
-                  placeholder="https://drive.google.com/drive/folders/..."
-                  value={importDriveUrl}
-                  onChange={(e) => setImportDriveUrl(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                  className="ui-input"
+                  type="text"
+                  value={watchlistModalRule.keyword || ""}
+                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, keyword: e.target.value })}
+                  placeholder="VD: SCADA, IoT, quan trắc"
+                  style={{
+                    width: "100%",
+                    minHeight: "44px",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
+                  }}
                 />
-                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
-                  💡 Hỗ trợ đọc tự động toàn bộ tài liệu thuyết minh pháp lý, hợp đồng tương tự, BCTC, đối chiếu kỹ thuật, bảng giá Mẫu 12.1A.
-                </div>
               </div>
 
-              <div>
-                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                  Ghi chú chỉ đạo thẩm định (nếu có):
+              <div style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                  LĨNH VỰC:
                 </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ví dụ: Kiểm tra kỹ tính hợp lệ cty IoT, đối chiếu thiết bị iNut, kiểm tra lỗi placeholder..."
-                  value={importDriveNotes}
-                  onChange={(e) => setImportDriveNotes(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box", fontFamily: "inherit" }}
+                <select
+                  className="ui-select"
+                  value={watchlistModalRule.field || ""}
+                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, field: e.target.value })}
+                  style={{
+                    width: "100%",
+                    minHeight: "44px",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
+                  }}
+                >
+                  {FIELDS.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </FormGrid>
+
+            {/* Province */}
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                TỈNH / THÀNH PHỐ MỤC TIÊU:
+              </label>
+              <select
+                className="ui-select"
+                value={watchlistModalRule.province || ""}
+                onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, province: e.target.value })}
+                style={{
+                  width: "100%",
+                  minHeight: "44px",
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
+              >
+                {PROVINCES.map((p) => (
+                  <option key={p} value={p === "Tất cả" ? "" : p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Min - Max Price */}
+            <FormGrid cols={2}>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                  GIÁ TỐI THIỂU (VND):
+                </label>
+                <input
+                  className="ui-input"
+                  type="number"
+                  value={watchlistModalRule.min_price ?? ""}
+                  onChange={(e) =>
+                    setWatchlistModalRule({
+                      ...watchlistModalRule,
+                      min_price: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                  placeholder="0"
+                  style={{
+                    width: "100%",
+                    minHeight: "44px",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
+                  }}
                 />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                <button type="button" className="btn secondary" onClick={() => setShowImportDriveModal(false)}>Hủy</button>
-                <button type="submit" className="btn primary" style={{ background: "#0284c7" }} disabled={importDriveLoading}>
-                  {importDriveLoading ? "⏳ Đang thẩm định..." : "⚡ Bắt Đầu Thẩm Định Đa Tác Nhân"}
-                </button>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "var(--primary-dark)", marginBottom: "5px" }}>
+                  GIÁ TỐI ĐA (VND):
+                </label>
+                <input
+                  className="ui-input"
+                  type="number"
+                  value={watchlistModalRule.max_price ?? ""}
+                  onChange={(e) =>
+                    setWatchlistModalRule({
+                      ...watchlistModalRule,
+                      max_price: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                  placeholder="Không giới hạn"
+                  style={{
+                    width: "100%",
+                    minHeight: "44px",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
+                  }}
+                />
               </div>
-            </form>
+            </FormGrid>
+
+            {/* Toggles */}
+            <div
+              style={{
+                display: "flex",
+                gap: "16px",
+                flexWrap: "wrap",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                background: "var(--surface-subtle, var(--paper))",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "44px", fontSize: "13px", fontWeight: 700, color: "var(--ink)", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={watchlistModalRule.is_active ?? true}
+                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, is_active: e.target.checked })}
+                  style={{ width: "18px", height: "18px" }}
+                />
+                <span>Kích hoạt tự động quét</span>
+              </label>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "44px", fontSize: "13px", fontWeight: 700, color: "var(--primary-dark)", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={watchlistModalRule.notify_telegram ?? true}
+                  onChange={(e) => setWatchlistModalRule({ ...watchlistModalRule, notify_telegram: e.target.checked })}
+                  style={{ width: "18px", height: "18px" }}
+                />
+                <span>✈️ Bắn tin cảnh báo Telegram</span>
+              </label>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AppModal>
+
+      {/* MODAL: NHẬP HỒ SƠ THẦU MỚI TỪ GOOGLE DRIVE */}
+      <AppModal
+        open={showImportDriveModal}
+        onClose={() => setShowImportDriveModal(false)}
+        size="md"
+        title={
+          <span style={{ fontFamily: "var(--font-serif, Georgia, serif)", color: "var(--ink)" }}>
+            Nhập Hồ Sơ Thầu Từ Google Drive
+          </span>
+        }
+        subtitle={
+          <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--primary-dark)", textTransform: "uppercase" }}>
+            TỰ ĐỘNG HÓA THẨM ĐỊNH THẦU
+          </span>
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              style={{ minHeight: "44px" }}
+              onClick={() => setShowImportDriveModal(false)}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              form="bidding-import-drive-form"
+              className="btn primary"
+              style={{ minHeight: "44px", background: "var(--primary)", color: "#fff" }}
+              disabled={importDriveLoading}
+            >
+              {importDriveLoading ? "⏳ Đang thẩm định..." : "⚡ Bắt Đầu Thẩm Định Đa Tác Nhân"}
+            </button>
+          </>
+        }
+      >
+        <form id="bidding-import-drive-form" onSubmit={handleImportDossierFromDrive} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--ink-2, var(--text))", marginBottom: "4px" }}>
+              Đường dẫn thư mục Google Drive chứa hồ sơ thầu (DOCX / PDF):
+            </label>
+            <input
+              className="ui-input"
+              type="url"
+              required
+              placeholder="https://drive.google.com/drive/folders/..."
+              value={importDriveUrl}
+              onChange={(e) => setImportDriveUrl(e.target.value)}
+              style={{ width: "100%", minHeight: "44px", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-strong)", background: "var(--panel)", color: "var(--ink)", boxSizing: "border-box" }}
+            />
+            <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "4px" }}>
+              💡 Hỗ trợ đọc tự động toàn bộ tài liệu thuyết minh pháp lý, hợp đồng tương tự, BCTC, đối chiếu kỹ thuật, bảng giá Mẫu 12.1A.
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--ink-2, var(--text))", marginBottom: "4px" }}>
+              Ghi chú chỉ đạo thẩm định (nếu có):
+            </label>
+            <textarea
+              className="ui-textarea"
+              rows={3}
+              placeholder="Ví dụ: Kiểm tra kỹ tính hợp lệ cty IoT, đối chiếu thiết bị iNut, kiểm tra lỗi placeholder..."
+              value={importDriveNotes}
+              onChange={(e) => setImportDriveNotes(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-strong)", background: "var(--panel)", color: "var(--ink)", boxSizing: "border-box", fontFamily: "inherit" }}
+            />
+          </div>
+        </form>
+      </AppModal>
+
+      {/* PROMPT DIALOG: CHỈNH SỬA GHI CHÚ CHIẾN LƯỢC BOOKMARK */}
+      <PromptDialog
+        open={Boolean(notePromptBookmark)}
+        title="Sửa ghi chú chiến lược dự thầu"
+        label="Nhập ghi chú chiến lược dự thầu:"
+        defaultValue={notePromptBookmark?.note || ""}
+        placeholder="Nhập phân công, phương án tính giá hoặc ghi nhớ đối tác..."
+        confirmLabel="Lưu ghi chú"
+        onCancel={() => setNotePromptBookmark(null)}
+        onConfirm={(newNote) => {
+          if (!notePromptBookmark) return;
+          const target = notePromptBookmark;
+          setNotePromptBookmark(null);
+          api.bidding
+            .updateBookmark(target.id, { note: newNote })
+            .then((up) => {
+              setBookmarks((prev) => prev.map((item) => (item.id === target.id ? up : item)));
+              showToast("Đã cập nhật ghi chú", "success");
+            })
+            .catch((e) => showToast(e.message, "error"));
+        }}
+      />
     </div>
   );
 }

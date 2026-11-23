@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { DataView } from "../components/ui";
 
 type Row = Awaited<ReturnType<typeof api.auditLog>>["items"][number];
 
@@ -65,8 +66,9 @@ export function AuditLog() {
       const tsFrom = dateFrom ? new Date(dateFrom + "T00:00:00").toISOString() : "";
       const tsTo = dateTo ? new Date(dateTo + "T23:59:59.999").toISOString() : "";
       const r = await api.auditLog({ search, action, tsFrom, tsTo, page: p, perPage });
-      setRows(r.items);
-      setTotal(r.total);
+      const items = Array.isArray(r?.items) ? r.items : Array.isArray(r) ? (r as unknown as Row[]) : [];
+      setRows(items);
+      setTotal(typeof r?.total === "number" ? r.total : items.length);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -94,19 +96,19 @@ export function AuditLog() {
     if (pages <= 1) return null;
     return (
       <div className="pager">
-        <button className="btn-sm" disabled={page <= 1} onClick={() => setPage(1)}>
+        <button type="button" className="btn-sm ui-btn-chip" disabled={page <= 1} onClick={() => setPage(1)}>
           « Đầu
         </button>
-        <button className="btn-sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+        <button type="button" className="btn-sm ui-btn-chip" disabled={page <= 1} onClick={() => setPage(page - 1)}>
           ‹ Trước
         </button>
         <span className="muted">
           Trang {page}/{pages} · {total} dòng
         </span>
-        <button className="btn-sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>
+        <button type="button" className="btn-sm ui-btn-chip" disabled={page >= pages} onClick={() => setPage(page + 1)}>
           Sau ›
         </button>
-        <button className="btn-sm" disabled={page >= pages} onClick={() => setPage(pages)}>
+        <button type="button" className="btn-sm ui-btn-chip" disabled={page >= pages} onClick={() => setPage(pages)}>
           Cuối »
         </button>
       </div>
@@ -121,13 +123,13 @@ export function AuditLog() {
         </h3>
         <div className="tb-group audit-filters">
           <input
-            className="search"
+            className="search ui-input"
             placeholder="🔍 Tìm user / đối tượng…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <select
-            className="tb-select"
+            className="tb-select ui-select"
             value={action}
             onChange={(e) => setAction(e.target.value)}
           >
@@ -138,14 +140,14 @@ export function AuditLog() {
             ))}
           </select>
           <label className="date-f" title="Từ ngày">
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <input className="ui-input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </label>
           <span className="muted">→</span>
           <label className="date-f" title="Đến ngày">
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <input className="ui-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </label>
           <select
-            className="tb-select pp"
+            className="tb-select pp ui-select"
             value={perPage}
             onChange={(e) => setPerPage(Number(e.target.value))}
             title="Số dòng mỗi trang"
@@ -158,7 +160,8 @@ export function AuditLog() {
           </select>
           {(search || action || dateFrom || dateTo) && (
             <button
-              className="btn-sm"
+              type="button"
+              className="btn-sm ui-btn-chip"
               onClick={() => {
                 setSearch("");
                 setAction("");
@@ -173,51 +176,93 @@ export function AuditLog() {
       </div>
       {err && <div className="error">{err}</div>}
 
-      <div className="table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th className="nowrap">Thời gian</th>
-              <th>Người dùng</th>
-              <th>Thao tác</th>
-              <th>Đối tượng</th>
-              <th className="col-hide-sm">Chi tiết</th>
-              <th className="col-hide-sm">IP</th>
-            </tr>
-          </thead>
-          <tbody>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th className="nowrap">Thời gian</th>
+                  <th>Người dùng</th>
+                  <th>Thao tác</th>
+                  <th>Đối tượng</th>
+                  <th className="col-hide-sm">Chi tiết</th>
+                  <th className="col-hide-sm">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="muted nowrap">{new Date(r.ts).toLocaleString("vi-VN")}</td>
+                    <td>
+                      {r.username}
+                      {r.role === "admin" && <span className="chip gray sm"> admin</span>}
+                    </td>
+                    <td>
+                      <span className={"chip sm " + (ACTION_CHIP[r.action] || "gray")}>
+                        {r.action_label}
+                      </span>
+                    </td>
+                    <td className="fname">
+                      <span className="ft">{r.target}</span>
+                    </td>
+                    <td className="muted col-hide-sm">{r.detail}</td>
+                    <td className="muted col-hide-sm nowrap">{r.ip}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>
+                      <div className="empty">
+                        <div className="empty-ic">📜</div>
+                        <div>Không có nhật ký khớp bộ lọc.</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
             {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="muted nowrap">{new Date(r.ts).toLocaleString("vi-VN")}</td>
-                <td>
-                  {r.username}
-                  {r.role === "admin" && <span className="chip gray sm"> admin</span>}
-                </td>
-                <td>
+              <article key={r.id} className="ui-mobile-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <strong style={{ color: "var(--ink)" }}>{r.username}</strong>
+                    {r.role === "admin" && <span className="chip gray sm">admin</span>}
+                  </div>
                   <span className={"chip sm " + (ACTION_CHIP[r.action] || "gray")}>
                     {r.action_label}
                   </span>
-                </td>
-                <td className="fname">
-                  <span className="ft">{r.target}</span>
-                </td>
-                <td className="muted col-hide-sm">{r.detail}</td>
-                <td className="muted col-hide-sm nowrap">{r.ip}</td>
-              </tr>
+                </div>
+                {r.target && (
+                  <div style={{ marginTop: 6, fontWeight: 600, color: "var(--ink-2)", wordBreak: "break-word" }}>
+                    {r.target}
+                  </div>
+                )}
+                {r.detail && (
+                  <div className="muted" style={{ marginTop: 4, fontSize: 12.5, wordBreak: "break-word" }}>
+                    {r.detail}
+                  </div>
+                )}
+                <div className="muted" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, fontSize: 12, flexWrap: "wrap" }}>
+                  <span>{new Date(r.ts).toLocaleString("vi-VN")}</span>
+                  {r.ip && <span style={{ fontFamily: "var(--font-mono)" }}>IP: {r.ip}</span>}
+                </div>
+              </article>
             ))}
             {rows.length === 0 && (
-              <tr>
-                <td colSpan={6}>
-                  <div className="empty">
-                    <div className="empty-ic">📜</div>
-                    <div>Không có nhật ký khớp bộ lọc.</div>
-                  </div>
-                </td>
-              </tr>
+              <div className="empty">
+                <div className="empty-ic">📜</div>
+                <div>Không có nhật ký khớp bộ lọc.</div>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+      />
 
       <Pager />
     </div>

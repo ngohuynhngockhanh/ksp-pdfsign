@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { DataView } from "../components/ui";
+import { openExternalSafe, safeHttpUrl } from "../utils/url";
 
 type Entry = { name: string; is_dir: boolean; size: number };
 
@@ -42,9 +44,10 @@ export function NasBrowser() {
     try {
       const r = await api.nasBrowse(p);
       if (currentRequest !== requestId.current) return;
-      setPath(r.path);
-      setEntries(r.entries);
-      if (historyMode !== "none") writePathToUrl(r.path, historyMode);
+      const nextPath = typeof r?.path === "string" ? r.path : "";
+      setPath(nextPath);
+      setEntries(Array.isArray(r?.entries) ? r.entries : []);
+      if (historyMode !== "none") writePathToUrl(nextPath, historyMode);
     } catch (e) {
       if (currentRequest !== requestId.current) return;
       setErr((e as Error).message);
@@ -69,7 +72,7 @@ export function NasBrowser() {
     else {
       const lower = e.name.toLowerCase();
       const canInline = lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".md") || lower.endsWith(".markdown");
-      window.open(api.nasFileUrl(child, canInline), "_blank");
+      openExternalSafe(api.nasFileUrl(child, canInline));
     }
   }
 
@@ -77,13 +80,13 @@ export function NasBrowser() {
     <div className="page-1col">
       <h3>Duyệt kho lưu trữ NAS</h3>
       <div className="crumbs">
-        <button className="link-btn" onClick={() => load("", "push")}>
+        <button type="button" className="link-btn ui-btn-chip" onClick={() => load("", "push")}>
           🗄️ ho-so
         </button>
         {parts.map((p, i) => (
           <span key={i}>
             {" / "}
-            <button className="link-btn" onClick={() => goTo(i)}>
+            <button type="button" className="link-btn ui-btn-chip" onClick={() => goTo(i)}>
               {p}
             </button>
           </span>
@@ -92,70 +95,154 @@ export function NasBrowser() {
       {err && <div className="error">{err}</div>}
       {busy && <div className="muted">Đang tải…</div>}
 
-      <div className="table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th>Tên</th>
-              <th className="nowrap">Kích thước</th>
-              <th className="col-act"></th>
-            </tr>
-          </thead>
-          <tbody>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th>Tên</th>
+                  <th className="nowrap">Kích thước</th>
+                  <th className="col-act"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {path && (
+                  <tr>
+                    <td colSpan={3}>
+                      <button type="button" className="link-btn" onClick={() => goTo(parts.length - 2)}>
+                        ⬆️ .. (lên thư mục trên)
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {entries.map((e) => {
+                  const fullPath = path ? `${path}\\${e.name}` : e.name;
+                  const viewHref = safeHttpUrl(api.nasFileUrl(fullPath, true));
+                  const dlHref = safeHttpUrl(api.nasFileUrl(fullPath, false));
+                  return (
+                    <tr key={e.name}>
+                      <td>
+                        <button type="button" className="link-btn nas-name" onClick={() => open(e)}>
+                          {e.is_dir ? "📁" : "📄"} {e.name}
+                        </button>
+                      </td>
+                      <td className="muted nowrap">{fmtSize(e.size)}</td>
+                      <td className="col-act">
+                        {!e.is_dir && (
+                          <div className="row-actions">
+                            {viewHref && (
+                              <a
+                                className="iact ui-btn-icon"
+                                href={viewHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Xem"
+                                aria-label={`Xem ${e.name}`}
+                              >
+                                👁
+                              </a>
+                            )}
+                            {dlHref && (
+                              <a
+                                className="iact ui-btn-icon"
+                                href={dlHref}
+                                title="Tải"
+                                aria-label={`Tải ${e.name}`}
+                              >
+                                ⬇
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!busy && entries.length === 0 && (
+                  <tr>
+                    <td colSpan={3}>
+                      <div className="empty">
+                        <div className="empty-ic">📂</div>
+                        <div>Thư mục trống.</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
             {path && (
-              <tr>
-                <td colSpan={3}>
-                  <button className="link-btn" onClick={() => goTo(parts.length - 2)}>
-                    ⬆️ .. (lên thư mục trên)
-                  </button>
-                </td>
-              </tr>
+              <div className="ui-mobile-card">
+                <button
+                  type="button"
+                  className="link-btn ui-btn-chip"
+                  style={{ width: "100%", justifyContent: "flex-start" }}
+                  onClick={() => goTo(parts.length - 2)}
+                >
+                  ⬆️ .. (lên thư mục trên)
+                </button>
+              </div>
             )}
-            {entries.map((e) => (
-              <tr key={e.name}>
-                <td>
-                  <button className="link-btn nas-name" onClick={() => open(e)}>
-                    {e.is_dir ? "📁" : "📄"} {e.name}
-                  </button>
-                </td>
-                <td className="muted nowrap">{fmtSize(e.size)}</td>
-                <td className="col-act">
+            {entries.map((e) => {
+              const fullPath = path ? `${path}\\${e.name}` : e.name;
+              const viewHref = safeHttpUrl(api.nasFileUrl(fullPath, true));
+              const dlHref = safeHttpUrl(api.nasFileUrl(fullPath, false));
+              return (
+                <article key={e.name} className="ui-mobile-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="link-btn nas-name"
+                      style={{ textAlign: "left", wordBreak: "break-word", minWidth: 0, flex: 1, minHeight: 44 }}
+                      onClick={() => open(e)}
+                    >
+                      {e.is_dir ? "📁" : "📄"} {e.name}
+                    </button>
+                    {!e.is_dir && e.size > 0 && (
+                      <span className="chip sm gray nowrap">{fmtSize(e.size)}</span>
+                    )}
+                  </div>
                   {!e.is_dir && (
-                    <div className="row-actions">
-                      <a
-                        className="iact"
-                        href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, true)}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Xem"
-                      >
-                        👁
-                      </a>
-                      <a
-                        className="iact"
-                        href={api.nasFileUrl(path ? `${path}\\${e.name}` : e.name, false)}
-                        title="Tải"
-                      >
-                        ⬇
-                      </a>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      {viewHref && (
+                        <a
+                          className="btn-sm ui-btn-chip"
+                          href={viewHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ textDecoration: "none" }}
+                        >
+                          👁 Xem
+                        </a>
+                      )}
+                      {dlHref && (
+                        <a
+                          className="btn-sm ui-btn-chip"
+                          href={dlHref}
+                          style={{ textDecoration: "none" }}
+                        >
+                          ⬇ Tải về
+                        </a>
+                      )}
                     </div>
                   )}
-                </td>
-              </tr>
-            ))}
+                </article>
+              );
+            })}
             {!busy && entries.length === 0 && (
-              <tr>
-                <td colSpan={3}>
-                  <div className="empty">
-                    <div className="empty-ic">📂</div>
-                    <div>Thư mục trống.</div>
-                  </div>
-                </td>
-              </tr>
+              <div className="empty">
+                <div className="empty-ic">📂</div>
+                <div>Thư mục trống.</div>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+      />
     </div>
   );
 }

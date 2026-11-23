@@ -1,0 +1,77 @@
+/* ========================================================================== */
+/* 01-tokens.css — Canonical INUT Operations Design System Tokens             */
+/* Single source of truth (deprecated legacy blue :root removed).             */
+/* ========================================================================== */
+
+@font-face {
+  font-family: "Inter";
+  src: local("Inter Variable"), local("Inter"), url("/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  /* Typography */
+  --font-sans: "Inter", "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Tahoma, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  --font-serif: Georgia, "Times New Roman", Times, serif;
+  --font-heading: Georgia, "Times New Roman", Times, serif;
+  --font-mono: "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+
+  /* Surfaces (INUT Warm Editorial Paper + Deep Ink) */
+  --ink: #102e2c;
+  --ink-2: #164b45;
+  --bg: #eef3f0;
+  --bg-subtle: #f4f8f6;
+  --paper: #f7f4ec;
+  --panel: #fffefa;
+  --surface-subtle: #f4f8f6;
+
+  /* Brand & Semantic Colors */
+  --primary: #157d72;
+  --primary-dark: #0f655d;
+  --primary-soft: #e2f2ec;
+  --accent-color: #157d72;
+  --mint: #dff3ec;
+  --gold: #dda044;
+  --text: #173b38;
+  --text-primary: #173b38;
+  --muted: #52675f;
+  --text-muted: #52675f;
+  --border: #dce5e0;
+  --border-color: #dce5e0;
+  --border-strong: #c8d5cf;
+
+  /* Status Colors */
+  --green: #1d7a57;
+  --green-soft: #dff3e9;
+  --amber: #b47418;
+  --amber-soft: #fff0ce;
+  --coral: #d66048;
+  --red: #b23828;
+  --red-soft: #fbe1da;
+
+  /* Radii & Shadows */
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow: 0 8px 28px rgba(16, 45, 43, 0.055);
+  --shadow-md: 0 18px 55px rgba(16, 45, 43, 0.14);
+  --ring: 0 0 0 3px rgba(21, 125, 114, 0.22);
+
+  /* Spacing & Touch Targets */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --touch-desktop: 38px;
+  --touch-min: 44px;
+
+  /* Layout Shell Dimensions */
+  --topbar-h-desktop: 64px;
+  --topbar-h-mobile: 56px;
+  --sidebar-w: 232px;
+  --bottom-nav-h: 62px;
+}

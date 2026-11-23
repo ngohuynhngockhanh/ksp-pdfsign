@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, DOC_TYPES, TrainingAnswer, TrainingEvidence, TrainingSearchResult, TrainingMode, TrainingPublicLead, TrainingPublicQuery, type DocRecord } from "../api";
+import { safeHttpUrl } from "../utils/url";
 
 const QUICK_QUESTIONS = [
   "Cài FRPC lỗi giờ sao?",
@@ -24,13 +25,26 @@ function EvidenceList({ title, items }: { title: string; items?: TrainingEvidenc
   return (
     <section className="training-evidence">
       <h3>{title}</h3>
-      {items.map((item, index) => (
-        <a href={item.url} target="_blank" rel="noreferrer" key={`${item.url}-${index}`}>
-          <span>{item.timestamp || title === "Video thực hành" ? item.timestamp || "VIDEO" : "TÀI LIỆU"}</span>
-          <strong>{item.title}</strong>
-          {item.quote && <small>{item.quote}</small>}
-        </a>
-      ))}
+      {items.map((item, index) => {
+        const href = safeHttpUrl(item.url);
+        const badge = item.timestamp || title === "Video thực hành" ? item.timestamp || "VIDEO" : "TÀI LIỆU";
+        if (!href) {
+          return (
+            <div className="training-evidence-item is-disabled" aria-disabled="true" key={`${item.title}-${index}`}>
+              <span>{badge}</span>
+              <strong>{item.title}</strong>
+              {item.quote && <small>{item.quote}</small>}
+            </div>
+          );
+        }
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer" key={`${href}-${index}`}>
+            <span>{badge}</span>
+            <strong>{item.title}</strong>
+            {item.quote && <small>{item.quote}</small>}
+          </a>
+        );
+      })}
     </section>
   );
 }
@@ -100,9 +114,11 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       const [users, usage, leads] = await Promise.allSettled([
         api.listUsers(), api.trainingStats(), api.trainingPublicLeads(),
       ]);
-      if (users.status === "fulfilled") setAccessUsers(users.value);
-      if (usage.status === "fulfilled") setStats(usage.value);
-      if (leads.status === "fulfilled") setPublicLeads(leads.value.items);
+      if (users.status === "fulfilled" && Array.isArray(users.value)) setAccessUsers(users.value);
+      if (usage.status === "fulfilled" && usage.value?.totals && usage.value?.runtime) setStats(usage.value);
+      if (leads.status === "fulfilled") {
+        setPublicLeads(Array.isArray(leads.value?.items) ? leads.value.items : Array.isArray(leads.value) ? (leads.value as unknown as TrainingPublicLead[]) : []);
+      }
       const failed = [users, usage, leads].filter((result) => result.status === "rejected");
       setError(failed.length ? "Một số dữ liệu quản trị chưa tải được. Hãy bấm Làm mới inbox để thử lại." : "");
     }
@@ -115,7 +131,8 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     }
     setCustomerDocumentsLoading(true);
     try {
-      setCustomerDocuments(await api.myDocuments());
+      const docs = await api.myDocuments();
+      setCustomerDocuments(Array.isArray(docs) ? docs : []);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -127,7 +144,8 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
     loadAccessUsers().catch((caught) => setError((caught as Error).message));
     loadCustomerDocuments().catch((caught) => setError((caught as Error).message));
     Promise.all([api.trainingHistory(), api.trainingKnowledge()]).then(([past, notes]) => {
-      setHistory(past.items); setKnowledge(notes.items);
+      setHistory(Array.isArray(past?.items) ? past.items : Array.isArray(past) ? (past as unknown as TrainingHistory) : []);
+      setKnowledge(Array.isArray(notes?.items) ? notes.items : Array.isArray(notes) ? (notes as unknown as TrainingKnowledge) : []);
     }).catch((caught) => setError((caught as Error).message));
   }, [isAdmin]);
 
@@ -282,7 +300,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       </aside>}
 
       <form className="training-prompt" onSubmit={ask}>
-        <textarea aria-label="Câu hỏi cho iNut Training" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Khách đang hỏi gì? Ví dụ: cài frpc lỗi giờ sao..." maxLength={2000} />
+        <textarea className="ui-textarea" aria-label="Câu hỏi cho iNut Training" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Khách đang hỏi gì? Ví dụ: cài frpc lỗi giờ sao..." maxLength={2000} />
         <div className="training-prompt-foot"><small>Giá và chính sách cần đối chiếu nguồn tại thời điểm trả lời.</small><button disabled={busy || !question.trim()}>{busy ? "Đang tra cứu…" : "Hỏi Hermes →"}</button></div>
       </form>
       <div className="training-audit-notice"><strong>Lưu ý an toàn</strong><span>Mọi câu hỏi và câu trả lời đều được lưu vào lịch sử. Quản trị viên KSP có thể kiểm tra khi phát hiện yêu cầu gọi tool, chạy lệnh hoặc truy cập trái phép.</span></div>
@@ -290,12 +308,12 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       {busy && <section className="training-thinking" role="status" aria-live="polite"><span className="training-thinking-pulse" /><div><strong>Hermes đang làm việc</strong><p>{thinkingStep}</p></div><small>Câu hỏi khó có thể cần đến 3 phút. Bạn có thể giữ nguyên trang này.</small></section>}
 
       <div className="training-quick">
-        {quickQuestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
+        {quickQuestions.map((item) => <button key={item} type="button" onClick={() => setQuestion(item)}>{item}</button>)}
       </div>
       {isAdmin && (
         <section className="training-access-panel">
           <div><span>PHÂN QUYỀN</span><h2>Tài khoản được dùng Training</h2><p>{accessUsers.filter((user) => user.training_access).length} tài khoản đang có quyền.</p></div>
-          <button onClick={loadAccessUsers}>{accessUsers.length ? "Làm mới" : "Xem tài khoản"}</button>
+          <button type="button" onClick={loadAccessUsers}>{accessUsers.length ? "Làm mới" : "Xem tài khoản"}</button>
           {accessUsers.length > 0 && <div className="training-access-list">{accessUsers.map((user) => (
             <label key={user.id}>
               <input type="checkbox" checked={user.training_access} disabled={user.role === "admin"} onChange={() => toggleAccess(user)} />
@@ -306,12 +324,12 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       )}
       {isAdmin && accessUsers.length > 0 && <section className="training-knowledge-admin">
         <div><span>KIẾN THỨC RIÊNG</span><h2>Training theo từng tài khoản</h2><p>Ghi chú chỉ được đưa vào ngữ cảnh của đúng người dùng và luôn bị coi là dữ liệu, không phải lệnh.</p></div>
-        <form onSubmit={addKnowledge}><select aria-label="Tài khoản nhận kiến thức" value={knowledgeUserId} onChange={async (e) => { const id = Number(e.target.value); setKnowledgeUserId(id); const notes = await api.trainingKnowledge(id || undefined); setKnowledge(notes.items); }}><option value={0}>Chọn tài khoản</option>{accessUsers.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}</select><input aria-label="Tiêu đề kiến thức" value={knowledgeTitle} onChange={(e) => setKnowledgeTitle(e.target.value)} maxLength={160} placeholder="Ví dụ: Quy trình riêng của Bảo Toàn" /><textarea aria-label="Nội dung kiến thức" value={knowledgeContent} onChange={(e) => setKnowledgeContent(e.target.value)} maxLength={12000} placeholder="Dán ghi chú đã kiểm duyệt..." /><button>Gán kiến thức</button></form>
-        {knowledgeUserId > 0 && <div className="training-knowledge-list">{knowledge.map((note) => <article key={note.id}><div><strong>{note.title}</strong><p>{note.content}</p></div><button onClick={() => removeKnowledge(note.id)}>Xóa</button></article>)}</div>}
+        <form onSubmit={addKnowledge}><select className="ui-select" aria-label="Tài khoản nhận kiến thức" value={knowledgeUserId} onChange={async (e) => { const id = Number(e.target.value); setKnowledgeUserId(id); const notes = await api.trainingKnowledge(id || undefined); setKnowledge(notes.items); }}><option value={0}>Chọn tài khoản</option>{accessUsers.map((user) => <option key={user.id} value={user.id}>{user.username}</option>)}</select><input className="ui-input" aria-label="Tiêu đề kiến thức" value={knowledgeTitle} onChange={(e) => setKnowledgeTitle(e.target.value)} maxLength={160} placeholder="Ví dụ: Quy trình riêng của Bảo Toàn" /><textarea className="ui-textarea" aria-label="Nội dung kiến thức" value={knowledgeContent} onChange={(e) => setKnowledgeContent(e.target.value)} maxLength={12000} placeholder="Dán ghi chú đã kiểm duyệt..." /><button>Gán kiến thức</button></form>
+        {knowledgeUserId > 0 && <div className="training-knowledge-list">{knowledge.map((note) => <article key={note.id}><div><strong>{note.title}</strong><p>{note.content}</p></div><button type="button" onClick={() => removeKnowledge(note.id)}>Xóa</button></article>)}</div>}
       </section>}
       {isAdmin && <section className="training-public-leads">
         <div className="training-public-leads-head"><div><span>PUBLIC DESK</span><h2>Lead từ trợ lý iNut.vn</h2><p>Số điện thoại được mã hóa; chỉ admin mới có thể chủ động mở số đầy đủ.</p></div><button type="button" onClick={loadAccessUsers}>Làm mới</button></div>
-        {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => { const publicAnswer = unwrapPublicAnswer(query.answer); return <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{publicAnswer?.answer && <p>{publicAnswer.answer}</p>}</article>; })}</div></article>}</div>}
+        {publicLeads.length === 0 ? <p className="training-public-empty">Chưa có người để lại câu hỏi công khai.</p> : <div className="training-public-leads-layout"><div className="training-public-lead-list">{publicLeads.map((lead) => <button type="button" key={lead.id} className={`training-public-lead-row${selectedLead?.id === lead.id ? " active" : ""}`} onClick={() => openPublicLead(lead)}><span><strong>{lead.phone}</strong><small>{lead.locale.toUpperCase()} · {lead.questionCount} câu · {new Date(lead.createdAt).toLocaleString("vi-VN")}</small></span><b>{lead.status}</b></button>)}</div>{selectedLead && <article className="training-public-lead-detail"><div className="training-public-detail-head"><div><span>LEAD #{selectedLead.id}</span><h3>{selectedLead.phone}</h3></div><button type="button" onClick={() => openPublicLead(selectedLead, true)} disabled={leadBusy}>Mở số đầy đủ</button></div><div className="training-public-controls"><label>Trạng thái<select className="ui-select" value={leadStatus} onChange={(event) => setLeadStatus(event.target.value)}><option value="new">Mới</option><option value="in_progress">Đang xử lý</option><option value="qualified">Đủ điều kiện</option><option value="closed">Đã đóng</option><option value="spam">Spam</option></select></label><label>Ghi chú<textarea className="ui-textarea" value={leadNote} onChange={(event) => setLeadNote(event.target.value)} maxLength={1000} rows={3} /></label><div><button type="button" onClick={savePublicLead} disabled={leadBusy}>Lưu thay đổi</button><button type="button" className="danger" onClick={deletePublicLead} disabled={leadBusy}>Xóa lead</button></div></div><div className="training-public-transcript">{selectedLead.queries.length === 0 ? <p>Chưa có transcript.</p> : selectedLead.queries.map((query) => { const publicAnswer = unwrapPublicAnswer(query.answer); return <article key={query.jobId}><small>{new Date(query.createdAt).toLocaleString("vi-VN")} · {query.status}</small><strong>{query.question}</strong>{publicAnswer?.answer && <p>{publicAnswer.answer}</p>}</article>; })}</div></article>}</div>}
       </section>}
       {!isAdmin && <section className="training-history training-customer-documents">
         <div>
@@ -322,16 +340,24 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
         {customerDocumentsLoading ? <p>Đang tải tài liệu...</p> : customerDocuments.length === 0 ? (
           <p>Chưa có tài liệu nào được chia sẻ cho tài khoản này.</p>
         ) : <div className="training-customer-document-list">
-          {customerDocuments.map((document) => (
-            <a className="training-customer-document" href={document.download_url} key={document.id}>
-              <span><strong>{document.filename}</strong><small>{DOC_TYPES[document.doc_type] || document.doc_type || "Chưa phân loại"}</small></span>
-              <time dateTime={document.created_at}>{new Date(document.created_at).toLocaleDateString("vi-VN")}</time>
-              <b>Tải xuống</b>
-            </a>
-          ))}
+          {customerDocuments.map((document) => {
+            const docHref = safeHttpUrl(document.download_url);
+            return docHref ? (
+              <a className="training-customer-document" href={docHref} key={document.id}>
+                <span><strong>{document.filename}</strong><small>{DOC_TYPES[document.doc_type] || document.doc_type || "Chưa phân loại"}</small></span>
+                <time dateTime={document.created_at}>{new Date(document.created_at).toLocaleDateString("vi-VN")}</time>
+                <b>Tải xuống</b>
+              </a>
+            ) : (
+              <div className="training-customer-document is-disabled" key={document.id}>
+                <span><strong>{document.filename}</strong><small>{DOC_TYPES[document.doc_type] || document.doc_type || "Chưa phân loại"}</small></span>
+                <time dateTime={document.created_at}>{new Date(document.created_at).toLocaleDateString("vi-VN")}</time>
+              </div>
+            );
+          })}
         </div>}
       </section>}
-      <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} onClick={() => { setQuestion(item.question); setAnswer(item.answer); setAnswerMode("technical"); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
+      <section className="training-history"><div><span>LỊCH SỬ CỦA BẠN</span><h2>Mở lại câu hỏi đã hỏi</h2></div>{history.length === 0 ? <p>Chưa có câu hỏi nào.</p> : <div>{history.map((item) => <button key={item.jobId} type="button" onClick={() => { setQuestion(item.question); setAnswer(item.answer); setAnswerMode("technical"); setResults([]); }}><strong>{item.question}</strong><small>{new Date(item.createdAt).toLocaleString("vi-VN")} · {item.status === "done" ? "Hoàn tất" : item.status}</small></button>)}</div>}</section>
       {isAdmin && stats && (
         <section className="training-stats">
           <div className="training-stat-head"><span>USAGE</span><h2>Nhịp sử dụng Training</h2><p>{stats.tokenNote}</p></div>
@@ -348,7 +374,7 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
       {answer && (
         <div className="training-grid">
           <article className="training-answer">
-            <div className="training-answer-head"><span>{answerMode === "sales" ? "TƯ VẤN BÁN HÀNG CÓ NGUỒN" : "TRẢ LỜI CÓ NGUỒN"}</span><div><button onClick={copyAnswer}>Copy nội dung</button><button className="training-share" onClick={share}>Tạo link gửi khách</button></div></div>
+            <div className="training-answer-head"><span>{answerMode === "sales" ? "TƯ VẤN BÁN HÀNG CÓ NGUỒN" : "TRẢ LỜI CÓ NGUỒN"}</span><div><button type="button" onClick={copyAnswer}>Copy nội dung</button><button type="button" className="training-share" onClick={share}>Tạo link gửi khách</button></div></div>
             {answerMode === "sales" && <section className="training-sales-cta" aria-label="Bước tiếp theo cho khách">
               <div><strong>Bước tiếp theo cho khách</strong><p>Gửi link trả lời có nguồn hoặc chuyển nhân viên iNut xác nhận cấu hình, giá và yêu cầu tùy chỉnh.</p></div>
               <span>CTA đề xuất</span>
@@ -358,17 +384,30 @@ export function Training({ isAdmin = false }: { isAdmin?: boolean }) {
             {!!answer.warnings?.length && <section className="training-warning"><h3>Lưu ý</h3><p>{answer.warnings.join("\n")}</p></section>}
             <EvidenceList title="Tài liệu iNut" items={answer.documentationEvidence} />
             <EvidenceList title="Video thực hành" items={answer.videoEvidence} />
-            {shareUrl && <div className="training-shared"><strong>Đã tạo link:</strong><a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a></div>}
+            {shareUrl && safeHttpUrl(shareUrl) && <div className="training-shared"><strong>Đã tạo link:</strong><a href={safeHttpUrl(shareUrl)} target="_blank" rel="noopener noreferrer">{shareUrl}</a></div>}
           </article>
 
           <aside className="training-results">
             <span>ĐỊNH VỊ NHANH</span><h2>{results.length} đoạn liên quan</h2>
-            {results.map((item) => (
-              <a href={item.citationUrl} target="_blank" rel="noreferrer" key={`${item.sourceId}-${item.timestamp || "doc"}`}>
-                <b>{item.sourceType === "video" ? item.timestamp || "VIDEO" : item.sourceType.toUpperCase()}</b>
-                <strong>{item.sourceTitle || item.videoTitle}</strong><small>{item.text}</small>
-              </a>
-            ))}
+            {results.map((item) => {
+              const citeHref = safeHttpUrl(item.citationUrl);
+              const badge = item.sourceType === "video" ? item.timestamp || "VIDEO" : item.sourceType.toUpperCase();
+              const key = `${item.sourceId}-${item.timestamp || "doc"}`;
+              if (!citeHref) {
+                return (
+                  <div className="training-result-item is-disabled" aria-disabled="true" key={key}>
+                    <b>{badge}</b>
+                    <strong>{item.sourceTitle || item.videoTitle}</strong><small>{item.text}</small>
+                  </div>
+                );
+              }
+              return (
+                <a href={citeHref} target="_blank" rel="noopener noreferrer" key={key}>
+                  <b>{badge}</b>
+                  <strong>{item.sourceTitle || item.videoTitle}</strong><small>{item.text}</small>
+                </a>
+              );
+            })}
           </aside>
         </div>
       )}

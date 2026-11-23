@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { EmailSyncModal } from "../components/EmailSyncModal";
+import { AppModal, DataView, FormGrid, PromptDialog } from "../components/ui";
+import { openExternalSafe, safeHttpUrl } from "../utils/url";
 import { getParam, setParam } from "../util";
 
 function vnd(n: number): string {
@@ -350,6 +352,8 @@ export function PurchaseImport({
     }
   }
 
+  const [createItemPrompt, setCreateItemPrompt] = useState<{ idx: number; label: string; suggested: string } | null>(null);
+
   async function createItemFromLine(idx: number) {
     if (!cur) return;
     const ln = cur.lines[idx];
@@ -359,10 +363,17 @@ export function PurchaseImport({
     } catch {
       /* ignore */
     }
-    const ma = window.prompt("Mã hàng mới cho: " + ln.ten_raw, suggested);
-    if (!ma) return;
+    setCreateItemPrompt({ idx, label: ln.ten_raw, suggested });
+  }
+
+  async function confirmCreateItem(ma: string) {
+    if (!createItemPrompt || !cur) return;
+    const { idx } = createItemPrompt;
+    const ln = cur.lines[idx];
+    setCreateItemPrompt(null);
+    if (!ma.trim() || !ln) return;
     try {
-      const it = await api.invCreateItem({ ma_hang: ma, ten: ln.ten_raw, dvt: ln.dvt });
+      const it = await api.invCreateItem({ ma_hang: ma.trim(), ten: ln.ten_raw, dvt: ln.dvt });
       setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "new" });
     } catch (e) {
       setErr((e as Error).message);
@@ -540,20 +551,20 @@ export function PurchaseImport({
           <div className="purchase-export-actions">
             <button
               className="btn-sm ghost"
-              onClick={() => window.open(api.invExportUrl("purchase", "zip", exportParams()), "_blank")}
+              onClick={() => openExternalSafe(api.invExportUrl("purchase", "zip", exportParams()))}
             >
               ZIP gốc
             </button>
             <button
               className="btn-sm ghost"
-              onClick={() => window.open(api.invExportUrl("purchase", "xlsx", exportParams()), "_blank")}
+              onClick={() => openExternalSafe(api.invExportUrl("purchase", "xlsx", exportParams()))}
             >
               Excel
             </button>
           </div>
         </header>
-        <div className="purchase-scope-pills" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", padding: "8px 12px", background: "var(--card-bg, #f8fafc)", borderRadius: "8px", border: "1px solid var(--border-color, #e2e8f0)", marginBottom: "10px" }}>
-          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted, #64748b)" }}>Phạm vi:</span>
+        <div className="purchase-scope-pills" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", padding: "8px 12px", background: "var(--paper)", borderRadius: "8px", border: "1px solid var(--border)", marginBottom: "10px" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)" }}>Phạm vi:</span>
           <button
             type="button"
             className={`btn-sm ${hidePre2026 ? "primary" : "ghost"}`}
@@ -562,7 +573,7 @@ export function PurchaseImport({
             title="Chỉ hiển thị hóa đơn chính thức từ ngày 01/01/2026"
           >
             <span>✨ Chính thức từ 2026</span>
-            <span style={{ background: hidePre2026 ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: hidePre2026 ? "#fff" : "#334155", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
+            <span style={{ background: hidePre2026 ? "rgba(255,255,255,0.25)" : "var(--border)", color: hidePre2026 ? "#fffefa" : "var(--text)", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
               {from2026Count}
             </span>
           </button>
@@ -574,12 +585,12 @@ export function PurchaseImport({
             title="Xem toàn bộ bao gồm 47 hóa đơn lịch sử cũ trước năm 2026"
           >
             <span>🕰️ Tất cả bao gồm lịch sử cũ (&lt; 2026)</span>
-            <span style={{ background: !hidePre2026 ? "rgba(255,255,255,0.25)" : "#e2e8f0", color: !hidePre2026 ? "#fff" : "#334155", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
+            <span style={{ background: !hidePre2026 ? "rgba(255,255,255,0.25)" : "var(--border)", color: !hidePre2026 ? "#fffefa" : "var(--text)", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
               {list.length}
             </span>
           </button>
           {hidePre2026 && pre2026Count > 0 && (
-            <span style={{ fontSize: "12px", color: "var(--muted, #64748b)", marginLeft: "auto" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", marginLeft: "auto" }}>
               💡 Đang tạm quên <b>{pre2026Count}</b> HĐ nháp lịch sử cũ (&lt; 2026) cho đỡ rối mắt
             </span>
           )}
@@ -614,77 +625,157 @@ export function PurchaseImport({
         )}
         </div>
 
-      <div className="table-wrap purchase-table-wrap">
-        <table className="dt">
-          <thead>
-            <tr>
-              <th style={{ width: 28 }}>
-                <input
-                  type="checkbox"
-                  style={{ width: "auto" }}
-                  checked={shown.length > 0 && sel.size === shown.length}
-                  onChange={(e) => setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
-                />
-              </th>
-              <th>
-                <button className="purchase-sort-head" onClick={() => changeSort("id")}>
-                  # <span aria-hidden="true">{sortBy === "id" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th>
-                <button className="purchase-sort-head" onClick={() => changeSort("date")}>
-                  Ngày HĐ <span aria-hidden="true">{sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th>
-                <button className="purchase-sort-head" onClick={() => changeSort("invoice")}>
-                  Số HĐ <span aria-hidden="true">{sortBy === "invoice" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th>
-                <button className="purchase-sort-head" onClick={() => changeSort("seller")}>
-                  Bên bán <span aria-hidden="true">{sortBy === "seller" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th style={{ textAlign: "right" }}>
-                <button className="purchase-sort-head" onClick={() => changeSort("total")}>
-                  Tổng tiền <span aria-hidden="true">{sortBy === "total" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th>
-                <button className="purchase-sort-head" onClick={() => changeSort("source")}>
-                  Nguồn <span aria-hidden="true">{sortBy === "source" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                </button>
-              </th>
-              <th>Trạng thái</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((p) => {
-              const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
-              return (
-                <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => open(p.id)}>
-                  <td onClick={(e) => e.stopPropagation()}>
+      <DataView
+        mobileMode="card"
+        desktop={
+          <div className="table-wrap purchase-table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th style={{ width: 28 }}>
                     <input
                       type="checkbox"
                       style={{ width: "auto" }}
-                      checked={sel.has(p.id)}
-                      onChange={() => toggleSel(p.id)}
+                      checked={shown.length > 0 && sel.size === shown.length}
+                      onChange={(e) => setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
                     />
-                  </td>
-                  <td className="muted">#{p.id}</td>
-                  <td className="nowrap">{p.ngay || <span className="chip red sm">thiếu ngày</span>}</td>
-                  <td>
-                    <strong>{p.so_hd}</strong>
+                  </th>
+                  <th>
+                    <button className="purchase-sort-head" onClick={() => changeSort("id")}>
+                      # <span aria-hidden="true">{sortBy === "id" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th>
+                    <button className="purchase-sort-head" onClick={() => changeSort("date")}>
+                      Ngày HĐ <span aria-hidden="true">{sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th>
+                    <button className="purchase-sort-head" onClick={() => changeSort("invoice")}>
+                      Số HĐ <span aria-hidden="true">{sortBy === "invoice" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th>
+                    <button className="purchase-sort-head" onClick={() => changeSort("seller")}>
+                      Bên bán <span aria-hidden="true">{sortBy === "seller" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th style={{ textAlign: "right" }}>
+                    <button className="purchase-sort-head" onClick={() => changeSort("total")}>
+                      Tổng tiền <span aria-hidden="true">{sortBy === "total" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th>
+                    <button className="purchase-sort-head" onClick={() => changeSort("source")}>
+                      Nguồn <span aria-hidden="true">{sortBy === "source" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
+                    </button>
+                  </th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((p) => {
+                  const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
+                  return (
+                    <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => open(p.id)}>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          style={{ width: "auto" }}
+                          checked={sel.has(p.id)}
+                          onChange={() => toggleSel(p.id)}
+                        />
+                      </td>
+                      <td className="muted">#{p.id}</td>
+                      <td className="nowrap">{p.ngay || <span className="chip red sm">thiếu ngày</span>}</td>
+                      <td>
+                        <strong>{p.so_hd}</strong>
+                        {p.doc_url ? (
+                          <span className="chip green sm" style={{ marginLeft: 6 }} title="Đã có file PDF/gốc">📎 PDF</span>
+                        ) : (
+                          <label
+                            className="chip amber sm"
+                            style={{ marginLeft: 6, cursor: "pointer" }}
+                            title="Bấm để nộp bù file PDF cho hóa đơn này"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            ＋ Bù PDF
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              hidden
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) onAttachPdf(p.id, f);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </td>
+                      <td>
+                        {p.ten_ban}
+                        {p.loai === "dich_vu" && <span className="chip indigo sm"> 🧾 Dịch vụ</span>}
+                        {p.dup_of && <span className="chip red sm"> trùng #{p.dup_of}</span>}
+                        {p.warnings.length > 0 && (
+                          <span className="chip amber sm"> ⚠️ {p.warnings.length}</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{vnd(p.tong_tien)}</td>
+                      <td>
+                        <span className="chip gray sm">{SOURCE_LABEL[p.source] ?? p.source}</span>
+                      </td>
+                      <td>
+                        <span className={`chip sm ${color}`}>{label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {listLoading && (
+                  <tr><td colSpan={8}><div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div></td></tr>
+                )}
+                {!listLoading && list.length === 0 && (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="purchase-empty">
+                        <span className="purchase-empty-icon" aria-hidden="true">＋</span>
+                        <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
+                        <p>{filtersActive ? "Thử xóa bộ lọc hoặc chọn khoảng ngày khác." : "Tải PDF, XML hoặc ZIP lên để tạo bản nháp đầu tiên."}</p>
+                        <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        }
+        mobileCards={
+          <div className="ui-mobile-card-list">
+            {shown.map((p) => {
+              const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
+              return (
+                <article key={p.id} className="ui-mobile-card" onClick={() => open(p.id)} style={{ cursor: "pointer" }}>
+                  <div className="ui-mobile-card-head">
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} aria-label={`Chọn hóa đơn #${p.id}`} />
+                      <strong className="ui-mobile-card-title">#{p.id} · {p.so_hd || "Chưa có số"}</strong>
+                    </label>
+                    <span className={`chip sm ${color}`}>{label}</span>
+                  </div>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", lineHeight: 1.35 }}>{p.ten_ban || "Chưa rõ nhà cung cấp"}</div>
+                  <div className="ui-mobile-card-meta">
+                    <span>{p.ngay || "Thiếu ngày"}</span>
+                    <strong style={{ fontVariantNumeric: "tabular-nums", color: "var(--primary-dark)" }}>{vnd(p.tong_tien)} đ</strong>
+                    <span className="chip gray sm">{SOURCE_LABEL[p.source] ?? p.source}</span>
+                    {p.loai === "dich_vu" && <span className="chip indigo sm">Dịch vụ</span>}
+                    {p.warnings.length > 0 && <span className="chip amber sm">⚠️ {p.warnings.length}</span>}
+                  </div>
+                  <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="ui-btn-chip" onClick={() => open(p.id)}>Mở chi tiết</button>
                     {p.doc_url ? (
-                      <span className="chip green sm" style={{ marginLeft: 6 }} title="Đã có file PDF/gốc">📎 PDF</span>
+                      <span className="chip green sm">📎 PDF</span>
                     ) : (
-                      <label
-                        className="chip amber sm"
-                        style={{ marginLeft: 6, cursor: "pointer" }}
-                        title="Bấm để nộp bù file PDF cho hóa đơn này"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <label className="ui-btn-chip" style={{ cursor: "pointer" }}>
                         ＋ Bù PDF
                         <input
                           type="file"
@@ -697,450 +788,45 @@ export function PurchaseImport({
                         />
                       </label>
                     )}
-                  </td>
-                  <td>
-                    {p.ten_ban}
-                    {p.loai === "dich_vu" && <span className="chip indigo sm"> 🧾 Dịch vụ</span>}
-                    {p.dup_of && <span className="chip red sm"> trùng #{p.dup_of}</span>}
-                    {p.warnings.length > 0 && (
-                      <span className="chip amber sm"> ⚠️ {p.warnings.length}</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>{vnd(p.tong_tien)}</td>
-                  <td>
-                    <span className="chip gray sm">{SOURCE_LABEL[p.source] ?? p.source}</span>
-                  </td>
-                  <td>
-                    <span className={`chip sm ${color}`}>{label}</span>
-                  </td>
-                </tr>
+                  </div>
+                </article>
               );
             })}
-            {listLoading && (
-              <tr><td colSpan={8}><div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div></td></tr>
-            )}
+            {listLoading && <div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div>}
             {!listLoading && list.length === 0 && (
-              <tr>
-                <td colSpan={8}>
-                  <div className="purchase-empty">
-                    <span className="purchase-empty-icon" aria-hidden="true">＋</span>
-                    <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
-                    <p>{filtersActive ? "Thử xóa bộ lọc hoặc chọn khoảng ngày khác." : "Tải PDF, XML hoặc ZIP lên để tạo bản nháp đầu tiên."}</p>
-                    <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
-                  </div>
-                </td>
-              </tr>
+              <div className="purchase-empty">
+                <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
+                <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
+      />
       </section>
 
-      {cur && (
-        <div className="modal-backdrop" onClick={closeCur}>
-          <div className="modal" style={{ maxWidth: 1360 }} onClick={(e) => e.stopPropagation()}>
-            <h3>
-              Hóa đơn mua #{cur.id}{" "}
+      <AppModal
+        open={!!cur}
+        onClose={closeCur}
+        size="full"
+        title={
+          cur ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span>Hóa đơn mua #{cur.id}</span>
               <span className={`chip sm ${(STATUS_CHIP[cur.status] ?? ["gray"])[0]}`}>
                 {(STATUS_CHIP[cur.status] ?? ["", cur.status])[1]}
-              </span>{" "}
-              <span className="chip gray sm">{SOURCE_LABEL[cur.source] ?? cur.source}</span>{" "}
+              </span>
+              <span className="chip gray sm">{SOURCE_LABEL[cur.source] ?? cur.source}</span>
               <span className={`chip sm ${isDichVu ? "indigo" : "green"}`}>
                 {isDichVu ? "🧾 Dịch vụ / chi phí" : "📦 Hàng hóa (nhập kho)"}
               </span>
-              {cur.status === "draft" && (
-                <button className="btn-sm" style={{ marginLeft: 6 }} onClick={toggleLoai}>
-                  ⇄ Đổi thành {isDichVu ? "hàng hóa" : "dịch vụ"}
-                </button>
-              )}
-              {cur.doc_url && (
-                <a className="btn-sm" style={{ marginLeft: 8 }} href={cur.doc_url} target="_blank" rel="noreferrer">
-                  📄 File gốc
-                </a>
-              )}
-              <label
-                className="btn-sm"
-                style={{
-                  marginLeft: 8,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  backgroundColor: cur.doc_url ? "#f1f5f9" : "#eff6ff",
-                  borderColor: cur.doc_url ? "#cbd5e1" : "#3b82f6",
-                  color: cur.doc_url ? "#334155" : "#1d4ed8",
-                  fontWeight: 600,
-                }}
-                title="Tải file PDF gốc bù vào hóa đơn này"
-              >
-                📎 {attachBusy ? "Đang lưu…" : (cur.doc_url ? "Úp bù / Thay PDF" : "Úp bù PDF gốc")}
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  hidden
-                  disabled={attachBusy}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) onAttachPdf(cur.id, f);
-                  }}
-                />
-              </label>
-            </h3>
-            {cur.status === "posted" && (
-              <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span>
-                  🔒 <b>Hóa đơn đã ghi sổ</b> nên các ô đang bị khóa. Muốn sửa lại đơn giá/số lượng, bấm{" "}
-                  <b>Hủy ghi sổ</b> → sửa → Ghi sổ lại (tồn kho tự tính lại).
-                </span>
-                <button
-                  className="btn-sm danger"
-                  disabled={busy}
-                  onClick={async () => {
-                    if (!window.confirm("Hủy ghi sổ hóa đơn này để sửa? Tồn kho sẽ được tính lại.")) return;
-                    setBusy(true);
-                    setErr("");
-                    try {
-                      setCur(await api.invPurchaseVoid(cur.id));
-                    } catch (e) {
-                      setErr((e as Error).message);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  ↩️ Hủy ghi sổ để sửa
-                </button>
-              </div>
-            )}
-            {isDichVu && (
-              <p className="muted" style={{ margin: "4px 0" }}>
-                Hóa đơn dịch vụ/chi phí: ghi sổ chỉ để lưu vết + đối chiếu bảng kê thuế,{" "}
-                <b>không nhập kho</b>, không cần khớp mặt hàng.
-              </p>
-            )}
-            <div className="review-2col">
-              <div className="review-form">
-            {cur.warnings.length > 0 && (
-              <div className="warn-banner">
-                {cur.warnings.map((w, i) => (
-                  <div key={i}>⚠️ {w.msg}</div>
-                ))}
-              </div>
-            )}
-            <div className="form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              <label>
-                Ngày (YYYY-MM-DD)
-                <input
-                  type="date"
-                  value={cur.ngay}
-                  disabled={cur.status !== "draft"}
-                  onChange={(e) => setCur({ ...cur, ngay: e.target.value })}
-                />
-              </label>
-              <label>
-                Số HĐ
-                <input value={cur.so_hd} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, so_hd: e.target.value })} />
-              </label>
-              <label>
-                Ký hiệu
-                <input value={cur.ky_hieu} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ky_hieu: e.target.value })} />
-              </label>
-              <label>
-                MST bên bán
-                <input value={cur.mst_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, mst_ban: e.target.value })} />
-              </label>
-              <label>
-                Tên bên bán
-                <input value={cur.ten_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })} />
-              </label>
-            </div>
-
-            <div className="table-wrap" style={{ marginTop: 10, maxHeight: "45vh", overflow: "auto" }}>
-              <table className="dt">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Tên trên hóa đơn</th>
-                    <th style={{ width: 70 }}>ĐVT</th>
-                    <th style={{ textAlign: "right" }}>SL</th>
-                    <th style={{ textAlign: "right" }}>Đơn giá</th>
-                    <th style={{ textAlign: "right" }}>Thành tiền</th>
-                    <th style={{ textAlign: "right", width: 70 }}>VAT %</th>
-                    <th>Kho</th>
-                    <th style={{ minWidth: 240 }}>Mặt hàng tồn kho</th>
-                    <th style={{ width: 28 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cur.lines.map((ln, idx) => (
-                    <tr key={ln.id ?? idx}>
-                      <td className="muted">{ln.stt}</td>
-                      <td>
-                        {cur.status === "draft" ? (
-                          <input value={ln.ten_raw} onChange={(e) => setLine(idx, { ten_raw: e.target.value })} />
-                        ) : (
-                          ln.ten_raw
-                        )}
-                        {ln.warnings.map((w, i) => (
-                          <div key={i} className="chip red sm">
-                            {w.msg}
-                          </div>
-                        ))}
-                      </td>
-                      <td style={{ width: 70 }}>
-                        {cur.status === "draft" ? (
-                          <input
-                            style={{ width: 66 }}
-                            placeholder="Cái…"
-                            value={ln.dvt}
-                            onChange={(e) => setLine(idx, { dvt: e.target.value })}
-                          />
-                        ) : (
-                          ln.dvt || <span className="chip red sm">?</span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right", width: 70 }}>
-                        {cur.status === "draft" ? (
-                          <input
-                            style={{ width: 70, textAlign: "right" }}
-                            value={ln.so_luong}
-                            onChange={(e) => setLine(idx, { so_luong: vnNum(e.target.value) })}
-                          />
-                        ) : (
-                          ln.so_luong
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right", width: 110 }}>
-                        {cur.status === "draft" ? (
-                          <input
-                            style={{ width: 110, textAlign: "right" }}
-                            value={ln.don_gia}
-                            onChange={(e) => setLine(idx, { don_gia: vnNum(e.target.value) })}
-                          />
-                        ) : (
-                          vnd(ln.don_gia)
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {vnd(ln.so_luong * ln.don_gia)}
-                        {ln.thanh_tien > 0 &&
-                          Math.abs(ln.so_luong * ln.don_gia - ln.thanh_tien) > 1 && (
-                            <div className="chip red sm" title="SL×ĐG khác thành tiền trên hóa đơn — sửa lại SL hoặc đơn giá">
-                              HĐ ghi {vnd(ln.thanh_tien)}
-                            </div>
-                          )}
-                      </td>
-                      <td style={{ textAlign: "right", width: 70 }}>
-                        {cur.status === "draft" ? (
-                          <input
-                            style={{ width: 60, textAlign: "right" }}
-                            value={ln.thue_suat}
-                            onChange={(e) => setLine(idx, { thue_suat: vnNum(e.target.value) })}
-                          />
-                        ) : (
-                          `${ln.thue_suat}%`
-                        )}
-                      </td>
-                      <td>
-                        <select
-                          value={ln.warehouse_id ?? ""}
-                          disabled={cur.status !== "draft"}
-                          onChange={(e) => setLine(idx, { warehouse_id: Number(e.target.value) || null })}
-                        >
-                          <option value="">—</option>
-                          {whs.map((w) => (
-                            <option key={w.id} value={w.id}>
-                              {w.code}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        {ln.item_id ? (
-                          <span>
-                            <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
-                              {ln.match_kind === "exact"
-                                ? "✔ khớp"
-                                : ln.match_kind === "fuzzy"
-                                ? "~ gợi ý"
-                                : ln.match_kind === "learned"
-                                ? "🧠 đã học"
-                                : "✔ đã chọn"}
-                            </span>{" "}
-                            {ln.item_ma_hang || `#${ln.item_id}`}
-                            {cur.status === "draft" && (
-                              <button className="btn-sm ghost" onClick={() => setLine(idx, { item_id: null, item_ma_hang: "", match_kind: "none" })}>
-                                ✕
-                              </button>
-                            )}
-                          </span>
-                        ) : cur.status === "draft" ? (
-                          <div>
-                            <input
-                              placeholder="tìm mã/tên…"
-                              value={itemQuery?.line === idx ? itemQuery.q : ""}
-                              onChange={(e) => searchItems(idx, e.target.value)}
-                            />
-                            {itemQuery?.line === idx &&
-                              itemQuery.results.slice(0, 5).map((it) => (
-                                <div key={it.id}>
-                                  <button
-                                    className="btn-sm ghost"
-                                    onClick={() => {
-                                      setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual" });
-                                      setItemQuery(null);
-                                    }}
-                                  >
-                                    {it.ma_hang} · {it.ten.slice(0, 45)}
-                                  </button>
-                                </div>
-                              ))}
-            {ln.suggestions.length > 0 && (
-                              <div className="muted" style={{ margin: "3px 0 1px", fontSize: "0.75rem" }}>
-                                Gợi ý khớp:
-                              </div>
-                            )}
-                            {ln.suggestions.map((s) => (
-                              <div key={s.item_id} style={{ marginBottom: 3 }}>
-                                <button
-                                  className="btn-sm ghost"
-                                  style={{ textAlign: "left", whiteSpace: "normal", height: "auto" }}
-                                  title={s.reason || ""}
-                                  onClick={() => setLine(idx, { item_id: s.item_id, item_ma_hang: s.ma_hang, item_ten: s.ten, match_kind: "manual" })}
-                                >
-                                  {s.reason && (
-                                    <span
-                                      className={"chip sm " + ((s.score ?? 0) >= 0.99 ? "green" : (s.score ?? 0) >= 0.7 ? "amber" : "gray")}
-                                      style={{ marginRight: 5 }}
-                                    >
-                                      {s.reason}
-                                    </span>
-                                  )}
-                                  <b>{s.ma_hang}</b> · {s.ten}
-                                </button>
-                              </div>
-                            ))}
-                            <button className="btn-sm" onClick={() => createItemFromLine(idx)}>
-                              ＋ Tạo mã mới
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="chip red sm">chưa khớp</span>
-                        )}
-                      </td>
-                      <td>
-                        {cur.status === "draft" && (
-                          <button
-                            className="btn-sm ghost"
-                            title="Bỏ dòng này (vd phí vận chuyển — không nhập kho)"
-                            onClick={() => setCur({ ...cur, lines: cur.lines.filter((_, i) => i !== idx) })}
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 24,
-                marginTop: 8,
-                fontSize: "0.9rem",
-              }}
-            >
-              <span>
-                Cộng trước thuế: <b>{vnd(cur.tong_truoc_thue)}đ</b>
-              </span>
-              <span>
-                Tiền thuế: <b>{vnd(cur.tong_thue)}đ</b>
-              </span>
-              <span style={{ fontSize: "1.05rem" }}>
-                Tổng thanh toán: <b style={{ color: "var(--primary)" }}>{vnd(cur.tong_tien)}đ</b>
-              </span>
-            </div>
-
-              </div>
-              <div className="review-file">
-                <div className="tb-group" style={{ marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  {cur.source === "tax_gdt" && (
-                    <button
-                      type="button"
-                      className={`btn-sm ${!viewPdfMode ? "primary" : "ghost"}`}
-                      onClick={() => setViewPdfMode(false)}
-                    >
-                      🔍 Xem HTML
-                    </button>
-                  )}
-                  {cur.doc_url && (
-                    <button
-                      type="button"
-                      className={`btn-sm ${viewPdfMode ? "primary" : "ghost"}`}
-                      onClick={() => setViewPdfMode(true)}
-                    >
-                      📄 Xem PDF gốc
-                    </button>
-                  )}
-                  <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noreferrer">
-                    ⬇️ Tải PDF
-                  </a>
-                  <label
-                    className="btn-sm"
-                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, background: "#f0fdf4", borderColor: "#16a34a", color: "#15803d" }}
-                    title="Nộp tệp PDF gốc cho hóa đơn này"
-                  >
-                    📎 {attachBusy ? "Đang nạp…" : (cur.doc_url ? "Thay PDF khác" : "Úp bù PDF gốc")}
-                    <input
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      hidden
-                      disabled={attachBusy}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) onAttachPdf(cur.id, f);
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {viewPdfMode && cur.doc_url ? (
-                  <iframe
-                    src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
-                    title="Hóa đơn gốc (PDF)"
-                  />
-                ) : cur.source === "tax_gdt" ? (
-                  <iframe src={`/api/inv/purchase/${cur.id}/html`} title="Bản thể hiện hóa đơn (cổng thuế)" />
-                ) : cur.doc_url ? (
-                  <iframe
-                    src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
-                    title="Hóa đơn gốc"
-                  />
-                ) : (
-                  <div className="no-file" style={{ textAlign: "center", padding: "40px 20px" }}>
-                    <p style={{ marginBottom: 12 }}>Chưa có file PDF gốc để đối chiếu.</p>
-                    <label className="btn-sm primary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      📎 {attachBusy ? "Đang nạp file…" : "Tải file PDF gốc lên ngay"}
-                      <input
-                        type="file"
-                        accept="application/pdf,.pdf"
-                        hidden
-                        disabled={attachBusy}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) onAttachPdf(cur.id, f);
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="modal-actions">
+            </span>
+          ) : (
+            "Chi tiết hóa đơn mua"
+          )
+        }
+        footer={
+          cur ? (
+            <>
               {cur.status === "draft" && (
                 <>
                   <button className="btn-sm danger" onClick={async () => {
@@ -1207,42 +893,455 @@ export function PurchaseImport({
                 </button>
               )}
               <button onClick={closeCur}>Đóng</button>
+            </>
+          ) : undefined
+        }
+      >
+        {cur && (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+              {cur.status === "draft" && (
+                <button className="btn-sm ui-btn-chip" onClick={toggleLoai}>
+                  ⇄ Đổi thành {isDichVu ? "hàng hóa" : "dịch vụ"}
+                </button>
+              )}
+              {safeHttpUrl(cur.doc_url) && (
+                <a className="btn-sm ui-btn-chip" href={safeHttpUrl(cur.doc_url)} target="_blank" rel="noopener noreferrer">
+                  📄 File gốc
+                </a>
+              )}
+              <label
+                className="btn-sm ui-btn-chip"
+                style={{
+                  cursor: "pointer",
+                  backgroundColor: cur.doc_url ? "var(--paper)" : "var(--primary-soft)",
+                  borderColor: cur.doc_url ? "var(--border-strong)" : "var(--primary)",
+                  color: "var(--ink)",
+                  fontWeight: 600,
+                }}
+                title="Tải file PDF gốc bù vào hóa đơn này"
+              >
+                📎 {attachBusy ? "Đang lưu…" : (cur.doc_url ? "Úp bù / Thay PDF" : "Úp bù PDF gốc")}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  hidden
+                  disabled={attachBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onAttachPdf(cur.id, f);
+                  }}
+                />
+              </label>
             </div>
-          </div>
-        </div>
-      )}
+            {cur.status === "posted" && (
+              <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span>
+                  🔒 <b>Hóa đơn đã ghi sổ</b> nên các ô đang bị khóa. Muốn sửa lại đơn giá/số lượng, bấm{" "}
+                  <b>Hủy ghi sổ</b> → sửa → Ghi sổ lại (tồn kho tự tính lại).
+                </span>
+                <button
+                  className="btn-sm danger"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!window.confirm("Hủy ghi sổ hóa đơn này để sửa? Tồn kho sẽ được tính lại.")) return;
+                    setBusy(true);
+                    setErr("");
+                    try {
+                      setCur(await api.invPurchaseVoid(cur.id));
+                    } catch (e) {
+                      setErr((e as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  ↩️ Hủy ghi sổ để sửa
+                </button>
+              </div>
+            )}
+            {isDichVu && (
+              <p className="muted" style={{ margin: "4px 0" }}>
+                Hóa đơn dịch vụ/chi phí: ghi sổ chỉ để lưu vết + đối chiếu bảng kê thuế,{" "}
+                <b>không nhập kho</b>, không cần khớp mặt hàng.
+              </p>
+            )}
+            <div className="review-2col">
+              <div className="review-form">
+            {cur.warnings.length > 0 && (
+              <div className="warn-banner">
+                {cur.warnings.map((w, i) => (
+                  <div key={i}>⚠️ {w.msg}</div>
+                ))}
+              </div>
+            )}
+            <FormGrid cols={5}>
+              <label>
+                Ngày (YYYY-MM-DD)
+                <input
+                  className="ui-input"
+                  type="date"
+                  value={cur.ngay}
+                  disabled={cur.status !== "draft"}
+                  onChange={(e) => setCur({ ...cur, ngay: e.target.value })}
+                />
+              </label>
+              <label>
+                Số HĐ
+                <input className="ui-input" value={cur.so_hd} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, so_hd: e.target.value })} />
+              </label>
+              <label>
+                Ký hiệu
+                <input className="ui-input" value={cur.ky_hieu} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ky_hieu: e.target.value })} />
+              </label>
+              <label>
+                MST bên bán
+                <input className="ui-input" value={cur.mst_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, mst_ban: e.target.value })} />
+              </label>
+              <label>
+                Tên bên bán
+                <input className="ui-input" value={cur.ten_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })} />
+              </label>
+            </FormGrid>
 
-      {bangKe && (
-        <div className="modal-backdrop" onClick={() => setBangKe(null)}>
-          <div className="modal" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
-            <h3>Đối chiếu bảng kê thuế</h3>
+            <DataView
+              mobileMode="scroll"
+              desktop={
+                <div className="table-wrap" style={{ marginTop: 10, maxHeight: "45vh", overflow: "auto" }}>
+                  <table className="dt">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Tên trên hóa đơn</th>
+                        <th style={{ width: 70 }}>ĐVT</th>
+                        <th style={{ textAlign: "right" }}>SL</th>
+                        <th style={{ textAlign: "right" }}>Đơn giá</th>
+                        <th style={{ textAlign: "right" }}>Thành tiền</th>
+                        <th style={{ textAlign: "right", width: 70 }}>VAT %</th>
+                        <th>Kho</th>
+                        <th style={{ minWidth: 240 }}>Mặt hàng tồn kho</th>
+                        <th style={{ width: 28 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cur.lines.map((ln, idx) => (
+                        <tr key={ln.id ?? idx}>
+                          <td className="muted">{ln.stt}</td>
+                          <td>
+                            {cur.status === "draft" ? (
+                              <input value={ln.ten_raw} onChange={(e) => setLine(idx, { ten_raw: e.target.value })} />
+                            ) : (
+                              ln.ten_raw
+                            )}
+                            {ln.warnings.map((w, i) => (
+                              <div key={i} className="chip red sm">
+                                {w.msg}
+                              </div>
+                            ))}
+                          </td>
+                          <td style={{ width: 70 }}>
+                            {cur.status === "draft" ? (
+                              <input
+                                style={{ width: 66 }}
+                                placeholder="Cái…"
+                                value={ln.dvt}
+                                onChange={(e) => setLine(idx, { dvt: e.target.value })}
+                              />
+                            ) : (
+                              ln.dvt || <span className="chip red sm">?</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right", width: 70 }}>
+                            {cur.status === "draft" ? (
+                              <input
+                                style={{ width: 70, textAlign: "right" }}
+                                value={ln.so_luong}
+                                onChange={(e) => setLine(idx, { so_luong: vnNum(e.target.value) })}
+                              />
+                            ) : (
+                              ln.so_luong
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right", width: 110 }}>
+                            {cur.status === "draft" ? (
+                              <input
+                                style={{ width: 110, textAlign: "right" }}
+                                value={ln.don_gia}
+                                onChange={(e) => setLine(idx, { don_gia: vnNum(e.target.value) })}
+                              />
+                            ) : (
+                              vnd(ln.don_gia)
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {vnd(ln.so_luong * ln.don_gia)}
+                            {ln.thanh_tien > 0 &&
+                              Math.abs(ln.so_luong * ln.don_gia - ln.thanh_tien) > 1 && (
+                                <div className="chip red sm" title="SL×ĐG khác thành tiền trên hóa đơn — sửa lại SL hoặc đơn giá">
+                                  HĐ ghi {vnd(ln.thanh_tien)}
+                                </div>
+                              )}
+                          </td>
+                          <td style={{ textAlign: "right", width: 70 }}>
+                            {cur.status === "draft" ? (
+                              <input
+                                style={{ width: 60, textAlign: "right" }}
+                                value={ln.thue_suat}
+                                onChange={(e) => setLine(idx, { thue_suat: vnNum(e.target.value) })}
+                              />
+                            ) : (
+                              `${ln.thue_suat}%`
+                            )}
+                          </td>
+                          <td>
+                            <select
+                              value={ln.warehouse_id ?? ""}
+                              disabled={cur.status !== "draft"}
+                              onChange={(e) => setLine(idx, { warehouse_id: Number(e.target.value) || null })}
+                            >
+                              <option value="">—</option>
+                              {whs.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                  {w.code}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            {ln.item_id ? (
+                              <span>
+                                <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
+                                  {ln.match_kind === "exact"
+                                    ? "✔ khớp"
+                                    : ln.match_kind === "fuzzy"
+                                    ? "~ gợi ý"
+                                    : ln.match_kind === "learned"
+                                    ? "🧠 đã học"
+                                    : "✔ đã chọn"}
+                                </span>{" "}
+                                {ln.item_ma_hang || `#${ln.item_id}`}
+                                {cur.status === "draft" && (
+                                  <button className="btn-sm ghost" onClick={() => setLine(idx, { item_id: null, item_ma_hang: "", match_kind: "none" })}>
+                                    ✕
+                                  </button>
+                                )}
+                              </span>
+                            ) : cur.status === "draft" ? (
+                              <div>
+                                <input
+                                  placeholder="tìm mã/tên…"
+                                  value={itemQuery?.line === idx ? itemQuery.q : ""}
+                                  onChange={(e) => searchItems(idx, e.target.value)}
+                                />
+                                {itemQuery?.line === idx &&
+                                  itemQuery.results.slice(0, 5).map((it) => (
+                                    <div key={it.id}>
+                                      <button
+                                        className="btn-sm ghost"
+                                        onClick={() => {
+                                          setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual" });
+                                          setItemQuery(null);
+                                        }}
+                                      >
+                                        {it.ma_hang} · {it.ten.slice(0, 45)}
+                                      </button>
+                                    </div>
+                                  ))}
+                                {ln.suggestions.length > 0 && (
+                                  <div className="muted" style={{ margin: "3px 0 1px", fontSize: "0.75rem" }}>
+                                    Gợi ý khớp:
+                                  </div>
+                                )}
+                                {ln.suggestions.map((s) => (
+                                  <div key={s.item_id} style={{ marginBottom: 3 }}>
+                                    <button
+                                      className="btn-sm ghost"
+                                      style={{ textAlign: "left", whiteSpace: "normal", height: "auto" }}
+                                      title={s.reason || ""}
+                                      onClick={() => setLine(idx, { item_id: s.item_id, item_ma_hang: s.ma_hang, item_ten: s.ten, match_kind: "manual" })}
+                                    >
+                                      {s.reason && (
+                                        <span
+                                          className={"chip sm " + ((s.score ?? 0) >= 0.99 ? "green" : (s.score ?? 0) >= 0.7 ? "amber" : "gray")}
+                                          style={{ marginRight: 5 }}
+                                        >
+                                          {s.reason}
+                                        </span>
+                                      )}
+                                      <b>{s.ma_hang}</b> · {s.ten}
+                                    </button>
+                                  </div>
+                                ))}
+                                <button className="btn-sm" onClick={() => createItemFromLine(idx)}>
+                                  ＋ Tạo mã mới
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="chip red sm">chưa khớp</span>
+                            )}
+                          </td>
+                          <td>
+                            {cur.status === "draft" && (
+                              <button
+                                className="btn-sm ghost"
+                                title="Bỏ dòng này (vd phí vận chuyển — không nhập kho)"
+                                onClick={() => setCur({ ...cur, lines: cur.lines.filter((_, i) => i !== idx) })}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 20,
+                flexWrap: "wrap",
+                marginTop: 8,
+                fontSize: "0.9rem",
+              }}
+            >
+              <span>
+                Cộng trước thuế: <b>{vnd(cur.tong_truoc_thue)}đ</b>
+              </span>
+              <span>
+                Tiền thuế: <b>{vnd(cur.tong_thue)}đ</b>
+              </span>
+              <span style={{ fontSize: "1.05rem" }}>
+                Tổng thanh toán: <b style={{ color: "var(--primary)" }}>{vnd(cur.tong_tien)}đ</b>
+              </span>
+            </div>
 
+              </div>
+              <div className="review-file">
+                <div className="tb-group" style={{ marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {cur.source === "tax_gdt" && (
+                    <button
+                      type="button"
+                      className={`btn-sm ${!viewPdfMode ? "primary" : "ghost"}`}
+                      onClick={() => setViewPdfMode(false)}
+                    >
+                      🔍 Xem HTML
+                    </button>
+                  )}
+                  {cur.doc_url && (
+                    <button
+                      type="button"
+                      className={`btn-sm ${viewPdfMode ? "primary" : "ghost"}`}
+                      onClick={() => setViewPdfMode(true)}
+                    >
+                      📄 Xem PDF gốc
+                    </button>
+                  )}
+                  <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noopener noreferrer">
+                    ⬇️ Tải PDF
+                  </a>
+                  <label
+                    className="btn-sm"
+                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, background: "var(--primary-soft)", borderColor: "var(--green)", color: "var(--ink)" }}
+                    title="Nộp tệp PDF gốc cho hóa đơn này"
+                  >
+                    📎 {attachBusy ? "Đang nạp…" : (cur.doc_url ? "Thay PDF khác" : "Úp bù PDF gốc")}
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      hidden
+                      disabled={attachBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onAttachPdf(cur.id, f);
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {viewPdfMode && cur.doc_url ? (
+                  <iframe
+                    src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
+                    title="Hóa đơn gốc (PDF)"
+                  />
+                ) : cur.source === "tax_gdt" ? (
+                  <iframe
+                    src={`/api/inv/purchase/${cur.id}/html`}
+                    title="Bản thể hiện hóa đơn (cổng thuế)"
+                    sandbox=""
+                  />
+                ) : cur.doc_url ? (
+                  <iframe
+                    src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
+                    title="Hóa đơn gốc"
+                  />
+                ) : (
+                  <div className="no-file" style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <p style={{ marginBottom: 12 }}>Chưa có file PDF gốc để đối chiếu.</p>
+                    <label className="btn-sm primary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      📎 {attachBusy ? "Đang nạp file…" : "Tải file PDF gốc lên ngay"}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        hidden
+                        disabled={attachBusy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) onAttachPdf(cur.id, f);
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </AppModal>
+
+      <AppModal
+        open={!!bangKe}
+        onClose={() => setBangKe(null)}
+        title="Đối chiếu bảng kê thuế"
+        size="lg"
+        footer={<button onClick={() => setBangKe(null)}>Đóng</button>}
+      >
+        {bangKe && (
+          <>
             <h4>
               <span className="chip green sm">✓ Khớp</span> <span className="count">{bangKe.khop.length}</span>
             </h4>
             {bangKe.khop.length > 0 && (
-              <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Số HĐ</th>
-                      <th>Ngày</th>
-                      <th>Bên bán</th>
-                      <th style={{ textAlign: "right" }}>Giá trị</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bangKe.khop.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.so_hd}</td>
-                        <td>{r.ngay}</td>
-                        <td>{r.ten_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Số HĐ</th>
+                          <th>Ngày</th>
+                          <th>Bên bán</th>
+                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bangKe.khop.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.so_hd}</td>
+                            <td>{r.ngay}</td>
+                            <td>{r.ten_ban}</td>
+                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
             )}
 
             <h4>
@@ -1250,30 +1349,35 @@ export function PurchaseImport({
               <span className="count">{bangKe.lech_tien.length}</span>
             </h4>
             {bangKe.lech_tien.length > 0 && (
-              <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Số HĐ</th>
-                      <th>Ngày</th>
-                      <th>Bên bán</th>
-                      <th style={{ textAlign: "right" }}>Bảng kê</th>
-                      <th style={{ textAlign: "right" }}>Đã import</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bangKe.lech_tien.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.so_hd}</td>
-                        <td>{r.ngay}</td>
-                        <td>{r.ten_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(r.purchase_gia_tri ?? 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Số HĐ</th>
+                          <th>Ngày</th>
+                          <th>Bên bán</th>
+                          <th style={{ textAlign: "right" }}>Bảng kê</th>
+                          <th style={{ textAlign: "right" }}>Đã import</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bangKe.lech_tien.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.so_hd}</td>
+                            <td>{r.ngay}</td>
+                            <td>{r.ten_ban}</td>
+                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                            <td style={{ textAlign: "right" }}>{vnd(r.purchase_gia_tri ?? 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
             )}
 
             <h4>
@@ -1282,28 +1386,33 @@ export function PurchaseImport({
             </h4>
             <p className="muted">Có trong bảng kê thuế nhưng chưa import file hóa đơn — cần xin lại file từ nhà cung cấp.</p>
             {bangKe.thieu_file.length > 0 && (
-              <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Số HĐ</th>
-                      <th>Ngày</th>
-                      <th>Bên bán</th>
-                      <th style={{ textAlign: "right" }}>Giá trị</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bangKe.thieu_file.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.so_hd}</td>
-                        <td>{r.ngay}</td>
-                        <td>{r.ten_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Số HĐ</th>
+                          <th>Ngày</th>
+                          <th>Bên bán</th>
+                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bangKe.thieu_file.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.so_hd}</td>
+                            <td>{r.ngay}</td>
+                            <td>{r.ten_ban}</td>
+                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
             )}
 
             <h4>
@@ -1311,36 +1420,46 @@ export function PurchaseImport({
               <span className="count">{bangKe.ngoai_bang_ke.length}</span>
             </h4>
             {bangKe.ngoai_bang_ke.length > 0 && (
-              <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
-                <table className="dt">
-                  <thead>
-                    <tr>
-                      <th>Số HĐ</th>
-                      <th>Ngày</th>
-                      <th>Bên bán</th>
-                      <th style={{ textAlign: "right" }}>Giá trị</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bangKe.ngoai_bang_ke.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.so_hd}</td>
-                        <td>{r.ngay}</td>
-                        <td>{r.ten_ban}</td>
-                        <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                    <table className="dt">
+                      <thead>
+                        <tr>
+                          <th>Số HĐ</th>
+                          <th>Ngày</th>
+                          <th>Bên bán</th>
+                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bangKe.ngoai_bang_ke.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.so_hd}</td>
+                            <td>{r.ngay}</td>
+                            <td>{r.ten_ban}</td>
+                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
             )}
+          </>
+        )}
+      </AppModal>
 
-            <div className="modal-actions">
-              <button onClick={() => setBangKe(null)}>Đóng</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PromptDialog
+        open={!!createItemPrompt}
+        title="Tạo mã hàng mới"
+        label={createItemPrompt ? `Mã hàng mới cho: ${createItemPrompt.label}` : "Mã hàng mới"}
+        defaultValue={createItemPrompt?.suggested || ""}
+        onConfirm={confirmCreateItem}
+        onCancel={() => setCreateItemPrompt(null)}
+      />
 
       <EmailSyncModal
         isOpen={emailSyncOpen}

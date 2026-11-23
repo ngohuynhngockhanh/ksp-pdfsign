@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, TqcCertificate, TqcSearchResponse } from "../api";
+import { safeHttpUrl } from "../utils/url";
 
 const panelStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #dbe5e1",
+  background: "var(--panel)",
+  border: "1px solid var(--border)",
   borderRadius: 18,
-  padding: 20,
-  boxShadow: "0 8px 24px rgba(15, 118, 110, 0.06)",
+  padding: "clamp(14px, 2.5vw, 20px)",
+  boxShadow: "var(--shadow)",
+  minWidth: 0,
 };
 
 function provenanceLabel(value: string) {
@@ -17,9 +19,25 @@ function provenanceLabel(value: string) {
 }
 
 function statusColor(value: string) {
-  if (value === "active") return { bg: "#dcfce7", fg: "#166534" };
-  if (value === "expired" || value === "cancelled") return { bg: "#fee2e2", fg: "#991b1b" };
-  return { bg: "#fef3c7", fg: "#92400e" };
+  if (value === "active") {
+    return {
+      bg: "var(--primary-soft)",
+      fg: "var(--primary-dark)",
+      border: "color-mix(in srgb, var(--primary) 35%, var(--border))",
+    };
+  }
+  if (value === "expired" || value === "cancelled") {
+    return {
+      bg: "color-mix(in srgb, var(--red) 12%, var(--panel))",
+      fg: "color-mix(in srgb, var(--red) 75%, var(--ink))",
+      border: "color-mix(in srgb, var(--red) 42%, var(--border))",
+    };
+  }
+  return {
+    bg: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+    fg: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+    border: "color-mix(in srgb, var(--gold) 55%, var(--border))",
+  };
 }
 
 function statusLabel(value: string) {
@@ -219,15 +237,29 @@ export function TqcCertificateLookup() {
   const renderCertificate = (certificate: TqcCertificate) => {
     const color = statusColor(certificate.derived_status);
     return (
-      <article key={certificate.certificate_no} style={{ ...panelStyle, padding: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <strong style={{ color: "#0f766e", fontFamily: "var(--font-mono)" }}>{certificate.certificate_no}</strong>
-          <span style={{ background: color.bg, color: color.fg, borderRadius: 999, padding: "4px 9px", fontSize: 11, fontWeight: 800 }}>
+      <article key={certificate.certificate_no} style={{ ...panelStyle, padding: "clamp(14px, 2.2vw, 18px)", minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <strong style={{ color: "var(--primary-dark)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+            {certificate.certificate_no}
+          </strong>
+          <span
+            style={{
+              background: color.bg,
+              color: color.fg,
+              border: `1px solid ${color.border}`,
+              borderRadius: 999,
+              padding: "4px 9px",
+              fontSize: 11,
+              fontWeight: 800,
+            }}
+          >
             {statusLabel(certificate.derived_status)}
           </span>
         </div>
-        <h3 style={{ margin: "12px 0 7px", color: "#0f172a" }}>{certificate.model || "Chưa có model"}</h3>
-        <div style={{ color: "#475569", fontSize: 13, lineHeight: 1.65 }}>
+        <h3 style={{ margin: "12px 0 7px", color: "var(--ink)", overflowWrap: "anywhere" }}>
+          {certificate.model || "Chưa có model"}
+        </h3>
+        <div style={{ color: "var(--ink-2, var(--text))", fontSize: 13, lineHeight: 1.65 }}>
           <div><strong>Hãng:</strong> {certificate.manufacturer || "-"}</div>
           <div><strong>Doanh nghiệp:</strong> {certificate.applicant_name || "-"}</div>
           <div><strong>Sản phẩm:</strong> {certificate.product_name || "-"}</div>
@@ -235,8 +267,24 @@ export function TqcCertificateLookup() {
           <div><strong>Hiệu lực:</strong> {certificate.issue_date || "-"} → {certificate.expiry_date || "-"}</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, color: "#64748b" }}>{provenanceLabel(certificate.provenance.verification_status)}</span>
-          <button onClick={() => setSelected(certificate)} style={{ border: "1px solid #99f6e4", background: "#f0fdfa", color: "#0f766e", borderRadius: 9, padding: "7px 11px", cursor: "pointer", fontWeight: 800 }}>
+          <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>
+            {provenanceLabel(certificate.provenance.verification_status)}
+          </span>
+          <button
+            type="button"
+            className="ui-btn-chip"
+            onClick={() => setSelected(certificate)}
+            style={{
+              border: "1px solid color-mix(in srgb, var(--primary) 40%, var(--border))",
+              background: "var(--primary-soft)",
+              color: "var(--primary-dark)",
+              borderRadius: 9,
+              padding: "8px 14px",
+              minHeight: 44,
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
             Xem chi tiết
           </button>
         </div>
@@ -252,62 +300,460 @@ export function TqcCertificateLookup() {
     ["Số GCN", certificateNo, setCertificateNo, "C0955191224AE15A3"],
   ];
 
+  const selectedSourceUrl = safeHttpUrl(selected?.provenance.source_url);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section style={{ ...panelStyle, background: "linear-gradient(135deg, #ecfeff, #f0fdf4)" }}>
+      <section style={{ ...panelStyle, background: "linear-gradient(135deg, var(--primary-soft), var(--paper))" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ color: "#0f766e", fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>TQC CNHQ INTELLIGENCE</div>
-            <h2 style={{ margin: "6px 0", color: "#0f172a" }}>Tra cứu chứng nhận theo model</h2>
-            <p style={{ margin: 0, color: "#475569", fontSize: 13, maxWidth: 720 }}>
+          <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+            <div style={{ color: "var(--primary-dark)", fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>
+              TQC CNHQ INTELLIGENCE
+            </div>
+            <h2 style={{ margin: "6px 0", color: "var(--ink)" }}>Tra cứu chứng nhận theo model</h2>
+            <p style={{ margin: 0, color: "var(--ink-2, var(--text))", fontSize: 13, maxWidth: 720, lineHeight: 1.55 }}>
               Exact lookup kiểm tra live với TQC; tìm model/hãng/doanh nghiệp dùng chỉ mục các GCN đã xác minh. Không thấy trong index không có nghĩa là không tồn tại chứng nhận.
             </p>
           </div>
-          <span style={{ background: "#fff", color: "#0f766e", borderRadius: 999, padding: "7px 11px", fontSize: 11, fontWeight: 800 }}>{apiMode || "đang kiểm tra API"}</span>
+          <span
+            style={{
+              background: "var(--panel)",
+              color: "var(--primary-dark)",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+              padding: "7px 12px",
+              fontSize: 11,
+              fontWeight: 800,
+            }}
+          >
+            {apiMode || "đang kiểm tra API"}
+          </span>
         </div>
       </section>
 
       <section style={panelStyle}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
           {fields.map(([label, value, setter, placeholder]) => (
-            <label key={String(label)} style={{ display: "flex", flexDirection: "column", gap: 5, color: "#475569", fontSize: 12, fontWeight: 800 }}>
+            <label
+              key={String(label)}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 5,
+                color: "var(--muted)",
+                fontSize: 12,
+                fontWeight: 800,
+                minWidth: 0,
+              }}
+            >
               {label}
-              <input value={value} onChange={(event) => setter(event.target.value)} placeholder={placeholder} style={{ border: "1px solid #cbd5e1", borderRadius: 9, padding: "10px 11px", fontSize: 13 }} />
+              <input
+                className="ui-input"
+                value={value}
+                onChange={(event) => setter(event.target.value)}
+                placeholder={placeholder}
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  border: "1px solid var(--border-strong, var(--border))",
+                  borderRadius: 9,
+                  padding: "10px 11px",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
+              />
             </label>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <label style={{ fontSize: 12, color: "#475569", fontWeight: 800 }}>Trạng thái&nbsp;
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 9px" }}>
-              <option value="">Tất cả</option><option value="active">Còn hiệu lực</option><option value="expired">Hết hiệu lực</option><option value="cancelled">Đã hủy</option><option value="unknown">Chưa xác định</option>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              fontSize: 12,
+              color: "var(--muted)",
+              fontWeight: 800,
+              flex: "0 1 180px",
+              minWidth: 140,
+            }}
+          >
+            Trạng thái
+            <select
+              className="ui-select"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              style={{
+                border: "1px solid var(--border-strong, var(--border))",
+                borderRadius: 8,
+                padding: "8px 10px",
+                background: "var(--panel)",
+                color: "var(--ink)",
+              }}
+            >
+              <option value="">Tất cả</option>
+              <option value="active">Còn hiệu lực</option>
+              <option value="expired">Hết hiệu lực</option>
+              <option value="cancelled">Đã hủy</option>
+              <option value="unknown">Chưa xác định</option>
             </select>
           </label>
-          <label style={{ fontSize: 12, color: "#475569", fontWeight: 800 }}>Có hiệu lực ngày&nbsp;<input aria-label="Có hiệu lực ngày" type="date" value={validOn} onChange={(event) => setValidOn(event.target.value)} style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "7px 9px" }} /></label>
-          <button onClick={() => search(1)} disabled={loading} style={{ background: "#0f766e", color: "#fff", border: 0, borderRadius: 10, padding: "10px 16px", cursor: "pointer", fontWeight: 900 }}>{loading ? "Đang tìm..." : "Tìm trong index"}</button>
-          <button onClick={lookupExact} disabled={loading} style={{ background: "#0f172a", color: "#fff", border: 0, borderRadius: 10, padding: "10px 16px", cursor: "pointer", fontWeight: 900 }}>Kiểm tra số GCN live</button>
-          <label style={{ fontSize: 12, color: "#475569" }}><input type="checkbox" checked={refresh} onChange={(event) => setRefresh(event.target.checked)} /> Làm mới cache</label>
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              fontSize: 12,
+              color: "var(--muted)",
+              fontWeight: 800,
+              flex: "0 1 180px",
+              minWidth: 140,
+            }}
+          >
+            Có hiệu lực ngày
+            <input
+              className="ui-input"
+              aria-label="Có hiệu lực ngày"
+              type="date"
+              value={validOn}
+              onChange={(event) => setValidOn(event.target.value)}
+              style={{
+                border: "1px solid var(--border-strong, var(--border))",
+                borderRadius: 8,
+                padding: "8px 10px",
+                background: "var(--panel)",
+                color: "var(--ink)",
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => search(1)}
+            disabled={loading}
+            style={{
+              background: "var(--primary)",
+              color: "var(--panel)",
+              border: 0,
+              borderRadius: 10,
+              padding: "10px 16px",
+              minHeight: 44,
+              cursor: "pointer",
+              fontWeight: 900,
+            }}
+          >
+            {loading ? "Đang tìm..." : "Tìm trong index"}
+          </button>
+          <button
+            type="button"
+            onClick={lookupExact}
+            disabled={loading}
+            style={{
+              background: "var(--ink)",
+              color: "var(--panel)",
+              border: 0,
+              borderRadius: 10,
+              padding: "10px 16px",
+              minHeight: 44,
+              cursor: "pointer",
+              fontWeight: 900,
+            }}
+          >
+            Kiểm tra số GCN live
+          </button>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 44,
+              fontSize: 12,
+              color: "var(--ink-2, var(--text))",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={refresh}
+              onChange={(event) => setRefresh(event.target.checked)}
+            />
+            Làm mới cache
+          </label>
         </div>
       </section>
 
       <section style={panelStyle}>
-        <h3 style={{ margin: "0 0 6px", color: "#0f172a" }}>Nhập dữ liệu hợp pháp để mở rộng index</h3>
-        <p style={{ margin: "0 0 10px", color: "#64748b", fontSize: 12 }}>Dán mỗi dòng một số GCN hoặc QR URL chính thức của TQC, hoặc upload CSV có cột `certificate_no`/`qr_url`.</p>
-        <textarea aria-label="Danh sách GCN hoặc QR TQC" value={importText} onChange={(event) => { setImportText(event.target.value); setImportReady(false); }} rows={4} placeholder="C0955191224AE15A3\nhttps://data-cnhq.tqc.gov.vn/?q=..." style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 10, padding: 11, fontSize: 13, resize: "vertical" }} />
-        {importReady && <div style={{ marginTop: 8, padding: 10, borderRadius: 9, background: "#f8fafc", color: "#475569", fontSize: 12 }}>Xem trước: {previewEntries.length} entry. {previewEntries.slice(0, 3).map((entry) => entry.certificate_no || entry.qr_input).join(" · ")}{previewEntries.length > 3 ? " · ..." : ""}</div>}
-        {pendingCsv && <div style={{ marginTop: 8, padding: 10, borderRadius: 9, background: "#f8fafc", color: "#475569", fontSize: 12 }}>CSV chờ import: {pendingCsv.name} ({Math.ceil(pendingCsv.size / 1024)} KB)</div>}
+        <h3 style={{ margin: "0 0 6px", color: "var(--ink)" }}>Nhập dữ liệu hợp pháp để mở rộng index</h3>
+        <p style={{ margin: "0 0 10px", color: "var(--muted)", fontSize: 12 }}>
+          Dán mỗi dòng một số GCN hoặc QR URL chính thức của TQC, hoặc upload CSV có cột `certificate_no`/`qr_url`.
+        </p>
+        <textarea
+          className="ui-textarea"
+          aria-label="Danh sách GCN hoặc QR TQC"
+          value={importText}
+          onChange={(event) => {
+            setImportText(event.target.value);
+            setImportReady(false);
+          }}
+          rows={4}
+          placeholder="C0955191224AE15A3\nhttps://data-cnhq.tqc.gov.vn/?q=..."
+          style={{
+            width: "100%",
+            minWidth: 0,
+            border: "1px solid var(--border-strong, var(--border))",
+            borderRadius: 10,
+            padding: 11,
+            resize: "vertical",
+            background: "var(--panel)",
+            color: "var(--ink)",
+          }}
+        />
+        {importReady && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: 10,
+              borderRadius: 9,
+              background: "var(--surface-subtle, var(--paper))",
+              color: "var(--ink-2, var(--text))",
+              border: "1px solid var(--border)",
+              fontSize: 12,
+              overflowWrap: "anywhere",
+            }}
+          >
+            Xem trước: {previewEntries.length} entry.{" "}
+            {previewEntries.slice(0, 3).map((entry) => entry.certificate_no || entry.qr_input).join(" · ")}
+            {previewEntries.length > 3 ? " · ..." : ""}
+          </div>
+        )}
+        {pendingCsv && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: 10,
+              borderRadius: 9,
+              background: "var(--surface-subtle, var(--paper))",
+              color: "var(--ink-2, var(--text))",
+              border: "1px solid var(--border)",
+              fontSize: 12,
+            }}
+          >
+            CSV chờ import: {pendingCsv.name} ({Math.ceil(pendingCsv.size / 1024)} KB)
+          </div>
+        )}
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-          {!importReady ? <button onClick={() => setImportReady(true)} disabled={importing || !previewEntries.length} style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 15px", cursor: "pointer", fontWeight: 900 }}>Xem trước dữ liệu dán</button> : <button onClick={importPastedEntries} disabled={importing} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 10, padding: "10px 15px", cursor: "pointer", fontWeight: 900 }}>{importing ? "Đang import..." : `Xác nhận import ${previewEntries.length} entry`}</button>}
-          <label style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 10, padding: "9px 12px", cursor: "pointer", fontWeight: 800, fontSize: 12 }}>
+          {!importReady ? (
+            <button
+              type="button"
+              className="ui-btn-chip"
+              onClick={() => setImportReady(true)}
+              disabled={importing || !previewEntries.length}
+              style={{
+                background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                color: "var(--ink)",
+                border: "1px solid color-mix(in srgb, var(--gold) 60%, var(--border))",
+                borderRadius: 10,
+                padding: "10px 15px",
+                minHeight: 44,
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Xem trước dữ liệu dán
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={importPastedEntries}
+              disabled={importing}
+              style={{
+                background: "var(--primary)",
+                color: "var(--panel)",
+                border: 0,
+                borderRadius: 10,
+                padding: "10px 15px",
+                minHeight: 44,
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              {importing ? "Đang import..." : `Xác nhận import ${previewEntries.length} entry`}
+            </button>
+          )}
+          <label
+            className="ui-btn-chip"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+              color: "var(--ink)",
+              border: "1px solid color-mix(in srgb, var(--gold) 60%, var(--border))",
+              borderRadius: 10,
+              padding: "10px 14px",
+              minHeight: 44,
+              cursor: "pointer",
+              fontWeight: 800,
+              fontSize: 12,
+            }}
+          >
             Chọn CSV
-            <input type="file" accept=".csv,text/csv" onChange={(event) => setPendingCsv(event.target.files?.[0] || null)} style={{ display: "none" }} />
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => setPendingCsv(event.target.files?.[0] || null)}
+              style={{ display: "none" }}
+            />
           </label>
-          {pendingCsv && <button onClick={() => importCsv(pendingCsv)} disabled={importing} style={{ background: "#f97316", color: "#fff", border: 0, borderRadius: 10, padding: "10px 15px", cursor: "pointer", fontWeight: 900 }}>Xác nhận import CSV</button>}
+          {pendingCsv && (
+            <button
+              type="button"
+              onClick={() => importCsv(pendingCsv)}
+              disabled={importing}
+              style={{
+                background: "var(--primary)",
+                color: "var(--panel)",
+                border: 0,
+                borderRadius: 10,
+                padding: "10px 15px",
+                minHeight: 44,
+                cursor: "pointer",
+                fontWeight: 900,
+              }}
+            >
+              Xác nhận import CSV
+            </button>
+          )}
         </div>
       </section>
 
-      {message && <div style={{ background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa", borderRadius: 12, padding: "11px 13px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><span>{message}</span>{failedImportJobId !== null && <button onClick={retryCsvImport} disabled={importing} style={{ background: "#9a3412", color: "#fff", border: 0, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontWeight: 800 }}>{importing ? "Đang thử lại..." : "Thử lại import CSV"}</button>}</div>}
-      {result && <section><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, color: "#64748b", fontSize: 12 }}><strong>{result.total} bản ghi trong local index</strong><span>{result.index_last_updated_at ? `Cập nhật ${result.index_last_updated_at}` : "Chưa có dữ liệu"}</span></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>{result.items.map(renderCertificate)}</div>{result.total > result.page_size && <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 14 }}><button disabled={page <= 1 || loading} onClick={() => search(page - 1)}>Trang trước</button><span style={{ fontSize: 12, color: "#64748b" }}>Trang {page}/{Math.ceil(result.total / result.page_size)}</span><button disabled={page >= Math.ceil(result.total / result.page_size) || loading} onClick={() => search(page + 1)}>Trang sau</button></div>}</section>}
-      {selected && <section style={{ ...panelStyle, borderColor: "#5eead4" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><h3 style={{ margin: 0, color: "#0f172a" }}>Chi tiết {selected.certificate_no}</h3><button onClick={() => setSelected(null)} style={{ border: 0, background: "transparent", cursor: "pointer", color: "#64748b" }}>Đóng</button></div>{renderCertificate(selected)}<div style={{ marginTop: 10, fontSize: 11, color: "#64748b", wordBreak: "break-all" }}>Nguồn: {selected.provenance.source_url || "local index"}</div></section>}
+      {message && (
+        <div
+          style={{
+            background: "color-mix(in srgb, var(--gold) 16%, var(--panel))",
+            color: "var(--ink)",
+            border: "1px solid color-mix(in srgb, var(--gold) 58%, var(--border))",
+            borderRadius: 12,
+            padding: "11px 14px",
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>{message}</span>
+          {failedImportJobId !== null && (
+            <button
+              type="button"
+              className="ui-btn-chip"
+              onClick={retryCsvImport}
+              disabled={importing}
+              style={{
+                background: "var(--ink)",
+                color: "var(--panel)",
+                border: 0,
+                borderRadius: 8,
+                padding: "8px 14px",
+                minHeight: 44,
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              {importing ? "Đang thử lại..." : "Thử lại import CSV"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <section>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              marginBottom: 10,
+              color: "var(--muted)",
+              fontSize: 12,
+            }}
+          >
+            <strong>{result.total} bản ghi trong local index</strong>
+            <span>{result.index_last_updated_at ? `Cập nhật ${result.index_last_updated_at}` : "Chưa có dữ liệu"}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14 }}>
+            {result.items.map(renderCertificate)}
+          </div>
+          {result.total > result.page_size && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="ui-btn-chip"
+                disabled={page <= 1 || loading}
+                onClick={() => search(page - 1)}
+                style={{ minHeight: 44, padding: "8px 14px" }}
+              >
+                Trang trước
+              </button>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                Trang {page}/{Math.ceil(result.total / result.page_size)}
+              </span>
+              <button
+                type="button"
+                className="ui-btn-chip"
+                disabled={page >= Math.ceil(result.total / result.page_size) || loading}
+                onClick={() => search(page + 1)}
+                style={{ minHeight: 44, padding: "8px 14px" }}
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {selected && (
+        <section style={{ ...panelStyle, borderColor: "var(--primary)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <h3 style={{ margin: 0, color: "var(--ink)", overflowWrap: "anywhere" }}>
+              Chi tiết {selected.certificate_no}
+            </h3>
+            <button
+              type="button"
+              className="ui-btn-chip"
+              onClick={() => setSelected(null)}
+              style={{
+                border: "1px solid var(--border-strong, var(--border))",
+                background: "var(--surface-subtle, var(--paper))",
+                color: "var(--ink)",
+                borderRadius: 9,
+                padding: "8px 14px",
+                minHeight: 44,
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              Đóng
+            </button>
+          </div>
+          {renderCertificate(selected)}
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)", wordBreak: "break-all" }}>
+            Nguồn:{" "}
+            {selectedSourceUrl ? (
+              <a
+                href={selectedSourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--primary-dark)", fontWeight: 700 }}
+              >
+                {selectedSourceUrl}
+              </a>
+            ) : (
+              selected.provenance.source_url || "local index"
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

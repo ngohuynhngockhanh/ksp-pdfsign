@@ -10,6 +10,7 @@ import {
   type Customer,
   type CustomerInvoice,
 } from "../api";
+import { FormGrid } from "../components/ui";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
@@ -86,11 +87,11 @@ export function Settings({
         fetchSpxSettings().catch(() => null),
       ]);
       setS(settings);
-      setSyncStatus(status);
-      setUnmatched(unmatchedRows);
-      setCustomers(customerRows);
-      if (zohoCfg) setZohoSettings(zohoCfg);
-      if (spxCfg) setSpxSettings(spxCfg);
+      setSyncStatus(status && typeof status.total === "number" ? status : null);
+      setUnmatched(Array.isArray(unmatchedRows) ? unmatchedRows : []);
+      setCustomers(Array.isArray(customerRows) ? customerRows : []);
+      if (zohoCfg && typeof zohoCfg.mode === "string") setZohoSettings(zohoCfg);
+      if (spxCfg && typeof spxCfg.spx_username === "string") setSpxSettings(spxCfg);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -375,6 +376,7 @@ export function Settings({
         <label>
           Endpoint (base URL)
           <input
+            className="ui-input"
             style={{ width: "100%" }}
             value={s.ai_base_url}
             placeholder="http://127.0.0.1:20128/v1"
@@ -384,6 +386,7 @@ export function Settings({
         <label>
           API key {s.ai_api_key_set && <span className="chip green sm">đã đặt</span>}
           <input
+            className="ui-input"
             style={{ width: "100%" }}
             type="password"
             value={aiKey}
@@ -391,16 +394,17 @@ export function Settings({
             onChange={(e) => setAiKey(e.target.value)}
           />
         </label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        <FormGrid cols={3}>
+          <label>
             Model
-            <input value={s.ai_model} onChange={(e) => set("ai_model", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.ai_model} onChange={(e) => set("ai_model", e.target.value)} />
           </label>
           <label>
             Max tokens
             <input
+              className="ui-input"
               type="number"
-              style={{ width: 100 }}
+              style={{ width: "100%" }}
               value={s.ai_max_tokens}
               onChange={(e) => set("ai_max_tokens", Number(e.target.value) || 0)}
             />
@@ -408,21 +412,22 @@ export function Settings({
           <label>
             Timeout (s)
             <input
+              className="ui-input"
               type="number"
-              style={{ width: 90 }}
+              style={{ width: "100%" }}
               value={s.ai_timeout}
               onChange={(e) => set("ai_timeout", Number(e.target.value) || 0)}
             />
           </label>
-        </div>
+        </FormGrid>
         <div className="ai-test-console">
           <div className="ai-test-samples"><span>Lệnh mẫu:</span>
-            <button type="button" onClick={() => setAiPrompt("Trả lời đúng một từ: OK")}>Ping</button>
-            <button type="button" onClick={() => setAiPrompt("Tóm tắt trong 3 gạch đầu dòng lợi ích của hệ thống CRM cho doanh nghiệp nhỏ.")}>Tóm tắt</button>
-            <button type="button" onClick={() => setAiPrompt("Trả về đúng JSON hợp lệ gồm hai khóa: status là ok và model là tên model bạn đang chạy.")}>Test JSON</button>
+            <button type="button" className="ui-btn-chip" onClick={() => setAiPrompt("Trả lời đúng một từ: OK")}>Ping</button>
+            <button type="button" className="ui-btn-chip" onClick={() => setAiPrompt("Tóm tắt trong 3 gạch đầu dòng lợi ích của hệ thống CRM cho doanh nghiệp nhỏ.")}>Tóm tắt</button>
+            <button type="button" className="ui-btn-chip" onClick={() => setAiPrompt("Trả về đúng JSON hợp lệ gồm hai khóa: status là ok và model là tên model bạn đang chạy.")}>Test JSON</button>
           </div>
-          <label>Prompt chạy thử<textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Nhập câu hỏi hoặc lệnh muốn thử với LLM…" /></label>
-          <div className="ai-test-run"><button className="btn-sm" disabled={busy || !aiPrompt.trim()} onClick={testAi}>{busy ? "Đang gọi…" : "🧪 Lưu & chạy prompt"}</button>{aiTestMsg && <span className="muted">{aiTestMsg}</span>}</div>
+          <label>Prompt chạy thử<textarea className="ui-textarea" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Nhập câu hỏi hoặc lệnh muốn thử với LLM…" /></label>
+          <div className="ai-test-run"><button type="button" className="btn-sm ui-btn-chip" disabled={busy || !aiPrompt.trim()} onClick={testAi}>{busy ? "Đang gọi…" : "🧪 Lưu & chạy prompt"}</button>{aiTestMsg && <span className="muted">{aiTestMsg}</span>}</div>
           {aiReply && <pre className="ai-test-reply">{aiReply}</pre>}
         </div>
       </section>
@@ -430,26 +435,26 @@ export function Settings({
       {/* ---- TRAINING ---- */}
       <section className="panel setting-card setting-ai">
         <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="ai" /></span><div><span className="setting-card-kicker">HERMES TRAINING</span><h3>Giới hạn nhịp hỏi</h3><p>Cấu hình ngay trên KSP, không cần sửa code</p></div><span className="setting-state on">{s.training_rate_limit_per_minute}/{s.training_rate_window_seconds}s</span></header>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1, minWidth: 180 }}>
+        <FormGrid cols={2}>
+          <label>
             Training nội bộ + Messenger (lần)
-            <input type="number" min={1} max={10000} value={s.training_rate_limit_per_minute} onChange={(e) => set("training_rate_limit_per_minute", Math.max(1, Number(e.target.value) || 1))} />
+            <input className="ui-input" style={{ width: "100%" }} type="number" min={1} max={10000} value={s.training_rate_limit_per_minute} onChange={(e) => set("training_rate_limit_per_minute", Math.max(1, Number(e.target.value) || 1))} />
           </label>
-          <label style={{ width: 150 }}>
+          <label>
             Cửa sổ (giây)
-            <input type="number" min={1} max={3600} value={s.training_rate_window_seconds} onChange={(e) => set("training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
+            <input className="ui-input" style={{ width: "100%" }} type="number" min={1} max={3600} value={s.training_rate_window_seconds} onChange={(e) => set("training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
           </label>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1, minWidth: 180 }}>
+        </FormGrid>
+        <FormGrid cols={2} style={{ marginTop: 8 }}>
+          <label>
             Trợ lý công khai iNut.vn (lần)
-            <input type="number" min={1} max={10000} value={s.public_training_rate_limit} onChange={(e) => set("public_training_rate_limit", Math.max(1, Number(e.target.value) || 1))} />
+            <input className="ui-input" style={{ width: "100%" }} type="number" min={1} max={10000} value={s.public_training_rate_limit} onChange={(e) => set("public_training_rate_limit", Math.max(1, Number(e.target.value) || 1))} />
           </label>
-          <label style={{ width: 150 }}>
+          <label>
             Cửa sổ công khai (giây)
-            <input type="number" min={1} max={3600} value={s.public_training_rate_window_seconds} onChange={(e) => set("public_training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
+            <input className="ui-input" style={{ width: "100%" }} type="number" min={1} max={3600} value={s.public_training_rate_window_seconds} onChange={(e) => set("public_training_rate_window_seconds", Math.max(1, Number(e.target.value) || 1))} />
           </label>
-        </div>
+        </FormGrid>
         <p className="muted">Mặc định đã đặt 100 lần/phút. Trang Training hiển thị số đang chạy, hoàn tất, lỗi và bị từ chối.</p>
       </section>
 
@@ -464,52 +469,55 @@ export function Settings({
           />
           Bật đồng bộ NAS
         </label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        <FormGrid cols={2}>
+          <label>
             Host / IP
-            <input value={s.nas_host} onChange={(e) => set("nas_host", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.nas_host} onChange={(e) => set("nas_host", e.target.value)} />
           </label>
           <label>
             Share
-            <input style={{ width: 120 }} value={s.nas_share} onChange={(e) => set("nas_share", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.nas_share} onChange={(e) => set("nas_share", e.target.value)} />
           </label>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        </FormGrid>
+        <FormGrid cols={2} style={{ marginTop: 8 }}>
+          <label>
             User
-            <input value={s.nas_user} onChange={(e) => set("nas_user", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.nas_user} onChange={(e) => set("nas_user", e.target.value)} />
           </label>
-          <label style={{ flex: 1 }}>
+          <label>
             Password {s.nas_password_set && <span className="chip green sm">đã đặt</span>}
             <input
+              className="ui-input"
+              style={{ width: "100%" }}
               type="password"
               value={nasPass}
               placeholder={s.nas_password_set ? "•••• (để trống = giữ nguyên)" : "nhập mật khẩu"}
               onChange={(e) => setNasPass(e.target.value)}
             />
           </label>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        </FormGrid>
+        <FormGrid cols={2} style={{ marginTop: 8 }}>
+          <label>
             Thư mục gốc (base path)
-            <input value={s.nas_base_path} onChange={(e) => set("nas_base_path", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.nas_base_path} onChange={(e) => set("nas_base_path", e.target.value)} />
           </label>
           <label>
             Timeout (s)
             <input
+              className="ui-input"
               type="number"
-              style={{ width: 90 }}
+              style={{ width: "100%" }}
               value={s.nas_timeout}
               onChange={(e) => set("nas_timeout", Number(e.target.value) || 0)}
             />
           </label>
-        </div>
+        </FormGrid>
         <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn-sm" onClick={testNas}>
+          <button type="button" className="btn-sm ui-btn-chip" onClick={testNas}>
             🧪 Test kết nối
           </button>
           {nasTestMsg && <span className="muted">{nasTestMsg}</span>}
-          <button className="btn-sm ghost" onClick={loadDisk}>
+          <button type="button" className="btn-sm ghost ui-btn-chip" onClick={loadDisk}>
             📊 Xem dung lượng
           </button>
         </div>
@@ -517,7 +525,7 @@ export function Settings({
           <div className="warn-banner" style={{ marginTop: 8 }}>
             {disk.ok ? (
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 13 }}>
                   <span>
                     Đã dùng <b>{vnd(disk.used_gb ?? 0)} GB</b> / {vnd(disk.total_gb ?? 0)} GB
                   </span>
@@ -529,7 +537,7 @@ export function Settings({
                   style={{
                     height: 12,
                     borderRadius: 6,
-                    background: "#e5e8ec",
+                    background: "var(--border)",
                     marginTop: 6,
                     overflow: "hidden",
                   }}
@@ -538,7 +546,7 @@ export function Settings({
                     style={{
                       width: `${Math.min(100, disk.percent_used ?? 0)}%`,
                       height: "100%",
-                      background: (disk.percent_used ?? 0) > 90 ? "#c0392b" : "#2d8f4e",
+                      background: (disk.percent_used ?? 0) > 90 ? "var(--red)" : "var(--green)",
                     }}
                   />
                 </div>
@@ -566,22 +574,24 @@ export function Settings({
         </label>
         <label>
           Website
-          <input style={{ width: "100%" }} value={s.ihoadon_base_url} onChange={(e) => set("ihoadon_base_url", e.target.value)} />
+          <input className="ui-input" style={{ width: "100%" }} value={s.ihoadon_base_url} onChange={(e) => set("ihoadon_base_url", e.target.value)} />
         </label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        <FormGrid cols={2}>
+          <label>
             Mã số thuế
-            <input value={s.ihoadon_tax_code} onChange={(e) => set("ihoadon_tax_code", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.ihoadon_tax_code} onChange={(e) => set("ihoadon_tax_code", e.target.value)} />
           </label>
-          <label style={{ flex: 1 }}>
+          <label>
             Tên đăng nhập
-            <input value={s.ihoadon_username} onChange={(e) => set("ihoadon_username", e.target.value)} />
+            <input className="ui-input" style={{ width: "100%" }} value={s.ihoadon_username} onChange={(e) => set("ihoadon_username", e.target.value)} />
           </label>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label style={{ flex: 1 }}>
+        </FormGrid>
+        <FormGrid cols={2} style={{ marginTop: 8 }}>
+          <label>
             Mật khẩu {s.ihoadon_password_set && <span className="chip green sm">đã đặt</span>}
             <input
+              className="ui-input"
+              style={{ width: "100%" }}
               type="password"
               value={ihoadonPass}
               placeholder={s.ihoadon_password_set ? "•••• (để trống = giữ nguyên)" : "nhập mật khẩu iHOADON"}
@@ -590,15 +600,15 @@ export function Settings({
           </label>
           <label>
             Timeout (s)
-            <input type="number" style={{ width: 90 }} value={s.ihoadon_timeout} onChange={(e) => set("ihoadon_timeout", Number(e.target.value) || 30)} />
+            <input className="ui-input" type="number" style={{ width: "100%" }} value={s.ihoadon_timeout} onChange={(e) => set("ihoadon_timeout", Number(e.target.value) || 30)} />
           </label>
-        </div>
+        </FormGrid>
         <div className="setting-card-action">
           <span>{ihoadonTestMsg || (syncStatus ? `${syncStatus.total} hóa đơn cổng khách · ${syncStatus.unmatched} chưa ghép` : "Chưa đồng bộ cổng khách hàng.")}</span>
-          <div className="setting-action-buttons"><button type="button" disabled={busy} onClick={testIhoadon}>Test kết nối</button><button type="button" disabled={busy || syncStatus?.job?.status === "running"} onClick={syncIhoadon}>{syncStatus?.job?.status === "running" ? "Đang đồng bộ…" : "Đồng bộ cổng khách"}</button><button className="primary" disabled={busy} onClick={save}>{busy ? "Đang lưu…" : "Lưu kết nối iHOADON"}</button></div>
+          <div className="setting-action-buttons"><button type="button" disabled={busy} onClick={testIhoadon}>Test kết nối</button><button type="button" disabled={busy || syncStatus?.job?.status === "running"} onClick={syncIhoadon}>{syncStatus?.job?.status === "running" ? "Đang đồng bộ…" : "Đồng bộ cổng khách"}</button><button type="button" className="primary" disabled={busy} onClick={save}>{busy ? "Đang lưu…" : "Lưu kết nối iHOADON"}</button></div>
         </div>
         {syncStatus?.job && <div className="muted" style={{ marginTop: 8 }}>Lần gần nhất: {syncStatus.job.status} · {new Date(syncStatus.job.started_at).toLocaleString("vi-VN")} · {syncStatus.job.stats.seen ?? 0} hóa đơn, {syncStatus.job.stats.errors ?? 0} lỗi file.</div>}
-        {unmatched.length > 0 && <div className="ihoadon-unmatched"><b>Hóa đơn chưa ghép MST ({unmatched.length})</b>{unmatched.slice(0, 20).map((inv) => <div className="ihoadon-unmatched-row" key={inv.id}><span>{inv.invoice_date} · {inv.invoice_series} {inv.invoice_number}<small>{inv.buyer_name} · MST {inv.buyer_tax_code || "trống"}</small></span><select defaultValue="" onChange={(e) => assignInvoice(inv.id, Number(e.target.value))}><option value="">Chọn khách hàng…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.tax_code}</option>)}</select></div>)}</div>}
+        {unmatched.length > 0 && <div className="ihoadon-unmatched"><b>Hóa đơn chưa ghép MST ({unmatched.length})</b>{unmatched.slice(0, 20).map((inv) => <div className="ihoadon-unmatched-row" key={inv.id}><span>{inv.invoice_date} · {inv.invoice_series} {inv.invoice_number}<small>{inv.buyer_name} · MST {inv.buyer_tax_code || "trống"}</small></span><select className="ui-select" defaultValue="" onChange={(e) => assignInvoice(inv.id, Number(e.target.value))}><option value="">Chọn khách hàng…</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.tax_code}</option>)}</select></div>)}</div>}
       </section>
 
       {/* ---- Zoho Mail (Dong bo hoa don) ---- */}
@@ -626,7 +636,7 @@ export function Settings({
           </label>
 
           {/* Chon Mode */}
-          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
               <input
                 type="radio"
@@ -649,10 +659,11 @@ export function Settings({
 
           {zohoSettings.mode === "rest_api" ? (
             <div>
-              <div className="form-grid-2">
+              <FormGrid cols={2}>
                 <label>
                   Client ID
                   <input
+                    className="ui-input"
                     value={zohoSettings.client_id}
                     placeholder="1000.XXXXXXXXXX..."
                     onChange={(e) => setZohoSettings({ ...zohoSettings, client_id: e.target.value })}
@@ -661,18 +672,20 @@ export function Settings({
                 <label>
                   Client Secret {zohoSettings.has_client_secret && <span className="chip green sm">đã đặt</span>}
                   <input
+                    className="ui-input"
                     type="password"
                     value={zohoClientSecret}
                     placeholder={zohoSettings.has_client_secret ? "•••• (để trống = giữ nguyên)" : "nhập Client Secret"}
                     onChange={(e) => setZohoClientSecret(e.target.value)}
                   />
                 </label>
-              </div>
+              </FormGrid>
 
-              <div className="form-grid-2" style={{ marginTop: 8 }}>
+              <FormGrid cols={2} style={{ marginTop: 8 }}>
                 <label>
                   Mã Code một lần (Grant Token) {zohoSettings.has_refresh_token && <span className="chip green sm">Đã có Refresh Token vĩnh viễn</span>}
                   <input
+                    className="ui-input"
                     value={zohoGrantToken}
                     placeholder={zohoSettings.has_refresh_token ? "Đã cấp token (nhập code mới nếu cấp lại)" : "1000.xxxx (Tạo từ Zoho Console -> Generate Code)"}
                     onChange={(e) => setZohoGrantToken(e.target.value)}
@@ -681,22 +694,24 @@ export function Settings({
                 <label>
                   Số ngày quét mặc định
                   <input
+                    className="ui-input"
                     type="number"
                     value={zohoSettings.days}
                     onChange={(e) => setZohoSettings({ ...zohoSettings, days: Number(e.target.value) || 30 })}
                   />
                 </label>
-              </div>
+              </FormGrid>
 
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: 10, fontSize: 12, color: "#334155", marginTop: 10, lineHeight: 1.5 }}>
-                <b>💡 Hướng dẫn tạo miễn phí:</b> Truy cập <a href="https://api-console.zoho.com/" target="_blank" rel="noreferrer" style={{ color: "#0284c7", fontWeight: 600 }}>Zoho Developer Console (api-console.zoho.com)</a> &rarr; Bấm <b>Add Client</b> &rarr; Chọn <b>Self Client</b> &rarr; Copy <b>Client ID</b> & <b>Client Secret</b> &rarr; Vào tab <b>Generate Code</b> nhập Scope <code style={{ background: "#e2e8f0", padding: "1px 4px", borderRadius: 3 }}>ZohoMail.messages.READ,ZohoMail.accounts.READ</code> (10 minutes) rồi dán mã Code vào đây &rarr; Bấm <b>Test kết nối</b>.
+              <div style={{ background: "var(--surface-subtle)", border: "1px solid var(--border)", borderRadius: 6, padding: 10, fontSize: 12, color: "var(--ink-2)", marginTop: 10, lineHeight: 1.5 }}>
+                <b>💡 Hướng dẫn tạo miễn phí:</b> Truy cập <a href="https://api-console.zoho.com/" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary-dark)", fontWeight: 600 }}>Zoho Developer Console (api-console.zoho.com)</a> &rarr; Bấm <b>Add Client</b> &rarr; Chọn <b>Self Client</b> &rarr; Copy <b>Client ID</b> & <b>Client Secret</b> &rarr; Vào tab <b>Generate Code</b> nhập Scope <code style={{ background: "var(--primary-soft)", padding: "1px 4px", borderRadius: 3 }}>ZohoMail.messages.READ,ZohoMail.accounts.READ</code> (10 minutes) rồi dán mã Code vào đây &rarr; Bấm <b>Test kết nối</b>.
               </div>
             </div>
           ) : (
-            <div className="form-grid-2">
+            <FormGrid cols={2}>
               <label>
                 Máy chủ IMAP
                 <input
+                  className="ui-input"
                   value={zohoSettings.server}
                   placeholder="imappro.zoho.com"
                   onChange={(e) => setZohoSettings({ ...zohoSettings, server: e.target.value })}
@@ -705,6 +720,7 @@ export function Settings({
               <label>
                 Cổng SSL
                 <input
+                  className="ui-input"
                   type="number"
                   value={zohoSettings.port}
                   placeholder="993"
@@ -714,6 +730,7 @@ export function Settings({
               <label>
                 Tài khoản Email
                 <input
+                  className="ui-input"
                   value={zohoSettings.username}
                   placeholder="khanhnhn@inut.vn"
                   onChange={(e) => setZohoSettings({ ...zohoSettings, username: e.target.value })}
@@ -722,6 +739,7 @@ export function Settings({
               <label>
                 Mật khẩu ứng dụng (App Password) {zohoSettings.has_password && <span className="chip green sm">đã đặt</span>}
                 <input
+                  className="ui-input"
                   type="password"
                   value={zohoPass}
                   placeholder={zohoSettings.has_password ? "•••• (để trống = giữ nguyên)" : "nhập App Password Zoho"}
@@ -731,6 +749,7 @@ export function Settings({
               <label>
                 Hộp thư (Mailbox)
                 <input
+                  className="ui-input"
                   value={zohoSettings.mailbox}
                   placeholder="INBOX"
                   onChange={(e) => setZohoSettings({ ...zohoSettings, mailbox: e.target.value })}
@@ -739,12 +758,13 @@ export function Settings({
               <label>
                 Số ngày quét mặc định
                 <input
+                  className="ui-input"
                   type="number"
                   value={zohoSettings.days}
                   onChange={(e) => setZohoSettings({ ...zohoSettings, days: Number(e.target.value) || 30 })}
                 />
               </label>
-            </div>
+            </FormGrid>
           )}
 
           <div className="setting-card-action" style={{ marginTop: 12 }}>
@@ -756,7 +776,7 @@ export function Settings({
               <button type="button" disabled={zohoBusy || (zohoSettings.mode === "rest_api" ? (!zohoSettings.has_refresh_token && !zohoRefreshToken && !zohoGrantToken) : !zohoSettings.has_password)} onClick={syncZoho}>
                 {zohoBusy ? "Đang quét…" : "Quét email ngay"}
               </button>
-              <button className="primary" disabled={zohoBusy} onClick={saveZoho}>
+              <button type="button" className="primary" disabled={zohoBusy} onClick={saveZoho}>
                 {zohoBusy ? "Đang lưu…" : "Lưu cấu hình Zoho"}
               </button>
             </div>
@@ -780,10 +800,11 @@ export function Settings({
             </span>
           </header>
 
-          <div className="form-grid-2">
+          <FormGrid cols={2}>
             <label>
               Tài khoản / SĐT Đăng nhập SPX
               <input
+                className="ui-input"
                 value={spxSettings.spx_username}
                 placeholder="0345296757"
                 onChange={(e) => setSpxSettings({ ...spxSettings, spx_username: e.target.value })}
@@ -792,6 +813,7 @@ export function Settings({
             <label>
               Mật khẩu SPX {spxSettings.spx_password && <span className="chip green sm">đã lưu AES-128</span>}
               <input
+                className="ui-input"
                 type="password"
                 value={spxPass}
                 placeholder="để trống = giữ nguyên"
@@ -801,6 +823,7 @@ export function Settings({
             <label>
               Shop ID (Tùy chọn)
               <input
+                className="ui-input"
                 value={spxSettings.spx_shop_id}
                 placeholder="Mã Shop trên SPX Portal (nếu có)"
                 onChange={(e) => setSpxSettings({ ...spxSettings, spx_shop_id: e.target.value })}
@@ -809,32 +832,34 @@ export function Settings({
             <label>
               API Token / Secret Key (Tùy chọn) {spxSettings.spx_api_token && <span className="chip green sm">đã có token</span>}
               <input
+                className="ui-input"
                 type="password"
                 value={spxApiToken}
                 placeholder="API Key do SPX cấp (nếu có)"
                 onChange={(e) => setSpxApiToken(e.target.value)}
               />
             </label>
-            <label style={{ gridColumn: "span 2" }}>
+            <label style={{ gridColumn: "1 / -1" }}>
               Session Cookies (SPC_EC / spx_sid / spx_token) {spxSettings.spx_cookies && <span className="chip green sm">đã lưu phiên Live</span>}
               <input
+                className="ui-input"
                 type="password"
                 value={spxCookies}
                 placeholder="Dán chuỗi Cookie từ trình duyệt (để trống = giữ nguyên)"
                 onChange={(e) => setSpxCookies(e.target.value)}
               />
             </label>
-          </div>
+          </FormGrid>
 
-
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
-            <h4 style={{ fontSize: 13, fontWeight: 600, color: "#475569", marginBottom: 8 }}>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+            <h4 style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-2)", marginBottom: 8 }}>
               Thông Tin Kho Người Gửi Mặc Định
             </h4>
-            <div className="form-grid-2">
+            <FormGrid cols={2}>
               <label>
                 Tên Shop / Doanh nghiệp
                 <input
+                  className="ui-input"
                   value={spxSettings.spx_sender_name}
                   placeholder="CÔNG TY CP ĐT & PT CÔNG NGHỆ INUT"
                   onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_name: e.target.value })}
@@ -843,20 +868,22 @@ export function Settings({
               <label>
                 Số điện thoại kho
                 <input
+                  className="ui-input"
                   value={spxSettings.spx_sender_phone}
                   placeholder="0345296757"
                   onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_phone: e.target.value })}
                 />
               </label>
-              <label style={{ gridColumn: "span 2" }}>
+              <label style={{ gridColumn: "1 / -1" }}>
                 Địa chỉ kho lấy hàng
                 <input
+                  className="ui-input"
                   value={spxSettings.spx_sender_address}
                   placeholder="Khu Công Nghệ Cao, TP. Thủ Đức, TP. Hồ Chí Minh"
                   onChange={(e) => setSpxSettings({ ...spxSettings, spx_sender_address: e.target.value })}
                 />
               </label>
-            </div>
+            </FormGrid>
           </div>
 
           <div className="setting-card-action" style={{ marginTop: 12 }}>
@@ -865,7 +892,7 @@ export function Settings({
               <button type="button" disabled={spxBusy} onClick={testSpx}>
                 {spxBusy ? "Đang kiểm tra…" : "Test kết nối SPX"}
               </button>
-              <button className="primary" disabled={spxBusy} onClick={saveSpx}>
+              <button type="button" className="primary" disabled={spxBusy} onClick={saveSpx}>
                 {spxBusy ? "Đang lưu…" : "Lưu cấu hình SPX"}
               </button>
             </div>
@@ -875,14 +902,14 @@ export function Settings({
 
       <section className="panel setting-card setting-mail">
         <header className="setting-card-head"><span className="setting-card-icon"><SettingIcon name="mail" /></span><div><span className="setting-card-kicker">CẢNH BÁO VẬN HÀNH</span><h3>Email SMTP</h3><p>Thông báo khi phiên thuế hết hạn hoặc cron thất bại</p></div><span className={`setting-state ${s.smtp_host && s.smtp_password_set ? "on" : "off"}`}>{s.smtp_host && s.smtp_password_set ? "Đã cấu hình" : "Chưa đủ"}</span></header>
-        <div className="form-grid-2">
-          <label>SMTP host<input value={s.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.gmail.com" /></label>
-          <label>Port<input type="number" value={s.smtp_port} onChange={(e) => set("smtp_port", Number(e.target.value) || 587)} /></label>
-          <label>Tài khoản<input value={s.smtp_username} onChange={(e) => set("smtp_username", e.target.value)} /></label>
-          <label>Mật khẩu {s.smtp_password_set && <span className="chip green sm">đã đặt</span>}<input type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="để trống = giữ nguyên" /></label>
-          <label>Email gửi<input value={s.smtp_from} onChange={(e) => set("smtp_from", e.target.value)} /></label>
-          <label>Email nhận<input value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
-        </div>
+        <FormGrid cols={2}>
+          <label>SMTP host<input className="ui-input" value={s.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.gmail.com" /></label>
+          <label>Port<input className="ui-input" type="number" value={s.smtp_port} onChange={(e) => set("smtp_port", Number(e.target.value) || 587)} /></label>
+          <label>Tài khoản<input className="ui-input" value={s.smtp_username} onChange={(e) => set("smtp_username", e.target.value)} /></label>
+          <label>Mật khẩu {s.smtp_password_set && <span className="chip green sm">đã đặt</span>}<input className="ui-input" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="để trống = giữ nguyên" /></label>
+          <label>Email gửi<input className="ui-input" value={s.smtp_from} onChange={(e) => set("smtp_from", e.target.value)} /></label>
+          <label>Email nhận<input className="ui-input" value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
+        </FormGrid>
       </section>
 
       </div>

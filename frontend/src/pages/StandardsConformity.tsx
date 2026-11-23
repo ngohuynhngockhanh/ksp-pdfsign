@@ -6,6 +6,8 @@ import {
   api,
 } from "../api";
 import { TqcCertificateLookup } from "../components/TqcCertificateLookup";
+import { AppModal, DataView, FormGrid, ResponsiveTabs } from "../components/ui";
+import { safeHttpUrl } from "../utils/url";
 
 interface StandardItem {
   code: string;
@@ -115,8 +117,19 @@ interface GameState {
   quests: GameQuest[];
 }
 
+type StandardsTabId =
+  | "game"
+  | "playbooks"
+  | "emc_guide"
+  | "search"
+  | "hs_lookup"
+  | "cr_generator"
+  | "labs"
+  | "tqc"
+  | "risk_classification";
+
 export function StandardsConformity() {
-  const [activeTab, setActiveTab] = useState<"game" | "playbooks" | "emc_guide" | "search" | "hs_lookup" | "cr_generator" | "labs" | "tqc" | "risk_classification">("game");
+  const [activeTab, setActiveTab] = useState<StandardsTabId>("game");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMinistry, setSelectedMinistry] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -144,7 +157,6 @@ export function StandardsConformity() {
   // Game Gamification State
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeQuestNote, setActiveQuestNote] = useState<{ [id: number]: string }>({});
-  const [showConfetti, setShowConfetti] = useState(false);
 
   // CR Generator State
   const [crForm, setCrForm] = useState({
@@ -263,14 +275,14 @@ export function StandardsConformity() {
   const fetchStats = async () => {
     try {
       const s = await api.standards.getStatistics();
-      setStats(s);
+      if (s && typeof s === "object") setStats(s);
     } catch {}
   };
 
   const fetchRiskStats = async () => {
     try {
       const s = await api.standards.getRiskStatistics();
-      setRiskStats(s);
+      if (s && Array.isArray(s.groups)) setRiskStats(s);
     } catch {}
   };
 
@@ -284,9 +296,9 @@ export function StandardsConformity() {
         page,
         limit: riskCatalogLimit,
       });
-      setRiskCatalog(res.items);
-      setRiskCatalogTotal(res.total);
-      setRiskCatalogPage(res.page);
+      setRiskCatalog(Array.isArray(res?.items) ? res.items : []);
+      setRiskCatalogTotal(typeof res?.total === "number" ? res.total : 0);
+      setRiskCatalogPage(typeof res?.page === "number" ? res.page : page);
     } catch (e: unknown) {
       showToast((e as Error).message || "Lỗi tải danh mục rủi ro", "error");
     } finally {
@@ -304,7 +316,7 @@ export function StandardsConformity() {
         hs_code: isHs ? val : undefined,
         q: !isHs ? val : undefined,
       });
-      setRiskClassifyResult(res);
+      if (res && Array.isArray(res.all_matches)) setRiskClassifyResult(res);
     } catch (e: unknown) {
       showToast((e as Error).message || "Lỗi phân loại rủi ro", "error");
     } finally {
@@ -315,6 +327,7 @@ export function StandardsConformity() {
   const fetchGameState = async () => {
     try {
       const g = await api.standards.getGameState();
+      if (!g || !Array.isArray(g.quests)) return;
       setGameState(g);
       const notes: { [id: number]: string } = {};
       g.quests.forEach((q) => {
@@ -329,9 +342,7 @@ export function StandardsConformity() {
       const note = activeQuestNote[questId] || "";
       const updated = await api.standards.completeGameQuest(questId, note);
       setGameState(updated);
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 4000);
-      showToast(`🎉 CHÚC MỪNG! Đã hoàn thành Ải ${questId} (+500 EXP)!`, "success");
+      showToast(`Hoàn thành Ải ${questId} (+500 EXP) — đã cập nhật tiến độ hợp quy.`, "success");
     } catch (e: any) {
       showToast(e.message || "Lỗi cập nhật tiến độ", "error");
     }
@@ -368,7 +379,12 @@ export function StandardsConformity() {
         category: selectedCategory,
         procedure_type: selectedProcedure,
       });
-      setStandardsList(res);
+      const list = Array.isArray(res)
+        ? res
+        : Array.isArray((res as unknown as { items?: StandardItem[] })?.items)
+          ? (res as unknown as { items: StandardItem[] }).items
+          : [];
+      setStandardsList(list);
     } catch (e: any) {
       showToast(e.message || "Lỗi tra cứu quy chuẩn", "error");
     } finally {
@@ -477,60 +493,85 @@ Thông tin liên hệ của tôi:
   const getMinistryBadge = (ministry: string) => {
     switch (ministry.toUpperCase()) {
       case "BTTTT":
-        return { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "Bộ Thông tin & Truyền thông" };
+        return {
+          bg: "var(--primary-soft)",
+          color: "var(--primary-dark)",
+          border: "color-mix(in srgb, var(--primary) 35%, var(--border))",
+          label: "Bộ Thông tin & Truyền thông",
+        };
       case "BKHCN":
-        return { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0", label: "Bộ Khoa học & Công nghệ" };
+        return {
+          bg: "color-mix(in srgb, var(--green) 14%, var(--panel))",
+          color: "color-mix(in srgb, var(--green) 72%, var(--ink))",
+          border: "color-mix(in srgb, var(--green) 42%, var(--border))",
+          label: "Bộ Khoa học & Công nghệ",
+        };
       case "BTNMT":
-        return { bg: "#f0fdfa", color: "#0f766e", border: "#99f6e4", label: "Bộ Tài nguyên & Môi trường" };
+        return {
+          bg: "var(--primary-soft)",
+          color: "var(--ink)",
+          border: "color-mix(in srgb, var(--primary) 42%, var(--border))",
+          label: "Bộ Tài nguyên & Môi trường",
+        };
       case "BCT":
-        return { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa", label: "Bộ Công Thương" };
+        return {
+          bg: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+          color: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+          border: "color-mix(in srgb, var(--gold) 55%, var(--border))",
+          label: "Bộ Công Thương",
+        };
       default:
-        return { bg: "#f8fafc", color: "#475569", border: "#e2e8f0", label: ministry };
+        return {
+          bg: "var(--surface-subtle, var(--paper))",
+          color: "var(--ink-2, var(--text))",
+          border: "var(--border)",
+          label: ministry,
+        };
     }
   };
 
   const currentPlaybook = playbooks.find((p) => p.id === selectedPlaybookId) || playbooks[0];
+  const riskCircularPdfUrl = safeHttpUrl("/api/standards/risk-classification/pdf");
+  const detailPdfUrl = detailStandard ? safeHttpUrl(api.standards.getStandardPdfUrl(detailStandard.code)) : undefined;
+
+  void stats;
+  void allHsMappings;
+  void labs;
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: "1400px", margin: "0 auto", position: "relative" }}>
-      {/* Confetti Firework Animation Effect */}
-      {showConfetti && (
-        <div
-          style={{
-            position: "fixed",
-            top: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 10000,
-            background: "linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #8b5cf6 100%)",
-            color: "#fff",
-            padding: "16px 36px",
-            borderRadius: "999px",
-            fontWeight: 900,
-            fontSize: "18px",
-            boxShadow: "0 12px 36px rgba(0,0,0,0.3)",
-            animation: "toastIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both",
-          }}
-        >
-          🎉 LEVEL UP! +500 EXP • BẠN VỪA VƯỢT ẢI THÀNH CÔNG! 🚀
-        </div>
-      )}
-
-      {/* Toast Notification */}
+    <div
+      className="docs-page"
+      style={{
+        padding: "clamp(12px, 2.5vw, 24px)",
+        maxWidth: "1400px",
+        margin: "0 auto",
+        position: "relative",
+      }}
+    >
+      {/* Subtle INUT Teal Status Toast Notification */}
       {toast && (
         <div
+          role="status"
+          aria-live="polite"
           style={{
             position: "fixed",
-            bottom: "24px",
-            right: "24px",
+            bottom: "max(16px, env(safe-area-inset-bottom))",
+            right: "16px",
+            left: "auto",
+            maxWidth: "min(420px, calc(100vw - 32px))",
             zIndex: 9999,
-            padding: "12px 20px",
+            padding: "12px 18px",
             borderRadius: "12px",
-            background: toast.type === "success" ? "#0f766e" : toast.type === "error" ? "#be123c" : "#1e293b",
-            color: "#fff",
+            background:
+              toast.type === "success"
+                ? "var(--primary-dark)"
+                : toast.type === "error"
+                ? "color-mix(in srgb, var(--red) 78%, var(--ink))"
+                : "var(--ink)",
+            color: "var(--panel)",
             fontWeight: 700,
             fontSize: "13px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            boxShadow: "var(--shadow-md)",
             display: "flex",
             alignItems: "center",
             gap: "8px",
@@ -544,299 +585,181 @@ Thông tin liên hệ của tôi:
       {/* Hero Header Banner */}
       <div
         style={{
-          background: "linear-gradient(135deg, #0f4c3a 0%, #168579 50%, #0d9488 100%)",
+          background: "linear-gradient(135deg, var(--ink) 0%, var(--primary-dark) 58%, var(--primary) 100%)",
           borderRadius: "20px",
-          padding: "30px 36px",
-          color: "#fff",
-          marginBottom: "28px",
-          boxShadow: "0 10px 30px rgba(15, 76, 58, 0.25)",
+          padding: "clamp(16px, 3vw, 28px)",
+          color: "var(--panel)",
+          marginBottom: "22px",
+          boxShadow: "var(--shadow-md)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: "20px",
+          gap: "18px",
         }}
       >
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-            <span style={{ fontSize: "24px" }}>📜</span>
-            <span style={{ textTransform: "uppercase", fontSize: "12px", fontWeight: 800, letterSpacing: "1px", background: "rgba(255,255,255,0.2)", padding: "4px 10px", borderRadius: "999px" }}>
-              KSP Quality & Standards Intelligence
+        <div style={{ minWidth: 0, flex: "1 1 280px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "22px" }}>📜</span>
+            <span
+              style={{
+                textTransform: "uppercase",
+                fontSize: "11px",
+                fontWeight: 800,
+                letterSpacing: "1px",
+                background: "rgba(255, 254, 250, 0.16)",
+                color: "var(--panel)",
+                padding: "4px 10px",
+                borderRadius: "999px",
+              }}
+            >
+              KSP Quality &amp; Standards Intelligence
             </span>
           </div>
-          <h1 style={{ fontFamily: "Georgia, serif", fontSize: "28px", margin: "0 0 8px", color: "#fff", fontWeight: 700 }}>
-            Hành Trình Chinh Phục Hợp Quy & Cẩm Nang Chứng Nhận Thiết Bị iNut (QCVN / TCVN)
+          <h1
+            style={{
+              fontFamily: "var(--font-serif, Georgia, serif)",
+              fontSize: "clamp(20px, 3vw, 28px)",
+              margin: "0 0 8px",
+              color: "var(--panel)",
+              fontWeight: 700,
+              lineHeight: 1.25,
+            }}
+          >
+            Hành Trình Chinh Phục Hợp Quy &amp; Cẩm Nang Chứng Nhận Thiết Bị iNut (QCVN / TCVN)
           </h1>
-          <p style={{ margin: 0, fontSize: "14px", color: "#e6fffa", maxWidth: "850px", lineHeight: 1.5 }}>
-            Game tương tác thực chiến 6 Ải: Lắp ráp mẫu, Nạp RF Test Tool, Bắn Zalo phòng Lab, Chinh phục buồng câm EMC & Cấp Giấy CNHQ BTTTT cho iNut Rockchip.
+          <p style={{ margin: 0, fontSize: "14px", color: "var(--primary-soft)", maxWidth: "850px", lineHeight: 1.55 }}>
+            Lộ trình thực chiến 6 Ải: Lắp ráp mẫu, Nạp RF Test Tool, Liên hệ phòng Lab, Chinh phục buồng câm EMC &amp; Cấp Giấy CNHQ BTTTT cho iNut Rockchip.
           </p>
         </div>
 
         {/* Macro Stat Chips */}
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", padding: "12px 18px", borderRadius: "14px", border: "1px solid rgba(255,255,255,0.25)", textAlign: "center" }}>
-            <div style={{ fontSize: "20px", fontWeight: 800, color: "#fef08a", fontFamily: "var(--font-mono)" }}>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", minWidth: 0 }}>
+          <div
+            style={{
+              background: "rgba(255, 254, 250, 0.12)",
+              padding: "11px 16px",
+              borderRadius: "14px",
+              border: "1px solid rgba(255, 254, 250, 0.24)",
+              textAlign: "center",
+              flex: "1 1 110px",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--gold)", fontFamily: "var(--font-mono)" }}>
               {gameState ? `Lv.${gameState.current_level}` : "Lv.1"}
             </div>
-            <div style={{ fontSize: "11px", color: "#ccfbf1", fontWeight: 700 }}>Cấp Độ Hợp Quy</div>
+            <div style={{ fontSize: "11px", color: "var(--primary-soft)", fontWeight: 700 }}>Cấp Độ Hợp Quy</div>
           </div>
 
-          <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", padding: "12px 18px", borderRadius: "14px", border: "1px solid rgba(255,255,255,0.25)", textAlign: "center" }}>
-            <div style={{ fontSize: "20px", fontWeight: 800, color: "#fff", fontFamily: "var(--font-mono)" }}>
+          <div
+            style={{
+              background: "rgba(255, 254, 250, 0.12)",
+              padding: "11px 16px",
+              borderRadius: "14px",
+              border: "1px solid rgba(255, 254, 250, 0.24)",
+              textAlign: "center",
+              flex: "1 1 120px",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--panel)", fontFamily: "var(--font-mono)" }}>
               {gameState ? `${gameState.current_exp} / ${gameState.max_exp}` : "500 / 3000"} EXP
             </div>
-            <div style={{ fontSize: "11px", color: "#ccfbf1", fontWeight: 700 }}>Điểm Kinh Nghiệm</div>
+            <div style={{ fontSize: "11px", color: "var(--primary-soft)", fontWeight: 700 }}>Điểm Kinh Nghiệm</div>
           </div>
 
-          <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", padding: "12px 18px", borderRadius: "14px", border: "1px solid rgba(255,255,255,0.25)", textAlign: "center" }}>
-            <div style={{ fontSize: "20px", fontWeight: 800, color: "#fed7aa", fontFamily: "var(--font-mono)" }}>
+          <div
+            style={{
+              background: "rgba(255, 254, 250, 0.12)",
+              padding: "11px 16px",
+              borderRadius: "14px",
+              border: "1px solid rgba(255, 254, 250, 0.24)",
+              textAlign: "center",
+              flex: "1 1 110px",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--gold)", fontFamily: "var(--font-mono)" }}>
               {gameState ? `${gameState.progress_percent}%` : "16%"}
             </div>
-            <div style={{ fontSize: "11px", color: "#ccfbf1", fontWeight: 700 }}>Tiến Độ Hoàn Thành</div>
+            <div style={{ fontSize: "11px", color: "var(--primary-soft)", fontWeight: 700 }}>Tiến Độ Hoàn Thành</div>
           </div>
         </div>
       </div>
 
-      {/* Main Tab Navigation */}
-      <div style={{ display: "flex", gap: "8px", borderBottom: "2px solid #e2e8f0", marginBottom: "24px", flexWrap: "wrap" }}>
-        <button
-          onClick={() => { setActiveTab("game"); syncUrl("game"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "game" ? 800 : 600,
-            background: activeTab === "game" ? "#fff" : "transparent",
-            color: activeTab === "game" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "game" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
+      {/* Main Tab Navigation (Single Scrollable Strip via ResponsiveTabs) */}
+      <div style={{ marginBottom: "22px" }}>
+        <ResponsiveTabs<StandardsTabId>
+          active={activeTab}
+          onChange={(tabId) => {
+            setActiveTab(tabId);
+            syncUrl(tabId);
           }}
-        >
-          <span>🎮</span>
-          <span>Game Chinh Phục Hợp Quy</span>
-          <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "999px", background: "#fef08a", color: "#854d0e", fontWeight: 800 }}>
-            {gameState ? `${gameState.completed_quests_count}/${gameState.total_quests} Ải` : "1/6 Ải"}
-          </span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("playbooks"); syncUrl("playbooks"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "playbooks" ? 800 : 600,
-            background: activeTab === "playbooks" ? "#fff" : "transparent",
-            color: activeTab === "playbooks" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "playbooks" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>📘</span>
-          <span>Cẩm Nang & Case Study Thực Chiến</span>
-          <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "999px", background: "#fee2e2", color: "#b91c1c", fontWeight: 800 }}>
-            ⭐ iNut Rockchip
-          </span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("emc_guide"); syncUrl("emc_guide"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "emc_guide" ? 800 : 600,
-            background: activeTab === "emc_guide" ? "#fff" : "transparent",
-            color: activeTab === "emc_guide" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "emc_guide" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>🛡️</span>
-          <span>Bí Kíp Đo Đậu EMC & Tĩnh Điện (ESD)</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("search"); syncUrl("search"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "search" ? 800 : 600,
-            background: activeTab === "search" ? "#fff" : "transparent",
-            color: activeTab === "search" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "search" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>🔍</span>
-          <span>Tra Cứu Quy Chuẩn QCVN & TCVN</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("tqc"); syncUrl("tqc"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "tqc" ? 800 : 600,
-            background: activeTab === "tqc" ? "#fff" : "transparent",
-            color: activeTab === "tqc" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "tqc" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>🧾</span>
-          <span>Tra Cứu GCN TQC Theo Model</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("hs_lookup"); syncUrl("hs_lookup"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "hs_lookup" ? 800 : 600,
-            background: activeTab === "hs_lookup" ? "#fff" : "transparent",
-            color: activeTab === "hs_lookup" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "hs_lookup" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>📦</span>
-          <span>Đối Soát Mã HS Code</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("cr_generator"); syncUrl("cr_generator"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "cr_generator" ? 800 : 600,
-            background: activeTab === "cr_generator" ? "#fff" : "transparent",
-            color: activeTab === "cr_generator" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "cr_generator" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>📝</span>
-          <span>Sinh Bản Công Bố Hợp Quy (CR)</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("labs"); syncUrl("labs"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "labs" ? 800 : 600,
-            background: activeTab === "labs" ? "#fff" : "transparent",
-            color: activeTab === "labs" ? "#0f766e" : "#64748b",
-            boxShadow: activeTab === "labs" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>🏛️</span>
-          <span>Đầu Mối Zalo & Danh Bạ Lab</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveTab("risk_classification"); syncUrl("risk_classification"); }}
-          style={{
-            padding: "12px 18px",
-            border: "none",
-            borderRadius: "12px 12px 0 0",
-            fontSize: "14px",
-            fontWeight: activeTab === "risk_classification" ? 800 : 600,
-            background: activeTab === "risk_classification" ? "#fff" : "transparent",
-            color: activeTab === "risk_classification" ? "#b91c1c" : "#64748b",
-            boxShadow: activeTab === "risk_classification" ? "0 -2px 10px rgba(0,0,0,0.05)" : "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <span>⚖️</span>
-          <span>Phân Loại Rủi Ro (TT 36/2026)</span>
-          <span style={{ fontSize: "10px", fontWeight: 800, background: "#fee2e2", color: "#991b1b", padding: "2px 6px", borderRadius: "999px" }}>MỚI</span>
-        </button>
+          ariaLabel="Điều hướng tiêu chuẩn và hợp quy"
+          tabs={[
+            {
+              id: "game",
+              label: "🎮 Game Chinh Phục Hợp Quy",
+              badge: gameState ? `${gameState.completed_quests_count}/${gameState.total_quests} Ải` : "1/6 Ải",
+            },
+            {
+              id: "playbooks",
+              label: "📘 Cẩm Nang & Case Study Thực Chiến",
+              badge: "⭐ iNut Rockchip",
+            },
+            { id: "emc_guide", label: "🛡️ Bí Kíp Đo Đậu EMC & Tĩnh Điện (ESD)" },
+            { id: "search", label: "🔍 Tra Cứu Quy Chuẩn QCVN & TCVN" },
+            { id: "tqc", label: "🧾 Tra Cứu GCN TQC Theo Model" },
+            { id: "hs_lookup", label: "📦 Đối Soát Mã HS Code" },
+            { id: "cr_generator", label: "📝 Sinh Bản Công Bố Hợp Quy (CR)" },
+            { id: "labs", label: "🏛️ Đầu Mối Zalo & Danh Bạ Lab" },
+            { id: "risk_classification", label: "⚖️ Phân Loại Rủi Ro (TT 36/2026)", badge: "MỚI" },
+          ]}
+        />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {/* TAB: 🎮 GAME CHINH PHỤC HỢP QUY                                           */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "game" && gameState && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Level Header & Progress Card */}
           <div
             style={{
-              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              background: "linear-gradient(135deg, var(--ink) 0%, var(--primary-dark) 100%)",
               borderRadius: "20px",
-              padding: "24px 30px",
-              color: "#fff",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+              padding: "clamp(16px, 2.8vw, 24px)",
+              color: "var(--panel)",
+              boxShadow: "var(--shadow-md)",
               display: "flex",
               flexDirection: "column",
               gap: "18px",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
                 <div
                   style={{
-                    width: "56px",
-                    height: "56px",
+                    width: "52px",
+                    height: "52px",
+                    flexShrink: 0,
                     borderRadius: "16px",
-                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                    color: "#fff",
+                    background: "var(--gold)",
+                    color: "var(--ink)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "26px",
-                    boxShadow: "0 4px 14px rgba(245,158,11,0.4)",
+                    fontSize: "24px",
                   }}
                 >
                   🏆
                 </div>
-                <div>
-                  <div style={{ fontSize: "12px", color: "#94a3b8", textTransform: "uppercase", fontWeight: 800, letterSpacing: "1px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: "12px", color: "var(--primary-soft)", textTransform: "uppercase", fontWeight: 800, letterSpacing: "1px" }}>
                     Danh Hiệu Người Chơi
                   </div>
-                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#fef08a", fontFamily: "Georgia, serif" }}>
+                  <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--gold)", fontFamily: "var(--font-serif, Georgia, serif)" }}>
                     {gameState.current_level_title}
                   </div>
                 </div>
@@ -844,13 +767,16 @@ Thông tin liên hệ của tôi:
 
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <button
+                  type="button"
+                  className="ui-btn-chip"
                   onClick={handleResetGame}
                   style={{
                     padding: "8px 14px",
+                    minHeight: "44px",
                     borderRadius: "10px",
-                    border: "1px solid #475569",
-                    background: "rgba(255,255,255,0.05)",
-                    color: "#cbd5e1",
+                    border: "1px solid rgba(255, 254, 250, 0.3)",
+                    background: "rgba(255, 254, 250, 0.08)",
+                    color: "var(--panel)",
                     fontSize: "12px",
                     fontWeight: 700,
                     cursor: "pointer",
@@ -863,17 +789,21 @@ Thông tin liên hệ của tôi:
 
             {/* EXP Progress Bar */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "6px", fontWeight: 700 }}>
-                <span style={{ color: "#38bdf8" }}>Tiến Độ Hoàn Thành 6 Ải: {gameState.completed_quests_count} / {gameState.total_quests} Ải</span>
-                <span style={{ color: "#fef08a", fontFamily: "var(--font-mono)" }}>{gameState.current_exp} / {gameState.max_exp} EXP ({gameState.progress_percent}%)</span>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "6px", fontSize: "13px", marginBottom: "6px", fontWeight: 700 }}>
+                <span style={{ color: "var(--primary-soft)" }}>
+                  Tiến Độ Hoàn Thành 6 Ải: {gameState.completed_quests_count} / {gameState.total_quests} Ải
+                </span>
+                <span style={{ color: "var(--gold)", fontFamily: "var(--font-mono)" }}>
+                  {gameState.current_exp} / {gameState.max_exp} EXP ({gameState.progress_percent}%)
+                </span>
               </div>
-              <div style={{ width: "100%", height: "12px", borderRadius: "999px", background: "#334155", overflow: "hidden" }}>
+              <div style={{ width: "100%", height: "12px", borderRadius: "999px", background: "rgba(255, 254, 250, 0.16)", overflow: "hidden" }}>
                 <div
                   style={{
                     width: "100%",
                     height: "100%",
                     borderRadius: "999px",
-                    background: "linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #f59e0b 100%)",
+                    background: "linear-gradient(90deg, var(--primary) 0%, var(--gold) 100%)",
                     transform: `scaleX(${Math.max(0, Math.min(100, gameState.progress_percent)) / 100})`,
                     transformOrigin: "left center",
                     transition: "transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
@@ -885,19 +815,19 @@ Thông tin liên hệ của tôi:
             {/* AI Companion Cheer Dialog */}
             <div
               style={{
-                background: "rgba(255,255,255,0.07)",
-                border: "1px solid rgba(255,255,255,0.15)",
+                background: "rgba(255, 254, 250, 0.08)",
+                border: "1px solid rgba(255, 254, 250, 0.18)",
                 borderRadius: "14px",
-                padding: "14px 18px",
+                padding: "14px 16px",
                 display: "flex",
                 alignItems: "center",
-                gap: "14px",
+                gap: "12px",
               }}
             >
-              <div style={{ fontSize: "28px" }}>🤖</div>
-              <div style={{ fontSize: "13px", color: "#e2e8f0", lineHeight: 1.5 }}>
-                <strong style={{ color: "#38bdf8" }}>Trợ Lý AI Đồng Hành (Antigravity Partner): </strong>
-                "{gameState.ai_companion_cheer}"
+              <div style={{ fontSize: "26px", flexShrink: 0 }}>🤖</div>
+              <div style={{ fontSize: "13px", color: "var(--panel)", lineHeight: 1.55, minWidth: 0 }}>
+                <strong style={{ color: "var(--gold)" }}>Trợ Lý AI Đồng Hành (Antigravity Partner): </strong>
+                &ldquo;{gameState.ai_companion_cheer}&rdquo;
               </div>
             </div>
           </div>
@@ -913,33 +843,33 @@ Thông tin liên hệ của tôi:
                 <div
                   key={quest.quest_id}
                   style={{
-                    background: "#fff",
+                    background: "var(--panel)",
                     borderRadius: "18px",
                     border: isCompleted
-                      ? "2px solid #10b981"
+                      ? "2px solid var(--green)"
                       : isInProgress
-                      ? "2px solid #0f766e"
-                      : "1px solid #cbd5e1",
-                    padding: "24px 28px",
-                    boxShadow: isInProgress
-                      ? "0 8px 24px rgba(15,118,110,0.12)"
-                      : "0 4px 12px rgba(0,0,0,0.03)",
-                    opacity: isPending ? 0.75 : 1,
+                      ? "2px solid var(--primary)"
+                      : "1px solid var(--border-strong, var(--border))",
+                    padding: "clamp(14px, 2.5vw, 22px)",
+                    boxShadow: "var(--shadow)",
+                    opacity: isPending ? 0.82 : 1,
                     display: "flex",
                     flexDirection: "column",
                     gap: "14px",
+                    minWidth: 0,
                   }}
                 >
                   {/* Quest Header */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: "1 1 240px" }}>
                       <div
                         style={{
                           width: "36px",
                           height: "36px",
+                          flexShrink: 0,
                           borderRadius: "10px",
-                          background: isCompleted ? "#10b981" : isInProgress ? "#0f766e" : "#94a3b8",
-                          color: "#fff",
+                          background: isCompleted ? "var(--green)" : isInProgress ? "var(--primary)" : "var(--muted)",
+                          color: "var(--panel)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -950,14 +880,33 @@ Thông tin liên hệ của tôi:
                         {isCompleted ? "✓" : quest.quest_id}
                       </div>
 
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "6px", background: isCompleted ? "#dcfce7" : isInProgress ? "#e0f2fe" : "#f1f5f9", color: isCompleted ? "#166534" : isInProgress ? "#0369a1" : "#64748b" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              background: isCompleted
+                                ? "color-mix(in srgb, var(--green) 14%, var(--panel))"
+                                : isInProgress
+                                ? "var(--primary-soft)"
+                                : "var(--surface-subtle, var(--paper))",
+                              color: isCompleted
+                                ? "color-mix(in srgb, var(--green) 72%, var(--ink))"
+                                : isInProgress
+                                ? "var(--primary-dark)"
+                                : "var(--muted)",
+                            }}
+                          >
                             Ải {quest.quest_id} • {isCompleted ? "ĐÃ HOÀN THÀNH" : isInProgress ? "ĐANG THỰC HIỆN" : "CHƯA MỞ KHÓA"}
                           </span>
-                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#d97706" }}>+{quest.exp_reward} EXP</span>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "color-mix(in srgb, var(--amber) 72%, var(--ink))" }}>
+                            +{quest.exp_reward} EXP
+                          </span>
                         </div>
-                        <h3 style={{ margin: "4px 0 0", fontSize: "17px", color: "#0f172a", fontWeight: 800 }}>
+                        <h3 style={{ margin: "4px 0 0", fontSize: "17px", color: "var(--ink)", fontWeight: 800 }}>
                           {quest.title}
                         </h3>
                       </div>
@@ -966,25 +915,35 @@ Thông tin liên hệ của tôi:
                     {/* Action Button */}
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       {isCompleted ? (
-                        <div style={{ fontSize: "12px", color: "#166534", fontWeight: 800, background: "#dcfce7", padding: "6px 12px", borderRadius: "8px" }}>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "color-mix(in srgb, var(--green) 72%, var(--ink))",
+                            fontWeight: 800,
+                            background: "color-mix(in srgb, var(--green) 14%, var(--panel))",
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                          }}
+                        >
                           ✓ Đạt danh hiệu: {quest.level_title}
                         </div>
                       ) : (
                         <button
+                          type="button"
                           onClick={() => handleCompleteQuest(quest.quest_id)}
                           style={{
                             padding: "10px 18px",
+                            minHeight: "44px",
                             borderRadius: "10px",
                             border: "none",
-                            background: isInProgress ? "#0f766e" : "#64748b",
-                            color: "#fff",
+                            background: isInProgress ? "var(--primary)" : "var(--muted)",
+                            color: "var(--panel)",
                             fontWeight: 800,
                             fontSize: "13px",
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
                             gap: "6px",
-                            boxShadow: isInProgress ? "0 4px 12px rgba(15,118,110,0.25)" : "none",
                           }}
                         >
                           <span>⚔️</span>
@@ -995,44 +954,80 @@ Thông tin liên hệ của tôi:
                   </div>
 
                   {/* Quest Description */}
-                  <div style={{ fontSize: "13px", color: "#334155", lineHeight: 1.5, background: "#f8fafc", padding: "12px 16px", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "var(--ink-2, var(--text))",
+                      lineHeight: 1.55,
+                      background: "var(--surface-subtle, var(--paper))",
+                      padding: "12px 16px",
+                      borderRadius: "12px",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
                     <strong>🎯 Nhiệm vụ chính:</strong> {quest.description}
                   </div>
 
                   {/* AI Tip & Secret Cheatsheet */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div style={{ background: "#f0fdfa", border: "1px solid #99f6e4", padding: "12px 16px", borderRadius: "12px", fontSize: "12px", color: "#0f766e" }}>
+                  <FormGrid cols={2}>
+                    <div
+                      style={{
+                        background: "var(--primary-soft)",
+                        border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        color: "var(--primary-dark)",
+                        minWidth: 0,
+                      }}
+                    >
                       <strong>🤖 Lời khuyên của Trợ lý AI:</strong> {quest.ai_companion_tip}
                     </div>
 
-                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "12px 16px", borderRadius: "12px", fontSize: "12px", color: "#854d0e" }}>
+                    <div
+                      style={{
+                        background: "color-mix(in srgb, var(--gold) 15%, var(--panel))",
+                        border: "1px solid color-mix(in srgb, var(--gold) 50%, var(--border))",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        color: "color-mix(in srgb, var(--amber) 65%, var(--ink))",
+                        minWidth: 0,
+                      }}
+                    >
                       <strong>🛡️ Bí kíp bỏ túi:</strong> {quest.secret_cheatsheet}
                     </div>
-                  </div>
+                  </FormGrid>
 
                   {/* Personal Note Box */}
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       type="text"
+                      className="ui-input"
                       placeholder="Ghi chú tác chiến của bạn cho ải này (vd: Ngày gửi mẫu, số tracking bưu điện, mã test report, lưu ý riêng)..."
                       value={activeQuestNote[quest.quest_id] !== undefined ? activeQuestNote[quest.quest_id] : (quest.personal_note || "")}
                       onChange={(e) => setActiveQuestNote({ ...activeQuestNote, [quest.quest_id]: e.target.value })}
                       style={{
-                        flex: 1,
-                        padding: "8px 12px",
+                        flex: "1 1 min(100%, 240px)",
+                        minWidth: 0,
+                        padding: "9px 12px",
                         borderRadius: "8px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "12px",
+                        border: "1px solid var(--border-strong, var(--border))",
+                        background: "var(--panel)",
+                        color: "var(--ink)",
                       }}
                     />
                     <button
+                      type="button"
+                      className="ui-btn-chip"
                       onClick={() => handleSaveNote(quest.quest_id)}
                       style={{
-                        padding: "8px 14px",
+                        padding: "9px 14px",
+                        minHeight: "44px",
                         borderRadius: "8px",
-                        border: "1px solid #0f766e",
-                        background: "#f0fdfa",
-                        color: "#0f766e",
+                        border: "1px solid var(--primary)",
+                        background: "var(--primary-soft)",
+                        color: "var(--primary-dark)",
                         fontWeight: 700,
                         fontSize: "12px",
                         cursor: "pointer",
@@ -1052,62 +1047,95 @@ Thông tin liên hệ của tôi:
       {/* TAB: 📘 CẨM NANG & CASE STUDY THỰC CHIẾN                                    */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "playbooks" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Sub-navigation of Case Studies */}
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            {playbooks.map((pb) => (
-              <button
-                key={pb.id}
-                onClick={() => setSelectedPlaybookId(pb.id)}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "12px",
-                  border: selectedPlaybookId === pb.id ? "2px solid #0f766e" : "1px solid #cbd5e1",
-                  background: selectedPlaybookId === pb.id ? "#f0fdfa" : "#fff",
-                  color: selectedPlaybookId === pb.id ? "#0f766e" : "#334155",
-                  fontWeight: selectedPlaybookId === pb.id ? 800 : 600,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  boxShadow: selectedPlaybookId === pb.id ? "0 4px 12px rgba(15,118,110,0.15)" : "none",
-                }}
-              >
-                <span>{pb.id.includes("rockchip") ? "⭐" : pb.id.includes("display") ? "🖥️" : pb.id.includes("gateway") ? "📡" : "💧"}</span>
-                <span>{pb.title.split("(")[0]}</span>
-                <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: selectedPlaybookId === pb.id ? "#0f766e" : "#e2e8f0", color: selectedPlaybookId === pb.id ? "#fff" : "#475569", fontWeight: 800 }}>
-                  {pb.badge}
-          </span>
-        </button>
-
-            ))}
+            {playbooks.map((pb) => {
+              const isSelected = selectedPlaybookId === pb.id;
+              return (
+                <button
+                  key={pb.id}
+                  type="button"
+                  className="ui-btn-chip"
+                  onClick={() => setSelectedPlaybookId(pb.id)}
+                  style={{
+                    padding: "10px 16px",
+                    minHeight: "44px",
+                    borderRadius: "12px",
+                    border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border-strong, var(--border))",
+                    background: isSelected ? "var(--primary-soft)" : "var(--panel)",
+                    color: isSelected ? "var(--primary-dark)" : "var(--ink-2, var(--text))",
+                    fontWeight: isSelected ? 800 : 600,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span>{pb.id.includes("rockchip") ? "⭐" : pb.id.includes("display") ? "🖥️" : pb.id.includes("gateway") ? "📡" : "💧"}</span>
+                  <span>{pb.title.split("(")[0]}</span>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      background: isSelected ? "var(--primary)" : "var(--surface-subtle, var(--paper))",
+                      color: isSelected ? "var(--panel)" : "var(--muted)",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {pb.badge}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {currentPlaybook && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
               {/* Playbook Header Box */}
-              <div style={{ background: "#fff", padding: "28px 32px", borderRadius: "20px", border: "1px solid #e2e8f0", boxShadow: "0 6px 20px rgba(0,0,0,0.04)" }}>
+              <div
+                style={{
+                  background: "var(--panel)",
+                  padding: "clamp(16px, 2.8vw, 24px)",
+                  borderRadius: "20px",
+                  border: "1px solid var(--border)",
+                  boxShadow: "var(--shadow)",
+                }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap", marginBottom: "14px" }}>
-                  <div>
-                    <span style={{ fontSize: "11px", fontWeight: 800, background: "#fee2e2", color: "#b91c1c", padding: "4px 10px", borderRadius: "999px", textTransform: "uppercase" }}>
+                  <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        background: "color-mix(in srgb, var(--coral) 16%, var(--panel))",
+                        color: "color-mix(in srgb, var(--red) 75%, var(--ink))",
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        textTransform: "uppercase",
+                      }}
+                    >
                       {currentPlaybook.badge}
                     </span>
-                    <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "#0f172a", margin: "10px 0 4px" }}>
+                    <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "clamp(18px, 2.6vw, 22px)", color: "var(--ink)", margin: "10px 0 4px" }}>
                       {currentPlaybook.title}
                     </h2>
-                    <div style={{ fontSize: "14px", color: "#64748b" }}>{currentPlaybook.subtitle}</div>
+                    <div style={{ fontSize: "14px", color: "var(--muted)" }}>{currentPlaybook.subtitle}</div>
                   </div>
 
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button
+                      type="button"
                       onClick={copyZaloMessage}
                       style={{
-                        padding: "12px 18px",
+                        padding: "10px 16px",
+                        minHeight: "44px",
                         borderRadius: "12px",
-                        border: "1px solid #0f766e",
-                        background: "#f0fdfa",
-                        color: "#0f766e",
+                        border: "1px solid var(--primary)",
+                        background: "var(--primary-soft)",
+                        color: "var(--primary-dark)",
                         fontWeight: 800,
                         fontSize: "13px",
                         cursor: "pointer",
@@ -1121,6 +1149,7 @@ Thông tin liên hệ của tôi:
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => {
                         setCrForm({
                           ...crForm,
@@ -1133,18 +1162,18 @@ Thông tin liên hệ của tôi:
                         showToast("📝 Đã tự động điền các quy chuẩn của Case Study vào Bản Công Bố CR!", "success");
                       }}
                       style={{
-                        padding: "12px 20px",
+                        padding: "10px 18px",
+                        minHeight: "44px",
                         borderRadius: "12px",
                         border: "none",
-                        background: "#0f766e",
-                        color: "#fff",
+                        background: "var(--primary)",
+                        color: "var(--panel)",
                         fontWeight: 800,
                         fontSize: "13px",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         gap: "6px",
-                        boxShadow: "0 4px 12px rgba(15,118,110,0.25)",
                       }}
                     >
                       <span>📝</span>
@@ -1153,82 +1182,223 @@ Thông tin liên hệ của tôi:
                   </div>
                 </div>
 
-                {/* Section 1: HS Codes & Taxes Table */}
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "20px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>🏷️</span> 1. Mã HS Code & Thuế Suất Nhập Khẩu
+                {/* Section 1: HS Codes & Taxes Table (Responsive DataView) */}
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "20px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>🏷️</span> 1. Mã HS Code &amp; Thuế Suất Nhập Khẩu
                 </h3>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", textAlign: "left", borderBottom: "2px solid #e2e8f0" }}>
-                        <th style={{ padding: "10px 14px" }}>Mã HS Code</th>
-                        <th style={{ padding: "10px 14px" }}>Mô tả hàng hóa</th>
-                        <th style={{ padding: "10px 14px" }}>Thuế NK ưu đãi (MFN)</th>
-                        <th style={{ padding: "10px 14px" }}>Thuế Form E (Trung Quốc)</th>
-                        <th style={{ padding: "10px 14px" }}>Thuế VAT</th>
-                        <th style={{ padding: "10px 14px" }}>Đánh giá & Lưu ý</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <DataView
+                  mobileMode="card"
+                  desktop={
+                    <div className="ui-table-scroll-wrap" style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                        <thead>
+                          <tr style={{ background: "var(--surface-subtle, var(--paper))", textAlign: "left", borderBottom: "2px solid var(--border)" }}>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Mã HS Code</th>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Mô tả hàng hóa</th>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Thuế NK ưu đãi (MFN)</th>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Thuế Form E (Trung Quốc)</th>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Thuế VAT</th>
+                            <th style={{ padding: "10px 14px", color: "var(--ink)" }}>Đánh giá &amp; Lưu ý</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {currentPlaybook.hs_codes.map((h) => (
+                            <tr
+                              key={h.code}
+                              style={{
+                                borderBottom: "1px solid var(--border)",
+                                background: h.recommended ? "var(--primary-soft)" : "var(--panel)",
+                              }}
+                            >
+                              <td style={{ padding: "12px 14px", fontFamily: "var(--font-mono)", fontWeight: 800, color: "var(--primary-dark)" }}>
+                                {h.code}
+                              </td>
+                              <td style={{ padding: "12px 14px", color: "var(--ink-2, var(--text))" }}>{h.description}</td>
+                              <td style={{ padding: "12px 14px", fontWeight: 700, color: "var(--ink)" }}>{h.import_tax_mfn}</td>
+                              <td style={{ padding: "12px 14px", fontWeight: 700, color: "color-mix(in srgb, var(--green) 72%, var(--ink))" }}>
+                                {h.import_tax_form_e}
+                              </td>
+                              <td style={{ padding: "12px 14px", fontWeight: 700, color: "var(--ink)" }}>{h.vat_rate}</td>
+                              <td style={{ padding: "12px 14px" }}>
+                                {h.recommended ? (
+                                  <span
+                                    style={{
+                                      background: "color-mix(in srgb, var(--green) 14%, var(--panel))",
+                                      color: "color-mix(in srgb, var(--green) 72%, var(--ink))",
+                                      padding: "3px 8px",
+                                      borderRadius: "6px",
+                                      fontSize: "11px",
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    ✓ Khuyên dùng (Miễn KTCL BTTTT)
+                                  </span>
+                                ) : (
+                                  <span style={{ color: "var(--muted)", fontSize: "11px" }}>Tham khảo</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                  mobileCards={
+                    <div className="ui-mobile-card-list">
                       {currentPlaybook.hs_codes.map((h) => (
-                        <tr key={h.code} style={{ borderBottom: "1px solid #f1f5f9", background: h.recommended ? "#f0fdfa" : "#fff" }}>
-                          <td style={{ padding: "12px 14px", fontFamily: "var(--font-mono)", fontWeight: 800, color: "#0f766e" }}>{h.code}</td>
-                          <td style={{ padding: "12px 14px", color: "#334155" }}>{h.description}</td>
-                          <td style={{ padding: "12px 14px", fontWeight: 700 }}>{h.import_tax_mfn}</td>
-                          <td style={{ padding: "12px 14px", fontWeight: 700, color: "#166534" }}>{h.import_tax_form_e}</td>
-                          <td style={{ padding: "12px 14px", fontWeight: 700 }}>{h.vat_rate}</td>
-                          <td style={{ padding: "12px 14px" }}>
+                        <article
+                          key={h.code}
+                          className="ui-mobile-card"
+                          style={{
+                            background: h.recommended ? "var(--primary-soft)" : "var(--panel)",
+                            border: `1px solid ${h.recommended ? "var(--primary)" : "var(--border)"}`,
+                            borderRadius: "14px",
+                            padding: "14px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
+                            <strong style={{ fontFamily: "var(--font-mono)", fontSize: "14px", color: "var(--primary-dark)" }}>
+                              {h.code}
+                            </strong>
                             {h.recommended ? (
-                              <span style={{ background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 800 }}>
+                              <span
+                                style={{
+                                  background: "var(--primary)",
+                                  color: "var(--panel)",
+                                  padding: "3px 8px",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                }}
+                              >
                                 ✓ Khuyên dùng (Miễn KTCL BTTTT)
                               </span>
                             ) : (
-                              <span style={{ color: "#94a3b8", fontSize: "11px" }}>Tham khảo</span>
+                              <span style={{ color: "var(--muted)", fontSize: "11px", fontWeight: 700 }}>Tham khảo</span>
                             )}
-                          </td>
-                        </tr>
+                          </div>
+                          <div style={{ fontSize: "13px", color: "var(--ink)", marginBottom: "10px", lineHeight: 1.45 }}>
+                            {h.description}
+                          </div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                              gap: "8px",
+                              fontSize: "12px",
+                              background: "var(--surface-subtle, var(--paper))",
+                              padding: "8px 10px",
+                              borderRadius: "10px",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 700 }}>MFN</div>
+                              <strong style={{ color: "var(--ink)" }}>{h.import_tax_mfn}</strong>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 700 }}>Form E</div>
+                              <strong style={{ color: "color-mix(in srgb, var(--green) 72%, var(--ink))" }}>{h.import_tax_form_e}</strong>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 700 }}>VAT</div>
+                              <strong style={{ color: "var(--ink)" }}>{h.vat_rate}</strong>
+                            </div>
+                          </div>
+                        </article>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  }
+                />
 
                 {/* Section 2: Required Standards Cards */}
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "24px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "24px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>📜</span> 2. Danh Mục Các Quy Chuẩn Kỹ Thuật (QCVN BTTTT) Bắt Buộc
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px" }}>
-                  {currentPlaybook.required_standards.map((std) => (
-                    <div key={std.code} style={{ background: "#f8fafc", padding: "16px", borderRadius: "14px", border: "1px solid #e2e8f0" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 900, color: "#0f766e", fontSize: "13px" }}>
-                          🏷️ {std.code}
-                        </span>
-                        <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 7px", borderRadius: "6px", background: std.procedure.includes("Chứng nhận") ? "#fee2e2" : "#fef3c7", color: std.procedure.includes("Chứng nhận") ? "#991b1b" : "#92400e" }}>
-                          {std.procedure}
-                        </span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: "14px" }}>
+                  {currentPlaybook.required_standards.map((std) => {
+                    const isCert = std.procedure.includes("Chứng nhận");
+                    return (
+                      <div
+                        key={std.code}
+                        style={{
+                          background: "var(--surface-subtle, var(--paper))",
+                          padding: "16px",
+                          borderRadius: "14px",
+                          border: "1px solid var(--border)",
+                          minWidth: 0,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontWeight: 900, color: "var(--primary-dark)", fontSize: "13px" }}>
+                            🏷️ {std.code}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              padding: "2px 7px",
+                              borderRadius: "6px",
+                              background: isCert
+                                ? "color-mix(in srgb, var(--red) 12%, var(--panel))"
+                                : "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                              color: isCert
+                                ? "color-mix(in srgb, var(--red) 75%, var(--ink))"
+                                : "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+                            }}
+                          >
+                            {std.procedure}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)", marginBottom: "6px" }}>{std.name}</div>
+                        <div style={{ fontSize: "12px", color: "var(--muted)", lineHeight: 1.45 }}>
+                          <strong>Chỉ tiêu thử nghiệm:</strong> {std.test_scope}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#1e293b", marginBottom: "6px" }}>{std.name}</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.4 }}><strong>Chỉ tiêu thử nghiệm:</strong> {std.test_scope}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Section 3: 6-Step Workflow */}
                 {currentPlaybook.six_step_workflow && (
                   <>
-                    <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "28px 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "28px 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
                       <span>🔄</span> 3. Sơ Đồ Quy Trình Từng Bước Thực Hiện
                     </h3>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "14px" }}>
                       {currentPlaybook.six_step_workflow.map((st) => (
-                        <div key={st.step} style={{ background: "#fff", border: "1px solid #cbd5e1", borderRadius: "14px", padding: "16px", position: "relative", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+                        <div
+                          key={st.step}
+                          style={{
+                            background: "var(--panel)",
+                            border: "1px solid var(--border-strong, var(--border))",
+                            borderRadius: "14px",
+                            padding: "16px",
+                            position: "relative",
+                            boxShadow: "var(--shadow)",
+                            minWidth: 0,
+                          }}
+                        >
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                            <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: "#0f766e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "12px" }}>
+                            <div
+                              style={{
+                                width: "26px",
+                                height: "26px",
+                                flexShrink: 0,
+                                borderRadius: "50%",
+                                background: "var(--primary)",
+                                color: "var(--panel)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 800,
+                                fontSize: "12px",
+                              }}
+                            >
                               {st.step}
                             </div>
-                            <strong style={{ fontSize: "13px", color: "#0f172a" }}>{st.title}</strong>
+                            <strong style={{ fontSize: "13px", color: "var(--ink)" }}>{st.title}</strong>
                           </div>
-                          <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5 }}>{st.description}</div>
+                          <div style={{ fontSize: "12px", color: "var(--ink-2, var(--text))", lineHeight: 1.5 }}>{st.description}</div>
                         </div>
                       ))}
                     </div>
@@ -1236,45 +1406,94 @@ Thông tin liên hệ của tôi:
                 )}
 
                 {/* Section 4: Cost Breakdown */}
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "28px 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>💰</span> 4. Bảng Dự Toán Chi Phí & Lệ Phí Nhà Nước
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "28px 0 12px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>💰</span> 4. Bảng Dự Toán Chi Phí &amp; Lệ Phí Nhà Nước
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" }}>
+                <FormGrid cols={2}>
                   {/* State Fees */}
-                  <div style={{ background: "#f0fdfa", padding: "18px", borderRadius: "14px", border: "1px solid #99f6e4" }}>
-                    <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "#0f766e" }}>🏛️ Lệ Phí Nhà Nước (Thông tư 285/2016/TT-BTC)</h4>
+                  <div
+                    style={{
+                      background: "var(--primary-soft)",
+                      padding: "18px",
+                      borderRadius: "14px",
+                      border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                      minWidth: 0,
+                    }}
+                  >
+                    <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "var(--primary-dark)" }}>
+                      🏛️ Lệ Phí Nhà Nước (Thông tư 285/2016/TT-BTC)
+                    </h4>
                     {currentPlaybook.cost_estimate.state_fees?.map((fee, idx) => (
-                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "6px 0", borderBottom: "1px dashed #99f6e4" }}>
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                          fontSize: "12px",
+                          padding: "6px 0",
+                          borderBottom: "1px dashed color-mix(in srgb, var(--primary) 35%, var(--border))",
+                          color: "var(--ink-2, var(--text))",
+                        }}
+                      >
                         <span>{fee.name}</span>
-                        <strong style={{ color: "#0f766e" }}>{fee.cost}</strong>
+                        <strong style={{ color: "var(--primary-dark)", whiteSpace: "nowrap" }}>{fee.cost}</strong>
                       </div>
                     ))}
-                    <div style={{ marginTop: "10px", fontSize: "12px", color: "#047857", fontWeight: 700 }}>
+                    <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--primary-dark)", fontWeight: 700 }}>
                       ✓ Tổng lệ phí nhà nước: <strong>300.000 ₫</strong>
                     </div>
                   </div>
 
                   {/* Lab Fees */}
-                  <div style={{ background: "#fff7ed", padding: "18px", borderRadius: "14px", border: "1px solid #fed7aa" }}>
-                    <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "#c2410c" }}>🧪 Chi Phí Đo Kiểm Phòng Lab Chỉ Định</h4>
+                  <div
+                    style={{
+                      background: "color-mix(in srgb, var(--gold) 15%, var(--panel))",
+                      padding: "18px",
+                      borderRadius: "14px",
+                      border: "1px solid color-mix(in srgb, var(--gold) 50%, var(--border))",
+                      minWidth: 0,
+                    }}
+                  >
+                    <h4 style={{ margin: "0 0 10px", fontSize: "14px", color: "color-mix(in srgb, var(--amber) 68%, var(--ink))" }}>
+                      🧪 Chi Phí Đo Kiểm Phòng Lab Chỉ Định
+                    </h4>
                     {currentPlaybook.cost_estimate.lab_testing_fees?.map((lab, idx) => (
-                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "6px 0", borderBottom: "1px dashed #fed7aa" }}>
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                          fontSize: "12px",
+                          padding: "6px 0",
+                          borderBottom: "1px dashed color-mix(in srgb, var(--gold) 50%, var(--border))",
+                          color: "var(--ink-2, var(--text))",
+                        }}
+                      >
                         <span>{lab.scope}</span>
-                        <strong style={{ color: "#ea580c" }}>{lab.cost}</strong>
+                        <strong style={{ color: "color-mix(in srgb, var(--amber) 68%, var(--ink))", whiteSpace: "nowrap" }}>{lab.cost}</strong>
                       </div>
                     ))}
-                    <div style={{ marginTop: "10px", fontSize: "12px", color: "#c2410c", fontWeight: 800 }}>
+                    <div style={{ marginTop: "10px", fontSize: "12px", color: "color-mix(in srgb, var(--amber) 68%, var(--ink))", fontWeight: 800 }}>
                       Tổng đo kiểm 1 model: <strong>{currentPlaybook.cost_estimate.total_lab_cost_range}</strong>
                     </div>
                   </div>
-                </div>
+                </FormGrid>
 
                 {/* Section 5: Practical Tips */}
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "28px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>💡</span> 5. Lời Khuyên & Kinh Nghiệm Thực Chiến Tiết Kiệm Chi Phí
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "28px 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>💡</span> 5. Lời Khuyên &amp; Kinh Nghiệm Thực Chiến Tiết Kiệm Chi Phí
                 </h3>
-                <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "14px", border: "1px solid #e2e8f0" }}>
-                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#334155", lineHeight: 1.6 }}>
+                <div
+                  style={{
+                    background: "var(--surface-subtle, var(--paper))",
+                    padding: "16px 20px",
+                    borderRadius: "14px",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
                     {currentPlaybook.practical_tips.map((tip, idx) => (
                       <li key={idx} style={{ marginBottom: "6px" }}>{tip}</li>
                     ))}
@@ -1291,24 +1510,50 @@ Thông tin liên hệ của tôi:
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "emc_guide" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div style={{ background: "#fff", padding: "28px 32px", borderRadius: "20px", border: "1px solid #e2e8f0" }}>
-            <span style={{ fontSize: "11px", fontWeight: 800, background: "#fef3c7", color: "#92400e", padding: "4px 10px", borderRadius: "999px", textTransform: "uppercase" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(16px, 2.8vw, 24px)",
+              borderRadius: "20px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 800,
+                background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                color: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                textTransform: "uppercase",
+              }}
+            >
               Cẩm Nang Kỹ Thuật Phần Cứng
             </span>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "#0f172a", margin: "10px 0 6px" }}>
-              Bí Kíp Thiết Kế Phần Cứng & Kinh Nghiệm Đo Đạt EMC 100% Đậu Trong Lần Thử Đầu Tiên
+            <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "clamp(18px, 2.6vw, 22px)", color: "var(--ink)", margin: "10px 0 6px" }}>
+              Bí Kíp Thiết Kế Phần Cứng &amp; Kinh Nghiệm Đo Đạt EMC 100% Đậu Trong Lần Thử Đầu Tiên
             </h2>
-            <p style={{ fontSize: "14px", color: "#64748b", margin: "0 0 20px", lineHeight: 1.5 }}>
+            <p style={{ fontSize: "14px", color: "var(--muted)", margin: "0 0 20px", lineHeight: 1.55 }}>
               Hơn 70% thiết bị rớt kiểm định BTTTT là do không đạt Phát xạ bức xạ (Radiated Emissions) hoặc bị treo/reset khi bắn tĩnh điện (ESD). Dưới đây là các giải pháp chống nhiễu phần cứng cho bo mạch Rockchip.
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px", marginBottom: "24px" }}>
+            <FormGrid cols={2} style={{ marginBottom: "24px" }}>
               {/* Card 1: Radiated Emissions */}
-              <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <div
+                style={{
+                  background: "var(--surface-subtle, var(--paper))",
+                  padding: "clamp(14px, 2.2vw, 20px)",
+                  borderRadius: "16px",
+                  border: "1px solid var(--border)",
+                  minWidth: 0,
+                }}
+              >
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>📡</span> 1. Vượt Qua Phát Xạ Bức Xạ (RE: 30MHz - 6GHz)
                 </h3>
-                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#334155", lineHeight: 1.6 }}>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
                   <li><strong>Lồng Faraday vỏ nhôm:</strong> Các mặt ghép vỏ nhôm phải tiếp xúc điện trực tiếp, không bị lớp sơn tĩnh điện cách điện ở chân ốc.</li>
                   <li><strong>Kẹp Lõi Ferit (Ferrite Bead):</strong> Luôn kẹp 1 - 2 cục lọc Ferit ở sát đầu dây nguồn DC và dây mạng để triệt tiêu bức xạ ngoài ý muốn.</li>
                   <li><strong>Tuyệt chiêu Firmware:</strong> Bật <em>Spread Spectrum Clocking (SSC)</em> trong Device Tree Rockchip (rk3568.dtsi) để giảm ngay 3 - 6 dB năng lượng đỉnh sóng hài!</li>
@@ -1316,34 +1561,49 @@ Thông tin liên hệ của tôi:
               </div>
 
               {/* Card 2: ESD Protection */}
-              <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-                <h3 style={{ fontSize: "16px", color: "#0f766e", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <div
+                style={{
+                  background: "var(--surface-subtle, var(--paper))",
+                  padding: "clamp(14px, 2.2vw, 20px)",
+                  borderRadius: "16px",
+                  border: "1px solid var(--border)",
+                  minWidth: 0,
+                }}
+              >
+                <h3 style={{ fontSize: "16px", color: "var(--primary-dark)", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>⚡</span> 2. Vượt Qua Phóng Tĩnh Điện (ESD ±4kV / ±8kV)
                 </h3>
-                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "#334155", lineHeight: 1.6 }}>
-                  <li><strong>Tách biệt Mass Vỏ & Mass Mạch:</strong> Vỏ nhôm nối Chassis Ground (PE). Digital GND nối với vỏ qua cầu nối: Tụ cao áp 1nF/2kV song song Điện trở 1MΩ.</li>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--ink-2, var(--text))", lineHeight: 1.6 }}>
+                  <li><strong>Tách biệt Mass Vỏ &amp; Mass Mạch:</strong> Vỏ nhôm nối Chassis Ground (PE). Digital GND nối với vỏ qua cầu nối: Tụ cao áp 1nF/2kV song song Điện trở 1MΩ.</li>
                   <li><strong>Diode TVS bảo vệ cổng:</strong> Gắn chip TVS (USBLC6-2SC6, SM712) trên tất cả các chân USB D+/D-, RS485 A/B, Ethernet.</li>
                   <li><strong>Chân ren Anten SMA:</strong> Bắt ốc siết chặt tiếp xúc kim loại 100% vào vỏ nhôm để tĩnh điện thoát ngay ra ngoài đất.</li>
                 </ul>
               </div>
-            </div>
+            </FormGrid>
 
             {/* Rescue Toolbag */}
-            <div style={{ background: "#fff7ed", padding: "20px 24px", borderRadius: "16px", border: "1px solid #fed7aa" }}>
-              <h3 style={{ fontSize: "15px", color: "#c2410c", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>🧰</span> Bộ Đồ Nghề "Cứu Hộ Thần Tốc" Mang Theo Vào Phòng Lab
+            <div
+              style={{
+                background: "color-mix(in srgb, var(--gold) 15%, var(--panel))",
+                padding: "clamp(14px, 2.5vw, 22px)",
+                borderRadius: "16px",
+                border: "1px solid color-mix(in srgb, var(--gold) 52%, var(--border))",
+              }}
+            >
+              <h3 style={{ fontSize: "15px", color: "color-mix(in srgb, var(--amber) 68%, var(--ink))", margin: "0 0 10px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>🧰</span> Bộ Đồ Nghề &ldquo;Cứu Hộ Thần Tốc&rdquo; Mang Theo Vào Phòng Lab
               </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px", fontSize: "13px", color: "#7c2d12" }}>
-                <div style={{ background: "#fff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #fed7aa" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px", fontSize: "13px", color: "var(--ink)" }}>
+                <div style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))", minWidth: 0 }}>
                   <strong>1. Túi Lõi Ferit kẹp dây:</strong> Kích cỡ 3.5mm, 5mm, 7mm kẹp ngay khi bức xạ vượt vạch đỏ.
                 </div>
-                <div style={{ background: "#fff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #fed7aa" }}>
+                <div style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))", minWidth: 0 }}>
                   <strong>2. Băng keo đồng dẫn điện:</strong> Dán bọc các khe hở tiếp xúc nắp vỏ nhôm nếu bị rò sóng.
                 </div>
-                <div style={{ background: "#fff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #fed7aa" }}>
+                <div style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))", minWidth: 0 }}>
                   <strong>3. 02 Cục Nguồn Adapter xịn:</strong> Loại đạt chuẩn CE/FCC công nghiệp để tránh nhiễu nguồn trôi nổi.
                 </div>
-                <div style={{ background: "#fff", padding: "10px 14px", borderRadius: "10px", border: "1px solid #fed7aa" }}>
+                <div style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb, var(--gold) 45%, var(--border))", minWidth: 0 }}>
                   <strong>4. Laptop + Cáp nạp Debug:</strong> Để chỉnh nhanh công suất phát Tx Power trong file cấu hình nếu cần.
                 </div>
               </div>
@@ -1358,19 +1618,37 @@ Thông tin liên hệ của tôi:
       {activeTab === "labs" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Quick Copy Message Template Box */}
-          <div style={{ background: "#f0fdfa", padding: "20px 24px", borderRadius: "16px", border: "1px solid #99f6e4", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-            <div>
-              <h3 style={{ margin: "0 0 4px", fontSize: "16px", color: "#0f766e" }}>📋 Mẫu Tin Nhắn Soạn Sẵn Gửi Zalo / Email Cho Phòng Lab</h3>
-              <p style={{ margin: 0, fontSize: "13px", color: "#334155" }}>Bấm nút sao chép để paste ngay vào Zalo hoặc Email gửi cho chuyên viên phòng Lab.</p>
+          <div
+            style={{
+              background: "var(--primary-soft)",
+              padding: "clamp(14px, 2.5vw, 22px)",
+              borderRadius: "16px",
+              border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: "16px", color: "var(--primary-dark)" }}>
+                📋 Mẫu Tin Nhắn Soạn Sẵn Gửi Zalo / Email Cho Phòng Lab
+              </h3>
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--ink-2, var(--text))" }}>
+                Bấm nút sao chép để paste ngay vào Zalo hoặc Email gửi cho chuyên viên phòng Lab.
+              </p>
             </div>
             <button
+              type="button"
               onClick={copyZaloMessage}
               style={{
                 padding: "10px 18px",
+                minHeight: "44px",
                 borderRadius: "10px",
                 border: "none",
-                background: "#0f766e",
-                color: "#fff",
+                background: "var(--primary)",
+                color: "var(--panel)",
                 fontWeight: 800,
                 fontSize: "13px",
                 cursor: "pointer",
@@ -1384,84 +1662,156 @@ Thông tin liên hệ của tôi:
             </button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: "18px" }}>
             {/* Lab 1: VNTA Lab */}
-            <div style={{ background: "#fff", borderRadius: "18px", border: "2px solid #0f766e", padding: "20px 24px", display: "flex", flexDirection: "column", gap: "12px", boxShadow: "0 4px 16px rgba(15,118,110,0.08)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                <h3 style={{ margin: 0, fontSize: "16px", color: "#0f766e" }}>Trung tâm Đo lường Chất lượng Viễn thông (Cục Viễn thông — VNTA Lab)</h3>
-                <span style={{ fontSize: "11px", fontWeight: 800, background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: "6px" }}>
+            <div
+              style={{
+                background: "var(--panel)",
+                borderRadius: "18px",
+                border: "2px solid var(--primary)",
+                padding: "clamp(14px, 2.5vw, 22px)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                boxShadow: "var(--shadow)",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
+                <h3 style={{ margin: 0, fontSize: "16px", color: "var(--primary-dark)", minWidth: 0, flex: "1 1 200px" }}>
+                  Trung tâm Đo lường Chất lượng Viễn thông (Cục Viễn thông — VNTA Lab)
+                </h3>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    background: "color-mix(in srgb, var(--green) 14%, var(--panel))",
+                    color: "color-mix(in srgb, var(--green) 72%, var(--ink))",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                  }}
+                >
                   🌟 Chỉ định Số 1 BTTTT
                 </span>
               </div>
 
-              <div style={{ fontSize: "13px", color: "#334155" }}>
+              <div style={{ fontSize: "13px", color: "var(--ink-2, var(--text))" }}>
                 📍 <strong>TP.HCM:</strong> Số 60 Tân Canh, Phường 1, Quận Tân Bình, TP.HCM<br />
                 📍 <strong>Hà Nội:</strong> Tòa nhà VNTA, Đường Dương Đình Nghệ, Cầu Giấy, Hà Nội
               </div>
 
-              <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", fontSize: "13px" }}>
-                📞 <strong>Hotline Tiếp Nhận TP.HCM:</strong> <a href="tel:02839919191" style={{ color: "#0f766e", fontWeight: 800 }}>028.39919191</a> / <a href="tel:02437820990" style={{ color: "#0f766e", fontWeight: 800 }}>024.37820990</a><br />
-                ✉️ <strong>Email:</strong> <a href="mailto:testing@vnta.gov.vn">testing@vnta.gov.vn</a>
+              <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "12px", borderRadius: "10px", fontSize: "13px", color: "var(--ink)" }}>
+                📞 <strong>Hotline Tiếp Nhận TP.HCM:</strong>{" "}
+                <a href="tel:02839919191" style={{ color: "var(--primary-dark)", fontWeight: 800 }}>028.39919191</a> /{" "}
+                <a href="tel:02437820990" style={{ color: "var(--primary-dark)", fontWeight: 800 }}>024.37820990</a><br />
+                ✉️ <strong>Email:</strong>{" "}
+                <a href="mailto:testing@vnta.gov.vn" style={{ color: "var(--primary-dark)", fontWeight: 700 }}>testing@vnta.gov.vn</a>
               </div>
 
-              <div style={{ fontSize: "12px", color: "#475569" }}>
+              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
                 <strong>Phạm vi đo kiểm:</strong> QCVN 54 (Wi-Fi 2.4G/BT), QCVN 65 (Wi-Fi 5G), QCVN 117 (4G LTE), QCVN 18 (EMC), QCVN 132 (An toàn).
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", fontSize: "12px", borderTop: "1px solid var(--border)", paddingTop: "10px", color: "var(--ink-2, var(--text))" }}>
                 <span>⏱️ Thời gian: <strong>5 - 7 ngày</strong></span>
-                <span style={{ color: "#ea580c" }}>💰 Trọn gói 1 model: <strong>~15 - 22 Triệu ₫</strong></span>
+                <span style={{ color: "color-mix(in srgb, var(--amber) 68%, var(--ink))" }}>💰 Trọn gói 1 model: <strong>~15 - 22 Triệu ₫</strong></span>
               </div>
             </div>
 
             {/* Lab 2: Quatest 3 */}
-            <div style={{ background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0", padding: "20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                <h3 style={{ margin: 0, fontSize: "16px", color: "#0f172a" }}>Trung tâm Kỹ thuật Tiêu chuẩn Đo lường Chất lượng 3 (QUATEST 3)</h3>
-                <span style={{ fontSize: "11px", fontWeight: 800, background: "#eff6ff", color: "#1d4ed8", padding: "3px 8px", borderRadius: "6px" }}>
+            <div
+              style={{
+                background: "var(--panel)",
+                borderRadius: "18px",
+                border: "1px solid var(--border)",
+                padding: "clamp(14px, 2.5vw, 22px)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                boxShadow: "var(--shadow)",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
+                <h3 style={{ margin: 0, fontSize: "16px", color: "var(--ink)", minWidth: 0, flex: "1 1 200px" }}>
+                  Trung tâm Kỹ thuật Tiêu chuẩn Đo lường Chất lượng 3 (QUATEST 3)
+                </h3>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    background: "var(--primary-soft)",
+                    color: "var(--primary-dark)",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                  }}
+                >
                   Zalo CSKH Nhanh
                 </span>
               </div>
 
-              <div style={{ fontSize: "13px", color: "#334155" }}>
+              <div style={{ fontSize: "13px", color: "var(--ink-2, var(--text))" }}>
                 📍 <strong>Trụ sở:</strong> 49 Pasteur, Phường Nguyễn Thái Bình, Quận 1, TP.HCM<br />
                 📍 <strong>Khu Thí nghiệm:</strong> KCN Biên Hòa 1, Đồng Nai
               </div>
 
-              <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", fontSize: "13px" }}>
-                💬 <strong>Zalo CSKH Quatest 3:</strong> <strong style={{ color: "#0f766e" }}>0903.003.528</strong> hoặc <strong style={{ color: "#0f766e" }}>0908.574.629</strong><br />
+              <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "12px", borderRadius: "10px", fontSize: "13px", color: "var(--ink)" }}>
+                💬 <strong>Zalo CSKH Quatest 3:</strong> <strong style={{ color: "var(--primary-dark)" }}>0903.003.528</strong> hoặc <strong style={{ color: "var(--primary-dark)" }}>0908.574.629</strong><br />
                 📞 <strong>Tổng đài:</strong> 028.38294274 • ✉️ <strong>Email:</strong> info@quatest3.com.vn
               </div>
 
-              <div style={{ fontSize: "12px", color: "#475569" }}>
+              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
                 <strong>Phạm vi đo kiểm:</strong> Đo kiểm vô tuyến, EMC, an toàn điện, kiểm định môi trường.
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", borderTop: "1px solid #f1f5f9", paddingTop: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", fontSize: "12px", borderTop: "1px solid var(--border)", paddingTop: "10px", color: "var(--ink-2, var(--text))" }}>
                 <span>⏱️ Thời gian: <strong>5 - 8 ngày</strong></span>
-                <span style={{ color: "#ea580c" }}>💰 Trọn gói 1 model: <strong>~16 - 24 Triệu ₫</strong></span>
+                <span style={{ color: "color-mix(in srgb, var(--amber) 68%, var(--ink))" }}>💰 Trọn gói 1 model: <strong>~16 - 24 Triệu ₫</strong></span>
               </div>
             </div>
 
             {/* Consulting: ExtendMax */}
-            <div style={{ background: "#fff", borderRadius: "18px", border: "1px solid #e2e8f0", padding: "20px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                <h3 style={{ margin: 0, fontSize: "16px", color: "#0f172a" }}>ExtendMax Vietnam (Tư Vấn Hợp Quy Trọn Gói)</h3>
-                <span style={{ fontSize: "11px", fontWeight: 800, background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: "6px" }}>
+            <div
+              style={{
+                background: "var(--panel)",
+                borderRadius: "18px",
+                border: "1px solid var(--border)",
+                padding: "clamp(14px, 2.5vw, 22px)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                boxShadow: "var(--shadow)",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap" }}>
+                <h3 style={{ margin: 0, fontSize: "16px", color: "var(--ink)", minWidth: 0, flex: "1 1 200px" }}>
+                  ExtendMax Vietnam (Tư Vấn Hợp Quy Trọn Gói)
+                </h3>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                    color: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                  }}
+                >
                   Ủy Thác A-Z
                 </span>
               </div>
 
-              <div style={{ fontSize: "13px", color: "#334155" }}>
+              <div style={{ fontSize: "13px", color: "var(--ink-2, var(--text))" }}>
                 📍 Tòa nhà CIC, Phố Nguyễn Thị Duệ, Cầu Giấy, Hà Nội
               </div>
 
-              <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", fontSize: "13px" }}>
-                💬 <strong>Hotline / Zalo Trực Tiếp:</strong> <strong style={{ color: "#ea580c" }}>0915.837.255</strong> (hoặc 024.6666.3066)<br />
+              <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "12px", borderRadius: "10px", fontSize: "13px", color: "var(--ink)" }}>
+                💬 <strong>Hotline / Zalo Trực Tiếp:</strong> <strong style={{ color: "color-mix(in srgb, var(--amber) 68%, var(--ink))" }}>0915.837.255</strong> (hoặc 024.6666.3066)<br />
                 ✉️ <strong>Email:</strong> consultant@extendmax.vn
               </div>
 
-              <div style={{ fontSize: "12px", color: "#475569" }}>
+              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
                 <strong>Dịch vụ:</strong> Hỗ trợ test trước (Pre-test), xử lý mạch chống rớt EMC và đại diện nộp cấp Giấy CNHQ Cục Viễn Thông tận tay.
               </div>
             </div>
@@ -1475,11 +1825,20 @@ Thông tin liên hệ của tôi:
       {activeTab === "search" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Search Box & Multi-Filter Bar */}
-          <div style={{ background: "#fff", padding: "20px 24px", borderRadius: "16px", border: "1px solid #e2e8f0", boxShadow: "0 4px 14px rgba(0,0,0,0.04)" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 22px)",
+              borderRadius: "16px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            }}
+          >
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "14px" }}>
-              <div style={{ flex: "1 1 320px", position: "relative" }}>
+              <div style={{ flex: "1 1 min(100%, 260px)", minWidth: 0, position: "relative" }}>
                 <input
                   type="text"
+                  className="ui-input"
                   placeholder="Gõ mã QCVN (vd: 117, 54, 101, TT10), tên quy chuẩn hoặc tên thiết bị (Màn hình, IoT Gateway, Pin, Công tơ)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1488,29 +1847,43 @@ Thông tin liên hệ của tôi:
                     width: "100%",
                     padding: "12px 16px 12px 42px",
                     borderRadius: "12px",
-                    border: "1px solid #cbd5e1",
-                    fontSize: "14px",
-                    outline: "none",
+                    border: "1px solid var(--border-strong, var(--border))",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
                   }}
                 />
-                <span style={{ position: "absolute", left: "14px", top: "12px", fontSize: "16px", color: "#94a3b8" }}>🔍</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: "14px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "16px",
+                    color: "var(--muted)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  🔍
+                </span>
               </div>
 
               <button
+                type="button"
                 onClick={handleSearch}
                 style={{
                   padding: "12px 24px",
+                  minHeight: "44px",
                   borderRadius: "12px",
                   border: "none",
-                  background: "#0f766e",
-                  color: "#fff",
+                  background: "var(--primary)",
+                  color: "var(--panel)",
                   fontWeight: 800,
                   fontSize: "14px",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  boxShadow: "0 4px 12px rgba(15,118,110,0.25)",
                 }}
               >
                 <span>Tìm Kiếm</span>
@@ -1518,8 +1891,8 @@ Thông tin liên hệ của tôi:
             </div>
 
             {/* Quick Filters */}
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center", paddingTop: "12px", borderTop: "1px solid #f1f5f9" }}>
-              <span style={{ fontSize: "12px", fontWeight: 800, color: "#64748b" }}>Bộ Quản Lý:</span>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--muted)" }}>Bộ Quản Lý:</span>
               {[
                 { label: "Tất cả", val: "" },
                 { label: "Bộ TT&TT (BTTTT)", val: "BTTTT" },
@@ -1529,14 +1902,17 @@ Thông tin liên hệ của tôi:
               ].map((m) => (
                 <button
                   key={m.val}
+                  type="button"
+                  className="ui-btn-chip"
                   onClick={() => { setSelectedMinistry(m.val); }}
                   style={{
-                    padding: "6px 14px",
+                    padding: "8px 14px",
+                    minHeight: "44px",
                     borderRadius: "8px",
                     border: "1px solid",
-                    borderColor: selectedMinistry === m.val ? "#0f766e" : "#e2e8f0",
-                    background: selectedMinistry === m.val ? "#f0fdfa" : "#fff",
-                    color: selectedMinistry === m.val ? "#0f766e" : "#475569",
+                    borderColor: selectedMinistry === m.val ? "var(--primary)" : "var(--border)",
+                    background: selectedMinistry === m.val ? "var(--primary-soft)" : "var(--panel)",
+                    color: selectedMinistry === m.val ? "var(--primary-dark)" : "var(--ink-2, var(--text))",
                     fontWeight: selectedMinistry === m.val ? 800 : 600,
                     fontSize: "12px",
                     cursor: "pointer",
@@ -1547,8 +1923,20 @@ Thông tin liên hệ của tôi:
               ))}
 
               <button
+                type="button"
+                className="ui-btn-chip"
                 onClick={() => { setSelectedMinistry(""); setSelectedCategory(""); setSelectedProcedure(""); setSearchQuery(""); }}
-                style={{ marginLeft: "auto", border: "none", background: "transparent", color: "#dc2626", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                style={{
+                  marginLeft: "auto",
+                  minHeight: "44px",
+                  padding: "8px 12px",
+                  border: "none",
+                  background: "transparent",
+                  color: "color-mix(in srgb, var(--red) 75%, var(--ink))",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
               >
                 Đặt lại bộ lọc
               </button>
@@ -1557,43 +1945,54 @@ Thông tin liên hệ của tôi:
 
           {/* Standards Cards Grid */}
           {loading ? (
-            <div style={{ textAlign: "center", padding: "60px", color: "#64748b" }}>Đang tải dữ liệu quy chuẩn...</div>
+            <div style={{ textAlign: "center", padding: "60px 16px", color: "var(--muted)" }}>Đang tải dữ liệu quy chuẩn...</div>
           ) : standardsList.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px", background: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", color: "#64748b" }}>
-              Không tìm thấy quy chuẩn nào phù hợp với từ khóa "{searchQuery}"
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px 16px",
+                background: "var(--panel)",
+                borderRadius: "16px",
+                border: "1px solid var(--border)",
+                color: "var(--muted)",
+              }}
+            >
+              Không tìm thấy quy chuẩn nào phù hợp với từ khóa &ldquo;{searchQuery}&rdquo;
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: "18px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))", gap: "18px" }}>
               {standardsList.map((std) => {
                 const badge = getMinistryBadge(std.ministry);
+                const stdPdfUrl = safeHttpUrl(api.standards.getStandardPdfUrl(std.code));
                 return (
                   <div
                     key={std.code}
                     style={{
-                      background: "#fff",
+                      background: "var(--panel)",
                       borderRadius: "18px",
-                      border: "1px solid #e2e8f0",
-                      padding: "20px 24px",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.03)",
+                      border: "1px solid var(--border)",
+                      padding: "clamp(14px, 2.5vw, 22px)",
+                      boxShadow: "var(--shadow)",
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "space-between",
                       gap: "14px",
+                      minWidth: 0,
                     }}
                   >
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       {/* Top Header of Card */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
                         <span
                           style={{
                             fontFamily: "var(--font-mono)",
                             fontSize: "13px",
                             fontWeight: 900,
-                            color: "#0f766e",
-                            background: "#e6fffa",
+                            color: "var(--primary-dark)",
+                            background: "var(--primary-soft)",
                             padding: "4px 10px",
                             borderRadius: "8px",
-                            border: "1px solid #99f6e4",
+                            border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
                           }}
                         >
                           🏷️ {std.code}
@@ -1620,7 +2019,7 @@ Thông tin liên hệ của tôi:
                           margin: "0 0 8px",
                           fontSize: "16px",
                           fontWeight: 800,
-                          color: "#0f172a",
+                          color: "var(--ink)",
                           lineHeight: 1.4,
                           cursor: "pointer",
                         }}
@@ -1628,20 +2027,40 @@ Thông tin liên hệ của tôi:
                         {std.name} ↗
                       </h3>
 
-                      <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.5, marginBottom: "8px" }}>
-                        📜 Văn bản: <strong style={{ color: "#334155" }}>{std.circular}</strong>
+                      <div style={{ fontSize: "12px", color: "var(--muted)", lineHeight: 1.5, marginBottom: "8px" }}>
+                        📜 Văn bản: <strong style={{ color: "var(--ink-2, var(--text))" }}>{std.circular}</strong>
                       </div>
 
-                      <div style={{ fontSize: "12px", color: "#475569", background: "#f8fafc", padding: "10px 12px", borderRadius: "10px", border: "1px solid #f1f5f9", marginBottom: "8px" }}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--ink-2, var(--text))",
+                          background: "var(--surface-subtle, var(--paper))",
+                          padding: "10px 12px",
+                          borderRadius: "10px",
+                          border: "1px solid var(--border)",
+                          marginBottom: "8px",
+                        }}
+                      >
                         <strong>Thiết bị áp dụng:</strong> {std.target_equipment}
                       </div>
 
                       {/* Applicable HS codes */}
                       {std.applicable_hs_codes && std.applicable_hs_codes.length > 0 && (
                         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", fontSize: "11px" }}>
-                          <span style={{ color: "#94a3b8", fontWeight: 700 }}>Mã HS Code:</span>
+                          <span style={{ color: "var(--muted)", fontWeight: 700 }}>Mã HS Code:</span>
                           {std.applicable_hs_codes.map((hs) => (
-                            <span key={hs} style={{ background: "#fef3c7", color: "#92400e", fontWeight: 800, padding: "2px 6px", borderRadius: "4px", fontFamily: "var(--font-mono)" }}>
+                            <span
+                              key={hs}
+                              style={{
+                                background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                                color: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+                                fontWeight: 800,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                fontFamily: "var(--font-mono)",
+                              }}
+                            >
                               {hs}
                             </span>
                           ))}
@@ -1650,19 +2069,22 @@ Thông tin liên hệ của tôi:
                     </div>
 
                     {/* Action Buttons */}
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", borderTop: "1px solid #f1f5f9", paddingTop: "12px" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
                       <button
+                        type="button"
+                        className="ui-btn-chip"
                         onClick={() => handleOpenDetail(std)}
                         style={{
-                          padding: "8px 14px",
+                          padding: "9px 14px",
+                          minHeight: "44px",
                           borderRadius: "10px",
                           border: "none",
-                          background: "#0f766e",
-                          color: "#fff",
+                          background: "var(--primary)",
+                          color: "var(--panel)",
                           fontWeight: 700,
                           fontSize: "12px",
                           cursor: "pointer",
-                          display: "flex",
+                          display: "inline-flex",
                           alignItems: "center",
                           gap: "5px",
                         }}
@@ -1671,26 +2093,30 @@ Thông tin liên hệ của tôi:
                         <span>Xem Chi Tiết</span>
                       </button>
 
-                      <a
-                        href={api.standards.getStandardPdfUrl(std.code)}
-                        download
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: "10px",
-                          border: "1px solid #0f766e",
-                          background: "#f0fdfa",
-                          color: "#0f766e",
-                          fontWeight: 700,
-                          fontSize: "12px",
-                          textDecoration: "none",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                        }}
-                      >
-                        <span>📄</span>
-                        <span>Tải Toàn Văn PDF</span>
-                      </a>
+                      {stdPdfUrl && (
+                        <a
+                          href={stdPdfUrl}
+                          download
+                          className="ui-btn-chip"
+                          style={{
+                            padding: "9px 14px",
+                            minHeight: "44px",
+                            borderRadius: "10px",
+                            border: "1px solid var(--primary)",
+                            background: "var(--primary-soft)",
+                            color: "var(--primary-dark)",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                        >
+                          <span>📄</span>
+                          <span>Tải Toàn Văn PDF</span>
+                        </a>
+                      )}
                     </div>
                   </div>
                 );
@@ -1707,25 +2133,54 @@ Thông tin liên hệ của tôi:
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "hs_lookup" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "#0f766e", margin: "0 0 8px" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 24px)",
+              borderRadius: "16px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            }}
+          >
+            <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "20px", color: "var(--primary-dark)", margin: "0 0 8px" }}>
               Tra Cứu Thủ Tục Kiểm Tra Chuyên Ngành Theo Mã HS Code
             </h2>
-            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px" }}>
-              Nhập mã HS Code của linh kiện / thiết bị nhập khẩu để kiểm tra diện quản lý chuyên ngành của Bộ TT&TT, Bộ KH&CN, Bộ TN&MT.
+            <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 16px" }}>
+              Nhập mã HS Code của linh kiện / thiết bị nhập khẩu để kiểm tra diện quản lý chuyên ngành của Bộ TT&amp;TT, Bộ KH&amp;CN, Bộ TN&amp;MT.
             </p>
 
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "16px" }}>
               <input
                 type="text"
+                className="ui-input"
                 placeholder="Nhập mã HS Code (vd: 8473.30.10, 8471.41.90, 8517.62.59, 8507.60.90)..."
                 value={hsCodeInput}
                 onChange={(e) => setHsCodeInput(e.target.value)}
-                style={{ flex: "1 1 300px", padding: "12px 16px", borderRadius: "12px", border: "1px solid #cbd5e1", fontSize: "14px", fontFamily: "var(--font-mono)" }}
+                style={{
+                  flex: "1 1 min(100%, 260px)",
+                  minWidth: 0,
+                  padding: "12px 16px",
+                  borderRadius: "12px",
+                  border: "1px solid var(--border-strong, var(--border))",
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
               />
               <button
+                type="button"
                 onClick={() => handleHsLookup()}
-                style={{ padding: "12px 24px", borderRadius: "12px", border: "none", background: "#0f766e", color: "#fff", fontWeight: 800, fontSize: "14px", cursor: "pointer" }}
+                style={{
+                  padding: "12px 24px",
+                  minHeight: "44px",
+                  borderRadius: "12px",
+                  border: "none",
+                  background: "var(--primary)",
+                  color: "var(--panel)",
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  cursor: "pointer",
+                }}
               >
                 Tra Cứu Ngay
               </button>
@@ -1733,7 +2188,7 @@ Thông tin liên hệ của tôi:
 
             {/* Quick Sample HS Buttons */}
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Gợi ý mã phổ biến:</span>
+              <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>Gợi ý mã phổ biến:</span>
               {[
                 { code: "8473.30.10", label: "8473.30.10 (Bo mạch máy tính nhúng Rockchip)" },
                 { code: "8471.41.90", label: "8471.41.90 (Máy tính nhúng hoàn thiện)" },
@@ -1744,8 +2199,20 @@ Thông tin liên hệ của tôi:
               ].map((sample) => (
                 <button
                   key={sample.code}
+                  type="button"
+                  className="ui-btn-chip"
                   onClick={() => { setHsCodeInput(sample.code); handleHsLookup(sample.code); }}
-                  style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: "12px", cursor: "pointer", fontFamily: "var(--font-mono)" }}
+                  style={{
+                    padding: "8px 12px",
+                    minHeight: "44px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-strong, var(--border))",
+                    background: "var(--surface-subtle, var(--paper))",
+                    color: "var(--ink)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-mono)",
+                  }}
                 >
                   {sample.label}
                 </button>
@@ -1755,16 +2222,43 @@ Thông tin liên hệ của tôi:
 
           {/* HS Lookup Result Card */}
           {hsResult && (
-            <div style={{ background: "#fff", borderRadius: "18px", border: "1px solid #bbf7d0", padding: "24px", boxShadow: "0 6px 20px rgba(22,101,52,0.06)" }}>
+            <div
+              style={{
+                background: "var(--panel)",
+                borderRadius: "18px",
+                border: "1px solid color-mix(in srgb, var(--green) 45%, var(--border))",
+                padding: "clamp(14px, 2.5vw, 24px)",
+                boxShadow: "var(--shadow)",
+              }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap", marginBottom: "16px" }}>
-                <div>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 900, background: "#dcfce7", color: "#166534", padding: "4px 10px", borderRadius: "6px" }}>
+                <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "14px",
+                      fontWeight: 900,
+                      background: "color-mix(in srgb, var(--green) 14%, var(--panel))",
+                      color: "color-mix(in srgb, var(--green) 72%, var(--ink))",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                    }}
+                  >
                     Mã HS: {hsResult.hs_code}
                   </span>
-                  <h3 style={{ margin: "8px 0 0", fontSize: "18px", color: "#0f172a" }}>{hsResult.hs_description}</h3>
+                  <h3 style={{ margin: "8px 0 0", fontSize: "18px", color: "var(--ink)" }}>{hsResult.hs_description}</h3>
                 </div>
 
-                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "8px 14px", borderRadius: "10px", fontSize: "12px", color: "#1d4ed8" }}>
+                <div
+                  style={{
+                    background: "var(--primary-soft)",
+                    border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                    padding: "8px 14px",
+                    borderRadius: "10px",
+                    fontSize: "12px",
+                    color: "var(--primary-dark)",
+                  }}
+                >
                   <strong>Cơ quan quản lý:</strong> {hsResult.customs_inspection_agency}
                 </div>
               </div>
@@ -1773,9 +2267,20 @@ Thông tin liên hệ của tôi:
               {hsResult.risk_classification && (
                 <div
                   style={{
-                    background: hsResult.risk_classification.annex === 1 ? "#fef2f2" : hsResult.risk_classification.annex === 2 ? "#fffbeb" : "#f0fdf4",
-                    border: `1px solid ${hsResult.risk_classification.annex === 1 ? "#fecaca" : hsResult.risk_classification.annex === 2 ? "#fde68a" : "#bbf7d0"}`,
-                    padding: "14px 18px",
+                    background:
+                      hsResult.risk_classification.annex === 1
+                        ? "color-mix(in srgb, var(--red) 11%, var(--panel))"
+                        : hsResult.risk_classification.annex === 2
+                        ? "color-mix(in srgb, var(--gold) 15%, var(--panel))"
+                        : "color-mix(in srgb, var(--green) 13%, var(--panel))",
+                    border: `1px solid ${
+                      hsResult.risk_classification.annex === 1
+                        ? "color-mix(in srgb, var(--red) 45%, var(--border))"
+                        : hsResult.risk_classification.annex === 2
+                        ? "color-mix(in srgb, var(--gold) 55%, var(--border))"
+                        : "color-mix(in srgb, var(--green) 45%, var(--border))"
+                    }`,
+                    padding: "14px 16px",
                     borderRadius: "12px",
                     marginBottom: "16px",
                     display: "flex",
@@ -1785,59 +2290,115 @@ Thông tin liên hệ của tôi:
                     gap: "10px",
                   }}
                 >
-                  <div>
-                    <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", color: hsResult.risk_classification.annex === 1 ? "#991b1b" : hsResult.risk_classification.annex === 2 ? "#92400e" : "#166534" }}>
+                  <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        color:
+                          hsResult.risk_classification.annex === 1
+                            ? "color-mix(in srgb, var(--red) 75%, var(--ink))"
+                            : hsResult.risk_classification.annex === 2
+                            ? "color-mix(in srgb, var(--amber) 68%, var(--ink))"
+                            : "color-mix(in srgb, var(--green) 72%, var(--ink))",
+                      }}
+                    >
                       ⚖️ Phân loại rủi ro (Thông tư 36/2026/TT-BKHCN):
                     </div>
-                    <div style={{ fontSize: "14px", fontWeight: 800, color: hsResult.risk_classification.annex === 1 ? "#b91c1c" : hsResult.risk_classification.annex === 2 ? "#b45309" : "#15803d", marginTop: "2px" }}>
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 800,
+                        color: "var(--ink)",
+                        marginTop: "2px",
+                      }}
+                    >
                       {hsResult.risk_classification.risk_label}
                     </div>
-                    <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+                    <div style={{ fontSize: "12px", color: "var(--ink-2, var(--text))", marginTop: "4px" }}>
                       {hsResult.risk_classification.guidance}
                     </div>
                   </div>
                   <button
+                    type="button"
+                    className="ui-btn-chip"
                     onClick={() => { setActiveTab("risk_classification"); syncUrl("risk_classification"); }}
-                    style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                    style={{
+                      padding: "8px 14px",
+                      minHeight: "44px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-strong, var(--border))",
+                      background: "var(--panel)",
+                      color: "var(--ink)",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
                   >
                     Xem Danh Mục Rủi Ro ↗
                   </button>
                 </div>
               )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "14px", marginBottom: "16px" }}>
-                <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Loại hình kiểm tra:</div>
-                  <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f766e", marginTop: "2px" }}>{hsResult.inspection_type}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: "14px", marginBottom: "16px" }}>
+                <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "14px", borderRadius: "12px", border: "1px solid var(--border)", minWidth: 0 }}>
+                  <div style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>Loại hình kiểm tra:</div>
+                  <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--primary-dark)", marginTop: "2px" }}>{hsResult.inspection_type}</div>
                 </div>
 
-                <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Thủ tục bắt buộc:</div>
-                  <div style={{ fontSize: "14px", fontWeight: 800, color: "#ea580c", marginTop: "2px" }}>{hsResult.required_procedure}</div>
+                <div style={{ background: "var(--surface-subtle, var(--paper))", padding: "14px", borderRadius: "12px", border: "1px solid var(--border)", minWidth: 0 }}>
+                  <div style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>Thủ tục bắt buộc:</div>
+                  <div style={{ fontSize: "14px", fontWeight: 800, color: "color-mix(in srgb, var(--amber) 68%, var(--ink))", marginTop: "2px" }}>
+                    {hsResult.required_procedure}
+                  </div>
                 </div>
               </div>
 
               {/* Applicable Standards Tags */}
               <div style={{ marginBottom: "16px" }}>
-                <strong style={{ fontSize: "13px", color: "#334155" }}>Quy Chuẩn Kỹ Thuật Bắt Buộc Áp Dụng:</strong>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "6px" }}>
+                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>Quy Chuẩn Kỹ Thuật Bắt Buộc Áp Dụng:</strong>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "8px" }}>
                   {hsResult.applicable_standards.map((stdCode) => (
-                    <span
+                    <button
                       key={stdCode}
+                      type="button"
+                      className="ui-btn-chip"
                       onClick={() => {
                         api.standards.search({ q: stdCode }).then((r) => { if (r.length > 0) handleOpenDetail(r[0]); });
                       }}
-                      style={{ padding: "6px 12px", borderRadius: "8px", background: "#f0fdfa", color: "#0f766e", border: "1px solid #99f6e4", fontWeight: 800, fontSize: "12px", cursor: "pointer" }}
+                      style={{
+                        padding: "8px 14px",
+                        minHeight: "44px",
+                        borderRadius: "8px",
+                        background: "var(--primary-soft)",
+                        color: "var(--primary-dark)",
+                        border: "1px solid color-mix(in srgb, var(--primary) 35%, var(--border))",
+                        fontWeight: 800,
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
                     >
                       📜 {stdCode} ↗
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
 
               {/* Customs Notes */}
-              <div style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "14px 18px", borderRadius: "12px", fontSize: "13px", color: "#854d0e", lineHeight: 1.5, marginBottom: "12px" }}>
-                <strong>📌 Lưu ý Hải quan & Giải phóng hàng:</strong> {hsResult.customs_notes}
+              <div
+                style={{
+                  background: "color-mix(in srgb, var(--gold) 15%, var(--panel))",
+                  border: "1px solid color-mix(in srgb, var(--gold) 50%, var(--border))",
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  fontSize: "13px",
+                  color: "var(--ink)",
+                  lineHeight: 1.55,
+                  marginBottom: "12px",
+                }}
+              >
+                <strong>📌 Lưu ý Hải quan &amp; Giải phóng hàng:</strong> {hsResult.customs_notes}
               </div>
             </div>
           )}
@@ -1848,61 +2409,79 @@ Thông tin liên hệ của tôi:
       {/* TAB: ⚖️ PHÂN LOẠI RỦI RO (THÔNG TƯ 36/2026/TT-BKHCN)                       */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "risk_classification" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Hero Banner with Official Circular Download */}
           <div
             style={{
-              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              background: "linear-gradient(135deg, var(--ink) 0%, var(--primary-dark) 100%)",
               borderRadius: "20px",
-              padding: "28px 32px",
-              color: "#fff",
+              padding: "clamp(16px, 2.8vw, 26px)",
+              color: "var(--panel)",
               position: "relative",
               overflow: "hidden",
-              border: "1px solid #334155",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+              border: "1px solid rgba(255, 254, 250, 0.14)",
+              boxShadow: "var(--shadow-md)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-              <div style={{ maxWidth: "780px" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.4)", padding: "4px 12px", borderRadius: "999px", fontSize: "11px", fontWeight: 800, color: "#fca5a5", marginBottom: "12px" }}>
+              <div style={{ maxWidth: "780px", minWidth: 0, flex: "1 1 260px" }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "6px",
+                    background: "rgba(255, 254, 250, 0.12)",
+                    border: "1px solid rgba(255, 254, 250, 0.28)",
+                    padding: "4px 12px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "var(--gold)",
+                    marginBottom: "12px",
+                  }}
+                >
                   <span>⚖️ VĂN BẢN QUY PHẠM PHÁP LUẬT MỚI 2026</span>
                   <span>•</span>
                   <span>BỘ KHOA HỌC VÀ CÔNG NGHỆ</span>
                 </div>
-                <h1 style={{ fontFamily: "Georgia, serif", fontSize: "22px", margin: "0 0 10px", lineHeight: 1.4, color: "#fff" }}>
-                  Danh Mục Phân Loại Sản Phẩm, Hàng Hóa Mức Độ Rủi Ro Trung Bình & Cao (Thông tư số 36/2026/TT-BKHCN)
-                </h1>
-                <p style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
-                  Căn cứ Luật Chất lượng sản phẩm, hàng hóa (sửa đổi bởi Luật số 78/2025/QH15) và Nghị định 37/2026/NĐ-CP của Chính phủ. 
+                <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "clamp(18px, 2.6vw, 22px)", margin: "0 0 10px", lineHeight: 1.4, color: "var(--panel)" }}>
+                  Danh Mục Phân Loại Sản Phẩm, Hàng Hóa Mức Độ Rủi Ro Trung Bình &amp; Cao (Thông tư số 36/2026/TT-BKHCN)
+                </h2>
+                <p style={{ fontSize: "13px", color: "var(--primary-soft)", lineHeight: 1.6, margin: 0 }}>
+                  Căn cứ Luật Chất lượng sản phẩm, hàng hóa (sửa đổi bởi Luật số 78/2025/QH15) và Nghị định 37/2026/NĐ-CP của Chính phủ.
                   Phân định rõ thẩm quyền kiểm tra nhà nước (KTCL), phương thức chứng nhận hợp quy (PT5 / PT7), và điều kiện giải phóng hàng thông quan tại cửa khẩu.
                 </p>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <a
-                  href="/api/standards/risk-classification/pdf"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
-                    color: "#fff",
-                    textDecoration: "none",
-                    padding: "12px 20px",
-                    borderRadius: "12px",
-                    fontWeight: 800,
-                    fontSize: "13px",
-                    boxShadow: "0 4px 14px rgba(2,132,199,0.35)",
-                    border: "none",
-                  }}
-                >
-                  <span>📄</span>
-                  <span>Tải Bản Ký Số PDF (5.7 MB)</span>
-                </a>
-                <span style={{ fontSize: "11px", color: "#64748b", textAlign: "center" }}>
-                  Chữ ký số cơ quan: Bộ KH&CN
+                {riskCircularPdfUrl && (
+                  <a
+                    href={riskCircularPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      minHeight: "44px",
+                      background: "var(--gold)",
+                      color: "var(--ink)",
+                      textDecoration: "none",
+                      padding: "11px 20px",
+                      borderRadius: "12px",
+                      fontWeight: 800,
+                      fontSize: "13px",
+                      border: "none",
+                    }}
+                  >
+                    <span>📄</span>
+                    <span>Tải Bản Ký Số PDF (5.7 MB)</span>
+                  </a>
+                )}
+                <span style={{ fontSize: "11px", color: "var(--primary-soft)", textAlign: "center" }}>
+                  Chữ ký số cơ quan: Bộ KH&amp;CN
                 </span>
               </div>
             </div>
@@ -1912,62 +2491,116 @@ Thông tin liên hệ của tôi:
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "14px",
-                  marginTop: "24px",
-                  paddingTop: "20px",
-                  borderTop: "1px solid rgba(255,255,255,0.1)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+                  gap: "12px",
+                  marginTop: "22px",
+                  paddingTop: "18px",
+                  borderTop: "1px solid rgba(255, 254, 250, 0.14)",
                 }}
               >
-                <div style={{ background: "rgba(255,255,255,0.06)", padding: "14px 16px", borderRadius: "12px" }}>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Tổng Mặt Hàng Quản Lý</div>
-                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#38bdf8", marginTop: "4px" }}>{riskStats.total_items}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Theo TT 36/2026/TT-BKHCN</div>
+                <div style={{ background: "rgba(255, 254, 250, 0.08)", padding: "14px 16px", borderRadius: "12px", minWidth: 0 }}>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", fontWeight: 700, textTransform: "uppercase" }}>Tổng Mặt Hàng Quản Lý</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "var(--panel)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>{riskStats.total_items}</div>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", marginTop: "2px" }}>Theo TT 36/2026/TT-BKHCN</div>
                 </div>
 
-                <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", padding: "14px 16px", borderRadius: "12px" }}>
-                  <div style={{ fontSize: "11px", color: "#fca5a5", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro CAO (Phụ Lục I)</div>
-                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#ef4444", marginTop: "4px" }}>{riskStats.high_risk_count}</div>
-                  <div style={{ fontSize: "11px", color: "#f87171", marginTop: "2px" }}>KTCL trước thông quan (PT5/PT7)</div>
+                <div
+                  style={{
+                    background: "color-mix(in srgb, var(--coral) 20%, var(--ink))",
+                    border: "1px solid color-mix(in srgb, var(--coral) 45%, transparent)",
+                    padding: "14px 16px",
+                    borderRadius: "12px",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontSize: "11px", color: "var(--panel)", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro CAO (Phụ Lục I)</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "color-mix(in srgb, var(--coral) 45%, var(--panel))", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
+                    {riskStats.high_risk_count}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", marginTop: "2px" }}>KTCL trước thông quan (PT5/PT7)</div>
                 </div>
 
-                <div style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", padding: "14px 16px", borderRadius: "12px" }}>
-                  <div style={{ fontSize: "11px", color: "#fde68a", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro TRUNG BÌNH (Phụ Lục II)</div>
-                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#f59e0b", marginTop: "4px" }}>{riskStats.medium_risk_count}</div>
-                  <div style={{ fontSize: "11px", color: "#fbbf24", marginTop: "2px" }}>Công bố hợp quy / Hậu kiểm</div>
+                <div
+                  style={{
+                    background: "color-mix(in srgb, var(--gold) 18%, var(--ink))",
+                    border: "1px solid color-mix(in srgb, var(--gold) 45%, transparent)",
+                    padding: "14px 16px",
+                    borderRadius: "12px",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontSize: "11px", color: "var(--panel)", fontWeight: 700, textTransform: "uppercase" }}>Rủi Ro TRUNG BÌNH (Phụ Lục II)</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "var(--gold)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
+                    {riskStats.medium_risk_count}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", marginTop: "2px" }}>Công bố hợp quy / Hậu kiểm</div>
                 </div>
 
-                <div style={{ background: "rgba(255,255,255,0.06)", padding: "14px 16px", borderRadius: "12px" }}>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Mã HS Code Đối Soát</div>
-                  <div style={{ fontSize: "24px", fontWeight: 900, color: "#10b981", marginTop: "4px" }}>{riskStats.unique_hs_count}</div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>{riskStats.groups_count} nhóm ngành kinh tế</div>
+                <div style={{ background: "rgba(255, 254, 250, 0.08)", padding: "14px 16px", borderRadius: "12px", minWidth: 0 }}>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", fontWeight: 700, textTransform: "uppercase" }}>Mã HS Code Đối Soát</div>
+                  <div style={{ fontSize: "24px", fontWeight: 900, color: "var(--primary-soft)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
+                    {riskStats.unique_hs_count}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--primary-soft)", marginTop: "2px" }}>{riskStats.groups_count} nhóm ngành kinh tế</div>
                 </div>
               </div>
             )}
           </div>
 
           {/* Interactive Fast Classifier Card */}
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "18px", color: "#0f172a", margin: "0 0 6px" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 24px)",
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            }}
+          >
+            <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "18px", color: "var(--ink)", margin: "0 0 6px" }}>
               🔍 Tra Cứu Nhanh Cấp Độ Rủi Ro Theo Mã HS Hoặc Tên Hàng
             </h2>
-            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px" }}>
+            <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 16px" }}>
               Nhập mã HS Code (vd: 8517.62.59, 8526.10.10, 8504.40.90, 8471.41.90, 2710.12.21, 6506.10.10) hoặc từ khóa thiết bị để hệ thống bóc tách chính xác nghĩa vụ KTCL.
             </p>
 
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "14px" }}>
               <input
                 type="text"
+                className="ui-input"
                 placeholder="Nhập mã HS Code hoặc từ khóa (vd: 8517.62.59, Gateway, Radar, Mũ bảo hiểm, Đồ chơi)..."
                 value={riskClassifyInput}
                 onChange={(e) => setRiskClassifyInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleClassifyRisk(); }}
-                style={{ flex: "1 1 300px", padding: "12px 16px", borderRadius: "12px", border: "1px solid #cbd5e1", fontSize: "14px", fontFamily: "var(--font-mono)" }}
+                style={{
+                  flex: "1 1 min(100%, 260px)",
+                  minWidth: 0,
+                  padding: "12px 16px",
+                  borderRadius: "12px",
+                  border: "1px solid var(--border-strong, var(--border))",
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
               />
               <button
+                type="button"
                 onClick={() => handleClassifyRisk()}
                 disabled={riskClassifying}
-                style={{ padding: "12px 24px", borderRadius: "12px", border: "none", background: "#0f766e", color: "#fff", fontWeight: 800, fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                style={{
+                  padding: "12px 24px",
+                  minHeight: "44px",
+                  borderRadius: "12px",
+                  border: "none",
+                  background: "var(--primary)",
+                  color: "var(--panel)",
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
               >
                 {riskClassifying ? "Đang Phân Loại..." : "Phân Loại Ngay"}
               </button>
@@ -1975,7 +2608,7 @@ Thông tin liên hệ của tôi:
 
             {/* Quick Chips */}
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
-              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>Ví dụ mẫu:</span>
+              <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>Ví dụ mẫu:</span>
               {[
                 { code: "8517.62.59", label: "8517.62.59 (IoT Gateway 4G)" },
                 { code: "8471.41.90", label: "8471.41.90 (Màn hình máy tính A11)" },
@@ -1987,8 +2620,20 @@ Thông tin liên hệ của tôi:
               ].map((chip) => (
                 <button
                   key={chip.code}
+                  type="button"
+                  className="ui-btn-chip"
                   onClick={() => { setRiskClassifyInput(chip.code); handleClassifyRisk(chip.code); }}
-                  style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: "12px", cursor: "pointer", fontFamily: "var(--font-mono)" }}
+                  style={{
+                    padding: "8px 12px",
+                    minHeight: "44px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-strong, var(--border))",
+                    background: "var(--surface-subtle, var(--paper))",
+                    color: "var(--ink)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-mono)",
+                  }}
                 >
                   {chip.label}
                 </button>
@@ -1999,50 +2644,86 @@ Thông tin liên hệ của tôi:
             {riskClassifyResult && (
               <div
                 style={{
-                  background: riskClassifyResult.annex === 1 ? "#fef2f2" : riskClassifyResult.annex === 2 ? "#fffbeb" : "#f0fdf4",
-                  border: `1.5px solid ${riskClassifyResult.annex === 1 ? "#f87171" : riskClassifyResult.annex === 2 ? "#f59e0b" : "#4ade80"}`,
+                  background:
+                    riskClassifyResult.annex === 1
+                      ? "color-mix(in srgb, var(--red) 10%, var(--panel))"
+                      : riskClassifyResult.annex === 2
+                      ? "color-mix(in srgb, var(--gold) 15%, var(--panel))"
+                      : "color-mix(in srgb, var(--green) 13%, var(--panel))",
+                  border: `1.5px solid ${
+                    riskClassifyResult.annex === 1
+                      ? "var(--red)"
+                      : riskClassifyResult.annex === 2
+                      ? "var(--amber)"
+                      : "var(--green)"
+                  }`,
                   borderRadius: "16px",
-                  padding: "20px 24px",
-                  boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
+                  padding: "clamp(14px, 2.5vw, 22px)",
+                  boxShadow: "var(--shadow)",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
-                  <div>
+                  <div style={{ minWidth: 0, flex: "1 1 240px" }}>
                     <span
                       style={{
                         fontSize: "12px",
                         fontWeight: 900,
                         padding: "4px 10px",
                         borderRadius: "6px",
-                        background: riskClassifyResult.annex === 1 ? "#dc2626" : riskClassifyResult.annex === 2 ? "#d97706" : "#16a34a",
-                        color: "#fff",
+                        background:
+                          riskClassifyResult.annex === 1
+                            ? "color-mix(in srgb, var(--red) 80%, var(--ink))"
+                            : riskClassifyResult.annex === 2
+                            ? "color-mix(in srgb, var(--amber) 72%, var(--ink))"
+                            : "var(--primary-dark)",
+                        color: "var(--panel)",
                       }}
                     >
                       {riskClassifyResult.risk_label}
                     </span>
-                    <h3 style={{ margin: "10px 0 4px", fontSize: "18px", color: "#0f172a" }}>
+                    <h3 style={{ margin: "10px 0 4px", fontSize: "18px", color: "var(--ink)" }}>
                       {riskClassifyResult.matched_item ? riskClassifyResult.matched_item.product_name : `Hàng hóa mã ${riskClassifyInput}`}
                     </h3>
                     {riskClassifyResult.matched_item?.group && (
-                      <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 700 }}>
+                      <div style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>
                         Thuộc nhóm: {riskClassifyResult.matched_item.group}
                       </div>
                     )}
                   </div>
 
                   {riskClassifyResult.matched_item?.qcvn && (
-                    <div style={{ background: "#fff", padding: "8px 14px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "12px", color: "#0f766e" }}>
+                    <div
+                      style={{
+                        background: "var(--panel)",
+                        padding: "8px 14px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--border-strong, var(--border))",
+                        fontSize: "12px",
+                        color: "var(--primary-dark)",
+                      }}
+                    >
                       <strong>Quy chuẩn tương ứng:</strong> {riskClassifyResult.matched_item.qcvn}
                     </div>
                   )}
                 </div>
 
-                <div style={{ background: "#fff", padding: "14px 16px", borderRadius: "12px", border: "1px solid rgba(0,0,0,0.06)", fontSize: "13px", lineHeight: 1.6, color: "#334155", marginBottom: "12px" }}>
-                  <strong>⚖️ Hướng dẫn quản lý & Hải quan:</strong> {riskClassifyResult.guidance}
+                <div
+                  style={{
+                    background: "var(--panel)",
+                    padding: "14px 16px",
+                    borderRadius: "12px",
+                    border: "1px solid var(--border)",
+                    fontSize: "13px",
+                    lineHeight: 1.6,
+                    color: "var(--ink-2, var(--text))",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <strong>⚖️ Hướng dẫn quản lý &amp; Hải quan:</strong> {riskClassifyResult.guidance}
                 </div>
 
                 {riskClassifyResult.matched_item?.management_requirement && (
-                  <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5 }}>
+                  <div style={{ fontSize: "12px", color: "var(--ink-2, var(--text))", lineHeight: 1.55 }}>
                     <strong>Biện pháp cụ thể:</strong> {riskClassifyResult.matched_item.management_requirement}
                   </div>
                 )}
@@ -2051,13 +2732,21 @@ Thông tin liên hệ của tôi:
           </div>
 
           {/* Full Catalog Table Card */}
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 24px)",
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px", marginBottom: "18px" }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0f172a", fontFamily: "Georgia, serif" }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "var(--ink)", fontFamily: "var(--font-serif, Georgia, serif)" }}>
                   Bảng Danh Mục Chi Tiết 275 Mặt Hàng Quản Lý Rủi Ro
                 </h3>
-                <span style={{ fontSize: "12px", color: "#64748b" }}>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
                   Hiển thị {riskCatalog.length} / {riskCatalogTotal} mục tìm thấy
                 </span>
               </div>
@@ -2068,27 +2757,39 @@ Thông tin liên hệ của tôi:
                   { key: "", label: "Tất cả" },
                   { key: "CAO", label: "Rủi ro CAO (Phụ lục I)" },
                   { key: "TRUNG_BINH", label: "Rủi ro TRUNG BÌNH (Phụ lục II)" },
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => {
-                      setRiskLevelFilter(f.key);
-                      loadRiskCatalog(1, f.key, riskGroupFilter, riskSearchQuery);
-                    }}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      border: "none",
-                      background: riskLevelFilter === f.key ? (f.key === "CAO" ? "#dc2626" : f.key === "TRUNG_BINH" ? "#d97706" : "#0f766e") : "#f1f5f9",
-                      color: riskLevelFilter === f.key ? "#fff" : "#475569",
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+                ].map((f) => {
+                  const isActive = riskLevelFilter === f.key;
+                  const activeBg =
+                    f.key === "CAO"
+                      ? "color-mix(in srgb, var(--red) 80%, var(--ink))"
+                      : f.key === "TRUNG_BINH"
+                      ? "color-mix(in srgb, var(--amber) 72%, var(--ink))"
+                      : "var(--primary)";
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      className="ui-btn-chip"
+                      onClick={() => {
+                        setRiskLevelFilter(f.key);
+                        loadRiskCatalog(1, f.key, riskGroupFilter, riskSearchQuery);
+                      }}
+                      style={{
+                        padding: "8px 14px",
+                        minHeight: "44px",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        border: "none",
+                        background: isActive ? activeBg : "var(--surface-subtle, var(--paper))",
+                        color: isActive ? "var(--panel)" : "var(--ink-2, var(--text))",
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -2096,23 +2797,42 @@ Thông tin liên hệ của tôi:
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px" }}>
               <input
                 type="text"
+                className="ui-input"
                 placeholder="Lọc theo tên hàng, mã HS, QCVN, mô tả..."
                 value={riskSearchQuery}
                 onChange={(e) => {
                   setRiskSearchQuery(e.target.value);
                   loadRiskCatalog(1, riskLevelFilter, riskGroupFilter, e.target.value);
                 }}
-                style={{ flex: "1 1 250px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                style={{
+                  flex: "1 1 min(100%, 240px)",
+                  minWidth: 0,
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-strong, var(--border))",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                }}
               />
 
               {riskStats?.groups && (
                 <select
+                  className="ui-select"
                   value={riskGroupFilter}
                   onChange={(e) => {
                     setRiskGroupFilter(e.target.value);
                     loadRiskCatalog(1, riskLevelFilter, e.target.value, riskSearchQuery);
                   }}
-                  style={{ maxWidth: "260px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  style={{
+                    flex: "1 1 min(100%, 220px)",
+                    minWidth: 0,
+                    maxWidth: "100%",
+                    padding: "9px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-strong, var(--border))",
+                    background: "var(--panel)",
+                    color: "var(--ink)",
+                  }}
                 >
                   <option value="">-- Tất cả nhóm ngành ({riskStats.groups.length}) --</option>
                   {riskStats.groups.map((g) => (
@@ -2122,89 +2842,190 @@ Thông tin liên hệ của tôi:
               )}
             </div>
 
-            {/* Table */}
+            {/* Responsive Table / Mobile Cards */}
             {riskLoading ? (
-              <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>Đang tải danh mục phân loại rủi ro...</div>
+              <div style={{ textAlign: "center", padding: "40px 0", color: "var(--muted)" }}>Đang tải danh mục phân loại rủi ro...</div>
             ) : riskCatalog.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>Không tìm thấy mặt hàng nào phù hợp với bộ lọc.</div>
+              <div style={{ textAlign: "center", padding: "40px 0", color: "var(--muted)" }}>Không tìm thấy mặt hàng nào phù hợp với bộ lọc.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                      <th style={{ padding: "10px", width: "50px" }}>STT</th>
-                      <th style={{ padding: "10px", width: "110px" }}>Cấp Độ Rủi Ro</th>
-                      <th style={{ padding: "10px", width: "110px" }}>Mã HS Code</th>
-                      <th style={{ padding: "10px", minWidth: "220px" }}>Tên Sản Phẩm / Hàng Hóa</th>
-                      <th style={{ padding: "10px", minWidth: "160px" }}>Quy Chuẩn (QCVN)</th>
-                      <th style={{ padding: "10px", minWidth: "220px" }}>Yêu Cầu Quản Lý / KTCL</th>
-                      <th style={{ padding: "10px", width: "60px", textAlign: "center" }}>Trang</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <DataView
+                mobileMode="card"
+                desktop={
+                  <div className="ui-table-scroll-wrap" style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                      <thead>
+                        <tr style={{ background: "var(--surface-subtle, var(--paper))", borderBottom: "2px solid var(--border)" }}>
+                          <th style={{ padding: "10px", width: "50px", color: "var(--ink)" }}>STT</th>
+                          <th style={{ padding: "10px", width: "115px", color: "var(--ink)" }}>Cấp Độ Rủi Ro</th>
+                          <th style={{ padding: "10px", width: "110px", color: "var(--ink)" }}>Mã HS Code</th>
+                          <th style={{ padding: "10px", minWidth: "220px", color: "var(--ink)" }}>Tên Sản Phẩm / Hàng Hóa</th>
+                          <th style={{ padding: "10px", minWidth: "160px", color: "var(--ink)" }}>Quy Chuẩn (QCVN)</th>
+                          <th style={{ padding: "10px", minWidth: "220px", color: "var(--ink)" }}>Yêu Cầu Quản Lý / KTCL</th>
+                          <th style={{ padding: "10px", width: "60px", textAlign: "center", color: "var(--ink)" }}>Trang</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {riskCatalog.map((item) => (
+                          <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "10px", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{item.stt}</td>
+                            <td style={{ padding: "10px" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  background:
+                                    item.annex === 1
+                                      ? "color-mix(in srgb, var(--red) 12%, var(--panel))"
+                                      : "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                                  color:
+                                    item.annex === 1
+                                      ? "color-mix(in srgb, var(--red) 75%, var(--ink))"
+                                      : "color-mix(in srgb, var(--amber) 68%, var(--ink))",
+                                }}
+                              >
+                                {item.annex === 1 ? "Phụ lục I (CAO)" : "Phụ lục II (TB)"}
+                              </span>
+                            </td>
+                            <td style={{ padding: "10px", fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--primary-dark)" }}>
+                              {item.hs_codes && item.hs_codes.length > 0 ? item.hs_codes.join(", ") : (item.hs_raw || "—")}
+                            </td>
+                            <td style={{ padding: "10px" }}>
+                              <strong style={{ color: "var(--ink)" }}>{item.product_name}</strong>
+                              {item.description && item.description !== item.product_name && (
+                                <div style={{ color: "var(--muted)", fontSize: "11px", marginTop: "2px" }}>
+                                  {item.description.slice(0, 120)}...
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: "10px", color: "var(--primary-dark)", fontWeight: 700 }}>
+                              {item.qcvn || "—"}
+                            </td>
+                            <td style={{ padding: "10px", color: "var(--ink-2, var(--text))", fontSize: "11px", lineHeight: 1.45 }}>
+                              {item.management_requirement ? item.management_requirement.slice(0, 160) + "..." : "—"}
+                            </td>
+                            <td style={{ padding: "10px", textAlign: "center", color: "var(--muted)" }}>
+                              p.{item.page}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+                mobileCards={
+                  <div className="ui-mobile-card-list">
                     {riskCatalog.map((item) => (
-                      <tr key={item.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "10px", color: "#64748b", fontFamily: "var(--font-mono)" }}>{item.stt}</td>
-                        <td style={{ padding: "10px" }}>
+                      <article
+                        key={item.id}
+                        className="ui-mobile-card"
+                        style={{
+                          background: "var(--panel)",
+                          border: "1px solid var(--border)",
+                          borderLeft: `4px solid ${item.annex === 1 ? "var(--red)" : "var(--amber)"}`,
+                          borderRadius: "14px",
+                          padding: "14px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--muted)", fontWeight: 700 }}>
+                            #{item.stt} · p.{item.page}
+                          </span>
                           <span
                             style={{
-                              display: "inline-block",
                               fontSize: "11px",
                               fontWeight: 800,
                               padding: "2px 8px",
                               borderRadius: "6px",
-                              background: item.annex === 1 ? "#fee2e2" : "#fef3c7",
-                              color: item.annex === 1 ? "#991b1b" : "#92400e",
+                              background:
+                                item.annex === 1
+                                  ? "color-mix(in srgb, var(--red) 12%, var(--panel))"
+                                  : "color-mix(in srgb, var(--gold) 18%, var(--panel))",
+                              color:
+                                item.annex === 1
+                                  ? "color-mix(in srgb, var(--red) 75%, var(--ink))"
+                                  : "color-mix(in srgb, var(--amber) 68%, var(--ink))",
                             }}
                           >
                             {item.annex === 1 ? "Phụ lục I (CAO)" : "Phụ lục II (TB)"}
                           </span>
-                        </td>
-                        <td style={{ padding: "10px", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#0f766e" }}>
-                          {item.hs_codes && item.hs_codes.length > 0 ? item.hs_codes.join(", ") : (item.hs_raw || "—")}
-                        </td>
-                        <td style={{ padding: "10px" }}>
-                          <strong style={{ color: "#0f172a" }}>{item.product_name}</strong>
-                          {item.description && item.description !== item.product_name && (
-                            <div style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}>
-                              {item.description.slice(0, 120)}...
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: "14px", color: "var(--ink)", marginBottom: "4px", lineHeight: 1.4 }}>
+                          {item.product_name}
+                        </div>
+                        {item.description && item.description !== item.product_name && (
+                          <div style={{ color: "var(--muted)", fontSize: "12px", marginBottom: "8px", lineHeight: 1.45 }}>
+                            {item.description.slice(0, 120)}...
+                          </div>
+                        )}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: "var(--ink-2, var(--text))" }}>
+                          <div>
+                            <strong style={{ color: "var(--muted)" }}>Mã HS: </strong>
+                            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--primary-dark)" }}>
+                              {item.hs_codes && item.hs_codes.length > 0 ? item.hs_codes.join(", ") : (item.hs_raw || "—")}
+                            </span>
+                          </div>
+                          {item.qcvn && (
+                            <div>
+                              <strong style={{ color: "var(--muted)" }}>QCVN: </strong>
+                              <span style={{ fontWeight: 700, color: "var(--primary-dark)" }}>{item.qcvn}</span>
                             </div>
                           )}
-                        </td>
-                        <td style={{ padding: "10px", color: "#0369a1", fontWeight: 700 }}>
-                          {item.qcvn || "—"}
-                        </td>
-                        <td style={{ padding: "10px", color: "#334155", fontSize: "11px", lineHeight: 1.4 }}>
-                          {item.management_requirement ? item.management_requirement.slice(0, 160) + "..." : "—"}
-                        </td>
-                        <td style={{ padding: "10px", textAlign: "center", color: "#94a3b8" }}>
-                          p.{item.page}
-                        </td>
-                      </tr>
+                          {item.management_requirement && (
+                            <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px", lineHeight: 1.45 }}>
+                              {item.management_requirement.slice(0, 160)}...
+                            </div>
+                          )}
+                        </div>
+                      </article>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                }
+              />
             )}
 
             {/* Pagination */}
             {riskCatalogTotal > riskCatalogLimit && (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #f1f5f9" }}>
-                <span style={{ fontSize: "12px", color: "#64748b" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginTop: "16px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
                   Trang {riskCatalogPage} / {Math.ceil(riskCatalogTotal / riskCatalogLimit)}
                 </span>
-                <div style={{ display: "flex", gap: "6px" }}>
+                <div style={{ display: "flex", gap: "8px" }}>
                   <button
+                    type="button"
+                    className="ui-btn-chip"
                     disabled={riskCatalogPage <= 1}
                     onClick={() => loadRiskCatalog(riskCatalogPage - 1)}
-                    style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", cursor: riskCatalogPage <= 1 ? "not-allowed" : "pointer" }}
+                    style={{
+                      padding: "8px 14px",
+                      minHeight: "44px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-strong, var(--border))",
+                      background: "var(--panel)",
+                      color: "var(--ink)",
+                      fontSize: "12px",
+                      cursor: riskCatalogPage <= 1 ? "not-allowed" : "pointer",
+                    }}
                   >
                     ← Trang Trước
                   </button>
                   <button
+                    type="button"
+                    className="ui-btn-chip"
                     disabled={riskCatalogPage >= Math.ceil(riskCatalogTotal / riskCatalogLimit)}
                     onClick={() => loadRiskCatalog(riskCatalogPage + 1)}
-                    style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "12px", cursor: riskCatalogPage >= Math.ceil(riskCatalogTotal / riskCatalogLimit) ? "not-allowed" : "pointer" }}
+                    style={{
+                      padding: "8px 14px",
+                      minHeight: "44px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-strong, var(--border))",
+                      background: "var(--panel)",
+                      color: "var(--ink)",
+                      fontSize: "12px",
+                      cursor: riskCatalogPage >= Math.ceil(riskCatalogTotal / riskCatalogLimit) ? "not-allowed" : "pointer",
+                    }}
                   >
                     Trang Sau →
                   </button>
@@ -2219,109 +3040,128 @@ Thông tin liên hệ của tôi:
       {/* TAB: 📝 SINH BẢN CÔNG BỐ HỢP QUY (CR)                                     */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === "cr_generator" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        <FormGrid cols={2} style={{ gap: "20px", alignItems: "start" }}>
           {/* Form Configuration */}
-          <div style={{ background: "#fff", padding: "24px", borderRadius: "18px", border: "1px solid #e2e8f0" }}>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "18px", color: "#0f766e", margin: "0 0 16px" }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(14px, 2.5vw, 24px)",
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              boxShadow: "var(--shadow)",
+              minWidth: 0,
+            }}
+          >
+            <h2 style={{ fontFamily: "var(--font-serif, Georgia, serif)", fontSize: "18px", color: "var(--primary-dark)", margin: "0 0 16px" }}>
               Cấu Hình Bản Công Bố Hợp Quy (Mẫu 02 - TT 28/2012/TT-BKHCN)
             </h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Tên Doanh Nghiệp</label>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Tên Doanh Nghiệp</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={crForm.company_name}
                   onChange={(e) => setCrForm({ ...crForm, company_name: e.target.value })}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", background: "var(--panel)", color: "var(--ink)" }}
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Mã Số Thuế (MST)</label>
+              <FormGrid cols={2}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Mã Số Thuế (MST)</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.tax_code}
                     onChange={(e) => setCrForm({ ...crForm, tax_code: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", fontFamily: "var(--font-mono)" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", fontFamily: "var(--font-mono)", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Người Đại Diện</label>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Người Đại Diện</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.representative_name}
                     onChange={(e) => setCrForm({ ...crForm, representative_name: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-              </div>
+              </FormGrid>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Tên Sản Phẩm / Thiết Bị</label>
+              <FormGrid cols={2}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Tên Sản Phẩm / Thiết Bị</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.product_name}
                     onChange={(e) => setCrForm({ ...crForm, product_name: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Model / Ký Hiệu</label>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Model / Ký Hiệu</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.model_name}
                     onChange={(e) => setCrForm({ ...crForm, model_name: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", fontFamily: "var(--font-mono)" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", fontFamily: "var(--font-mono)", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-              </div>
+              </FormGrid>
 
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Quy Chuẩn Kỹ Thuật Áp Dụng (Phân cách bằng dấu phẩy)</label>
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Quy Chuẩn Kỹ Thuật Áp Dụng (Phân cách bằng dấu phẩy)</label>
                 <input
                   type="text"
+                  className="ui-input"
                   value={crForm.applicable_standards.join(", ")}
                   onChange={(e) => setCrForm({ ...crForm, applicable_standards: e.target.value.split(",").map((s) => s.trim()) })}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", fontFamily: "var(--font-mono)" }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", fontFamily: "var(--font-mono)", background: "var(--panel)", color: "var(--ink)" }}
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Số Phiếu Kết Quả Thử Nghiệm</label>
+              <FormGrid cols={2}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Số Phiếu Kết Quả Thử Nghiệm</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.test_report_number}
                     onChange={(e) => setCrForm({ ...crForm, test_report_number: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-                <div>
-                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>Phòng Lab Thử Nghiệm</label>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", marginBottom: "4px" }}>Phòng Lab Thử Nghiệm</label>
                   <input
                     type="text"
+                    className="ui-input"
                     value={crForm.test_lab_name}
                     onChange={(e) => setCrForm({ ...crForm, test_lab_name: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border-strong, var(--border))", background: "var(--panel)", color: "var(--ink)" }}
                   />
                 </div>
-              </div>
+              </FormGrid>
 
               {/* Action Export Buttons */}
-              <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
+              <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap" }}>
                 <button
+                  type="button"
                   onClick={handleDownloadCrPdf}
                   disabled={generatingPdf}
                   style={{
-                    flex: 1,
+                    flex: "1 1 180px",
+                    minHeight: "44px",
                     padding: "12px",
                     borderRadius: "10px",
                     border: "none",
-                    background: "#0f766e",
-                    color: "#fff",
+                    background: "var(--primary)",
+                    color: "var(--panel)",
                     fontWeight: 800,
                     fontSize: "13px",
                     cursor: "pointer",
@@ -2336,14 +3176,16 @@ Thông tin liên hệ của tôi:
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleDownloadCrDocx}
                   style={{
-                    flex: 1,
+                    flex: "1 1 180px",
+                    minHeight: "44px",
                     padding: "12px",
                     borderRadius: "10px",
-                    border: "1px solid #0f766e",
-                    background: "#f0fdfa",
-                    color: "#0f766e",
+                    border: "1px solid var(--primary)",
+                    background: "var(--primary-soft)",
+                    color: "var(--primary-dark)",
                     fontWeight: 800,
                     fontSize: "13px",
                     cursor: "pointer",
@@ -2361,17 +3203,30 @@ Thông tin liên hệ của tôi:
           </div>
 
           {/* Live Document Preview */}
-          <div style={{ background: "#fff", padding: "28px 32px", borderRadius: "18px", border: "1px solid #cbd5e1", boxShadow: "0 6px 20px rgba(0,0,0,0.06)", fontFamily: "'Times New Roman', serif", lineHeight: 1.5 }}>
+          <div
+            style={{
+              background: "var(--panel)",
+              padding: "clamp(16px, 2.8vw, 24px)",
+              borderRadius: "18px",
+              border: "1px solid var(--border-strong, var(--border))",
+              boxShadow: "var(--shadow)",
+              fontFamily: "'Times New Roman', serif",
+              lineHeight: 1.5,
+              color: "var(--ink)",
+              minWidth: 0,
+              overflowWrap: "anywhere",
+            }}
+          >
             <div style={{ textAlign: "center", marginBottom: "16px" }}>
               <div style={{ fontWeight: "bold", fontSize: "13px", textTransform: "uppercase" }}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
               <div style={{ fontWeight: "bold", fontSize: "13px" }}>Độc lập - Tự do - Hạnh phúc</div>
               <div style={{ fontSize: "11px", marginTop: "2px" }}>────────────────</div>
             </div>
 
-            <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", textTransform: "uppercase", color: "#0f766e", margin: "14px 0 4px" }}>
+            <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "16px", textTransform: "uppercase", color: "var(--primary-dark)", margin: "14px 0 4px" }}>
               BẢN CÔNG BỐ HỢP QUY
             </div>
-            <div style={{ textAlign: "center", fontSize: "11px", fontStyle: "italic", marginBottom: "16px" }}>
+            <div style={{ textAlign: "center", fontSize: "11px", fontStyle: "italic", marginBottom: "16px", color: "var(--muted)" }}>
               (Theo Thông tư số 28/2012/TT-BKHCN và TT 02/2017/TT-BKHCN)
             </div>
 
@@ -2386,66 +3241,129 @@ Thông tin liên hệ của tôi:
             <div style={{ marginTop: "24px", textAlign: "right", fontSize: "12px" }}>
               <em>Ngày ... tháng ... năm ...</em><br />
               <strong>ĐẠI DIỆN HỢP PHÁP</strong><br />
-              <div style={{ height: "40px", color: "#0f766e", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+              <div style={{ height: "40px", color: "var(--primary-dark)", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
                 [KÝ SỐ ĐIỆN TỬ]
               </div>
               <strong>{crForm.representative_name}</strong>
             </div>
           </div>
-        </div>
+        </FormGrid>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODAL: CHI TIẾT TOÀN VĂN QUY CHUẨN                                         */}
+      {/* MODAL: CHI TIẾT TOÀN VĂN QUY CHUẨN (AppModal)                              */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
-      {detailStandard && (
-        <div className="modal-backdrop" onClick={handleCloseDetail}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "800px", padding: "28px 32px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 900, color: "#0f766e", background: "#e6fffa", padding: "4px 10px", borderRadius: "8px" }}>
-                🏷️ {detailStandard.code}
-              </span>
-              <button onClick={handleCloseDetail} style={{ border: 0, background: "#f1f5f9", borderRadius: "50%", width: "32px", height: "32px", cursor: "pointer" }}>✕</button>
+      <AppModal
+        open={Boolean(detailStandard)}
+        onClose={handleCloseDetail}
+        size="lg"
+        title={detailStandard ? detailStandard.name : ""}
+        subtitle={
+          detailStandard ? (
+            <span
+              style={{
+                display: "inline-block",
+                fontFamily: "var(--font-mono)",
+                fontSize: "13px",
+                fontWeight: 900,
+                color: "var(--primary-dark)",
+                background: "var(--primary-soft)",
+                padding: "3px 9px",
+                borderRadius: "8px",
+              }}
+            >
+              🏷️ {detailStandard.code}
+            </span>
+          ) : undefined
+        }
+        footer={
+          detailStandard ? (
+            <div style={{ display: "flex", gap: "10px", width: "100%", flexWrap: "wrap" }}>
+              {detailPdfUrl && (
+                <a
+                  href={detailPdfUrl}
+                  download
+                  style={{
+                    flex: "1 1 200px",
+                    minHeight: "44px",
+                    padding: "10px 16px",
+                    borderRadius: "10px",
+                    background: "var(--primary)",
+                    color: "var(--panel)",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                  }}
+                >
+                  📥 Tải Toàn Văn PDF
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={handleCloseDetail}
+                style={{
+                  minHeight: "44px",
+                  padding: "10px 20px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-strong, var(--border))",
+                  background: "var(--panel)",
+                  color: "var(--ink)",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                }}
+              >
+                Đóng
+              </button>
             </div>
-
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "#0f172a", margin: "0 0 14px" }}>
-              {detailStandard.name}
-            </h2>
-
-            <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "12px", border: "1px solid #f1f5f9", fontSize: "13px", lineHeight: 1.6, marginBottom: "16px" }}>
+          ) : undefined
+        }
+      >
+        {detailStandard && (
+          <>
+            <div
+              style={{
+                background: "var(--surface-subtle, var(--paper))",
+                padding: "14px 16px",
+                borderRadius: "12px",
+                border: "1px solid var(--border)",
+                fontSize: "13px",
+                lineHeight: 1.6,
+                marginBottom: "16px",
+                color: "var(--ink-2, var(--text))",
+              }}
+            >
               <div><strong>Cơ quan ban hành:</strong> {detailStandard.ministry_label}</div>
               <div><strong>Văn bản pháp lý:</strong> {detailStandard.circular}</div>
               <div><strong>Thủ tục áp dụng:</strong> {detailStandard.procedure_label}</div>
               <div><strong>Thiết bị áp dụng:</strong> {detailStandard.target_equipment}</div>
             </div>
 
-            <h3 style={{ fontSize: "15px", color: "#0f766e", margin: "0 0 8px" }}>Mục 1. Chỉ Tiêu Kỹ Thuật Cốt Lõi Bắt Buộc</h3>
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "14px 18px", borderRadius: "12px", fontSize: "13px", color: "#166534", marginBottom: "16px" }}>
+            <h4 style={{ fontSize: "15px", color: "var(--primary-dark)", margin: "0 0 8px" }}>
+              Mục 1. Chỉ Tiêu Kỹ Thuật Cốt Lõi Bắt Buộc
+            </h4>
+            <div
+              style={{
+                background: "color-mix(in srgb, var(--green) 12%, var(--panel))",
+                border: "1px solid color-mix(in srgb, var(--green) 42%, var(--border))",
+                padding: "14px 16px",
+                borderRadius: "12px",
+                fontSize: "13px",
+                color: "var(--ink)",
+              }}
+            >
               <ul style={{ margin: 0, paddingLeft: "18px", lineHeight: 1.6 }}>
                 {detailStandard.key_technical_requirements.map((req, idx) => (
                   <li key={idx}>{req}</li>
                 ))}
               </ul>
             </div>
-
-            <div style={{ display: "flex", gap: "10px", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
-              <a
-                href={api.standards.getStandardPdfUrl(detailStandard.code)}
-                download
-                style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "#0f766e", color: "#fff", textDecoration: "none", textAlign: "center", fontWeight: 800, fontSize: "13px" }}
-              >
-                📥 Tải Toàn Văn PDF
-              </a>
-              <button
-                onClick={handleCloseDetail}
-                style={{ padding: "10px 20px", borderRadius: "10px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: 700, fontSize: "13px" }}
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </AppModal>
     </div>
   );
 }
