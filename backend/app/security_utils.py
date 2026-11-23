@@ -217,10 +217,19 @@ def safe_http_get(
                         raise ValueError(f"Tệp tải về vượt quá giới hạn {max_bytes} bytes")
                     chunks.append(chunk)
 
+                body = b"".join(chunks)
+                # iter_bytes() yields already-decompressed content; strip hop-by-hop
+                # and encoding headers so httpx.Response does not try to decode twice
+                # (e.g. brotli: decoder failed on LIO Signer polling/download responses).
+                out_headers = httpx.Headers(
+                    (k, v)
+                    for k, v in resp.headers.items()
+                    if k.lower() not in {"content-encoding", "content-length", "transfer-encoding"}
+                )
                 return httpx.Response(
                     status_code=resp.status_code,
-                    headers=resp.headers,
-                    content=b"".join(chunks),
+                    headers=out_headers,
+                    content=body,
                     request=resp.request,
                 )
 

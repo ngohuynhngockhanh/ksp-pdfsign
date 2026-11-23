@@ -269,3 +269,61 @@ def test_lio_signer_submit_poll_and_webhook_hmac(client, monkeypatch):
     res_cs2 = client.post(f"/api/documents/{doc_pk}/lio-countersigned")
     assert res_cs2.status_code == 200
     assert res_cs2.json()["lio_countersigned_status"] == "sent"
+
+
+def test_safe_http_get_strips_content_encoding_after_iter_bytes(monkeypatch):
+    """Ensure safe_http_get does not double-decode brotli/gzip responses from LIO Signer."""
+    import httpx
+    from app import security_utils
+
+    monkeypatch.setattr(
+        security_utils,
+        "validate_outbound_url",
+        lambda url, **kwargs: url,
+    )
+
+    payload_bytes = b'{"status":"waiting_approval","files":[{"placement_method":"marker"}]}'
+
+    class BrDummyResp:
+        status_code = 200
+        headers = httpx.Headers(
+            {
+                "content-type": "application/json",
+                "content-encoding": "br",
+                "content-length": "42",
+            }
+        )
+        request = httpx.Request("GET", "https://signer.liotech.vn/v1/sessions/ses_123/status")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def iter_bytes(self, chunk_size: int = 65536):
+            # iter_bytes() yields already-decompressed bytes in httpx
+            yield payload_bytes
+
+    class BrDummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def stream(self, method, url, headers=None):
+            return BrDummyResp()
+
+    monkeypatch.setattr(security_utils.httpx, "Client", BrDummyClient)
+
+    resp = security_utils.safe_http_get(
+        "https://signer.liotech.vn/v1/sessions/ses_123/status",
+        allowed_hosts=("signer.liotech.vn",),
+    )
+    assert resp.status_code == 200
+    assert "content-encoding" not in resp.headers
+    assert resp.json()["status"] == "waiting_approval"
