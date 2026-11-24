@@ -289,6 +289,125 @@ function RowMenu({ title, children }: { title?: string; children: ReactNode }) {
   );
 }
 
+// ── Trạng thái NAS gọn + menu thao tác nhúng trong FilterBar ─────────────
+function NasStatusControl({
+  nas,
+  nasBusy,
+  nasMsg,
+  onTest,
+  onSyncAll,
+}: {
+  nas: NonNullable<Awaited<ReturnType<typeof api.nasStatus>>>;
+  nasBusy: boolean;
+  nasMsg: string;
+  onTest: () => void;
+  onSyncAll: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (ev: MouseEvent | TouchEvent) => {
+      const target = ev.target as Node | null;
+      if (wrapRef.current && target && !wrapRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside, { passive: true });
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const nasTarget = [nas.host, nas.share].filter(Boolean).join("/");
+  const nasStatusText = nas.enabled
+    ? nas.pending > 0
+      ? `NAS ${nas.synced}/${nas.total} · chờ ${nas.pending}`
+      : `NAS ${nas.synced}/${nas.total}`
+    : "NAS · đang tắt";
+  const nasTitle = [nasTarget, nasMsg].filter(Boolean).join(" · ") || undefined;
+
+  return (
+    <div className="doc-nas-inline">
+      <StatusBadge
+        tone={nas.enabled ? (nas.pending ? "warning" : "success") : "neutral"}
+        size="sm"
+        icon="hard-drive"
+        title={nasTitle}
+      >
+        {nasStatusText}
+      </StatusBadge>
+      {nasMsg && (
+        <span className="muted doc-nas-msg" title={nasMsg}>
+          {nasMsg}
+        </span>
+      )}
+      <div className="ui-overflow-wrap" ref={wrapRef}>
+        <AppButton
+          ref={triggerRef}
+          variant="secondary"
+          size="sm"
+          leftIcon="more-horizontal"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          NAS
+        </AppButton>
+        {open && (
+          <div id={menuId} role="menu" className="ui-overflow-menu">
+            <AppButton
+              variant="ghost"
+              size="sm"
+              fullWidth
+              role="menuitem"
+              leftIcon="activity"
+              className="ui-popover-item"
+              disabled={nasBusy}
+              onClick={() => {
+                setOpen(false);
+                onTest();
+              }}
+            >
+              Kiểm tra kết nối NAS
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="sm"
+              fullWidth
+              role="menuitem"
+              leftIcon="refresh"
+              className="ui-popover-item"
+              disabled={nasBusy || !nas.enabled}
+              onClick={() => {
+                setOpen(false);
+                onSyncAll();
+              }}
+            >
+              Đồng bộ tất cả lên NAS
+            </AppButton>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Documents({
   onVerify,
   highlightId,
@@ -918,28 +1037,49 @@ export function Documents({
   const kpiItems: KpiItem[] = [
     {
       label: "Tổng hồ sơ",
-      value: `${total} hồ sơ`,
+      value: (
+        <>
+          <span>{total}</span> <span className="doc-kpi-unit">hồ sơ</span>
+        </>
+      ),
       sub: "trong phạm vi hiện tại",
       tone: "brand",
       icon: "folder-open",
     },
     {
       label: "Chưa phân loại",
-      value: `${unassignedOnPage} chưa phân loại`,
+      value: (
+        <>
+          <span>{unassignedOnPage}</span>{" "}
+          <span className="doc-kpi-unit">chưa phân loại</span>
+        </>
+      ),
       sub: "trên trang đang xem",
       tone: unassignedOnPage > 0 ? "warning" : "success",
       icon: "tag",
     },
     {
       label: "Bản đã ký",
-      value: `${signedOnPage} bản ký`,
+      value: (
+        <>
+          <span>{signedOnPage}</span>{" "}
+          <span className="doc-kpi-unit">bản ký</span>
+        </>
+      ),
       sub: "đã tải lên trang này",
       tone: "info",
       icon: "file-check",
     },
     {
       label: "Lưu trữ NAS",
-      value: nas?.enabled ? `${nas.pending} chờ NAS` : "NAS đang tắt",
+      value: nas?.enabled ? (
+        <>
+          <span>{nas.pending}</span>{" "}
+          <span className="doc-kpi-unit">chờ NAS</span>
+        </>
+      ) : (
+        "Đang tắt"
+      ),
       sub: nas?.enabled
         ? `${nas.synced}/${nas.total} đã đồng bộ`
         : "kiểm tra cấu hình lưu trữ",
@@ -947,23 +1087,6 @@ export function Documents({
       icon: "hard-drive",
     },
   ];
-
-  const nasOverflowItems: ActionBarOverflowItem[] = nas
-    ? [
-        {
-          label: "Kiểm tra kết nối NAS",
-          icon: "activity",
-          disabled: nasBusy,
-          onClick: testNas,
-        },
-        {
-          label: "Đồng bộ tất cả lên NAS",
-          icon: "refresh",
-          disabled: nasBusy || !nas.enabled,
-          onClick: syncAllNas,
-        },
-      ]
-    : [];
 
   const bulkOverflowItems: ActionBarOverflowItem[] = [
     {
@@ -1347,9 +1470,20 @@ export function Documents({
         }
         activeCount={activeFilters}
         onReset={resetFilters}
+        actions={
+          nas ? (
+            <NasStatusControl
+              nas={nas}
+              nasBusy={nasBusy}
+              nasMsg={nasMsg}
+              onTest={testNas}
+              onSyncAll={syncAllNas}
+            />
+          ) : undefined
+        }
       />
 
-      {sel.size > 0 ? (
+      {sel.size > 0 && (
         <ActionBar
           selectedCount={sel.size}
           selectedLabel={`Đã chọn ${sel.size} hồ sơ`}
@@ -1385,38 +1519,7 @@ export function Documents({
           }
           overflowItems={bulkOverflowItems}
         />
-      ) : nas ? (
-        <ActionBar
-          className="doc-nas-actionbar"
-          secondaryActions={
-            <div className="ui-inline ui-inline--md ui-inline--wrap ui-text-xs">
-              <StatusBadge
-                tone={
-                  nas.enabled ? (nas.pending ? "warning" : "success") : "neutral"
-                }
-                size="sm"
-                icon="hard-drive"
-              >
-                NAS
-              </StatusBadge>
-              <span className="muted">
-                {nas.host}/{nas.share} ·{" "}
-                {nas.enabled ? (
-                  <>
-                    đồng bộ <strong className="num">{nas.synced}/{nas.total}</strong>
-                    {nas.pending > 0 ? ` · chờ ${nas.pending}` : ""}
-                  </>
-                ) : (
-                  <strong>đang tắt</strong>
-                )}
-              </span>
-              {nasMsg && <span className="muted">· {nasMsg}</span>}
-            </div>
-          }
-          overflowItems={nasOverflowItems}
-          overflowLabel="NAS"
-        />
-      ) : null}
+      )}
 
       {err && <InlineAlert tone="danger">{err}</InlineAlert>}
 

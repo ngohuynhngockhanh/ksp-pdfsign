@@ -1,4 +1,11 @@
 /* mod-standards.css — StandardsConformity & TqcCertificateLookup (DS v2) */
+.std-tabs .ui-tabs { padding: var(--space-2); gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); box-shadow: var(--shadow-xs); }
+.std-tabs .ui-tab { min-height: 34px; padding: 5px 10px; background: var(--surface-2); border-color: var(--border-subtle); }
+.std-tabs .ui-tab:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.std-tabs .ui-tab.is-active { background: var(--primary-soft); border-color: var(--primary-border-soft); }
+.std-tabs .ui-tab:not(.is-active) .ui-tab-badge { background: var(--surface-1); border: 1px solid var(--border); }
+.std-tabs .ui-tabs-viewport.has-overflow-right::after { background: linear-gradient(90deg, transparent, var(--surface-1)); }
+.std-tabs .ui-tabs-viewport.has-overflow-left::before { background: linear-gradient(270deg, transparent, var(--surface-1)); }
 .std-fee-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px dashed var(--border); font-size: var(--text-caption); }
 .std-fee-row:last-of-type { border-bottom: 0; }
 .std-fee-total { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border-strong); font-weight: 700; color: var(--ink); }
@@ -16,3 +23,8 @@
 .std-cr-note { font-size: var(--text-caption); font-style: italic; color: var(--muted); }
 .std-cr-sign { margin-top: var(--space-4); text-align: right; font-size: var(--text-caption); display: grid; gap: var(--space-1); justify-items: end; }
 .std-cr-stamp { min-height: 40px; display: inline-flex; align-items: center; }
+
+@media (max-width: 820px) {
+  .std-tabs .ui-tabs { padding: 6px; }
+  .std-tabs .ui-tab { min-height: 38px; }
+}

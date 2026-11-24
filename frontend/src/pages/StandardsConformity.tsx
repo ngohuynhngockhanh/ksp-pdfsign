@@ -398,6 +398,7 @@ export function StandardsConformity() {
       />
 
       <ResponsiveTabs<StandardsTabId>
+        className="std-tabs"
         active={activeTab}
         onChange={(tabId) => {
           setActiveTab(tabId);

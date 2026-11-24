@@ -769,21 +769,21 @@ export function BiddingProcurement() {
               Bot.
             </>
           }
-          badges={
-            <StatusBadge tone="info" icon="bell" size="sm">
-              {watchlists.filter((w) => w.is_active).length} bộ lọc tự động
-            </StatusBadge>
-          }
           actions={
-            <AppButton
-              variant="gold"
-              leftIcon="zap"
-              loading={scanningId === "all"}
-              disabled={scanningId !== null}
-              onClick={handleScanAll}
-            >
-              {scanningId === "all" ? "Đang quét..." : "Quét Tự Động Ngay"}
-            </AppButton>
+            <>
+              <StatusBadge tone="info" icon="bell" size="sm">
+                {watchlists.filter((w) => w.is_active).length} bộ lọc tự động
+              </StatusBadge>
+              <AppButton
+                variant="gold"
+                leftIcon="zap"
+                loading={scanningId === "all"}
+                disabled={scanningId !== null}
+                onClick={handleScanAll}
+              >
+                {scanningId === "all" ? "Đang quét..." : "Quét Tự Động Ngay"}
+              </AppButton>
+            </>
           }
         />
 
