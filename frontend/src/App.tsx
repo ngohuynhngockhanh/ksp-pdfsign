@@ -1,51 +1,89 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type LazyExoticComponent,
+} from "react";
 import { api, type WebAdsDraftQuote } from "./api";
 import {
   AppIcon,
   ConfirmProvider,
   MOBILE_QUERY,
+  PageShell,
   PasswordModal,
+  TableSkeleton,
   ToastProvider,
   useToast,
   type IconName,
 } from "./components/ui";
 import { Login } from "./pages/Login";
-import { Signer } from "./pages/Signer";
-import { Verify } from "./pages/Verify";
-import { Customers } from "./pages/Customers";
-import { Documents } from "./pages/Documents";
-import { MyDocuments } from "./pages/MyDocuments";
-import { NasBrowser } from "./pages/NasBrowser";
-import { CreateBBBG } from "./pages/CreateBBBG";
-import { CreateQuote } from "./pages/CreateQuote";
-import { CreateContract } from "./pages/CreateContract";
-import { AuditLog } from "./pages/AuditLog";
-import { Inventory } from "./pages/Inventory";
-import { PurchaseImport } from "./pages/PurchaseImport";
-import { CustomsDecl } from "./pages/CustomsDecl";
-import { SalesInvoice } from "./pages/SalesInvoice";
-import { StockIssue } from "./pages/StockIssue";
-import { Production } from "./pages/Production";
-import { Recipes } from "./pages/Recipes";
-import { SaleDraft } from "./pages/SaleDraft";
-import { Settings } from "./pages/Settings";
-import { TaxSync } from "./pages/TaxSync";
-import { TaxReview } from "./pages/TaxReview";
 import { Operations } from "./pages/Operations";
-import { Payroll } from "./pages/Payroll";
-import { Training } from "./pages/Training";
-import { Messenger } from "./pages/Messenger";
-import { PymidCoop } from "./pages/PymidCoop";
-import { Telegram } from "./pages/Telegram";
-import { ShippingSPX } from "./pages/ShippingSPX";
-import { BiddingProcurement } from "./pages/BiddingProcurement";
-import { StandardsConformity } from "./pages/StandardsConformity";
-import { TaxDefense } from "./pages/TaxDefense";
-import { Trademarks } from "./pages/Trademarks";
-import { PieceworkContracts } from "./pages/PieceworkContracts";
-import { DocTracking } from "./pages/DocTracking";
-import { GovRadar } from "./pages/GovRadar";
-import { WebAdsLeads } from "./pages/WebAdsLeads";
+
+// Wrap named-export secondary pages for React.lazy without editing page modules.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyPage<K extends string, C extends ComponentType<any>>(
+  loader: () => Promise<Record<K, C>>,
+  key: K,
+): LazyExoticComponent<C> {
+  return lazy(() => loader().then((m) => ({ default: m[key] })));
+}
+
+const Signer = lazyPage(() => import("./pages/Signer"), "Signer");
+const Verify = lazyPage(() => import("./pages/Verify"), "Verify");
+const Customers = lazyPage(() => import("./pages/Customers"), "Customers");
+const Documents = lazyPage(() => import("./pages/Documents"), "Documents");
+const MyDocuments = lazyPage(() => import("./pages/MyDocuments"), "MyDocuments");
+const NasBrowser = lazyPage(() => import("./pages/NasBrowser"), "NasBrowser");
+const CreateBBBG = lazyPage(() => import("./pages/CreateBBBG"), "CreateBBBG");
+const CreateQuote = lazyPage(() => import("./pages/CreateQuote"), "CreateQuote");
+const CreateContract = lazyPage(() => import("./pages/CreateContract"), "CreateContract");
+const AuditLog = lazyPage(() => import("./pages/AuditLog"), "AuditLog");
+const Inventory = lazyPage(() => import("./pages/Inventory"), "Inventory");
+const PurchaseImport = lazyPage(() => import("./pages/PurchaseImport"), "PurchaseImport");
+const CustomsDecl = lazyPage(() => import("./pages/CustomsDecl"), "CustomsDecl");
+const SalesInvoice = lazyPage(() => import("./pages/SalesInvoice"), "SalesInvoice");
+const StockIssue = lazyPage(() => import("./pages/StockIssue"), "StockIssue");
+const Production = lazyPage(() => import("./pages/Production"), "Production");
+const Recipes = lazyPage(() => import("./pages/Recipes"), "Recipes");
+const SaleDraft = lazyPage(() => import("./pages/SaleDraft"), "SaleDraft");
+const Settings = lazyPage(() => import("./pages/Settings"), "Settings");
+const TaxSync = lazyPage(() => import("./pages/TaxSync"), "TaxSync");
+const TaxReview = lazyPage(() => import("./pages/TaxReview"), "TaxReview");
+const Payroll = lazyPage(() => import("./pages/Payroll"), "Payroll");
+const Training = lazyPage(() => import("./pages/Training"), "Training");
+const Messenger = lazyPage(() => import("./pages/Messenger"), "Messenger");
+const PymidCoop = lazyPage(() => import("./pages/PymidCoop"), "PymidCoop");
+const Telegram = lazyPage(() => import("./pages/Telegram"), "Telegram");
+const ShippingSPX = lazyPage(() => import("./pages/ShippingSPX"), "ShippingSPX");
+const BiddingProcurement = lazyPage(
+  () => import("./pages/BiddingProcurement"),
+  "BiddingProcurement",
+);
+const StandardsConformity = lazyPage(
+  () => import("./pages/StandardsConformity"),
+  "StandardsConformity",
+);
+const TaxDefense = lazyPage(() => import("./pages/TaxDefense"), "TaxDefense");
+const Trademarks = lazyPage(() => import("./pages/Trademarks"), "Trademarks");
+const PieceworkContracts = lazyPage(
+  () => import("./pages/PieceworkContracts"),
+  "PieceworkContracts",
+);
+const DocTracking = lazyPage(() => import("./pages/DocTracking"), "DocTracking");
+const GovRadar = lazyPage(() => import("./pages/GovRadar"), "GovRadar");
+const WebAdsLeads = lazyPage(() => import("./pages/WebAdsLeads"), "WebAdsLeads");
+
+function RouteFallback() {
+  return (
+    <PageShell>
+      <TableSkeleton rows={6} />
+    </PageShell>
+  );
+}
 
 type Tab =
   | "home"
@@ -693,106 +731,108 @@ function AppShell() {
 
         <main className="app-content" data-page={tab}>
           {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
-          {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
-          {tab === "messenger" && isAdmin && <Messenger />}
-          {tab === "telegram" && isAdmin && <Telegram />}
-          {tab === "pymidcoop" && (isAdmin || isPymid) && (
-            <PymidCoop isAdmin={isAdmin} canManageStaff={isAdmin || !isPymidStaff} />
-          )}
-          {tab === "sign" && isAdmin && (
-            <Signer
-              defaultIp={me.agent_default_ip}
-              defaultLocation={me.default_location}
-              preSign={preSign}
-              onOpenDocument={goDocuments}
-            />
-          )}
-          {tab === "bbbg" && isAdmin && (
-            <CreateBBBG
-              onGenerated={(docId, filename, customerId) => {
-                setPreSign({ docId, filename, docType: "bbbg", customerId });
-                navigate("sign");
-              }}
-            />
-          )}
-          {tab === "quote" && isAdmin && (
-            <CreateQuote
-              leadDraft={quotePrefill}
-              fromLeadId={fromLeadId}
-              onLeadDraftConsumed={() => {
-                setQuotePrefill(null);
-                setFromLeadId(null);
-              }}
-              onGenerated={(docId, filename, docType, customerId, orderId) => {
-                setPreSign({ docId, filename, docType, customerId, orderId });
-                navigate("sign");
-              }}
-            />
-          )}
-          {tab === "contract" && isAdmin && <CreateContract />}
-          {tab === "tonkho" && isAdmin && <Inventory onOpenPurchase={goPurchase} />}
-          {tab === "nhaphang" && isAdmin && (
-            <PurchaseImport openId={openPurchaseId} onConsumed={() => setOpenPurchaseId(null)} />
-          )}
-          {tab === "tokhai" && isAdmin && <CustomsDecl />}
-          {tab === "banra" && isAdmin && <SalesInvoice />}
-          {tab === "xuatkho" && isAdmin && <StockIssue />}
-          {tab === "sanxuat" && isAdmin && <Production />}
-          {tab === "congthuc" && isAdmin && <Recipes />}
-          {tab === "shippingspx" && isAdmin && <ShippingSPX />}
-          {tab === "bidding" && isAdmin && <BiddingProcurement />}
-          {tab === "standards" && isAdmin && <StandardsConformity />}
-          {tab === "trademarks" && isAdmin && <Trademarks />}
-          {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
+          <Suspense fallback={<RouteFallback />}>
+            {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
+            {tab === "messenger" && isAdmin && <Messenger />}
+            {tab === "telegram" && isAdmin && <Telegram />}
+            {tab === "pymidcoop" && (isAdmin || isPymid) && (
+              <PymidCoop isAdmin={isAdmin} canManageStaff={isAdmin || !isPymidStaff} />
+            )}
+            {tab === "sign" && isAdmin && (
+              <Signer
+                defaultIp={me.agent_default_ip}
+                defaultLocation={me.default_location}
+                preSign={preSign}
+                onOpenDocument={goDocuments}
+              />
+            )}
+            {tab === "bbbg" && isAdmin && (
+              <CreateBBBG
+                onGenerated={(docId, filename, customerId) => {
+                  setPreSign({ docId, filename, docType: "bbbg", customerId });
+                  navigate("sign");
+                }}
+              />
+            )}
+            {tab === "quote" && isAdmin && (
+              <CreateQuote
+                leadDraft={quotePrefill}
+                fromLeadId={fromLeadId}
+                onLeadDraftConsumed={() => {
+                  setQuotePrefill(null);
+                  setFromLeadId(null);
+                }}
+                onGenerated={(docId, filename, docType, customerId, orderId) => {
+                  setPreSign({ docId, filename, docType, customerId, orderId });
+                  navigate("sign");
+                }}
+              />
+            )}
+            {tab === "contract" && isAdmin && <CreateContract />}
+            {tab === "tonkho" && isAdmin && <Inventory onOpenPurchase={goPurchase} />}
+            {tab === "nhaphang" && isAdmin && (
+              <PurchaseImport openId={openPurchaseId} onConsumed={() => setOpenPurchaseId(null)} />
+            )}
+            {tab === "tokhai" && isAdmin && <CustomsDecl />}
+            {tab === "banra" && isAdmin && <SalesInvoice />}
+            {tab === "xuatkho" && isAdmin && <StockIssue />}
+            {tab === "sanxuat" && isAdmin && <Production />}
+            {tab === "congthuc" && isAdmin && <Recipes />}
+            {tab === "shippingspx" && isAdmin && <ShippingSPX />}
+            {tab === "bidding" && isAdmin && <BiddingProcurement />}
+            {tab === "standards" && isAdmin && <StandardsConformity />}
+            {tab === "trademarks" && isAdmin && <Trademarks />}
+            {tab === "hoadonnhap" && isAdmin && <SaleDraft />}
 
-          {tab === "thuesync" && isAdmin && <TaxSync />}
-          {tab === "thuebct" && isAdmin && <TaxReview />}
-          {tab === "taxdefense" && isAdmin && <TaxDefense />}
-          {tab === "documents" && isAdmin && (
-            <Documents
-              onVerify={goVerify}
-              highlightId={highlightDocPk}
-              onConsumed={() => setHighlightDocPk(null)}
-              onCountersign={(doc) => {
-                setPreSign({
-                  docId: doc.doc_id,
-                  filename: doc.filename,
-                  docType: doc.doc_type,
-                  customerId: doc.customer_id,
-                  orderId: doc.order_id,
-                  existingDocumentId: doc.id,
-                });
-                navigate("sign");
-              }}
-            />
-          )}
-          {tab === "customers" && isAdmin && <Customers />}
-          {tab === "nas" && isAdmin && <NasBrowser />}
-          {tab === "audit" && isAdmin && <AuditLog />}
-          {tab === "settings" && isAdmin && (
-            <Settings
-              usingDefaultSecrets={me.using_default_secrets}
-              mustChangePassword={me.must_change_password}
-              onChangePassword={() => setPasswordModalOpen(true)}
-            />
-          )}
-          {tab === "payroll" && isAdmin && <Payroll />}
-          {tab === "mine" && <MyDocuments onVerify={goVerify} />}
-          {tab === "verify" && (
-            <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
-          )}
-          {tab === "khoan" && isAdmin && <PieceworkContracts />}
-          {tab === "doctracking" && isAdmin && <DocTracking />}
-          {tab === "govradar" && isAdmin && <GovRadar />}
-          {tab === "webads" && isAdmin && (
-            <WebAdsLeads
-              onCreateQuote={(draft) => {
-                setQuotePrefill(draft);
-                setFromLeadId(draft.lead_id);
-                navigate("quote", false, `?fromLead=${draft.lead_id}`);
-              }}
-            />
-          )}
+            {tab === "thuesync" && isAdmin && <TaxSync />}
+            {tab === "thuebct" && isAdmin && <TaxReview />}
+            {tab === "taxdefense" && isAdmin && <TaxDefense />}
+            {tab === "documents" && isAdmin && (
+              <Documents
+                onVerify={goVerify}
+                highlightId={highlightDocPk}
+                onConsumed={() => setHighlightDocPk(null)}
+                onCountersign={(doc) => {
+                  setPreSign({
+                    docId: doc.doc_id,
+                    filename: doc.filename,
+                    docType: doc.doc_type,
+                    customerId: doc.customer_id,
+                    orderId: doc.order_id,
+                    existingDocumentId: doc.id,
+                  });
+                  navigate("sign");
+                }}
+              />
+            )}
+            {tab === "customers" && isAdmin && <Customers />}
+            {tab === "nas" && isAdmin && <NasBrowser />}
+            {tab === "audit" && isAdmin && <AuditLog />}
+            {tab === "settings" && isAdmin && (
+              <Settings
+                usingDefaultSecrets={me.using_default_secrets}
+                mustChangePassword={me.must_change_password}
+                onChangePassword={() => setPasswordModalOpen(true)}
+              />
+            )}
+            {tab === "payroll" && isAdmin && <Payroll />}
+            {tab === "mine" && <MyDocuments onVerify={goVerify} />}
+            {tab === "verify" && (
+              <Verify docPk={verifyDocPk} onConsumed={() => setVerifyDocPk(null)} />
+            )}
+            {tab === "khoan" && isAdmin && <PieceworkContracts />}
+            {tab === "doctracking" && isAdmin && <DocTracking />}
+            {tab === "govradar" && isAdmin && <GovRadar />}
+            {tab === "webads" && isAdmin && (
+              <WebAdsLeads
+                onCreateQuote={(draft) => {
+                  setQuotePrefill(draft);
+                  setFromLeadId(draft.lead_id);
+                  navigate("quote", false, `?fromLead=${draft.lead_id}`);
+                }}
+              />
+            )}
+          </Suspense>
         </main>
       </div>
 
