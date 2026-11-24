@@ -1853,6 +1853,10 @@ button.ui-step-item:hover { background: var(--surface-2); transform: none; }
 
   .ui-page-header-actions > .ui-badge { flex: 0 0 auto; align-self: center; }
 
+  .ui-section-card-head { flex-direction: column; align-items: stretch; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+
+  .ui-section-card-actions { width: 100%; justify-content: flex-start; }
+
   /* Unified 820px DataView desktop/mobile switch */
   .ui-dataview-mode-card .ui-dataview-desktop { display: none; }
 

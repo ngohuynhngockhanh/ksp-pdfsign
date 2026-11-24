@@ -216,15 +216,16 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
 
       <section className="ops-grid">
         <SectionCard
+          className="ops-queue-card"
           eyebrow="Hàng chờ"
           title="Chứng từ cần hoàn thiện"
           icon="clipboard-list"
           actions={
             <AppButton
-              variant="ghost"
+              variant="secondary"
               size="sm"
               rightIcon="arrow-right"
-              className="ui-nowrap ui-shrink-0"
+              className="ops-queue-open-btn ui-nowrap ui-shrink-0"
               onClick={() => navigate("nhaphang")}
             >
               Mở Nhập hàng
@@ -259,36 +260,38 @@ export function Operations({ navigate }: { navigate: (tab: string) => void }) {
                         {x.ngay} · {x.kind === "purchase" ? "Mua vào" : "Bán ra"}
                       </small>
                     </div>
-                    <StatusBadge tone={isMissing ? "danger" : "warning"} size="sm">
-                      {STATE_LABEL[x.state] ?? x.state}
-                    </StatusBadge>
-                    {x.kind === "purchase" && x.state === "renderable" && (
-                      <a
-                        className="ui-btn ui-btn--secondary ui-btn--sm ui-nowrap ui-shrink-0"
-                        href={`/api/inv/purchase/${x.id}/pdf`}
-                      >
-                        <AppIcon name="file-down" size={14} />
-                        <span>Dựng PDF</span>
-                      </a>
-                    )}
-                    {x.kind === "purchase" &&
-                      (x.state === "missing" || x.state === "source_only") && (
-                        <label
-                          className={`ui-btn ui-btn--secondary ui-btn--sm ui-nowrap ui-shrink-0 ui-clickable${busy === `pdf-${x.id}` ? " is-loading" : ""}`}
+                    <div className="ops-action-meta">
+                      <StatusBadge tone={isMissing ? "danger" : "warning"} size="sm">
+                        {STATE_LABEL[x.state] ?? x.state}
+                      </StatusBadge>
+                      {x.kind === "purchase" && x.state === "renderable" && (
+                        <a
+                          className="ui-btn ui-btn--secondary ui-btn--sm ui-nowrap ui-shrink-0"
+                          href={`/api/inv/purchase/${x.id}/pdf`}
                         >
-                          <AppIcon name="upload" size={14} />
-                          <span>
-                            {busy === `pdf-${x.id}` ? "Đang nộp…" : "Nộp PDF bù"}
-                          </span>
-                          <input
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            hidden
-                            disabled={Boolean(busy)}
-                            onChange={(e) => attachPdf(x.id, e.target.files?.[0])}
-                          />
-                        </label>
+                          <AppIcon name="file-down" size={14} />
+                          <span>Dựng PDF</span>
+                        </a>
                       )}
+                      {x.kind === "purchase" &&
+                        (x.state === "missing" || x.state === "source_only") && (
+                          <label
+                            className={`ui-btn ui-btn--secondary ui-btn--sm ui-nowrap ui-shrink-0 ui-clickable${busy === `pdf-${x.id}` ? " is-loading" : ""}`}
+                          >
+                            <AppIcon name="upload" size={14} />
+                            <span>
+                              {busy === `pdf-${x.id}` ? "Đang nộp…" : "Nộp PDF bù"}
+                            </span>
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              hidden
+                              disabled={Boolean(busy)}
+                              onChange={(e) => attachPdf(x.id, e.target.files?.[0])}
+                            />
+                          </label>
+                        )}
+                    </div>
                   </div>
                 );
               })
