@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
 import { api, type TelegramStatus, type TtsStatus } from "../api";
-import { FormGrid } from "../components/ui";
+import {
+  AppButton,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  SkeletonBlock,
+  StatusBadge,
+  useConfirm,
+  useToast,
+} from "../components/ui";
 import { safeHttpUrl } from "../utils/url";
 
 export function Telegram() {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [ttsInfo, setTtsInfo] = useState<TtsStatus | null>(null);
   const [link, setLink] = useState("");
@@ -22,7 +37,7 @@ export function Telegram() {
   const [volume, setVolume] = useState(75);
 
   const [ttsText, setTtsText] = useState(
-    "✅ RK Burner\nJob: burn-207-194\nImage: inut-v1.1-rockchip.img\nrkdeveloptool rd hoàn tất; burn image đã an toàn để chuyển bước tiếp theo."
+    "RK Burner\nJob: burn-207-194\nImage: inut-v1.1-rockchip.img\nrkdeveloptool rd hoàn tất; burn image đã an toàn để chuyển bước tiếp theo.",
   );
   const [regexPreview, setRegexPreview] = useState<{
     matched: boolean;
@@ -58,10 +73,14 @@ export function Telegram() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
   async function handleSaveConfig() {
-    setBusy(true); setErr(""); setNotice("");
+    setBusy(true);
+    setErr("");
+    setNotice("");
     try {
       const saved = await api.ttsSaveConfig({
         telegram_tts_speaker_enabled: speakerEnabled,
@@ -73,7 +92,9 @@ export function Telegram() {
         tts_default_speed: ttsSpeed,
       });
       setRegexPattern(saved.telegram_tts_regex);
-      setNotice(`💾 Đã lưu cấu hình! Bộ lọc Regex hiện tại: /${saved.telegram_tts_regex}/i (${saved.telegram_tts_filter_enabled ? "Bật lọc" : "Đọc tất cả"}) · Còi báo: ${saved.telegram_tts_alarm_sound}`);
+      const okMsg = `Đã lưu cấu hình. Bộ lọc Regex: /${saved.telegram_tts_regex}/i (${saved.telegram_tts_filter_enabled ? "Bật lọc" : "Đọc tất cả"}) · Còi báo: ${saved.telegram_tts_alarm_sound}`;
+      setNotice(okMsg);
+      toast.success("Đã lưu cấu hình Regex & loa báo động.");
       const check = await api.ttsTestRegex({
         message: ttsText,
         regex: saved.telegram_tts_regex,
@@ -82,7 +103,9 @@ export function Telegram() {
       setRegexPreview(check);
       await load();
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -98,13 +121,17 @@ export function Telegram() {
       });
       setRegexPreview(check);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     }
   }
 
   async function handleSpeakOnly() {
     if (!ttsText.trim()) return;
-    setBusy(true); setErr(""); setNotice("");
+    setBusy(true);
+    setErr("");
+    setNotice("");
     try {
       const res = await api.ttsSpeak({
         text: ttsText.trim(),
@@ -113,10 +140,14 @@ export function Telegram() {
         speed: ttsSpeed,
         alarm_sound: alarmSound,
       });
-      setNotice(`🔊 Đã phát ra loa (${res.provider} · giọng ${res.voice} · còi ${res.alarm_sound} · ${(res.audio_bytes_len / 1024).toFixed(1)} KB ${res.audio_format.toUpperCase()})`);
+      const okMsg = `Đã phát ra loa (${res.provider} · giọng ${res.voice} · còi ${res.alarm_sound} · ${(res.audio_bytes_len / 1024).toFixed(1)} KB ${res.audio_format.toUpperCase()})`;
+      setNotice(okMsg);
+      toast.success("Đã gửi lệnh phát âm thanh ra loa.");
       await load();
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -124,7 +155,9 @@ export function Telegram() {
 
   async function handleSendTelegramAndSpeak() {
     if (!ttsText.trim()) return;
-    setBusy(true); setErr(""); setNotice("");
+    setBusy(true);
+    setErr("");
+    setNotice("");
     try {
       const check = await api.ttsTestRegex({
         message: ttsText.trim(),
@@ -133,13 +166,15 @@ export function Telegram() {
       });
       setRegexPreview(check);
       const res = await api.telegramSend(ttsText.trim(), true);
-      setNotice(
-        check.matched
-          ? `✈️ Đã bắn Telegram (${res.delivered_count} TK) & KHỚP Regex /${regexPattern}/i → Đang hú còi + đọc TTS ra loa 77.88.207.23!`
-          : `✈️ Đã bắn Telegram (${res.delivered_count} TK) · Không khớp Regex /${regexPattern}/i nên KHÔNG hú loa.`
-      );
+      const okMsg = check.matched
+        ? `Đã gửi Telegram (${res.delivered_count} TK) và khớp Regex /${regexPattern}/i — đang hú còi và đọc TTS ra loa 77.88.207.23.`
+        : `Đã gửi Telegram (${res.delivered_count} TK) · Không khớp Regex /${regexPattern}/i nên không kích hoạt loa.`;
+      setNotice(okMsg);
+      toast.success(okMsg);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -149,53 +184,83 @@ export function Telegram() {
     setVolume(newVol);
     try {
       await api.ttsSpeakerVolume(newVol);
-      setNotice(`🔉 Đã đặt âm lượng loa: ${newVol}%`);
+      const okMsg = `Đã đặt âm lượng loa: ${newVol}%`;
+      setNotice(okMsg);
+      toast.success(okMsg);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     }
   }
 
   async function handlePlaySound(snd: string) {
     try {
       await api.ttsSpeakerSound(snd);
-      setNotice(`🎵 Đang phát hiệu ứng âm thanh: ${snd}`);
+      const okMsg = `Đang phát hiệu ứng âm thanh: ${snd}`;
+      setNotice(okMsg);
+      toast.info(okMsg);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     }
   }
 
   async function handleStopSpeaker() {
     try {
       await api.ttsSpeakerStop();
-      setNotice("⏹ Đã dừng phát loa.");
+      const okMsg = "Đã dừng phát loa.";
+      setNotice(okMsg);
+      toast.info(okMsg);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     }
   }
+
   async function connect() {
-    setBusy(true); setErr(""); setNotice("");
+    setBusy(true);
+    setErr("");
+    setNotice("");
     try {
       const result = await api.telegramConnect();
       setLink(result.url);
       setExpiresAt(result.expires_at);
-      setNotice("Đã tạo link một lần. Mở link bằng Telegram rồi bấm Start.");
+      const okMsg = "Đã tạo link một lần. Mở link bằng Telegram rồi bấm Start.";
+      setNotice(okMsg);
+      toast.success(okMsg);
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
   }
 
   async function disconnect() {
-    if (!window.confirm("Ngắt Telegram khỏi tài khoản KSP này?")) return;
-    setBusy(true); setErr("");
+    const accepted = await confirmAction({
+      title: "Ngắt kết nối Telegram",
+      message: "Ngắt Telegram khỏi tài khoản KSP này?",
+      confirmLabel: "Ngắt kết nối",
+      tone: "danger",
+    });
+    if (!accepted) return;
+    setBusy(true);
+    setErr("");
     try {
       await api.telegramDisconnect();
       setLink("");
-      setNotice("Đã ngắt kết nối Telegram.");
+      const okMsg = "Đã ngắt kết nối Telegram.";
+      setNotice(okMsg);
+      toast.success(okMsg);
       await load();
     } catch (error) {
-      setErr((error as Error).message);
+      const m = (error as Error).message;
+      setErr(m);
+      toast.error(m);
     } finally {
       setBusy(false);
     }
@@ -204,234 +269,408 @@ export function Telegram() {
   async function copyLink() {
     if (!link) return;
     await navigator.clipboard.writeText(link);
-    setNotice("Đã sao chép link kết nối.");
+    const okMsg = "Đã sao chép link kết nối.";
+    setNotice(okMsg);
+    toast.success(okMsg);
   }
 
-  if (!status) return <div className="docs-page">{err ? <div className="error">{err}</div> : "Đang tải…"}</div>;
+  const safeLink = safeHttpUrl(link);
 
   return (
-    <div className="docs-page telegram-page" style={{ maxWidth: 820 }}>
-      <header className="page-head">
-        <div>
-          <span className="eyebrow">NOTIFICATIONS</span>
-          <h1>Telegram thông báo</h1>
-          <p className="muted">Nhận tin nhắn Messenger mới của fanpage trực tiếp trong Telegram.</p>
-        </div>
-        <span className={`status-pill ${status.connected ? "ok" : ""}`}>{status.connected ? "Đã kết nối" : "Chưa kết nối"}</span>
-      </header>
+    <PageShell maxWidth="narrow" data-page="telegram">
+      <PageHeader
+        variant="compact"
+        icon="send"
+        eyebrow="NOTIFICATIONS"
+        title="Telegram thông báo"
+        subtitle="Nhận tin nhắn Messenger mới của fanpage trực tiếp trong Telegram."
+        actions={
+          status ? (
+            <StatusBadge tone={status.connected ? "success" : "neutral"} dot>
+              {status.connected ? "Đã kết nối" : "Chưa kết nối"}
+            </StatusBadge>
+          ) : undefined
+        }
+      />
 
-      {err && <div className="error" role="alert">{err}</div>}
-      {notice && <div className="ok-note" role="status">{notice}</div>}
+      {err && <InlineAlert tone="danger">{err}</InlineAlert>}
+      {notice && (
+        <InlineAlert tone="success" onDismiss={() => setNotice("")}>
+          {notice}
+        </InlineAlert>
+      )}
 
-      {!status.enabled ? (
-        <section className="panel">
-          <h3>Bot chưa được bật</h3>
-          <p>Quản trị viên cần đặt <code>TELEGRAM_BOT_TOKEN</code> và <code>TELEGRAM_ENABLED=true</code> trong file môi trường rồi khởi động lại backend.</p>
-        </section>
+      {!status ? (
+        <SectionCard>
+          <SkeletonBlock variant="line" lines={4} />
+        </SectionCard>
+      ) : !status.enabled ? (
+        <SectionCard>
+          <EmptyState
+            icon="ban"
+            title="Bot chưa được bật"
+            description={
+              <>
+                Quản trị viên cần đặt <code className="ui-code">TELEGRAM_BOT_TOKEN</code> và{" "}
+                <code className="ui-code">TELEGRAM_ENABLED=true</code> trong file môi trường rồi
+                khởi động lại backend.
+              </>
+            }
+          />
+        </SectionCard>
       ) : status.connected ? (
-        <section className="panel">
-          <h3>Tài khoản Telegram đang nhận thông báo</h3>
-          <p><strong>{status.display_name || status.username || "Telegram"}</strong>{status.username ? ` · @${status.username}` : ""}</p>
-          <p className="muted">Tin nhắn mới sẽ kèm link mở nhanh hộp thư Messenger trong KSP.</p>
-          <button className="telegram-disconnect" disabled={busy} onClick={disconnect}>Ngắt kết nối</button>
-        </section>
+        <SectionCard
+          title="Tài khoản Telegram đang nhận thông báo"
+          icon="check-circle"
+          actions={
+            <AppButton
+              variant="danger"
+              size="sm"
+              leftIcon="x"
+              loading={busy}
+              onClick={disconnect}
+            >
+              Ngắt kết nối
+            </AppButton>
+          }
+        >
+          <div className="ui-stack--sm">
+            <p className="ui-muted">
+              <strong>{status.display_name || status.username || "Telegram"}</strong>
+              {status.username ? ` · @${status.username}` : ""}
+            </p>
+            <p className="ui-muted">
+              Tin nhắn mới sẽ kèm link mở nhanh hộp thư Messenger trong KSP.
+            </p>
+          </div>
+        </SectionCard>
       ) : (
-        <section className="panel">
-          <h3>Kết nối với @{status.bot_username}</h3>
-          <p>Nhấn tạo link, mở link bằng Telegram và chọn <strong>Start</strong>. Link chỉ dùng một lần và hết hạn sau vài phút.</p>
-          <button className="primary" disabled={busy} onClick={connect}>{busy ? "Đang tạo link…" : "Tạo link đăng nhập Telegram"}</button>
-          {link && <div style={{ marginTop: 18 }}>
-            <label>Link kết nối</label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input className="ui-input" readOnly value={link} style={{ flex: "1 1 min(100%, 280px)", minWidth: 0 }} />
-              <button type="button" className="ui-btn-chip" onClick={copyLink}>Sao chép</button>
-              {safeHttpUrl(link) && (
-                <a className="telegram-open-link ui-btn-chip" href={safeHttpUrl(link)} target="_blank" rel="noopener noreferrer">Mở Telegram</a>
-              )}
-            </div>
-            {expiresAt && <small className="muted">Hết hạn: {new Date(expiresAt).toLocaleString("vi-VN")}</small>}
-          </div>}
-        </section>
+        <SectionCard title={`Kết nối với @${status.bot_username}`} icon="send">
+          <div className="ui-stack">
+            <EmptyState
+              icon="send"
+              compact
+              title={`Chưa liên kết tài khoản với @${status.bot_username}`}
+              description="Nhấn tạo link, mở link bằng Telegram và chọn Start. Link chỉ dùng một lần và hết hạn sau vài phút."
+              action={
+                <AppButton
+                  variant="primary"
+                  leftIcon="link"
+                  loading={busy}
+                  onClick={connect}
+                >
+                  {busy ? "Đang tạo link…" : "Tạo link đăng nhập Telegram"}
+                </AppButton>
+              }
+            />
+
+            {link && (
+              <FormField
+                label="Link kết nối"
+                htmlFor="tg-connect-link"
+                hint={
+                  expiresAt
+                    ? `Hết hạn: ${new Date(expiresAt).toLocaleString("vi-VN")}`
+                    : undefined
+                }
+              >
+                <div className="ui-row">
+                  <input
+                    id="tg-connect-link"
+                    className="ui-input ui-grow"
+                    readOnly
+                    value={link}
+                  />
+                  <AppButton variant="secondary" size="sm" leftIcon="copy" onClick={copyLink}>
+                    Sao chép
+                  </AppButton>
+                  {safeLink && (
+                    <a
+                      className="ui-btn ui-btn--secondary ui-btn--sm"
+                      href={safeLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Mở Telegram
+                    </a>
+                  )}
+                </div>
+              </FormField>
+            )}
+          </div>
+        </SectionCard>
       )}
 
       {ttsInfo && (
-        <section className="panel" style={{ marginTop: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0 }}>🔊 Cấu Hình Lọc Regex (RK Burner) &amp; Loa Báo Động BLE ({ttsInfo.ble_speaker_base_url})</h3>
-              <p className="muted" style={{ margin: "4px 0 0" }}>
-                Chỉ những tin nhắn Telegram khớp biểu thức Regex (mặc định <code>RK\s*Burner</code>) mới kích hoạt còi báo động và đọc giọng nói Tiếng Việt (Kokoro → VNMap TTS → Chị Google → Microsoft) qua loa tại <code>77.88.207.23</code>.
-              </p>
-            </div>
-            <span className={`status-pill ${ttsInfo.speaker_status?.speaker?.connected ? "ok" : ""}`}>
+        <SectionCard
+          eyebrow="BLE ALARM & TTS"
+          title={`Cấu hình lọc Regex (RK Burner) & Loa báo động BLE (${ttsInfo.ble_speaker_base_url})`}
+          subtitle="Chỉ các tin nhắn Telegram khớp biểu thức Regex mới kích hoạt còi báo động và đọc giọng nói Tiếng Việt (Kokoro -> VNMap TTS -> Chị Google -> Microsoft) qua loa 77.88.207.23."
+          icon="radio"
+          actions={
+            <StatusBadge
+              tone={ttsInfo.speaker_status?.speaker?.connected ? "success" : "neutral"}
+              dot
+            >
               {ttsInfo.speaker_status?.speaker?.connected
                 ? `Loa ${ttsInfo.speaker_status.speaker.name} · Pin ${ttsInfo.speaker_status.speaker.battery ?? 100}%`
                 : "Loa chưa kết nối"}
-            </span>
-          </div>
-
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14, padding: "10px 12px", background: "var(--surface-subtle, #f4f8f6)", borderRadius: 8, border: "1px solid var(--border)" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, margin: 0, cursor: "pointer", fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={speakerEnabled}
-                onChange={(e) => setSpeakerEnabled(e.target.checked)}
-                style={{ width: 16, height: 16 }}
-              />
-              <span>Bật tự động phát loa BLE khi có tin Telegram</span>
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, margin: 0, cursor: "pointer", fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={filterEnabled}
-                onChange={(e) => setFilterEnabled(e.target.checked)}
-                style={{ width: 16, height: 16 }}
-              />
-              <span>Chỉ báo động các tin nhắn khớp Regex bên dưới</span>
-            </label>
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <label>Biểu thức Regex lọc tin nhắn báo loa (Không phân biệt hoa/thường - Case Insensitive)</label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
-              <input
-                className="ui-input"
-                type="text"
-                value={regexPattern}
-                onChange={(e) => setRegexPattern(e.target.value)}
-                placeholder="Ví dụ: RK\s*Burner"
-                style={{ flex: "1 1 min(100%, 240px)", minWidth: 0, fontFamily: "var(--font-mono)", fontWeight: 700 }}
-              />
-              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern("RK\\s*Burner")} title="Chỉ báo tin nhắn RK Burner">
-                Preset: RK Burner
-              </button>
-              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern("RK\\s*Burner|Hải quan|Thông quan")} title="RK Burner hoặc Hải quan">
-                Preset: RK Burner + Hải quan
-              </button>
-              <button type="button" className="ui-btn-chip" onClick={() => setRegexPattern(".*")} title="Báo mọi tin nhắn">
-                Preset: Tất cả (.*)
-              </button>
-            </div>
-          </div>
-
-          <FormGrid cols={2} style={{ marginTop: 14 }}>
-            <div>
-              <label>Âm báo trước khi đọc TTS</label>
-              <select className="ui-select" value={alarmSound} onChange={(e) => setAlarmSound(e.target.value)} style={{ width: "100%" }}>
-                <option value="auto">🤖 Tự động (Thành công → 🎉 Success · Lỗi/Fail → 🚨 Alarm)</option>
-                <option value="success">🎉 Luôn phát Success (Hoàn thành)</option>
-                <option value="alarm">🚨 Luôn phát Alarm (Còi báo động)</option>
-                <option value="chime">🔔 Luôn phát Chime (Chuông báo)</option>
-                <option value="notification">💬 Luôn phát Notification (Ting)</option>
-                <option value="beep">⚡ Luôn phát Beep</option>
-                <option value="none">🔇 Không phát âm hiệu (Chỉ đọc TTS)</option>
-              </select>
-            </div>
-            <div>
-              <label>Nguồn TTS (Fallback Chain)</label>
-              <select className="ui-select" value={ttsProvider} onChange={(e) => setTtsProvider(e.target.value)} style={{ width: "100%" }}>
-                {ttsInfo.providers.map((p) => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label>Giọng đọc Tiếng Việt</label>
-              <select className="ui-select" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} style={{ width: "100%" }}>
-                <optgroup label="Kokoro / VNMap TTS (WAV 24kHz)">
-                  {ttsInfo.voices.kokoro.map((v) => (
-                    <option key={v.id} value={v.id}>{v.label}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="AppHub 9Router · Chị Google">
-                  {ttsInfo.voices.google.map((v) => (
-                    <option key={v.id} value={v.id}>{v.label}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="AppHub 9Router · Microsoft Edge Neural">
-                  {ttsInfo.voices.microsoft.map((v) => (
-                    <option key={v.id} value={v.id}>{v.label}</option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
-            <div>
-              <label>Âm lượng loa ({volume}%)</label>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            </StatusBadge>
+          }
+        >
+          <div className="ui-stack">
+            <div className="cm-toggle-bar">
+              <label className="ui-check-label">
                 <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
-                  style={{ flex: 1 }}
+                  type="checkbox"
+                  checked={speakerEnabled}
+                  onChange={(e) => setSpeakerEnabled(e.target.checked)}
                 />
-                <button type="button" className="ui-btn-chip" onClick={() => handleVolumeChange(volume)}>Đặt</button>
-              </div>
+                <span>Bật tự động phát loa BLE khi có tin Telegram</span>
+              </label>
+              <label className="ui-check-label">
+                <input
+                  type="checkbox"
+                  checked={filterEnabled}
+                  onChange={(e) => setFilterEnabled(e.target.checked)}
+                />
+                <span>Chỉ báo động các tin nhắn khớp Regex bên dưới</span>
+              </label>
             </div>
-          </FormGrid>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="primary ui-btn-chip" type="button" disabled={busy} onClick={handleSaveConfig}>
-              💾 Lưu cấu hình Regex &amp; Loa
-            </button>
-            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("alarm")}>🚨 Thử còi Alarm</button>
-            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("chime")}>🔔 Thử Chime</button>
-            <button type="button" className="ui-btn-chip" onClick={() => handlePlaySound("success")}>🎉 Thử Success</button>
-            <button type="button" className="ui-btn-chip" onClick={handleStopSpeaker}>⏹ Dừng loa</button>
-          </div>
-
-          <hr style={{ margin: "18px 0", border: 0, borderTop: "1px solid var(--border)" }} />
-
-          <div>
-            <label>Nội dung tin nhắn kiểm thử (Test khớp Regex &amp; Đọc thử ra loa 77.88.207.23)</label>
-            <textarea
-              className="ui-textarea"
-              rows={3}
-              value={ttsText}
-              onChange={(e) => setTtsText(e.target.value)}
-              style={{ width: "100%", marginTop: 4, fontFamily: "var(--font-mono)" }}
-            />
-          </div>
-
-          {regexPreview && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: `1px solid ${regexPreview.matched ? "var(--green)" : "var(--border)"}`,
-                background: regexPreview.matched ? "var(--primary-soft)" : "var(--surface-subtle)",
-                color: "var(--ink)",
-                fontSize: 13,
-              }}
+            <FormField
+              label="Biểu thức Regex lọc tin nhắn báo loa (không phân biệt hoa/thường)"
+              htmlFor="tg-regex"
             >
-              <div>
-                <strong>
-                  {regexPreview.matched
-                    ? `✅ KHỚP REGEX (/${regexPreview.regex}/i → "${regexPreview.matched_text}") — SẼ HÚ CÒI & ĐỌC LOA`
-                    : `⏭ KHÔNG KHỚP REGEX (/${regexPreview.regex}/i) — CHỈ GỬI TELEGRAM, KHÔNG HÚ LOA`}
-                </strong>
+              <div className="ui-row">
+                <input
+                  id="tg-regex"
+                  className="ui-input ui-grow ui-mono"
+                  type="text"
+                  value={regexPattern}
+                  onChange={(e) => setRegexPattern(e.target.value)}
+                  placeholder="Ví dụ: RK\s*Burner"
+                />
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRegexPattern("RK\\s*Burner")}
+                  title="Chỉ báo tin nhắn RK Burner"
+                >
+                  Preset: RK Burner
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRegexPattern("RK\\s*Burner|Hải quan|Thông quan")}
+                  title="RK Burner hoặc Hải quan"
+                >
+                  Preset: RK Burner + Hải quan
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRegexPattern(".*")}
+                  title="Báo mọi tin nhắn"
+                >
+                  Preset: Tất cả (.*)
+                </AppButton>
               </div>
-              <div className="muted" style={{ marginTop: 4 }}>
-                Câu đọc TTS dự kiến: <em>“{regexPreview.spoken_preview}”</em>
-              </div>
-            </div>
-          )}
+            </FormField>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            <button type="button" className="ui-btn-chip" disabled={busy} onClick={handleTestRegex}>
-              🔍 Kiểm tra khớp Regex
-            </button>
-            <button className="primary ui-btn-chip" type="button" disabled={busy} onClick={handleSpeakOnly}>
-              🗣 Phát thử Còi + Đọc Loa ngay
-            </button>
-            <button type="button" className="ui-btn-chip" disabled={busy || !status.connected} onClick={handleSendTelegramAndSpeak}>
-              ✈️ Bắn thử Telegram + Phát loa (nếu khớp Regex)
-            </button>
+            <FormGrid cols={2}>
+              <FormField label="Âm báo trước khi đọc TTS" htmlFor="tg-alarm-sound">
+                <select
+                  id="tg-alarm-sound"
+                  className="ui-select"
+                  value={alarmSound}
+                  onChange={(e) => setAlarmSound(e.target.value)}
+                >
+                  <option value="auto">
+                    Tự động (Thành công -&gt; Success · Lỗi/Fail -&gt; Alarm)
+                  </option>
+                  <option value="success">Luôn phát Success (Hoàn thành)</option>
+                  <option value="alarm">Luôn phát Alarm (Còi báo động)</option>
+                  <option value="chime">Luôn phát Chime (Chuông báo)</option>
+                  <option value="notification">Luôn phát Notification (Ting)</option>
+                  <option value="beep">Luôn phát Beep</option>
+                  <option value="none">Không phát âm hiệu (Chỉ đọc TTS)</option>
+                </select>
+              </FormField>
+
+              <FormField label="Nguồn TTS (Fallback Chain)" htmlFor="tg-tts-provider">
+                <select
+                  id="tg-tts-provider"
+                  className="ui-select"
+                  value={ttsProvider}
+                  onChange={(e) => setTtsProvider(e.target.value)}
+                >
+                  {ttsInfo.providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Giọng đọc Tiếng Việt" htmlFor="tg-tts-voice">
+                <select
+                  id="tg-tts-voice"
+                  className="ui-select"
+                  value={ttsVoice}
+                  onChange={(e) => setTtsVoice(e.target.value)}
+                >
+                  <optgroup label="Kokoro / VNMap TTS (WAV 24kHz)">
+                    {ttsInfo.voices.kokoro.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="AppHub 9Router · Chị Google">
+                    {ttsInfo.voices.google.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="AppHub 9Router · Microsoft Edge Neural">
+                    {ttsInfo.voices.microsoft.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </FormField>
+
+              <FormField label={`Âm lượng loa (${volume}%)`} htmlFor="tg-volume">
+                <div className="ui-row">
+                  <input
+                    id="tg-volume"
+                    className="cm-range"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                  />
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void handleVolumeChange(volume)}
+                  >
+                    Đặt
+                  </AppButton>
+                </div>
+              </FormField>
+            </FormGrid>
+
+            <div className="ui-row">
+              <AppButton
+                variant="primary"
+                size="sm"
+                leftIcon="save"
+                loading={busy}
+                onClick={handleSaveConfig}
+              >
+                Lưu cấu hình Regex &amp; Loa
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="alert-triangle"
+                onClick={() => void handlePlaySound("alarm")}
+              >
+                Thử còi Alarm
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="bell"
+                onClick={() => void handlePlaySound("chime")}
+              >
+                Thử Chime
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="check-circle"
+                onClick={() => void handlePlaySound("success")}
+              >
+                Thử Success
+              </AppButton>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                leftIcon="stop-circle"
+                onClick={handleStopSpeaker}
+              >
+                Dừng loa
+              </AppButton>
+            </div>
+
+            <hr className="ui-divider" />
+
+            <FormField
+              label="Nội dung tin nhắn kiểm thử (Test khớp Regex & Đọc thử ra loa 77.88.207.23)"
+              htmlFor="tg-test-message"
+            >
+              <textarea
+                id="tg-test-message"
+                className="ui-textarea ui-mono"
+                rows={3}
+                value={ttsText}
+                onChange={(e) => setTtsText(e.target.value)}
+              />
+            </FormField>
+
+            {regexPreview && (
+              <InlineAlert
+                tone={regexPreview.matched ? "success" : "info"}
+                title={
+                  regexPreview.matched
+                    ? `KHỚP REGEX (/${regexPreview.regex}/i -> "${regexPreview.matched_text}") — SẼ HÚ CÒI & ĐỌC LOA`
+                    : `KHÔNG KHỚP REGEX (/${regexPreview.regex}/i) — CHỈ GỬI TELEGRAM, KHÔNG HÚ LOA`
+                }
+              >
+                Câu đọc TTS dự kiến: <em>“{regexPreview.spoken_preview}”</em>
+              </InlineAlert>
+            )}
+
+            <div className="ui-row">
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="search"
+                disabled={busy}
+                onClick={handleTestRegex}
+              >
+                Kiểm tra khớp Regex
+              </AppButton>
+              <AppButton
+                variant="primary"
+                size="sm"
+                leftIcon="play"
+                loading={busy}
+                onClick={handleSpeakOnly}
+              >
+                Phát thử Còi + Đọc Loa ngay
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="send"
+                className="ui-wrap-btn"
+                disabled={busy || !status?.connected}
+                onClick={handleSendTelegramAndSpeak}
+              >
+                Bắn thử Telegram + Phát loa (nếu khớp Regex)
+              </AppButton>
+            </div>
           </div>
-        </section>
+        </SectionCard>
       )}
-    </div>
+    </PageShell>
   );
 }

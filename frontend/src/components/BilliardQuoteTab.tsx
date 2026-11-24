@@ -1,12 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { FormGrid } from "./ui";
+import {
+  AppButton,
+  AppIcon,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  KpiStrip,
+  SectionCard,
+  SplitWorkspace,
+  StatusBadge,
+  useToast,
+} from "./ui";
 
 export function BilliardQuoteTab({
   onGenerated,
 }: {
   onGenerated?: (docId: string, filename: string, docType: string, customerId: number | null, orderId: number | null) => void;
 }) {
+  const toast = useToast();
   const [numTables, setNumTables] = useState<number>(10);
   const [includeCamera, setIncludeCamera] = useState<boolean>(true);
   const [includeSoftware, setIncludeSoftware] = useState<boolean>(true);
@@ -27,7 +40,6 @@ export function BilliardQuoteTab({
   const [generating, setGenerating] = useState<boolean>(false);
   const [genResult, setGenResult] = useState<any>(null);
 
-  // Fetch estimate calculation whenever inputs change
   useEffect(() => {
     api
       .billiardEstimate({
@@ -45,7 +57,6 @@ export function BilliardQuoteTab({
       .catch((err) => console.error("Error fetching billiard estimate:", err));
   }, [numTables, agency, includeCamera, includeSoftware, clientName]);
 
-  // Debounced PDF preview
   const previewPayload = JSON.stringify({
     num_tables: numTables,
     client_name: clientName,
@@ -82,9 +93,12 @@ export function BilliardQuoteTab({
   useEffect(() => {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
-  useEffect(() => () => {
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    },
+    [],
+  );
 
   async function handleGenerateQuote() {
     setGenerating(true);
@@ -99,349 +113,342 @@ export function BilliardQuoteTab({
         include_camera: includeCamera,
         include_software: includeSoftware,
         date_display: dateDisplay,
-        filename: `Bao_gia_Billiards_${numTables}_ban_${agency}_${includeCamera && includeSoftware ? "Full_Combo" : (includeSoftware ? "Chi_Phan_Mem_17790k" : "Chi_Camera")}.pdf`,
+        filename: `Bao_gia_Billiards_${numTables}_ban_${agency}_${includeCamera && includeSoftware ? "Full_Combo" : includeSoftware ? "Chi_Phan_Mem_17790k" : "Chi_Camera"}.pdf`,
       };
       const res = await api.billiardQuoteGenerate(payload);
       if (res.ok) {
         setGenResult(res);
+        toast.success("Đã tạo báo giá Billiards thành công.");
         if (onGenerated) {
           onGenerated(res.doc_id, res.filename, "bao_gia", null, null);
         }
       }
     } catch (err) {
-      alert("Lỗi tạo báo giá: " + (err as Error).message);
+      toast.error("Lỗi tạo báo giá: " + (err as Error).message);
     } finally {
       setGenerating(false);
     }
   }
 
+  async function copyZaloLink() {
+    if (!genResult) return;
+    const shareText = `Kính gửi Quý khách Báo giá giải pháp Camera & Phần mềm Billiard Live cho ${numTables} bàn: ${window.location.origin}${genResult.pdf_url}`;
+    try {
+      await navigator.clipboard.writeText(shareText);
+      toast.success("Đã sao chép link báo giá gửi Zalo cho khách hàng!");
+    } catch {
+      toast.error("Không thể sao chép tự động — hãy copy thủ công.");
+    }
+  }
+
+  const isPresetCombo = agency === "16pool" && includeCamera && includeSoftware && numTables === 10;
+  const isPresetSwOnly = agency === "16pool" && !includeCamera && includeSoftware && numTables === 10;
+  const isPresetCamOnly = includeCamera && !includeSoftware && numTables === 10;
+
   return (
-    <div style={{ marginTop: 12 }}>
-      {/* Preset Banner */}
-      <div style={{ background: "linear-gradient(135deg, var(--ink), var(--primary-dark))", borderRadius: 14, padding: "16px 18px", color: "#fffefa", marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(221,160,68,0.22)", color: "#f9d697", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
-              🎱 iNut BilliardLive
-            </div>
-            <h4 style={{ margin: "6px 0 2px 0", fontSize: 17, color: "#fffefa" }}>
-              Báo Giá Giải Pháp Billiards (Bóc Tách Khối Lượng Từng Gói)
-            </h4>
-            <div style={{ fontSize: 12.5, color: "#dce8e4" }}>
-              Tự động phân bổ Hub PoE (8 cam/hub 8P, phần dư &le;4 cam dùng hub 4P rẻ hơn 25%) · Tách riêng Gói Camera &amp; Gói Phần mềm Billiard Live · Chưa VAT (VAT 8%) · <b>Không cần ký số</b>.
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={() => {
-                setNumTables(10);
-                setAgency("16pool");
-                setIncludeCamera(true);
-                setIncludeSoftware(true);
-                setClientName("Billiards 10 bàn (16Pool Full Combo)");
-              }}
-              style={{ fontWeight: 700, background: agency === "16pool" && includeCamera && includeSoftware && numTables === 10 ? "var(--gold)" : "rgba(255,254,250,0.16)", color: agency === "16pool" && includeCamera && includeSoftware && numTables === 10 ? "var(--ink)" : "#fffefa", border: "none" }}
-            >
-              🔥 10 Cam + PM (16Pool)
-            </button>
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={() => {
-                setNumTables(10);
-                setAgency("16pool");
-                setIncludeCamera(false);
-                setIncludeSoftware(true);
-                setClientName("Billiards 10 bàn (Chỉ PM 17.790k - 16Pool)");
-              }}
-              style={{ fontWeight: 700, background: agency === "16pool" && !includeCamera && includeSoftware && numTables === 10 ? "var(--gold)" : "rgba(255,254,250,0.16)", color: agency === "16pool" && !includeCamera && includeSoftware && numTables === 10 ? "var(--ink)" : "#fffefa", border: "none" }}
-            >
-              💻 10 Bàn Chỉ PM 17.790k (16Pool)
-            </button>
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={() => {
-                setNumTables(10);
-                setIncludeCamera(true);
-                setIncludeSoftware(false);
-                setClientName("Billiards 10 bàn (Chỉ Camera)");
-              }}
-              style={{ fontWeight: 700, background: includeCamera && !includeSoftware && numTables === 10 ? "var(--gold)" : "rgba(255,254,250,0.16)", color: includeCamera && !includeSoftware && numTables === 10 ? "var(--ink)" : "#fffefa", border: "none" }}
-            >
-              📷 10 Bàn Chỉ Camera (0 PM)
-            </button>
-          </div>
+    <div className="ui-stack--lg">
+      <SectionCard
+        tone="subtle"
+        padding="compact"
+        title="Báo Giá Giải Pháp Billiards (Bóc Tách Khối Lượng Từng Gói)"
+        subtitle="Tự động phân bổ Hub PoE (8 cam/hub 8P, dư <= 4 cam dùng hub 4P -25%) · Tách Gói Camera & Billiard Live · Chưa VAT 8% · Không cần ký số."
+        icon="camera"
+      >
+        <div className="ui-row">
+          <AppButton
+            variant={isPresetCombo ? "primary" : "secondary"}
+            size="sm"
+            leftIcon="zap"
+            onClick={() => {
+              setNumTables(10);
+              setAgency("16pool");
+              setIncludeCamera(true);
+              setIncludeSoftware(true);
+              setClientName("Billiards 10 bàn (16Pool Full Combo)");
+            }}
+          >
+            10 Cam + PM (16Pool)
+          </AppButton>
+          <AppButton
+            variant={isPresetSwOnly ? "primary" : "secondary"}
+            size="sm"
+            leftIcon="cpu"
+            onClick={() => {
+              setNumTables(10);
+              setAgency("16pool");
+              setIncludeCamera(false);
+              setIncludeSoftware(true);
+              setClientName("Billiards 10 bàn (Chỉ PM 17.790k - 16Pool)");
+            }}
+          >
+            10 Bàn Chỉ PM 17.790k (16Pool)
+          </AppButton>
+          <AppButton
+            variant={isPresetCamOnly ? "primary" : "secondary"}
+            size="sm"
+            leftIcon="camera"
+            onClick={() => {
+              setNumTables(10);
+              setIncludeCamera(true);
+              setIncludeSoftware(false);
+              setClientName("Billiards 10 bàn (Chỉ Camera)");
+            }}
+          >
+            10 Bàn Chỉ Camera (0 PM)
+          </AppButton>
         </div>
-      </div>
+      </SectionCard>
 
-      <div className="quote-2col">
-        {/* Left Form */}
-        <div className="q-form">
-          <div className="panel" style={{ padding: 16 }}>
-            <h4 style={{ margin: "0 0 12px 0", fontSize: 14, color: "var(--ink)" }}>⚙️ Thông Số Quy Mô Quán &amp; Tùy Chọn Gói</h4>
+      <SplitWorkspace
+        variant="preview-right"
+        stickySecondary
+        mobileTabs={["Cấu hình báo giá", "Xem trước A4"]}
+        primary={
+          <div className="ui-stack--lg">
+            <SectionCard title="Thông số quy mô quán & tùy chọn gói" icon="sliders">
+              <div className="ui-stack--lg">
+                <FormGrid cols={2}>
+                  <FormField label="Số bàn Bida (Số lượng camera)" htmlFor="billiard-tables" required>
+                    <input
+                      id="billiard-tables"
+                      className="ui-input"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={numTables}
+                      onChange={(e) => {
+                        const v = Math.max(1, parseInt(e.target.value, 10) || 1);
+                        setNumTables(v);
+                        if (clientName.includes("bàn")) {
+                          setClientName(`Billiards ${v} bàn${!includeSoftware ? " (Không PM)" : ""}`);
+                        }
+                      }}
+                    />
+                  </FormField>
 
-            {/* Quick table size & date */}
-            <FormGrid cols={2}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
-                  Số bàn Bida (Số lượng camera) *
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    className="ui-input"
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={numTables}
-                    onChange={(e) => {
-                      const v = Math.max(1, parseInt(e.target.value) || 1);
-                      setNumTables(v);
-                      if (clientName.includes("bàn")) {
-                        setClientName(`Billiards ${v} bàn${!includeSoftware ? " (Không PM)" : ""}`);
-                      }
-                    }}
-                    style={{ width: "100%", border: "2px solid var(--primary)", fontWeight: 700, color: "var(--ink)" }}
-                  />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>bàn</span>
-                </div>
-              </div>
+                  <FormField label="Ngày lập báo giá" htmlFor="billiard-date">
+                    <input
+                      id="billiard-date"
+                      className="ui-input"
+                      type="text"
+                      value={dateDisplay}
+                      onChange={(e) => setDateDisplay(e.target.value)}
+                    />
+                  </FormField>
+                </FormGrid>
 
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
-                  Ngày lập báo giá
-                </label>
-                <input
-                  className="ui-input"
-                  type="text"
-                  value={dateDisplay}
-                  onChange={(e) => setDateDisplay(e.target.value)}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            </FormGrid>
-
-            {/* Package Toggles */}
-            <div style={{ marginTop: 12, marginBottom: 14 }}>
-              <FormGrid cols={2}>
-                <div style={{ background: includeCamera ? "var(--primary-soft)" : "var(--paper)", border: `1.5px solid ${includeCamera ? "var(--primary)" : "var(--border-strong)"}`, borderRadius: 10, padding: "10px 12px" }}>
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                <FormGrid cols={2}>
+                  <label className={`ui-choice-card${includeCamera ? " is-active" : ""}`}>
                     <input
                       type="checkbox"
                       checked={includeCamera}
                       onChange={(e) => setIncludeCamera(e.target.checked)}
-                      style={{ width: 18, height: 18, marginTop: 2, cursor: "pointer" }}
                     />
                     <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: includeCamera ? "var(--ink)" : "var(--muted)" }}>
-                        📷 Gói I: Lắp đặt Camera &amp; Hạ tầng
+                      <div className="studio-toggle-title">
+                        <AppIcon name="camera" size={15} />
+                        <span>Gói I: Lắp đặt Camera &amp; Hạ tầng</span>
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                      <div className="studio-toggle-desc">
                         {numTables} camera KBVision 5MP, POE Splitter, Hub PoE (8P/4P tối ưu), cáp LAN, vật tư và nhân công.
                       </div>
                     </div>
                   </label>
-                </div>
 
-                <div style={{ background: includeSoftware ? "var(--primary-soft)" : "var(--paper)", border: `1.5px solid ${includeSoftware ? "var(--green)" : "var(--border-strong)"}`, borderRadius: 10, padding: "10px 12px" }}>
-                  <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                  <label className={`ui-choice-card${includeSoftware ? " is-active" : ""}`}>
                     <input
                       type="checkbox"
                       checked={includeSoftware}
                       onChange={(e) => setIncludeSoftware(e.target.checked)}
-                      style={{ width: 18, height: 18, marginTop: 2, cursor: "pointer" }}
                     />
                     <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: includeSoftware ? "var(--ink)" : "var(--muted)" }}>
-                        💻 Gói II: Phần mềm Billiard Live
+                      <div className="studio-toggle-title">
+                        <AppIcon name="cpu" size={15} />
+                        <span>Gói II: Phần mềm Billiard Live</span>
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                      <div className="studio-toggle-desc">
                         Thiết bị Stream Model C1 ({numTables === 10 ? "17.790.000đ" : "chuẩn theo kênh"}), QR cắt cam, Check VAR màn hình lớn, livestream, tỷ số.
                       </div>
                     </div>
                   </label>
-                </div>
-              </FormGrid>
-            </div>
+                </FormGrid>
 
-            {/* Agency Selector */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>
-                🏢 Đơn vị xuất báo giá / Đại lý phân phối
-              </label>
-              <select
-                className="ui-select"
-                value={agency}
-                onChange={(e) => setAgency(e.target.value)}
-                style={{ width: "100%", fontWeight: 600 }}
-              >
-                <option value="16pool">🎱 Đại lý phân phối 16POOL STUDIO (16pool.vn - Hải Phòng)</option>
-                <option value="inut">⚖️ Trực tiếp CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT (Mặc định)</option>
-              </select>
-            </div>
+                <FormField label="Đơn vị xuất báo giá / Đại lý phân phối" htmlFor="billiard-agency">
+                  <select
+                    id="billiard-agency"
+                    className="ui-select"
+                    value={agency}
+                    onChange={(e) => setAgency(e.target.value)}
+                  >
+                    <option value="16pool">Đại lý phân phối 16POOL STUDIO (16pool.vn - Hải Phòng)</option>
+                    <option value="inut">Trực tiếp CÔNG TY CỔ PHẦN ĐẦU TƯ VÀ PHÁT TRIỂN CÔNG NGHỆ INUT (Mặc định)</option>
+                  </select>
+                </FormField>
 
-            {/* Customer Info */}
-            <div style={{ marginBottom: 14 }}>
-              <FormGrid cols={2}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                    Tên Khách hàng / Quán Bida
-                  </label>
-                  <input
-                    className="ui-input"
-                    type="text"
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="Ví dụ: CLB Billiards Victory"
-                    style={{ width: "100%" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                    Người liên hệ / SĐT
-                  </label>
-                  <FormGrid cols={2}>
+                <FormGrid cols={2}>
+                  <FormField label="Tên Khách hàng / Quán Bida" htmlFor="billiard-client">
                     <input
+                      id="billiard-client"
+                      className="ui-input"
+                      type="text"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      placeholder="Ví dụ: CLB Billiards Victory"
+                    />
+                  </FormField>
+                  <FormField label="Địa chỉ" htmlFor="billiard-address">
+                    <input
+                      id="billiard-address"
+                      className="ui-input"
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="TP. Hồ Chí Minh / Toàn quốc"
+                    />
+                  </FormField>
+                  <FormField label="Người liên hệ" htmlFor="billiard-contact">
+                    <input
+                      id="billiard-contact"
                       className="ui-input"
                       type="text"
                       value={contactPerson}
                       onChange={(e) => setContactPerson(e.target.value)}
                       placeholder="Chủ quán"
                     />
+                  </FormField>
+                  <FormField label="Số điện thoại" htmlFor="billiard-phone">
                     <input
+                      id="billiard-phone"
                       className="ui-input"
                       type="text"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="09xx..."
                     />
-                  </FormGrid>
-                </div>
-              </FormGrid>
-            </div>
-
-            {/* Cost Breakdown Summary Cards */}
-            {estimateData && (
-              <div style={{ background: "var(--paper)", padding: 12, borderRadius: 10, border: "1px solid var(--border)", marginBottom: 14 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", marginBottom: 8, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                  <span>📊 Bóc tách khối lượng dự toán:</span>
-                  <span style={{ color: "var(--red)", fontSize: 11.5 }}>* Chưa bao gồm VAT 8%</span>
-                </div>
-                <FormGrid cols={includeSoftware ? 3 : 2}>
-                  <div style={{ background: "var(--panel)", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 11, color: "var(--muted)" }}>Gói I (Camera &amp; Hạ tầng):</div>
-                    <div style={{ fontSize: 14.5, fontWeight: 800, color: "var(--primary-dark)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                      {estimateData.total_group_1?.toLocaleString("vi-VN")} ₫
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text)", marginTop: 2 }}>
-                      {numTables} cam + {numTables <= 8 ? "1 Hub 8P" : "1 Hub 8P + 1 Hub 4P (-25%)"}
-                    </div>
-                  </div>
-
-                  {includeSoftware && (
-                    <div style={{ background: "var(--panel)", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 11, color: "var(--muted)" }}>Gói II (Billiard Live):</div>
-                      <div style={{ fontSize: 14.5, fontWeight: 800, color: "var(--primary)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                        {estimateData.total_group_2?.toLocaleString("vi-VN")} ₫
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text)", marginTop: 2 }}>
-                        Model C1 + Giảm MKT
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ background: "var(--primary-soft)", padding: "8px 10px", borderRadius: 8, border: "1.5px solid var(--green)" }}>
-                    <div style={{ fontSize: 11, color: "var(--ink)", fontWeight: 700 }}>TỔNG DỰ ÁN:</div>
-                    <div style={{ fontSize: 15.5, fontWeight: 900, color: "var(--green)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                      {estimateData.grand_total?.toLocaleString("vi-VN")} ₫
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--ink)" }}>
-                      {includeSoftware ? "Trọn gói Full Combo" : "Chỉ phần cứng camera"}
-                    </div>
-                  </div>
+                  </FormField>
                 </FormGrid>
+
+                {estimateData && (
+                  <KpiStrip
+                    columns={includeSoftware ? 3 : 2}
+                    items={[
+                      {
+                        label: "Gói I (Camera & Hạ tầng)",
+                        value: `${estimateData.total_group_1?.toLocaleString("vi-VN")} ₫`,
+                        sub: `${numTables} cam + ${numTables <= 8 ? "1 Hub 8P" : "1 Hub 8P + 1 Hub 4P (-25%)"}`,
+                        tone: "brand",
+                        icon: "camera",
+                      },
+                      ...(includeSoftware
+                        ? [
+                            {
+                              label: "Gói II (Billiard Live)",
+                              value: `${estimateData.total_group_2?.toLocaleString("vi-VN")} ₫`,
+                              sub: "Model C1 + Giảm MKT",
+                              tone: "info" as const,
+                              icon: "cpu" as const,
+                            },
+                          ]
+                        : []),
+                      {
+                        label: "Tổng dự án (chưa VAT 8%)",
+                        value: `${estimateData.grand_total?.toLocaleString("vi-VN")} ₫`,
+                        sub: includeSoftware ? "Trọn gói Full Combo" : "Chỉ phần cứng camera",
+                        tone: "success",
+                        icon: "coins",
+                      },
+                    ]}
+                  />
+                )}
+
+                <InlineAlert tone="info" title="Logic Hub PoE mở rộng">
+                  Mỗi Hub 8 port cấp tối đa 8 cam (1.100.000đ). Với {numTables} camera, hệ thống tự động ghép{" "}
+                  {Math.floor(numTables / 8)} Hub 8 port +{" "}
+                  {numTables % 8 > 0 && numTables % 8 <= 4
+                    ? "1 Hub 4 port (825.000đ - rẻ hơn 25%)"
+                    : numTables % 8 > 4
+                      ? "1 Hub 8 port"
+                      : "0 Hub"}{" "}
+                  giúp tối ưu chi phí hạ tầng.
+                </InlineAlert>
+
+                <AppButton
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  leftIcon="file-down"
+                  loading={generating}
+                  onClick={handleGenerateQuote}
+                >
+                  {generating ? "Đang xuất PDF…" : "Xuất PDF Gửi Khách (Không ký số)"}
+                </AppButton>
+
+                {genResult && (
+                  <InlineAlert tone="success" title="Đã tạo báo giá thành công">
+                    <div className="ui-stack--sm">
+                      <div>
+                        Tệp: <strong>{genResult.filename}</strong>
+                      </div>
+                      <div className="ui-row">
+                        <a
+                          href={genResult.pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ui-btn ui-btn--primary ui-btn--sm"
+                        >
+                          <AppIcon name="eye" size={14} />
+                          <span>Mở xem trực tiếp</span>
+                        </a>
+                        <a
+                          href={genResult.download_url}
+                          className="ui-btn ui-btn--secondary ui-btn--sm"
+                        >
+                          <AppIcon name="download" size={14} />
+                          <span>Tải xuống PDF</span>
+                        </a>
+                        <AppButton variant="secondary" size="sm" leftIcon="copy" onClick={copyZaloLink}>
+                          Copy link gửi Zalo
+                        </AppButton>
+                      </div>
+                    </div>
+                  </InlineAlert>
+                )}
               </div>
-            )}
-
-            {/* Hub PoE Logic Badge */}
-            <div style={{ fontSize: 12, background: "var(--primary-soft)", borderLeft: "3px solid var(--primary)", padding: "8px 10px", borderRadius: "0 8px 8px 0", color: "var(--ink)", marginBottom: 14 }}>
-              💡 <b>Logic Hub PoE mở rộng:</b> Mỗi Hub 8 port cấp tối đa 8 cam (1.100.000đ). Với {numTables} camera, hệ thống tự động ghép {Math.floor(numTables / 8)} Hub 8 port + {numTables % 8 > 0 && numTables % 8 <= 4 ? "1 Hub 4 port (825.000đ - rẻ hơn 25%)" : (numTables % 8 > 4 ? "1 Hub 8 port" : "0 Hub")} giúp tối ưu chi phí hạ tầng.
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <button
-                type="button"
-                className="primary"
-                onClick={handleGenerateQuote}
-                disabled={generating}
-                style={{ flex: 1, padding: "12px 18px", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-              >
-                <span>🚀</span>
-                <span>{generating ? "Đang xuất PDF..." : "Xuất PDF Gửi Khách (Không ký số)"}</span>
-              </button>
-            </div>
-
-            {/* Generate Success Notification */}
-            {genResult && (
-              <div style={{ marginTop: 14, padding: 12, background: "var(--primary-soft)", border: "1.5px solid var(--green)", borderRadius: 10 }}>
-                <div style={{ fontWeight: 800, color: "var(--ink)", fontSize: 13 }}>✓ ĐÃ TẠO BÁO GIÁ THÀNH CÔNG!</div>
-                <div style={{ fontSize: 12, color: "var(--text)", margin: "4px 0" }}>Tệp: <b>{genResult.filename}</b></div>
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <a
-                    href={genResult.pdf_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="primary ui-btn-chip"
-                    style={{ textDecoration: "none" }}
-                  >
-                    📄 Mở xem trực tiếp
-                  </a>
-                  <a
-                    href={genResult.download_url}
-                    className="ghost ui-btn-chip"
-                    style={{ textDecoration: "none" }}
-                  >
-                    ⬇️ Tải xuống PDF
-                  </a>
-                  <button
-                    type="button"
-                    className="primary ui-btn-chip"
-                    onClick={() => {
-                      const shareText = `Kính gửi Quý khách Báo giá giải pháp Camera & Phần mềm Billiard Live cho ${numTables} bàn: ${window.location.origin}${genResult.pdf_url}`;
-                      navigator.clipboard.writeText(shareText);
-                      alert("Đã sao chép link báo giá gửi Zalo cho khách hàng!");
-                    }}
-                  >
-                    📲 Copy link gửi Zalo
-                  </button>
-                </div>
-              </div>
-            )}
+            </SectionCard>
           </div>
-        </div>
-
-        {/* Right Preview */}
-        <div className="q-preview" style={{ minHeight: 650 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
-              XEM TRƯỚC BÁO GIÁ BILLIARDS (WYSIWYG 1 TRANG A4)
-            </span>
-            {previewBusy && <small style={{ color: "var(--primary)", fontWeight: 700 }}>Đang cập nhật...</small>}
-          </div>
-          {previewErr ? (
-            <div className="error">
-              Lỗi xem trước: {previewErr}
+        }
+        secondary={
+          <SectionCard
+            title="Xem trước báo giá Billiards (WYSIWYG 1 trang A4)"
+            icon="eye"
+            padding="compact"
+            actions={
+              <StatusBadge tone={previewBusy ? "info" : "neutral"} size="sm">
+                {previewBusy ? "Đang cập nhật…" : "1 trang A4"}
+              </StatusBadge>
+            }
+          >
+            <div className="ui-stack--sm">
+              {previewErr ? (
+                <InlineAlert tone="danger">Lỗi xem trước: {previewErr}</InlineAlert>
+              ) : previewUrl ? (
+                <iframe
+                  className="ui-iframe-tall"
+                  src={previewUrl}
+                  title="Xem trước báo giá Billiards"
+                />
+              ) : (
+                <EmptyState
+                  compact
+                  icon="file-search"
+                  title="Đang tải bản xem trước…"
+                  description="Bản PDF Billiards sẽ hiển thị ngay sau khi tính dự toán."
+                />
+              )}
             </div>
-          ) : previewUrl ? (
-            <iframe src={previewUrl} title="Xem trước báo giá Billiards" style={{ width: "100%", height: 720, border: "1px solid var(--border-strong)", borderRadius: 8 }} />
-          ) : (
-            <div className="muted" style={{ textAlign: "center", padding: 40 }}>Đang tải bản xem trước...</div>
-          )}
-        </div>
-      </div>
+          </SectionCard>
+        }
+      />
     </div>
   );
 }

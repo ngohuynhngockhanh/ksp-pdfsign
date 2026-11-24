@@ -1,0 +1,42 @@
+/* mod-inventory-trade.css — Inventory, PurchaseImport, StockIssue, Recipes */
+.xml-invoice { padding: var(--space-4); height: 100%; overflow: auto; background: var(--surface-1); font-size: var(--text-body); }
+.xi-head { text-align: center; margin-bottom: var(--space-3); }
+.xi-title { font-weight: 700; font-size: var(--text-h2); color: var(--sem-danger-fg); letter-spacing: 0.04em; }
+.xi-party {
+  display: flex; gap: var(--space-4); flex-wrap: wrap; margin: var(--space-3) 0; padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.xi-party > div { flex: 1 1 45%; min-width: 0; }
+.xi-lines { margin-top: var(--space-2); }
+.xi-totals { margin-top: var(--space-3); text-align: right; line-height: 1.6; }
+.xi-grand { font-size: var(--text-h2); margin-top: var(--space-1); color: var(--sem-success-fg); }
+
+.purchase-file-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.purchase-intake-tray { display: grid; grid-template-columns: minmax(260px, 1.15fr) minmax(280px, 1fr); gap: var(--space-4); align-items: center; }
+.purchase-link-row { display: flex; gap: var(--space-2); align-items: center; }
+.purchase-link-row .ui-input { flex: 1; min-width: 0; }
+
+.inv-sort-btn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; min-height: 0;
+  border: 0; background: transparent; color: inherit; font: inherit; text-transform: inherit;
+}
+.inv-sort-btn:hover { color: var(--primary-dark); background: transparent; }
+.inv-card-neg { border-color: var(--sem-danger-solid); }
+.inv-card-warn { border-color: var(--sem-warning-solid); }
+.inv-email-result h4 { margin: 0; font-size: var(--text-h3); color: var(--ink); }
+.inv-email-result ul { margin: 0; padding-left: 20px; line-height: 1.65; }
+
+@media (max-width: 1024px) {
+  .purchase-intake-tray { grid-template-columns: 1fr; }
+}
+@media (max-width: 820px) {
+  .inv-page .ui-page-header, .purchase-page .ui-page-header { padding: var(--space-3); gap: var(--space-2); }
+  .inv-page .ui-page-header-subtitle, .purchase-page .ui-page-header-subtitle,
+  .inv-page .ui-kpi-sub, .purchase-page .ui-kpi-sub { display: none; }
+  .inv-page .ui-kpi-card, .purchase-page .ui-kpi-card { padding: var(--space-2) var(--space-3); gap: 2px; }
+  .inv-page .ui-kpi-value, .purchase-page .ui-kpi-value { font-size: var(--text-h2); }
+  .purchase-link-row { flex-direction: column; align-items: stretch; }
+}

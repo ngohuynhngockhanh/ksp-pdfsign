@@ -1,8 +1,34 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
 import { api, BangKeResult, InvItem, InvPurchase, InvPurchaseLine, InvWarehouse } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { EmailSyncModal } from "../components/EmailSyncModal";
-import { AppModal, DataView, FormGrid, PromptDialog } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  AppModal,
+  DataView,
+  EmptyState,
+  FilterBar,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  type KpiItem,
+  KpiStrip,
+  MobileCard,
+  MobileCardActions,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  PageHeader,
+  PageShell,
+  PromptDialog,
+  SectionCard,
+  StatusBadge,
+  type StatusBadgeTone,
+  TableSkeleton,
+  useConfirm,
+  useToast,
+} from "../components/ui";
 import { openExternalSafe, safeHttpUrl } from "../utils/url";
 import { getParam, setParam } from "../util";
 
@@ -10,16 +36,18 @@ function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
 
-// Doc so kieu VN: '652.777,77' (phay=thap phan), '1.500.000', '652,777.77'
+// Đọc số kiểu VN: '652.777,77' (phẩy=thập phân), '1.500.000', '652,777.77'
 function vnNum(s: string): number {
   const t = (s || "").trim().replace(/\s/g, "");
   if (!t) return 0;
   let x = t;
-  const hasDot = x.includes("."), hasComma = x.includes(",");
+  const hasDot = x.includes(".");
+  const hasComma = x.includes(",");
   if (hasDot && hasComma) {
-    x = x.lastIndexOf(",") > x.lastIndexOf(".")
-      ? x.replace(/\./g, "").replace(",", ".")
-      : x.replace(/,/g, "");
+    x =
+      x.lastIndexOf(",") > x.lastIndexOf(".")
+        ? x.replace(/\./g, "").replace(",", ".")
+        : x.replace(/,/g, "");
   } else if (hasComma) {
     const p = x.split(",");
     x = p.length === 2 ? x.replace(",", ".") : x.replace(/,/g, "");
@@ -31,10 +59,10 @@ function vnNum(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const STATUS_CHIP: Record<string, [string, string]> = {
-  draft: ["amber", "Nháp — chờ duyệt"],
-  posted: ["green", "Đã ghi sổ"],
-  void: ["gray", "Đã hủy"],
+const STATUS_META: Record<string, { tone: StatusBadgeTone; label: string }> = {
+  draft: { tone: "warning", label: "Nháp — chờ duyệt" },
+  posted: { tone: "success", label: "Đã ghi sổ" },
+  void: { tone: "neutral", label: "Đã hủy" },
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -54,9 +82,13 @@ export function PurchaseImport({
   openId,
   onConsumed,
 }: { openId?: number | null; onConsumed?: () => void } = {}) {
+  const askConfirm = useConfirm();
+  const toast = useToast();
+
   const [list, setList] = useState<InvPurchase[]>([]);
+  const [search, setSearch] = useState("");
   const [statusF, setStatusF] = useState("");
-  const [vatF, setVatF] = useState(""); // "" = tat ca; "0"|"5"|"8"|"10" = HD co dong thue suat do
+  const [vatF, setVatF] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({ tu: "", den: "" });
   const [cur, setCur] = useState<InvPurchase | null>(null);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
@@ -65,56 +97,117 @@ export function PurchaseImport({
   const [uploadMsg, setUploadMsg] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const bangKeRef = useRef<HTMLInputElement>(null);
-  const [itemQuery, setItemQuery] = useState<{ line: number; q: string; results: InvItem[] } | null>(null);
+  const [itemQuery, setItemQuery] = useState<{ line: number; q: string; results: InvItem[] } | null>(
+    null,
+  );
   const [urlValue, setUrlValue] = useState("");
   const [urlBusy, setUrlBusy] = useState(false);
   const [bangKeBusy, setBangKeBusy] = useState(false);
+  const [nasBusy, setNasBusy] = useState(false);
   const [bangKe, setBangKe] = useState<BangKeResult | null>(null);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [listLoaded, setListLoaded] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [dragActive, setDragActive] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [sortBy, setSortBy] = useState<PurchaseSortKey>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [hidePre2026, setHidePre2026] = useState(true);
   const [emailSyncOpen, setEmailSyncOpen] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [viewPdfMode, setViewPdfMode] = useState<boolean>(true);
+  const [createItemPrompt, setCreateItemPrompt] = useState<{
+    idx: number;
+    label: string;
+    suggested: string;
+  } | null>(null);
   const autoHdRef = useRef(false);
+
+  const fNgayId = useId();
+  const fSoHdId = useId();
+  const fKyHieuId = useId();
+  const fMstId = useId();
+  const fTenBanId = useId();
+
   const pre2026Count = list.filter((p) => (p.ngay || "") < "2026-01-01").length;
   const from2026Count = list.filter((p) => (p.ngay || "") >= "2026-01-01").length;
-  const activeList = hidePre2026 ? list.filter((p) => (p.ngay || "") >= "2026-01-01") : list;
+  const activeList = useMemo(
+    () => (hidePre2026 ? list.filter((p) => (p.ngay || "") >= "2026-01-01") : list),
+    [list, hidePre2026],
+  );
 
   function toggleSel(id: number) {
     setSel((s) => {
       const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
-  const dupIds = activeList.filter((p) => p.dup_of != null && p.status !== "posted").map((p) => p.id);
+
+  const dupIds = activeList
+    .filter((p) => p.dup_of != null && p.status !== "posted")
+    .map((p) => p.id);
+
   function changeSort(nextKey: PurchaseSortKey) {
     if (sortBy === nextKey) {
-      setSortDir((dir) => dir === "desc" ? "asc" : "desc");
+      setSortDir((dir) => (dir === "desc" ? "asc" : "desc"));
       return;
     }
     setSortBy(nextKey);
     setSortDir("desc");
   }
 
-  // Server returns newest first; the local sort keeps the order stable after filters.
-  const shown = [...activeList].sort((a, b) => {
-    const direction = sortDir === "desc" ? -1 : 1;
-    if (sortBy === "id") return (a.id - b.id) * direction;
-    if (sortBy === "invoice") return invoiceNumberCollator.compare(a.so_hd || "", b.so_hd || "") * direction;
-    if (sortBy === "seller") return sellerNameCollator.compare(a.ten_ban || "", b.ten_ban || "") * direction;
-    if (sortBy === "total") return (a.tong_tien - b.tong_tien || a.id - b.id) * direction;
-    if (sortBy === "source") return (sourceLabelCollator.compare(SOURCE_LABEL[a.source] ?? a.source, SOURCE_LABEL[b.source] ?? b.source) || a.id - b.id) * direction;
-    const byDate = (a.ngay || "").localeCompare(b.ngay || "");
-    return (byDate || (a.id - b.id)) * direction;
-  });
+  function renderSortBtn(col: PurchaseSortKey, label: string) {
+    const active = sortBy === col;
+    return (
+      <AppButton
+        variant="ghost"
+        size="sm"
+        className="inv-sort-btn"
+        onClick={() => changeSort(col)}
+      >
+        <span>{label}</span>
+        {active && (
+          <AppIcon name={sortDir === "desc" ? "arrow-down" : "arrow-up"} size={12} />
+        )}
+      </AppButton>
+    );
+  }
 
-  // Xuat: uu tien HD dang chon; khong chon gi -> theo bo loc hien tai (trang thai + ngay)
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const base = q
+      ? activeList.filter(
+          (p) =>
+            String(p.id).includes(q) ||
+            (p.so_hd || "").toLowerCase().includes(q) ||
+            (p.ten_ban || "").toLowerCase().includes(q) ||
+            (p.mst_ban || "").toLowerCase().includes(q),
+        )
+      : activeList;
+
+    return [...base].sort((a, b) => {
+      const direction = sortDir === "desc" ? -1 : 1;
+      if (sortBy === "id") return (a.id - b.id) * direction;
+      if (sortBy === "invoice")
+        return invoiceNumberCollator.compare(a.so_hd || "", b.so_hd || "") * direction;
+      if (sortBy === "seller")
+        return sellerNameCollator.compare(a.ten_ban || "", b.ten_ban || "") * direction;
+      if (sortBy === "total") return (a.tong_tien - b.tong_tien || a.id - b.id) * direction;
+      if (sortBy === "source")
+        return (
+          (sourceLabelCollator.compare(
+            SOURCE_LABEL[a.source] ?? a.source,
+            SOURCE_LABEL[b.source] ?? b.source,
+          ) ||
+            a.id - b.id) * direction
+        );
+      const byDate = (a.ngay || "").localeCompare(b.ngay || "");
+      return (byDate || a.id - b.id) * direction;
+    });
+  }, [activeList, search, sortBy, sortDir]);
+
   function exportParams() {
     return sel.size > 0
       ? { ids: [...sel].join(",") }
@@ -127,12 +220,20 @@ export function PurchaseImport({
 
   async function bulkDelete(ids: number[], label: string) {
     if (ids.length === 0) return;
-    if (!window.confirm(`Xóa ${ids.length} hóa đơn ${label}? (hóa đơn đã ghi sổ sẽ bị bỏ qua)`)) return;
+    const ok = await askConfirm({
+      title: `Xóa ${ids.length} hóa đơn ${label}?`,
+      message: "Các hóa đơn đã ghi sổ sẽ tự động được bỏ qua, chỉ xóa các bản nháp.",
+      confirmLabel: `Xóa ${ids.length} hóa đơn`,
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr("");
     try {
       const r = await api.invPurchaseBulkDelete(ids);
-      setUploadMsg([`🗑 Đã xóa ${r.deleted} hóa đơn${r.skipped ? `, bỏ qua ${r.skipped} đã ghi sổ` : ""}`]);
+      const msg = `Đã xóa ${r.deleted} hóa đơn${r.skipped ? `, bỏ qua ${r.skipped} đã ghi sổ` : ""}.`;
+      setUploadMsg([msg]);
+      toast.success(msg);
       setSel(new Set());
       load();
     } catch (e) {
@@ -145,16 +246,24 @@ export function PurchaseImport({
   async function bulkPost() {
     const ids = [...sel];
     if (ids.length === 0) return;
-    if (!window.confirm(`Ghi sổ ${ids.length} hóa đơn đã chọn?`)) return;
+    const ok = await askConfirm({
+      title: `Ghi sổ ${ids.length} hóa đơn đã chọn?`,
+      message: "Hệ thống sẽ kiểm tra và ghi nhận tồn kho cho toàn bộ hóa đơn được chọn.",
+      confirmLabel: `Ghi sổ (${ids.length})`,
+      tone: "primary",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr("");
     try {
       const r = await api.invPurchaseBulkPost(ids);
       const fail = r.results.filter((x) => !x.ok);
       setUploadMsg([
-        `✅ Ghi sổ ${r.ok}/${r.total} hóa đơn.`,
-        ...fail.map((x) => `❌ ${x.ten || "#" + x.id}: ${x.error}`),
+        `Đã ghi sổ ${r.ok}/${r.total} hóa đơn.`,
+        ...fail.map((x) => `Lỗi ${x.ten || "#" + x.id}: ${x.error}`),
       ]);
+      if (fail.length === 0) toast.success(`Đã ghi sổ thành công ${r.ok}/${r.total} hóa đơn.`);
+      else toast.warning(`Ghi sổ ${r.ok}/${r.total} hóa đơn (${fail.length} lỗi).`);
       setSel(new Set());
       load();
     } catch (e) {
@@ -167,7 +276,8 @@ export function PurchaseImport({
   async function load() {
     setListLoading(true);
     try {
-      setList(await api.invPurchases(statusF, { ...dateRange, vat: vatF }));
+      const data = await api.invPurchases(statusF, { ...dateRange, vat: vatF });
+      setList(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -175,14 +285,16 @@ export function PurchaseImport({
       setListLoaded(true);
     }
   }
+
   useEffect(() => {
     api.invWarehouses().then(setWhs).catch(() => {});
   }, []);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusF, dateRange.tu, dateRange.den, vatF]);
-  // Nhay tu Tho kho (Ton kho) sang -> tu mo hoa don can sua
+
   useEffect(() => {
     if (openId) {
       open(openId);
@@ -190,7 +302,7 @@ export function PurchaseImport({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
-  // F5 giu context: sau khi list load lan dau, tu mo lai modal chi tiet theo ?hd=
+
   useEffect(() => {
     if (!listLoaded || autoHdRef.current) return;
     autoHdRef.current = true;
@@ -208,10 +320,12 @@ export function PurchaseImport({
       setUploadMsg(
         r.results.map((x) =>
           x.ok
-            ? `✅ ${x.filename}: đã tạo bản nháp #${x.purchase_id}${x.dup_of ? ` — ⚠️ TRÙNG với HĐ #${x.dup_of}` : ""}`
-            : `❌ ${x.filename}: ${x.error}`,
+            ? `${x.filename}: đã tạo bản nháp #${x.purchase_id}${x.dup_of ? ` — TRÙNG với HĐ #${x.dup_of}` : ""}`
+            : `Lỗi ${x.filename}: ${x.error}`,
         ),
       );
+      const okCount = r.results.filter((x) => x.ok).length;
+      if (okCount > 0) toast.success(`Đã tạo ${okCount} bản nháp hóa đơn mới.`);
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -237,10 +351,11 @@ export function PurchaseImport({
       setUploadMsg(
         r.results.map((x) =>
           x.ok
-            ? `✅ ${x.filename}: đã tạo bản nháp #${x.purchase_id}${x.dup_of ? ` — ⚠️ TRÙNG với HĐ #${x.dup_of}` : ""}`
-            : `❌ ${x.filename}: ${x.error}`,
+            ? `${x.filename}: đã tạo bản nháp #${x.purchase_id}${x.dup_of ? ` — TRÙNG với HĐ #${x.dup_of}` : ""}`
+            : `Lỗi ${x.filename}: ${x.error}`,
         ),
       );
+      toast.success("Đã nhập hóa đơn từ liên kết.");
       setUrlValue("");
       load();
     } catch (e) {
@@ -264,6 +379,21 @@ export function PurchaseImport({
     }
   }
 
+  async function syncNas() {
+    setNasBusy(true);
+    setErr("");
+    try {
+      const r = await api.invPurchaseSyncNas();
+      toast.success(
+        `Đồng bộ NAS: ${r.synced} mới, ${r.skipped} bỏ qua (đã có), ${r.failed} lỗi.`,
+      );
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setNasBusy(false);
+    }
+  }
+
   async function open(id: number) {
     try {
       const p = await api.invPurchase(id);
@@ -284,7 +414,9 @@ export function PurchaseImport({
       const updated = await api.invPurchase(id);
       setCur(updated);
       setViewPdfMode(true);
-      setUploadMsg([`✅ Đã nạp bổ sung file PDF thành công cho hóa đơn #${id}!`]);
+      const msg = `Đã nạp bổ sung file PDF thành công cho hóa đơn #${id}.`;
+      setUploadMsg([msg]);
+      toast.success(msg);
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -292,6 +424,7 @@ export function PurchaseImport({
       setAttachBusy(false);
     }
   }
+
   function closeCur() {
     setCur(null);
     setParam("hd", null);
@@ -302,7 +435,6 @@ export function PurchaseImport({
     const lines = cur.lines.map((ln, i) => {
       if (i !== idx) return ln;
       const next = { ...ln, ...patch };
-      // Sua SL hoac don gia -> tu tinh lai thanh tien = SL x DG (sua loi parse PDF nhet don gia vao thanh tien)
       if ("so_luong" in patch || "don_gia" in patch) {
         next.thanh_tien = Math.round(next.so_luong * next.don_gia);
       }
@@ -311,7 +443,7 @@ export function PurchaseImport({
     setCur({ ...cur, lines });
   }
 
-  async function saveDraft(): Promise<InvPurchase | null> {
+  async function saveDraft(silent = false): Promise<InvPurchase | null> {
     if (!cur) return null;
     try {
       const saved = await api.invPurchaseSave(cur.id, {
@@ -334,6 +466,7 @@ export function PurchaseImport({
         })),
       });
       setCur(saved);
+      if (!silent) toast.success(`Đã lưu nháp HĐ #${saved.id}.`);
       return saved;
     } catch (e) {
       setErr((e as Error).message);
@@ -342,17 +475,57 @@ export function PurchaseImport({
   }
 
   async function postCur() {
-    const saved = await saveDraft();
+    const saved = await saveDraft(true);
     if (!saved) return;
     try {
       setCur(await api.invPurchasePost(saved.id));
+      toast.success(`Đã ghi sổ HĐ #${saved.id}.`);
       load();
     } catch (e) {
       setErr((e as Error).message);
     }
   }
 
-  const [createItemPrompt, setCreateItemPrompt] = useState<{ idx: number; label: string; suggested: string } | null>(null);
+  async function deleteCurrentDraft() {
+    if (!cur) return;
+    const ok = await askConfirm({
+      title: `Xóa bản nháp HĐ #${cur.id}?`,
+      message: "Bản nháp hóa đơn mua này sẽ bị xóa vĩnh viễn khỏi sổ mua vào.",
+      confirmLabel: "Xóa nháp",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await api.invPurchaseDelete(cur.id);
+      toast.success(`Đã xóa bản nháp HĐ #${cur.id}.`);
+      closeCur();
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function voidCurrentPurchase() {
+    if (!cur) return;
+    const ok = await askConfirm({
+      title: `Hủy ghi sổ HĐ #${cur.id}?`,
+      message: "Hủy ghi sổ hóa đơn này để sửa lại? Tồn kho sẽ được tính lại tự động.",
+      confirmLabel: "Hủy ghi sổ",
+      tone: "warning",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setErr("");
+    try {
+      setCur(await api.invPurchaseVoid(cur.id));
+      toast.info(`Đã hủy ghi sổ HĐ #${cur.id}. Bạn có thể chỉnh sửa ngay bây giờ.`);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function createItemFromLine(idx: number) {
     if (!cur) return;
@@ -374,7 +547,13 @@ export function PurchaseImport({
     if (!ma.trim() || !ln) return;
     try {
       const it = await api.invCreateItem({ ma_hang: ma.trim(), ten: ln.ten_raw, dvt: ln.dvt });
-      setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "new" });
+      setLine(idx, {
+        item_id: it.id,
+        item_ma_hang: it.ma_hang,
+        item_ten: it.ten,
+        match_kind: "new",
+      });
+      toast.success(`Đã tạo mã hàng mới ${it.ma_hang}.`);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -393,13 +572,17 @@ export function PurchaseImport({
   }
 
   const isDichVu = cur?.loai === "dich_vu";
-  // HD dich vu khong nhap kho -> khong can khop mat hang
   const unmatched = cur && !isDichVu ? cur.lines.filter((ln) => !ln.item_id).length : 0;
   const draftCount = activeList.filter((p) => p.status === "draft").length;
   const postedCount = activeList.filter((p) => p.status === "posted").length;
   const warningCount = activeList.reduce((sum, p) => sum + p.warnings.length, 0);
   const totalValue = activeList.reduce((sum, p) => sum + (p.tong_tien || 0), 0);
-  const filtersActive = Boolean(statusF || vatF || dateRange.tu || dateRange.den || !hidePre2026);
+  const activeFilterCount =
+    (statusF ? 1 : 0) +
+    (vatF ? 1 : 0) +
+    (dateRange.tu || dateRange.den ? 1 : 0) +
+    (!hidePre2026 ? 1 : 0) +
+    (search.trim() ? 1 : 0);
 
   async function toggleLoai() {
     if (!cur) return;
@@ -412,413 +595,657 @@ export function PurchaseImport({
     }
   }
 
-  return (
-    <div className="docs-page purchase-workbench">
-      <section className="purchase-hero">
-        <div className="purchase-hero-copy">
-          <h1>Nhập hàng</h1>
-          <p>Đưa hóa đơn vào sổ, kiểm tra thuế và khớp hàng hóa trước khi ghi nhận tồn kho.</p>
-          <div className="purchase-hero-actions">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.xml,.zip"
-              multiple
-              style={{ display: "none" }}
-              onChange={(e) => upload(e.target.files)}
-            />
-            <button className="purchase-cta" disabled={busy} onClick={() => fileRef.current?.click()}>
-              <span aria-hidden="true">↥</span>{busy ? "Đang xử lý…" : "Tải hóa đơn lên"}
-            </button>
-            <button className="purchase-hero-link" onClick={() => setStatusF("draft")}>
-              Xem nháp cần duyệt <span>{draftCount}</span>
-            </button>
-          </div>
-        </div>
-        <div className="purchase-hero-status">
-          <span className="purchase-status-mark" aria-hidden="true">✓</span>
-          <div>
-            <small>SỔ MUA VÀO</small>
-            <strong>{warningCount > 0 ? `${warningCount} điểm cần kiểm tra` : "Đang sạch dữ liệu"}</strong>
-            <p>{list.length ? `${list.length} hóa đơn trong bộ lọc hiện tại` : "Chưa có hóa đơn trong bộ lọc"}</p>
-          </div>
-          <span className={`purchase-status-dot ${warningCount > 0 ? "attention" : "ready"}`} />
-        </div>
-      </section>
+  const kpiItems = useMemo<KpiItem[]>(
+    () => [
+      {
+        label: "Tất cả hóa đơn",
+        value: activeList.length,
+        sub: `${vnd(totalValue)} đ`,
+        tone: "brand",
+        icon: "file-text",
+        active: statusF === "",
+        onClick: () => setStatusF(""),
+      },
+      {
+        label: "Nháp chờ duyệt",
+        value: draftCount,
+        sub: "Cần kiểm tra trước khi ghi sổ",
+        tone: "warning",
+        icon: "clock",
+        active: statusF === "draft",
+        onClick: () => setStatusF("draft"),
+      },
+      {
+        label: "Đã ghi sổ",
+        value: postedCount,
+        sub: "Đã cập nhật vào tồn kho",
+        tone: "success",
+        icon: "check-circle",
+        active: statusF === "posted",
+        onClick: () => setStatusF("posted"),
+      },
+      {
+        label: "Cảnh báo",
+        value: warningCount,
+        sub: warningCount > 0 ? "Mở từng HĐ để rà soát" : "Đang sạch dữ liệu",
+        tone: warningCount > 0 ? "danger" : "neutral",
+        icon: warningCount > 0 ? "alert-triangle" : "shield-check",
+      },
+    ],
+    [activeList.length, totalValue, statusF, draftCount, postedCount, warningCount],
+  );
 
-      <section className="purchase-intake" aria-labelledby="purchase-intake-title">
-        <div className="purchase-intake-copy">
-          <h2 id="purchase-intake-title">Đưa chứng từ vào sổ</h2>
-          <p>Hệ thống tự nhận diện XML, PDF và ZIP rồi tạo bản nháp để bạn duyệt.</p>
-        </div>
-        <div
-          className={`purchase-dropzone ${dragActive ? "is-dragging" : ""}`}
-          onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => { if (event.currentTarget === event.target) setDragActive(false); }}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") fileRef.current?.click(); }}
-        >
-          <span className="purchase-drop-icon" aria-hidden="true">＋</span>
-          <span><b>Kéo thả file vào đây</b><small>hoặc bấm để chọn nhiều PDF / XML / ZIP</small></span>
-          <span className="purchase-drop-hint">Tối đa theo cấu hình máy chủ</span>
-        </div>
-        <div className="purchase-intake-tools">
-          <div className="purchase-link-import">
-            <label htmlFor="purchase-source-url">Nguồn từ link</label>
-            <div>
-              <input
-                id="purchase-source-url"
-                placeholder="Dán link Drive, PDF, XML hoặc ZIP"
-                value={urlValue}
-                onChange={(e) => setUrlValue(e.target.value)}
+  function resetAllFilters() {
+    setSearch("");
+    setStatusF("");
+    setVatF("");
+    setDateRange({ tu: "", den: "" });
+    setHidePre2026(true);
+  }
+
+  return (
+    <PageShell
+      data-page="purchase-import"
+      className="purchase-page"
+    >
+      <div
+        className="ui-stack"
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragActive(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => {
+          if (event.currentTarget === event.target) setDragActive(false);
+        }}
+        onDrop={handleDrop}
+      >
+        {/* Hidden file inputs always mounted for 1-click upload & bảng kê */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.xml,.zip"
+          multiple
+          className="ui-hidden"
+          onChange={(e) => void upload(e.target.files)}
+        />
+        <input
+          ref={bangKeRef}
+          type="file"
+          accept=".xlsx"
+          className="ui-hidden"
+          onChange={(e) => void uploadBangKe(e.target.files)}
+        />
+
+        <PageHeader
+          variant="compact"
+          icon="receipt"
+          title="Nhập hàng"
+          subtitle="Đưa hóa đơn mua vào sổ, kiểm tra thuế và khớp hàng hóa trước khi ghi nhận tồn kho."
+          actions={
+            <>
+              <AppButton
+                variant="secondary"
+                leftIcon="sliders-horizontal"
+                aria-expanded={toolsOpen}
+                onClick={() => setToolsOpen((v) => !v)}
+              >
+                Công cụ &amp; Email
+              </AppButton>
+              <AppButton
+                variant="primary"
+                leftIcon="upload"
+                loading={busy}
+                onClick={() => fileRef.current?.click()}
+              >
+                {busy ? "Đang xử lý…" : "Tải hóa đơn lên"}
+              </AppButton>
+            </>
+          }
+        />
+
+        {(toolsOpen || dragActive) && (
+          <SectionCard
+            title="Đưa chứng từ vào sổ & Đối chiếu"
+            subtitle="Kéo thả nhiều PDF / XML / ZIP, dán link Drive hoặc đối chiếu bảng kê thuế."
+            icon="cloud-upload"
+            padding="compact"
+            actions={
+              <AppButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                leftIcon="x"
+                aria-label="Ẩn công cụ nhập"
+                onClick={() => {
+                  setToolsOpen(false);
+                  setDragActive(false);
+                }}
               />
-              <button className="btn-sm" disabled={urlBusy || !urlValue.trim()} onClick={importFromUrl}>
-                {urlBusy ? "Đang tải…" : "Nhập link"}
-              </button>
+            }
+          >
+            <div className="purchase-intake-tray">
+              <div
+                className={`ui-dropzone ${dragActive ? "is-dragging" : ""}`}
+                onClick={() => fileRef.current?.click()}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") fileRef.current?.click();
+                }}
+              >
+                <span className="ui-dropzone-icon" aria-hidden="true">
+                  <AppIcon name="upload" size={20} />
+                </span>
+                <div className="ui-dropzone-copy">
+                  <strong>Kéo thả file PDF / XML / ZIP vào đây</strong>
+                  <span>Hoặc bấm để chọn nhiều chứng từ cùng lúc</span>
+                </div>
+              </div>
+
+              <div className="ui-stack--sm">
+                <FormField label="Nguồn từ link (Drive / PDF / XML / ZIP)" htmlFor="purchase-source-url">
+                  <div className="purchase-link-row">
+                    <input
+                      id="purchase-source-url"
+                      className="ui-input"
+                      placeholder="Dán link Drive, PDF, XML hoặc ZIP"
+                      value={urlValue}
+                      onChange={(e) => setUrlValue(e.target.value)}
+                    />
+                    <AppButton
+                      variant="primary"
+                      size="sm"
+                      leftIcon="link"
+                      loading={urlBusy}
+                      disabled={!urlValue.trim()}
+                      onClick={importFromUrl}
+                    >
+                      Nhập link
+                    </AppButton>
+                  </div>
+                </FormField>
+
+                <div className="ui-row">
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="file-spreadsheet"
+                    loading={bangKeBusy}
+                    onClick={() => bangKeRef.current?.click()}
+                  >
+                    Đối chiếu bảng kê thuế
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="hard-drive"
+                    loading={nasBusy}
+                    title="Đồng bộ file gốc HĐ mua lên NAS (chỉ file mới/đã đổi — theo checksum)"
+                    onClick={syncNas}
+                  >
+                    Đồng bộ NAS
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="mail"
+                    title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
+                    onClick={() => setEmailSyncOpen(true)}
+                  >
+                    Đồng bộ Email Zoho
+                  </AppButton>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+        )}
+
+        <KpiStrip items={kpiItems} columns={4} loading={listLoading && !listLoaded} />
+
+        {err && !cur && <InlineAlert tone="danger">{err}</InlineAlert>}
+
+        {uploadMsg.length > 0 && (
+          <InlineAlert tone="info" onDismiss={() => setUploadMsg([])}>
+            <div className="ui-stack--sm">
+              {uploadMsg.map((m, i) => (
+                <div key={i}>{m}</div>
+              ))}
+            </div>
+          </InlineAlert>
+        )}
+
+        <FilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Tìm số HĐ, nhà cung cấp, MST, #ID…",
+          }}
+          filters={
+            <>
+              <select
+                className="ui-select"
+                aria-label="Phạm vi năm hóa đơn"
+                value={hidePre2026 ? "2026" : "all"}
+                onChange={(e) => setHidePre2026(e.target.value === "2026")}
+              >
+                <option value="2026">Chính thức từ 2026 ({from2026Count})</option>
+                <option value="all">
+                  Tất cả gồm lịch sử &lt; 2026 ({list.length})
+                </option>
+              </select>
+              <select
+                className="ui-select"
+                aria-label="Trạng thái hóa đơn"
+                value={statusF}
+                onChange={(e) => setStatusF(e.target.value)}
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="draft">Nháp chờ duyệt</option>
+                <option value="posted">Đã ghi sổ</option>
+              </select>
+              <DateFilter value={dateRange} onChange={setDateRange} />
+              <select
+                className="ui-select"
+                aria-label="Lọc theo thuế suất VAT"
+                value={vatF}
+                onChange={(e) => setVatF(e.target.value)}
+              >
+                <option value="">Tất cả VAT</option>
+                <option value="0">0% / KCT</option>
+                <option value="5">5%</option>
+                <option value="8">8%</option>
+                <option value="10">10%</option>
+              </select>
+            </>
+          }
+          actions={
+            <>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="file-archive"
+                onClick={() => openExternalSafe(api.invExportUrl("purchase", "zip", exportParams()))}
+              >
+                ZIP gốc
+              </AppButton>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="download"
+                onClick={() => openExternalSafe(api.invExportUrl("purchase", "xlsx", exportParams()))}
+              >
+                Excel
+              </AppButton>
+            </>
+          }
+          activeCount={activeFilterCount}
+          onReset={resetAllFilters}
+          collapsibleMobile
+        />
+
+        {(sel.size > 0 || dupIds.length > 0 || (hidePre2026 && pre2026Count > 0)) && (
+          <div
+            className={`ui-action-bar${sel.size > 0 ? " is-selection-active" : ""}`}
+          >
+            <div className="ui-action-bar-info">
+              {sel.size > 0 ? (
+                <span className="ui-action-bar-count">Đã chọn {sel.size} hóa đơn</span>
+              ) : (
+                <span className="ui-muted">
+                  Hiển thị <b>{shown.length}</b> hóa đơn
+                  {hidePre2026 && pre2026Count > 0
+                    ? ` (đang ẩn ${pre2026Count} HĐ nháp lịch sử < 2026)`
+                    : ""}
+                </span>
+              )}
+            </div>
+            <div className="ui-action-bar-actions">
+              {sel.size > 0 && (
+                <>
+                  <AppButton
+                    variant="primary"
+                    size="sm"
+                    leftIcon="check-circle"
+                    loading={busy}
+                    onClick={bulkPost}
+                  >
+                    Ghi sổ đã chọn ({sel.size})
+                  </AppButton>
+                  <AppButton
+                    variant="danger"
+                    size="sm"
+                    leftIcon="trash"
+                    disabled={busy}
+                    onClick={() => void bulkDelete([...sel], "đã chọn")}
+                  >
+                    Xóa đã chọn ({sel.size})
+                  </AppButton>
+                  <AppButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSel(new Set())}
+                  >
+                    Bỏ chọn
+                  </AppButton>
+                </>
+              )}
+              {dupIds.length > 0 && (
+                <AppButton
+                  variant="danger"
+                  size="sm"
+                  leftIcon="trash"
+                  disabled={busy}
+                  onClick={() => void bulkDelete(dupIds, "TRÙNG")}
+                >
+                  Xóa hết trùng ({dupIds.length})
+                </AppButton>
+              )}
             </div>
           </div>
-          <div className="purchase-tool-actions">
-            <input
-              ref={bangKeRef}
-              type="file"
-              accept=".xlsx"
-              style={{ display: "none" }}
-              onChange={(e) => uploadBangKe(e.target.files)}
-            />
-            <button className="btn-sm ghost" disabled={bangKeBusy} onClick={() => bangKeRef.current?.click()}>
-              {bangKeBusy ? "Đang đối chiếu…" : "Đối chiếu bảng kê thuế"}
-            </button>
-            <button
-              className="btn-sm ghost"
-              title="Đồng bộ file gốc HĐ mua lên NAS (chỉ file mới/đã đổi — theo checksum)"
-              onClick={async () => {
-                try {
-                  const r = await api.invPurchaseSyncNas();
-                  window.alert(`NAS: ${r.synced} đồng bộ mới, ${r.skipped} bỏ qua (đã có), ${r.failed} lỗi.`);
-                } catch (e) {
-                  window.alert((e as Error).message);
-                }
-              }}
-            >
-              Đồng bộ NAS
-            </button>
-            <button
-              className="btn-sm ghost"
-              style={{ fontWeight: 600, color: "var(--accent-color, #0f766e)" }}
-              title="Quét và đồng bộ hóa đơn PDF/XML từ hộp thư Zoho Mail (khanhnhn@inut.vn)"
-              onClick={() => setEmailSyncOpen(true)}
-            >
-              📥 Đồng bộ Email Zoho
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="purchase-summary" aria-label="Tổng quan sổ mua vào">
-        <button className={statusF === "" ? "active" : ""} onClick={() => setStatusF("")}>
-          <span>Tất cả</span><strong>{list.length}</strong><small>{vnd(totalValue)}đ</small>
-        </button>
-        <button className={statusF === "draft" ? "active attention" : "attention"} onClick={() => setStatusF("draft")}>
-          <span>Nháp chờ duyệt</span><strong>{draftCount}</strong><small>Cần kiểm tra trước khi ghi sổ</small>
-        </button>
-        <button className={statusF === "posted" ? "active" : ""} onClick={() => setStatusF("posted")}>
-          <span>Đã ghi sổ</span><strong>{postedCount}</strong><small>Đã cập nhật vào tồn kho</small>
-        </button>
-        <div className="purchase-summary-note">
-          <span className={`purchase-summary-pulse ${warningCount ? "attention" : "ready"}`} />
-          <div><b>{warningCount ? `${warningCount} cảnh báo cần xử lý` : "Không có cảnh báo mới"}</b><small>{warningCount ? "Mở từng hóa đơn để xem lý do và cách sửa." : "Bạn có thể tiếp tục nhập chứng từ mới."}</small></div>
-        </div>
-      </section>
-
-      {err && <div className="error">{err}</div>}
-      {uploadMsg.length > 0 && (
-        <div className="purchase-feedback warn-banner">
-          {uploadMsg.map((m, i) => (
-            <div key={i}>{m}</div>
-          ))}
-        </div>
-      )}
-      <section className="purchase-list-panel">
-        <header className="purchase-list-header">
-          <div>
-            <h2>Danh sách hóa đơn</h2>
-            <p>{sel.size > 0 ? `Đã chọn ${sel.size} hóa đơn` : `${shown.length} hóa đơn đang hiển thị`}{filtersActive && " · đang lọc"}</p>
-          </div>
-          <div className="purchase-export-actions">
-            <button
-              className="btn-sm ghost"
-              onClick={() => openExternalSafe(api.invExportUrl("purchase", "zip", exportParams()))}
-            >
-              ZIP gốc
-            </button>
-            <button
-              className="btn-sm ghost"
-              onClick={() => openExternalSafe(api.invExportUrl("purchase", "xlsx", exportParams()))}
-            >
-              Excel
-            </button>
-          </div>
-        </header>
-        <div className="purchase-scope-pills" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", padding: "8px 12px", background: "var(--paper)", borderRadius: "8px", border: "1px solid var(--border)", marginBottom: "10px" }}>
-          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted)" }}>Phạm vi:</span>
-          <button
-            type="button"
-            className={`btn-sm ${hidePre2026 ? "primary" : "ghost"}`}
-            style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
-            onClick={() => setHidePre2026(true)}
-            title="Chỉ hiển thị hóa đơn chính thức từ ngày 01/01/2026"
-          >
-            <span>✨ Chính thức từ 2026</span>
-            <span style={{ background: hidePre2026 ? "rgba(255,255,255,0.25)" : "var(--border)", color: hidePre2026 ? "#fffefa" : "var(--text)", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
-              {from2026Count}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`btn-sm ${!hidePre2026 ? "primary" : "ghost"}`}
-            style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
-            onClick={() => setHidePre2026(false)}
-            title="Xem toàn bộ bao gồm 47 hóa đơn lịch sử cũ trước năm 2026"
-          >
-            <span>🕰️ Tất cả bao gồm lịch sử cũ (&lt; 2026)</span>
-            <span style={{ background: !hidePre2026 ? "rgba(255,255,255,0.25)" : "var(--border)", color: !hidePre2026 ? "#fffefa" : "var(--text)", padding: "1px 6px", borderRadius: "10px", fontSize: "11px" }}>
-              {list.length}
-            </span>
-          </button>
-          {hidePre2026 && pre2026Count > 0 && (
-            <span style={{ fontSize: "12px", color: "var(--muted)", marginLeft: "auto" }}>
-              💡 Đang tạm quên <b>{pre2026Count}</b> HĐ nháp lịch sử cũ (&lt; 2026) cho đỡ rối mắt
-            </span>
-          )}
-        </div>
-        <div className="purchase-filters">
-          <label>Trạng thái<select className="tb-select" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
-            <option value="">Tất cả trạng thái</option><option value="draft">Nháp chờ duyệt</option><option value="posted">Đã ghi sổ</option>
-          </select></label>
-          <label>Khoảng ngày<DateFilter value={dateRange} onChange={setDateRange} /></label>
-          <label>Thuế suất<select className="tb-select" value={vatF} onChange={(e) => setVatF(e.target.value)} title="Lọc theo thuế suất dòng hàng">
-            <option value="">Tất cả VAT</option><option value="0">0% / KCT</option><option value="5">5%</option><option value="8">8%</option><option value="10">10%</option>
-          </select></label>
-          {filtersActive && <button className="purchase-clear-filter" onClick={() => { setStatusF(""); setVatF(""); setDateRange({ tu: "", den: "" }); setHidePre2026(true); }}>Xóa bộ lọc</button>}
-        </div>
-        <div className="purchase-bulkbar">
-          <span>{sel.size > 0 ? `Đang chọn ${sel.size}` : "Chọn hóa đơn để thao tác theo lô"}</span>
-        {sel.size > 0 && (
-          <>
-            <button className="btn-sm" disabled={busy} onClick={bulkPost}>
-              Ghi sổ đã chọn ({sel.size})
-            </button>
-            <button className="btn-sm danger" disabled={busy} onClick={() => bulkDelete([...sel], "đã chọn")}>
-              Xóa đã chọn ({sel.size})
-            </button>
-            <button className="btn-sm" onClick={() => setSel(new Set())}>Bỏ chọn</button>
-          </>
         )}
-        {dupIds.length > 0 && (
-          <button className="btn-sm danger" disabled={busy} onClick={() => bulkDelete(dupIds, "TRÙNG")}>
-            Xóa hết trùng ({dupIds.length})
-          </button>
-        )}
-        </div>
 
-      <DataView
-        mobileMode="card"
-        desktop={
-          <div className="table-wrap purchase-table-wrap">
-            <table className="dt">
-              <thead>
-                <tr>
-                  <th style={{ width: 28 }}>
-                    <input
-                      type="checkbox"
-                      style={{ width: "auto" }}
-                      checked={shown.length > 0 && sel.size === shown.length}
-                      onChange={(e) => setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())}
-                    />
-                  </th>
-                  <th>
-                    <button className="purchase-sort-head" onClick={() => changeSort("id")}>
-                      # <span aria-hidden="true">{sortBy === "id" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th>
-                    <button className="purchase-sort-head" onClick={() => changeSort("date")}>
-                      Ngày HĐ <span aria-hidden="true">{sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th>
-                    <button className="purchase-sort-head" onClick={() => changeSort("invoice")}>
-                      Số HĐ <span aria-hidden="true">{sortBy === "invoice" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th>
-                    <button className="purchase-sort-head" onClick={() => changeSort("seller")}>
-                      Bên bán <span aria-hidden="true">{sortBy === "seller" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th style={{ textAlign: "right" }}>
-                    <button className="purchase-sort-head" onClick={() => changeSort("total")}>
-                      Tổng tiền <span aria-hidden="true">{sortBy === "total" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th>
-                    <button className="purchase-sort-head" onClick={() => changeSort("source")}>
-                      Nguồn <span aria-hidden="true">{sortBy === "source" ? (sortDir === "desc" ? "↓" : "↑") : "↕"}</span>
-                    </button>
-                  </th>
-                  <th>Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((p) => {
-                  const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
-                  return (
-                    <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => open(p.id)}>
-                      <td onClick={(e) => e.stopPropagation()}>
+        {listLoading ? (
+          <TableSkeleton rows={6} cols={8} />
+        ) : (
+          <DataView
+            mobileMode="card"
+            empty={
+              shown.length === 0 ? (
+                <EmptyState
+                  icon="receipt"
+                  title={
+                    activeFilterCount > 0
+                      ? "Không có hóa đơn khớp bộ lọc"
+                      : "Sổ mua vào đang trống"
+                  }
+                  description={
+                    activeFilterCount > 0
+                      ? "Thử xóa bộ lọc hoặc mở rộng khoảng ngày để xem thêm chứng từ."
+                      : "Tải PDF, XML hoặc ZIP lên để tạo bản nháp đầu tiên."
+                  }
+                  action={
+                    activeFilterCount > 0 ? (
+                      <AppButton variant="secondary" leftIcon="rotate-ccw" onClick={resetAllFilters}>
+                        Xóa bộ lọc
+                      </AppButton>
+                    ) : (
+                      <AppButton
+                        variant="primary"
+                        leftIcon="upload"
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        Tải hóa đơn lên
+                      </AppButton>
+                    )
+                  }
+                />
+              ) : undefined
+            }
+            desktop={
+              <div className="table-wrap">
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th className="ui-col-chk">
                         <input
                           type="checkbox"
-                          style={{ width: "auto" }}
-                          checked={sel.has(p.id)}
-                          onChange={() => toggleSel(p.id)}
+                          aria-label="Chọn tất cả hóa đơn"
+                          checked={shown.length > 0 && sel.size === shown.length}
+                          onChange={(e) =>
+                            setSel(e.target.checked ? new Set(shown.map((p) => p.id)) : new Set())
+                          }
                         />
-                      </td>
-                      <td className="muted">#{p.id}</td>
-                      <td className="nowrap">{p.ngay || <span className="chip red sm">thiếu ngày</span>}</td>
-                      <td>
-                        <strong>{p.so_hd}</strong>
-                        {p.doc_url ? (
-                          <span className="chip green sm" style={{ marginLeft: 6 }} title="Đã có file PDF/gốc">📎 PDF</span>
-                        ) : (
+                      </th>
+                      <th>{renderSortBtn("id", "#")}</th>
+                      <th>{renderSortBtn("date", "Ngày HĐ")}</th>
+                      <th>{renderSortBtn("invoice", "Số HĐ")}</th>
+                      <th>{renderSortBtn("seller", "Bên bán")}</th>
+                      <th className="ui-text-right">{renderSortBtn("total", "Tổng tiền")}</th>
+                      <th>{renderSortBtn("source", "Nguồn")}</th>
+                      <th>Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((p) => {
+                      const meta = STATUS_META[p.status] ?? {
+                        tone: "neutral" as StatusBadgeTone,
+                        label: p.status,
+                      };
+                      return (
+                        <tr
+                          key={p.id}
+                          className="ui-clickable"
+                          onClick={() => void open(p.id)}
+                        >
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Chọn hóa đơn #${p.id}`}
+                              checked={sel.has(p.id)}
+                              onChange={() => toggleSel(p.id)}
+                            />
+                          </td>
+                          <td className="muted num">#{p.id}</td>
+                          <td className="ui-nowrap num">
+                            {p.ngay || (
+                              <StatusBadge tone="danger" size="sm">
+                                thiếu ngày
+                              </StatusBadge>
+                            )}
+                          </td>
+                          <td className="ui-nowrap">
+                            <span className="ui-row">
+                              <strong className="num">{p.so_hd}</strong>
+                              {p.doc_url ? (
+                                <StatusBadge
+                                  tone="success"
+                                  size="sm"
+                                  icon="paperclip"
+                                  title="Đã có file PDF/gốc"
+                                >
+                                  PDF
+                                </StatusBadge>
+                              ) : (
+                                <label
+                                  className="ui-btn ui-btn--secondary ui-btn--sm ui-clickable"
+                                  title="Bấm để nộp bù file PDF cho hóa đơn này"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <AppIcon name="plus" size={12} />
+                                  <span>Bù PDF</span>
+                                  <input
+                                    type="file"
+                                    accept="application/pdf,.pdf"
+                                    hidden
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) void onAttachPdf(p.id, f);
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            </span>
+                          </td>
+                          <td className="ui-wrap">
+                            <span>{p.ten_ban}</span>
+                            {p.loai === "dich_vu" && (
+                              <StatusBadge
+                                tone="info"
+                                size="sm"
+                                icon="receipt"
+                                className="ui-ml-sm"
+                              >
+                                Dịch vụ
+                              </StatusBadge>
+                            )}
+                            {p.dup_of && (
+                              <StatusBadge
+                                tone="danger"
+                                size="sm"
+                                className="ui-ml-sm"
+                              >
+                                trùng #{p.dup_of}
+                              </StatusBadge>
+                            )}
+                            {p.warnings.length > 0 && (
+                              <StatusBadge
+                                tone="warning"
+                                size="sm"
+                                icon="alert-triangle"
+                                className="ui-ml-sm"
+                              >
+                                {p.warnings.length}
+                              </StatusBadge>
+                            )}
+                          </td>
+                          <td className="ui-text-right num ui-text-strong">
+                            {vnd(p.tong_tien)}
+                          </td>
+                          <td>
+                            <StatusBadge tone="neutral" size="sm">
+                              {SOURCE_LABEL[p.source] ?? p.source}
+                            </StatusBadge>
+                          </td>
+                          <td>
+                            <StatusBadge tone={meta.tone} size="sm" dot>
+                              {meta.label}
+                            </StatusBadge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list">
+                {shown.map((p) => {
+                  const meta = STATUS_META[p.status] ?? {
+                    tone: "neutral" as StatusBadgeTone,
+                    label: p.status,
+                  };
+                  return (
+                    <MobileCard key={p.id}>
+                      <MobileCardHeader
+                        title={
                           <label
-                            className="chip amber sm"
-                            style={{ marginLeft: 6, cursor: "pointer" }}
-                            title="Bấm để nộp bù file PDF cho hóa đơn này"
+                            className="ui-check-label ui-flex-1"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            ＋ Bù PDF
+                            <input
+                              type="checkbox"
+                              checked={sel.has(p.id)}
+                              onChange={() => toggleSel(p.id)}
+                              aria-label={`Chọn hóa đơn #${p.id}`}
+                            />
+                            <span>
+                              #{p.id} · {p.so_hd || "Chưa có số"}
+                            </span>
+                          </label>
+                        }
+                        subtitle={p.ten_ban || "Chưa rõ nhà cung cấp"}
+                        badge={
+                          <StatusBadge tone={meta.tone} size="sm" dot>
+                            {meta.label}
+                          </StatusBadge>
+                        }
+                      />
+                      <MobileCardGrid>
+                        <MobileCardRow label="Ngày HĐ" value={p.ngay || "Thiếu ngày"} mono />
+                        <MobileCardRow label="Tổng tiền" value={`${vnd(p.tong_tien)} đ`} mono />
+                      </MobileCardGrid>
+                      <div className="ui-row">
+                        <StatusBadge tone="neutral" size="sm">
+                          {SOURCE_LABEL[p.source] ?? p.source}
+                        </StatusBadge>
+                        {p.loai === "dich_vu" && (
+                          <StatusBadge tone="info" size="sm">
+                            Dịch vụ
+                          </StatusBadge>
+                        )}
+                        {p.dup_of && (
+                          <StatusBadge tone="danger" size="sm">
+                            trùng #{p.dup_of}
+                          </StatusBadge>
+                        )}
+                        {p.warnings.length > 0 && (
+                          <StatusBadge tone="warning" size="sm" icon="alert-triangle">
+                            {p.warnings.length} cảnh báo
+                          </StatusBadge>
+                        )}
+                      </div>
+                      <MobileCardActions>
+                        <AppButton
+                          variant="secondary"
+                          size="sm"
+                          leftIcon="eye"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void open(p.id);
+                          }}
+                        >
+                          Mở chi tiết
+                        </AppButton>
+                        {p.doc_url ? (
+                          <StatusBadge tone="success" size="sm" icon="paperclip">
+                            Có PDF
+                          </StatusBadge>
+                        ) : (
+                          <label
+                            className="ui-btn ui-btn--secondary ui-btn--sm ui-clickable"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <AppIcon name="plus" size={14} />
+                            <span>Bù PDF</span>
                             <input
                               type="file"
                               accept="application/pdf,.pdf"
                               hidden
                               onChange={(e) => {
                                 const f = e.target.files?.[0];
-                                if (f) onAttachPdf(p.id, f);
+                                if (f) void onAttachPdf(p.id, f);
                               }}
                             />
                           </label>
                         )}
-                      </td>
-                      <td>
-                        {p.ten_ban}
-                        {p.loai === "dich_vu" && <span className="chip indigo sm"> 🧾 Dịch vụ</span>}
-                        {p.dup_of && <span className="chip red sm"> trùng #{p.dup_of}</span>}
-                        {p.warnings.length > 0 && (
-                          <span className="chip amber sm"> ⚠️ {p.warnings.length}</span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(p.tong_tien)}</td>
-                      <td>
-                        <span className="chip gray sm">{SOURCE_LABEL[p.source] ?? p.source}</span>
-                      </td>
-                      <td>
-                        <span className={`chip sm ${color}`}>{label}</span>
-                      </td>
-                    </tr>
+                      </MobileCardActions>
+                    </MobileCard>
                   );
                 })}
-                {listLoading && (
-                  <tr><td colSpan={8}><div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div></td></tr>
-                )}
-                {!listLoading && list.length === 0 && (
-                  <tr>
-                    <td colSpan={8}>
-                      <div className="purchase-empty">
-                        <span className="purchase-empty-icon" aria-hidden="true">＋</span>
-                        <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
-                        <p>{filtersActive ? "Thử xóa bộ lọc hoặc chọn khoảng ngày khác." : "Tải PDF, XML hoặc ZIP lên để tạo bản nháp đầu tiên."}</p>
-                        <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        }
-        mobileCards={
-          <div className="ui-mobile-card-list">
-            {shown.map((p) => {
-              const [color, label] = STATUS_CHIP[p.status] ?? ["gray", p.status];
-              return (
-                <article key={p.id} className="ui-mobile-card" onClick={() => open(p.id)} style={{ cursor: "pointer" }}>
-                  <div className="ui-mobile-card-head">
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }} onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} aria-label={`Chọn hóa đơn #${p.id}`} />
-                      <strong className="ui-mobile-card-title">#{p.id} · {p.so_hd || "Chưa có số"}</strong>
-                    </label>
-                    <span className={`chip sm ${color}`}>{label}</span>
-                  </div>
-                  <div style={{ fontWeight: 600, color: "var(--ink)", lineHeight: 1.35 }}>{p.ten_ban || "Chưa rõ nhà cung cấp"}</div>
-                  <div className="ui-mobile-card-meta">
-                    <span>{p.ngay || "Thiếu ngày"}</span>
-                    <strong style={{ fontVariantNumeric: "tabular-nums", color: "var(--primary-dark)" }}>{vnd(p.tong_tien)} đ</strong>
-                    <span className="chip gray sm">{SOURCE_LABEL[p.source] ?? p.source}</span>
-                    {p.loai === "dich_vu" && <span className="chip indigo sm">Dịch vụ</span>}
-                    {p.warnings.length > 0 && <span className="chip amber sm">⚠️ {p.warnings.length}</span>}
-                  </div>
-                  <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" className="ui-btn-chip" onClick={() => open(p.id)}>Mở chi tiết</button>
-                    {p.doc_url ? (
-                      <span className="chip green sm">📎 PDF</span>
-                    ) : (
-                      <label className="ui-btn-chip" style={{ cursor: "pointer" }}>
-                        ＋ Bù PDF
-                        <input
-                          type="file"
-                          accept="application/pdf,.pdf"
-                          hidden
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) onAttachPdf(p.id, f);
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-            {listLoading && <div className="purchase-loading"><span className="purchase-spinner" />Đang tải sổ mua vào…</div>}
-            {!listLoading && list.length === 0 && (
-              <div className="purchase-empty">
-                <strong>{filtersActive ? "Không có hóa đơn khớp bộ lọc" : "Sổ mua vào đang trống"}</strong>
-                <button className="btn-sm" onClick={() => fileRef.current?.click()}>Tải hóa đơn lên</button>
               </div>
-            )}
-          </div>
-        }
-      />
-      </section>
+            }
+          />
+        )}
+      </div>
 
+      {/* Modal Chi tiết hóa đơn mua */}
       <AppModal
         open={!!cur}
         onClose={closeCur}
         size="full"
         title={
           cur ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span className="ui-inline ui-inline--md ui-inline--wrap">
               <span>Hóa đơn mua #{cur.id}</span>
-              <span className={`chip sm ${(STATUS_CHIP[cur.status] ?? ["gray"])[0]}`}>
-                {(STATUS_CHIP[cur.status] ?? ["", cur.status])[1]}
-              </span>
-              <span className="chip gray sm">{SOURCE_LABEL[cur.source] ?? cur.source}</span>
-              <span className={`chip sm ${isDichVu ? "indigo" : "green"}`}>
-                {isDichVu ? "🧾 Dịch vụ / chi phí" : "📦 Hàng hóa (nhập kho)"}
-              </span>
+              <StatusBadge
+                tone={(STATUS_META[cur.status] ?? { tone: "neutral" as StatusBadgeTone }).tone}
+                size="sm"
+                dot
+              >
+                {(STATUS_META[cur.status] ?? { label: cur.status }).label}
+              </StatusBadge>
+              <StatusBadge tone="neutral" size="sm">
+                {SOURCE_LABEL[cur.source] ?? cur.source}
+              </StatusBadge>
+              <StatusBadge
+                tone={isDichVu ? "info" : "success"}
+                size="sm"
+                icon={isDichVu ? "receipt" : "package"}
+              >
+                {isDichVu ? "Dịch vụ / chi phí" : "Hàng hóa (nhập kho)"}
+              </StatusBadge>
             </span>
           ) : (
             "Chi tiết hóa đơn mua"
@@ -829,99 +1256,134 @@ export function PurchaseImport({
             <>
               {cur.status === "draft" && (
                 <>
-                  <button className="btn-sm danger" onClick={async () => {
-                    if (!window.confirm("Xóa bản nháp này?")) return;
-                    await api.invPurchaseDelete(cur.id);
-                    closeCur();
-                    load();
-                  }}>
+                  <AppButton
+                    variant="danger"
+                    size="sm"
+                    leftIcon="trash"
+                    onClick={deleteCurrentDraft}
+                  >
                     Xóa nháp
-                  </button>
-                  <button
-                    className="btn-sm"
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="calculator"
                     title="Sửa lỗi parse PDF: đặt lại Thành tiền = Số lượng × Đơn giá cho MỌI dòng"
                     onClick={() => {
                       setCur({
                         ...cur,
-                        lines: cur.lines.map((ln) => ({ ...ln, thanh_tien: Math.round(ln.so_luong * ln.don_gia) })),
+                        lines: cur.lines.map((ln) => ({
+                          ...ln,
+                          thanh_tien: Math.round(ln.so_luong * ln.don_gia),
+                        })),
                       });
+                      toast.info("Đã tính lại Thành tiền = SL × Đơn giá.");
                     }}
                   >
-                    🔧 Tính lại thành tiền
-                  </button>
-                  <button
-                    title="Lưu dòng rồi tính lại TỔNG hóa đơn = Σ thành tiền + Σ thuế (sửa header bị parse sai)"
+                    Tính lại thành tiền
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="refresh"
+                    title="Lưu dòng rồi tính lại TỔNG hóa đơn = Σ thành tiền + Σ thuế"
                     onClick={async () => {
                       if (!cur) return;
                       setErr("");
                       try {
-                        await saveDraft();
+                        await saveDraft(true);
                         setCur(await api.invPurchaseRecalcTotals(cur.id));
+                        toast.success("Đã tính lại tổng hóa đơn.");
                         load();
                       } catch (e) {
                         setErr((e as Error).message);
                       }
                     }}
                   >
-                    Σ Tính lại tổng
-                  </button>
-                  <button onClick={saveDraft}>💾 Lưu nháp</button>
-                  <button
-                    className="primary"
+                    Tính lại tổng
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    leftIcon="save"
+                    onClick={() => void saveDraft(false)}
+                  >
+                    Lưu nháp
+                  </AppButton>
+                  <AppButton
+                    variant="primary"
+                    leftIcon="check-circle"
                     disabled={unmatched > 0 || !cur.ngay}
-                    title={unmatched > 0 ? `Còn ${unmatched} dòng chưa khớp mặt hàng` : !cur.ngay ? "Thiếu ngày hóa đơn" : ""}
+                    title={
+                      unmatched > 0
+                        ? `Còn ${unmatched} dòng chưa khớp mặt hàng`
+                        : !cur.ngay
+                          ? "Thiếu ngày hóa đơn"
+                          : ""
+                    }
                     onClick={postCur}
                   >
-                    {isDichVu ? "✅ Ghi sổ (dịch vụ, không nhập kho)" : `✅ Ghi sổ (${cur.lines.length} dòng)`}
-                  </button>
+                    {isDichVu
+                      ? "Ghi sổ (dịch vụ, không nhập kho)"
+                      : `Ghi sổ (${cur.lines.length} dòng)`}
+                  </AppButton>
                 </>
               )}
               {cur.status === "posted" && (
-                <button
-                  className="btn-sm danger"
-                  onClick={async () => {
-                    if (!window.confirm("Hủy ghi sổ hóa đơn này? Tồn kho sẽ được tính lại.")) return;
-                    try {
-                      setCur(await api.invPurchaseVoid(cur.id));
-                      load();
-                    } catch (e) {
-                      setErr((e as Error).message);
-                    }
-                  }}
+                <AppButton
+                  variant="danger"
+                  size="sm"
+                  leftIcon="rotate-ccw"
+                  loading={busy}
+                  onClick={voidCurrentPurchase}
                 >
-                  ↩️ Hủy ghi sổ
-                </button>
+                  Hủy ghi sổ
+                </AppButton>
               )}
-              <button onClick={closeCur}>Đóng</button>
+              <AppButton variant="secondary" onClick={closeCur}>
+                Đóng
+              </AppButton>
             </>
           ) : undefined
         }
       >
         {cur && (
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          <div className="ui-stack">
+            {err && <InlineAlert tone="danger">{err}</InlineAlert>}
+
+            <div className="ui-row">
               {cur.status === "draft" && (
-                <button className="btn-sm ui-btn-chip" onClick={toggleLoai}>
-                  ⇄ Đổi thành {isDichVu ? "hàng hóa" : "dịch vụ"}
-                </button>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  leftIcon="refresh"
+                  onClick={toggleLoai}
+                >
+                  Đổi thành {isDichVu ? "hàng hóa" : "dịch vụ"}
+                </AppButton>
               )}
               {safeHttpUrl(cur.doc_url) && (
-                <a className="btn-sm ui-btn-chip" href={safeHttpUrl(cur.doc_url)} target="_blank" rel="noopener noreferrer">
-                  📄 File gốc
+                <a
+                  className="ui-btn ui-btn--secondary ui-btn--sm"
+                  href={safeHttpUrl(cur.doc_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <AppIcon name="file-text" size={14} />
+                  <span>File gốc</span>
                 </a>
               )}
               <label
-                className="btn-sm ui-btn-chip"
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: cur.doc_url ? "var(--paper)" : "var(--primary-soft)",
-                  borderColor: cur.doc_url ? "var(--border-strong)" : "var(--primary)",
-                  color: "var(--ink)",
-                  fontWeight: 600,
-                }}
+                className={`ui-btn ui-btn--sm ui-clickable ${cur.doc_url ? "ui-btn--secondary" : "ui-btn--primary"}`}
                 title="Tải file PDF gốc bù vào hóa đơn này"
               >
-                📎 {attachBusy ? "Đang lưu…" : (cur.doc_url ? "Úp bù / Thay PDF" : "Úp bù PDF gốc")}
+                <AppIcon name="paperclip" size={14} />
+                <span>
+                  {attachBusy
+                    ? "Đang lưu…"
+                    : cur.doc_url
+                      ? "Úp bù / Thay PDF"
+                      : "Úp bù PDF gốc"}
+                </span>
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
@@ -929,326 +1391,432 @@ export function PurchaseImport({
                   disabled={attachBusy}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) onAttachPdf(cur.id, f);
+                    if (f) void onAttachPdf(cur.id, f);
                   }}
                 />
               </label>
             </div>
-            {cur.status === "posted" && (
-              <div className="warn-banner" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span>
-                  🔒 <b>Hóa đơn đã ghi sổ</b> nên các ô đang bị khóa. Muốn sửa lại đơn giá/số lượng, bấm{" "}
-                  <b>Hủy ghi sổ</b> → sửa → Ghi sổ lại (tồn kho tự tính lại).
-                </span>
-                <button
-                  className="btn-sm danger"
-                  disabled={busy}
-                  onClick={async () => {
-                    if (!window.confirm("Hủy ghi sổ hóa đơn này để sửa? Tồn kho sẽ được tính lại.")) return;
-                    setBusy(true);
-                    setErr("");
-                    try {
-                      setCur(await api.invPurchaseVoid(cur.id));
-                    } catch (e) {
-                      setErr((e as Error).message);
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  ↩️ Hủy ghi sổ để sửa
-                </button>
-              </div>
-            )}
-            {isDichVu && (
-              <p className="muted" style={{ margin: "4px 0" }}>
-                Hóa đơn dịch vụ/chi phí: ghi sổ chỉ để lưu vết + đối chiếu bảng kê thuế,{" "}
-                <b>không nhập kho</b>, không cần khớp mặt hàng.
-              </p>
-            )}
-            <div className="review-2col">
-              <div className="review-form">
-            {cur.warnings.length > 0 && (
-              <div className="warn-banner">
-                {cur.warnings.map((w, i) => (
-                  <div key={i}>⚠️ {w.msg}</div>
-                ))}
-              </div>
-            )}
-            <FormGrid cols={5}>
-              <label>
-                Ngày (YYYY-MM-DD)
-                <input
-                  className="ui-input"
-                  type="date"
-                  value={cur.ngay}
-                  disabled={cur.status !== "draft"}
-                  onChange={(e) => setCur({ ...cur, ngay: e.target.value })}
-                />
-              </label>
-              <label>
-                Số HĐ
-                <input className="ui-input" value={cur.so_hd} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, so_hd: e.target.value })} />
-              </label>
-              <label>
-                Ký hiệu
-                <input className="ui-input" value={cur.ky_hieu} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ky_hieu: e.target.value })} />
-              </label>
-              <label>
-                MST bên bán
-                <input className="ui-input" value={cur.mst_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, mst_ban: e.target.value })} />
-              </label>
-              <label>
-                Tên bên bán
-                <input className="ui-input" value={cur.ten_ban} disabled={cur.status !== "draft"} onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })} />
-              </label>
-            </FormGrid>
 
-            <DataView
-              mobileMode="scroll"
-              desktop={
-                <div className="table-wrap" style={{ marginTop: 10, maxHeight: "45vh", overflow: "auto" }}>
-                  <table className="dt">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Tên trên hóa đơn</th>
-                        <th style={{ width: 70 }}>ĐVT</th>
-                        <th style={{ textAlign: "right" }}>SL</th>
-                        <th style={{ textAlign: "right" }}>Đơn giá</th>
-                        <th style={{ textAlign: "right" }}>Thành tiền</th>
-                        <th style={{ textAlign: "right", width: 70 }}>VAT %</th>
-                        <th>Kho</th>
-                        <th style={{ minWidth: 240 }}>Mặt hàng tồn kho</th>
-                        <th style={{ width: 28 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cur.lines.map((ln, idx) => (
-                        <tr key={ln.id ?? idx}>
-                          <td className="muted">{ln.stt}</td>
-                          <td>
-                            {cur.status === "draft" ? (
-                              <input value={ln.ten_raw} onChange={(e) => setLine(idx, { ten_raw: e.target.value })} />
-                            ) : (
-                              ln.ten_raw
-                            )}
-                            {ln.warnings.map((w, i) => (
-                              <div key={i} className="chip red sm">
-                                {w.msg}
-                              </div>
-                            ))}
-                          </td>
-                          <td style={{ width: 70 }}>
-                            {cur.status === "draft" ? (
-                              <input
-                                style={{ width: 66 }}
-                                placeholder="Cái…"
-                                value={ln.dvt}
-                                onChange={(e) => setLine(idx, { dvt: e.target.value })}
-                              />
-                            ) : (
-                              ln.dvt || <span className="chip red sm">?</span>
-                            )}
-                          </td>
-                          <td style={{ textAlign: "right", width: 70 }}>
-                            {cur.status === "draft" ? (
-                              <input
-                                style={{ width: 70, textAlign: "right" }}
-                                value={ln.so_luong}
-                                onChange={(e) => setLine(idx, { so_luong: vnNum(e.target.value) })}
-                              />
-                            ) : (
-                              ln.so_luong
-                            )}
-                          </td>
-                          <td style={{ textAlign: "right", width: 110 }}>
-                            {cur.status === "draft" ? (
-                              <input
-                                style={{ width: 110, textAlign: "right" }}
-                                value={ln.don_gia}
-                                onChange={(e) => setLine(idx, { don_gia: vnNum(e.target.value) })}
-                              />
-                            ) : (
-                              vnd(ln.don_gia)
-                            )}
-                          </td>
-                          <td style={{ textAlign: "right" }}>
-                            {vnd(ln.so_luong * ln.don_gia)}
-                            {ln.thanh_tien > 0 &&
-                              Math.abs(ln.so_luong * ln.don_gia - ln.thanh_tien) > 1 && (
-                                <div className="chip red sm" title="SL×ĐG khác thành tiền trên hóa đơn — sửa lại SL hoặc đơn giá">
-                                  HĐ ghi {vnd(ln.thanh_tien)}
-                                </div>
-                              )}
-                          </td>
-                          <td style={{ textAlign: "right", width: 70 }}>
-                            {cur.status === "draft" ? (
-                              <input
-                                style={{ width: 60, textAlign: "right" }}
-                                value={ln.thue_suat}
-                                onChange={(e) => setLine(idx, { thue_suat: vnNum(e.target.value) })}
-                              />
-                            ) : (
-                              `${ln.thue_suat}%`
-                            )}
-                          </td>
-                          <td>
-                            <select
-                              value={ln.warehouse_id ?? ""}
-                              disabled={cur.status !== "draft"}
-                              onChange={(e) => setLine(idx, { warehouse_id: Number(e.target.value) || null })}
-                            >
-                              <option value="">—</option>
-                              {whs.map((w) => (
-                                <option key={w.id} value={w.id}>
-                                  {w.code}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td>
-                            {ln.item_id ? (
-                              <span>
-                                <span className={`chip sm ${ln.match_kind === "exact" ? "green" : "indigo"}`}>
-                                  {ln.match_kind === "exact"
-                                    ? "✔ khớp"
-                                    : ln.match_kind === "fuzzy"
-                                    ? "~ gợi ý"
-                                    : ln.match_kind === "learned"
-                                    ? "🧠 đã học"
-                                    : "✔ đã chọn"}
-                                </span>{" "}
-                                {ln.item_ma_hang || `#${ln.item_id}`}
-                                {cur.status === "draft" && (
-                                  <button className="btn-sm ghost" onClick={() => setLine(idx, { item_id: null, item_ma_hang: "", match_kind: "none" })}>
-                                    ✕
-                                  </button>
+            {cur.status === "posted" && (
+              <InlineAlert
+                tone="warning"
+                title="Hóa đơn đã ghi sổ"
+                action={
+                  <AppButton
+                    variant="danger"
+                    size="sm"
+                    leftIcon="rotate-ccw"
+                    loading={busy}
+                    onClick={voidCurrentPurchase}
+                  >
+                    Hủy ghi sổ để sửa
+                  </AppButton>
+                }
+              >
+                Các ô đang bị khóa. Muốn sửa đơn giá/số lượng, bấm <b>Hủy ghi sổ để sửa</b> → sửa →
+                Ghi sổ lại (tồn kho tự tính lại).
+              </InlineAlert>
+            )}
+
+            {isDichVu && (
+              <InlineAlert tone="info">
+                Hóa đơn dịch vụ/chi phí: ghi sổ chỉ để lưu vết và đối chiếu bảng kê thuế,{" "}
+                <b>không nhập kho</b> và không cần khớp mặt hàng.
+              </InlineAlert>
+            )}
+
+            <div className="ui-review-split">
+              <div className="ui-review-form">
+                {cur.warnings.length > 0 && (
+                  <InlineAlert tone="warning" title="Cảnh báo kiểm tra hóa đơn">
+                    <ul className="ui-bullet-list">
+                      {cur.warnings.map((w, i) => (
+                        <li key={i}>{w.msg}</li>
+                      ))}
+                    </ul>
+                  </InlineAlert>
+                )}
+
+                <FormGrid cols={5}>
+                  <FormField label="Ngày (YYYY-MM-DD)" htmlFor={fNgayId}>
+                    <input
+                      id={fNgayId}
+                      className="ui-input"
+                      type="date"
+                      value={cur.ngay}
+                      disabled={cur.status !== "draft"}
+                      onChange={(e) => setCur({ ...cur, ngay: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Số HĐ" htmlFor={fSoHdId}>
+                    <input
+                      id={fSoHdId}
+                      className="ui-input"
+                      value={cur.so_hd}
+                      disabled={cur.status !== "draft"}
+                      onChange={(e) => setCur({ ...cur, so_hd: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Ký hiệu" htmlFor={fKyHieuId}>
+                    <input
+                      id={fKyHieuId}
+                      className="ui-input"
+                      value={cur.ky_hieu}
+                      disabled={cur.status !== "draft"}
+                      onChange={(e) => setCur({ ...cur, ky_hieu: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="MST bên bán" htmlFor={fMstId}>
+                    <input
+                      id={fMstId}
+                      className="ui-input"
+                      value={cur.mst_ban}
+                      disabled={cur.status !== "draft"}
+                      onChange={(e) => setCur({ ...cur, mst_ban: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Tên bên bán" htmlFor={fTenBanId}>
+                    <input
+                      id={fTenBanId}
+                      className="ui-input"
+                      value={cur.ten_ban}
+                      disabled={cur.status !== "draft"}
+                      onChange={(e) => setCur({ ...cur, ten_ban: e.target.value })}
+                    />
+                  </FormField>
+                </FormGrid>
+
+                <DataView
+                  mobileMode="scroll"
+                  desktop={
+                    <div className="table-wrap ui-scroll-md">
+                      <table className="dt">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Tên trên hóa đơn</th>
+                            <th className="ui-col-narrow">ĐVT</th>
+                            <th className="ui-text-right">SL</th>
+                            <th className="ui-text-right">Đơn giá</th>
+                            <th className="ui-text-right">Thành tiền</th>
+                            <th className="ui-text-right ui-col-narrow">VAT %</th>
+                            <th>Kho</th>
+                            <th className="ui-col-wide">Mặt hàng tồn kho</th>
+                            <th className="ui-col-chk"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cur.lines.map((ln, idx) => (
+                            <tr key={ln.id ?? idx}>
+                              <td className="muted num">{ln.stt}</td>
+                              <td className="ui-col-wide">
+                                {cur.status === "draft" ? (
+                                  <input
+                                    className="ui-input"
+                                    value={ln.ten_raw}
+                                    onChange={(e) => setLine(idx, { ten_raw: e.target.value })}
+                                  />
+                                ) : (
+                                  ln.ten_raw
                                 )}
-                              </span>
-                            ) : cur.status === "draft" ? (
-                              <div>
-                                <input
-                                  placeholder="tìm mã/tên…"
-                                  value={itemQuery?.line === idx ? itemQuery.q : ""}
-                                  onChange={(e) => searchItems(idx, e.target.value)}
-                                />
-                                {itemQuery?.line === idx &&
-                                  itemQuery.results.slice(0, 5).map((it) => (
-                                    <div key={it.id}>
-                                      <button
-                                        className="btn-sm ghost"
-                                        onClick={() => {
-                                          setLine(idx, { item_id: it.id, item_ma_hang: it.ma_hang, item_ten: it.ten, match_kind: "manual" });
-                                          setItemQuery(null);
-                                        }}
-                                      >
-                                        {it.ma_hang} · {it.ten.slice(0, 45)}
-                                      </button>
-                                    </div>
-                                  ))}
-                                {ln.suggestions.length > 0 && (
-                                  <div className="muted" style={{ margin: "3px 0 1px", fontSize: "0.75rem" }}>
-                                    Gợi ý khớp:
-                                  </div>
-                                )}
-                                {ln.suggestions.map((s) => (
-                                  <div key={s.item_id} style={{ marginBottom: 3 }}>
-                                    <button
-                                      className="btn-sm ghost"
-                                      style={{ textAlign: "left", whiteSpace: "normal", height: "auto" }}
-                                      title={s.reason || ""}
-                                      onClick={() => setLine(idx, { item_id: s.item_id, item_ma_hang: s.ma_hang, item_ten: s.ten, match_kind: "manual" })}
-                                    >
-                                      {s.reason && (
-                                        <span
-                                          className={"chip sm " + ((s.score ?? 0) >= 0.99 ? "green" : (s.score ?? 0) >= 0.7 ? "amber" : "gray")}
-                                          style={{ marginRight: 5 }}
-                                        >
-                                          {s.reason}
-                                        </span>
-                                      )}
-                                      <b>{s.ma_hang}</b> · {s.ten}
-                                    </button>
+                                {ln.warnings.map((w, i) => (
+                                  <div key={i}>
+                                    <StatusBadge tone="danger" size="sm">
+                                      {w.msg}
+                                    </StatusBadge>
                                   </div>
                                 ))}
-                                <button className="btn-sm" onClick={() => createItemFromLine(idx)}>
-                                  ＋ Tạo mã mới
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="chip red sm">chưa khớp</span>
-                            )}
-                          </td>
-                          <td>
-                            {cur.status === "draft" && (
-                              <button
-                                className="btn-sm ghost"
-                                title="Bỏ dòng này (vd phí vận chuyển — không nhập kho)"
-                                onClick={() => setCur({ ...cur, lines: cur.lines.filter((_, i) => i !== idx) })}
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              }
-            />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 20,
-                flexWrap: "wrap",
-                marginTop: 8,
-                fontSize: "0.9rem",
-              }}
-            >
-              <span>
-                Cộng trước thuế: <b>{vnd(cur.tong_truoc_thue)}đ</b>
-              </span>
-              <span>
-                Tiền thuế: <b>{vnd(cur.tong_thue)}đ</b>
-              </span>
-              <span style={{ fontSize: "1.05rem" }}>
-                Tổng thanh toán: <b style={{ color: "var(--primary)" }}>{vnd(cur.tong_tien)}đ</b>
-              </span>
-            </div>
+                              </td>
+                              <td className="ui-col-narrow">
+                                {cur.status === "draft" ? (
+                                  <input
+                                    className="ui-input ui-input-xs"
+                                    placeholder="Cái…"
+                                    value={ln.dvt}
+                                    onChange={(e) => setLine(idx, { dvt: e.target.value })}
+                                  />
+                                ) : (
+                                  ln.dvt || (
+                                    <StatusBadge tone="danger" size="sm">
+                                      ?
+                                    </StatusBadge>
+                                  )
+                                )}
+                              </td>
+                              <td className="ui-text-right ui-col-narrow num">
+                                {cur.status === "draft" ? (
+                                  <input
+                                    className="ui-input ui-input-qty"
+                                    value={ln.so_luong}
+                                    onChange={(e) =>
+                                      setLine(idx, { so_luong: vnNum(e.target.value) })
+                                    }
+                                  />
+                                ) : (
+                                  ln.so_luong
+                                )}
+                              </td>
+                              <td className="ui-text-right ui-col-price num">
+                                {cur.status === "draft" ? (
+                                  <input
+                                    className="ui-input ui-input-price"
+                                    value={ln.don_gia}
+                                    onChange={(e) =>
+                                      setLine(idx, { don_gia: vnNum(e.target.value) })
+                                    }
+                                  />
+                                ) : (
+                                  vnd(ln.don_gia)
+                                )}
+                              </td>
+                              <td className="ui-text-right num">
+                                <div>{vnd(ln.so_luong * ln.don_gia)}</div>
+                                {ln.thanh_tien > 0 &&
+                                  Math.abs(ln.so_luong * ln.don_gia - ln.thanh_tien) > 1 && (
+                                    <StatusBadge
+                                      tone="danger"
+                                      size="sm"
+                                      title="SL×ĐG khác thành tiền trên hóa đơn — sửa lại SL hoặc đơn giá"
+                                    >
+                                      HĐ ghi {vnd(ln.thanh_tien)}
+                                    </StatusBadge>
+                                  )}
+                              </td>
+                              <td className="ui-text-right ui-col-narrow num">
+                                {cur.status === "draft" ? (
+                                  <input
+                                    className="ui-input ui-input-xs ui-text-right"
+                                    value={ln.thue_suat}
+                                    onChange={(e) =>
+                                      setLine(idx, { thue_suat: vnNum(e.target.value) })
+                                    }
+                                  />
+                                ) : (
+                                  `${ln.thue_suat}%`
+                                )}
+                              </td>
+                              <td>
+                                <select
+                                  className="ui-select"
+                                  aria-label="Kho nhập"
+                                  value={ln.warehouse_id ?? ""}
+                                  disabled={cur.status !== "draft"}
+                                  onChange={(e) =>
+                                    setLine(idx, { warehouse_id: Number(e.target.value) || null })
+                                  }
+                                >
+                                  <option value="">—</option>
+                                  {whs.map((w) => (
+                                    <option key={w.id} value={w.id}>
+                                      {w.code}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="ui-col-wide">
+                                {ln.item_id ? (
+                                  <span className="ui-row">
+                                    <StatusBadge
+                                      tone={ln.match_kind === "exact" ? "success" : "info"}
+                                      size="sm"
+                                      icon={
+                                        ln.match_kind === "learned"
+                                          ? "sparkles"
+                                          : ln.match_kind === "fuzzy"
+                                            ? "search"
+                                            : "check"
+                                      }
+                                    >
+                                      {ln.match_kind === "exact"
+                                        ? "khớp"
+                                        : ln.match_kind === "fuzzy"
+                                          ? "gợi ý"
+                                          : ln.match_kind === "learned"
+                                            ? "đã học"
+                                            : "đã chọn"}
+                                    </StatusBadge>
+                                    <span className="ui-text-strong">
+                                      {ln.item_ma_hang || `#${ln.item_id}`}
+                                    </span>
+                                    {cur.status === "draft" && (
+                                      <AppButton
+                                        variant="ghost"
+                                        size="sm"
+                                        iconOnly
+                                        leftIcon="x"
+                                        aria-label="Bỏ khớp mặt hàng"
+                                        onClick={() =>
+                                          setLine(idx, {
+                                            item_id: null,
+                                            item_ma_hang: "",
+                                            match_kind: "none",
+                                          })
+                                        }
+                                      />
+                                    )}
+                                  </span>
+                                ) : cur.status === "draft" ? (
+                                  <div className="ui-stack--sm">
+                                    <input
+                                      className="ui-input"
+                                      placeholder="Tìm mã/tên…"
+                                      value={itemQuery?.line === idx ? itemQuery.q : ""}
+                                      onChange={(e) => void searchItems(idx, e.target.value)}
+                                    />
+                                    {itemQuery?.line === idx && itemQuery.results.length > 0 && (
+                                      <div className="ui-stack--xs ui-mt-1">
+                                        {itemQuery.results.slice(0, 5).map((it) => (
+                                          <AppButton
+                                            key={it.id}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="ui-wrap-btn"
+                                            onClick={() => {
+                                              setLine(idx, {
+                                                item_id: it.id,
+                                                item_ma_hang: it.ma_hang,
+                                                item_ten: it.ten,
+                                                match_kind: "manual",
+                                              });
+                                              setItemQuery(null);
+                                            }}
+                                          >
+                                            {it.ma_hang} · {it.ten.slice(0, 45)}
+                                          </AppButton>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {ln.suggestions.length > 0 && (
+                                      <div className="ui-stack--xs ui-mt-1">
+                                        <span className="ui-muted">Gợi ý khớp:</span>
+                                        {ln.suggestions.map((s) => (
+                                          <AppButton
+                                            key={s.item_id}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="ui-wrap-btn"
+                                            title={s.reason || ""}
+                                            onClick={() =>
+                                              setLine(idx, {
+                                                item_id: s.item_id,
+                                                item_ma_hang: s.ma_hang,
+                                                item_ten: s.ten,
+                                                match_kind: "manual",
+                                              })
+                                            }
+                                          >
+                                            {s.reason && (
+                                              <StatusBadge
+                                                tone={
+                                                  (s.score ?? 0) >= 0.99
+                                                    ? "success"
+                                                    : (s.score ?? 0) >= 0.7
+                                                      ? "warning"
+                                                      : "neutral"
+                                                }
+                                                size="sm"
+                                              >
+                                                {s.reason}
+                                              </StatusBadge>
+                                            )}
+                                            <b>{s.ma_hang}</b> · {s.ten}
+                                          </AppButton>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <AppButton
+                                      variant="secondary"
+                                      size="sm"
+                                      leftIcon="plus"
+                                      onClick={() => void createItemFromLine(idx)}
+                                    >
+                                      Tạo mã mới
+                                    </AppButton>
+                                  </div>
+                                ) : (
+                                  <StatusBadge tone="danger" size="sm">
+                                    chưa khớp
+                                  </StatusBadge>
+                                )}
+                              </td>
+                              <td>
+                                {cur.status === "draft" && (
+                                  <AppButton
+                                    variant="ghost"
+                                    size="sm"
+                                    iconOnly
+                                    leftIcon="x"
+                                    title="Bỏ dòng này (vd phí vận chuyển — không nhập kho)"
+                                    aria-label={`Bỏ dòng ${ln.stt}`}
+                                    onClick={() =>
+                                      setCur({
+                                        ...cur,
+                                        lines: cur.lines.filter((_, i) => i !== idx),
+                                      })
+                                    }
+                                  />
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                />
 
+                <div className="ui-totals-bar">
+                  <span>
+                    Cộng trước thuế: <b className="num">{vnd(cur.tong_truoc_thue)} đ</b>
+                  </span>
+                  <span>
+                    Tiền thuế: <b className="num">{vnd(cur.tong_thue)} đ</b>
+                  </span>
+                  <span className="ui-totals-grand">
+                    Tổng thanh toán: <span className="num">{vnd(cur.tong_tien)} đ</span>
+                  </span>
+                </div>
               </div>
-              <div className="review-file">
-                <div className="tb-group" style={{ marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+
+              <div className="ui-review-file">
+                <div className="purchase-file-toolbar">
                   {cur.source === "tax_gdt" && (
-                    <button
-                      type="button"
-                      className={`btn-sm ${!viewPdfMode ? "primary" : "ghost"}`}
+                    <AppButton
+                      variant={!viewPdfMode ? "primary" : "ghost"}
+                      size="sm"
+                      leftIcon="eye"
                       onClick={() => setViewPdfMode(false)}
                     >
-                      🔍 Xem HTML
-                    </button>
+                      Xem HTML
+                    </AppButton>
                   )}
                   {cur.doc_url && (
-                    <button
-                      type="button"
-                      className={`btn-sm ${viewPdfMode ? "primary" : "ghost"}`}
+                    <AppButton
+                      variant={viewPdfMode ? "primary" : "ghost"}
+                      size="sm"
+                      leftIcon="file-text"
                       onClick={() => setViewPdfMode(true)}
                     >
-                      📄 Xem PDF gốc
-                    </button>
+                      Xem PDF gốc
+                    </AppButton>
                   )}
-                  <a className="btn-sm" href={`/api/inv/purchase/${cur.id}/pdf`} target="_blank" rel="noopener noreferrer">
-                    ⬇️ Tải PDF
+                  <a
+                    className="ui-btn ui-btn--secondary ui-btn--sm"
+                    href={`/api/inv/purchase/${cur.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <AppIcon name="download" size={14} />
+                    <span>Tải PDF</span>
                   </a>
                   <label
-                    className="btn-sm"
-                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, background: "var(--primary-soft)", borderColor: "var(--green)", color: "var(--ink)" }}
+                    className="ui-btn ui-btn--secondary ui-btn--sm ui-clickable"
                     title="Nộp tệp PDF gốc cho hóa đơn này"
                   >
-                    📎 {attachBusy ? "Đang nạp…" : (cur.doc_url ? "Thay PDF khác" : "Úp bù PDF gốc")}
+                    <AppIcon name="paperclip" size={14} />
+                    <span>
+                      {attachBusy ? "Đang nạp…" : cur.doc_url ? "Thay PDF khác" : "Úp bù PDF gốc"}
+                    </span>
                     <input
                       type="file"
                       accept="application/pdf,.pdf"
@@ -1256,12 +1824,13 @@ export function PurchaseImport({
                       disabled={attachBusy}
                       onChange={(e) => {
                         const f = e.target.files?.[0];
-                        if (f) onAttachPdf(cur.id, f);
+                        if (f) void onAttachPdf(cur.id, f);
                       }}
                     />
                   </label>
                 </div>
 
+                {/* SECURITY INVARIANT: HTML iframe MUST keep sandbox=""; PDF iframes stay unsandboxed */}
                 {viewPdfMode && cur.doc_url ? (
                   <iframe
                     src={cur.doc_url + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH"}
@@ -1279,62 +1848,78 @@ export function PurchaseImport({
                     title="Hóa đơn gốc"
                   />
                 ) : (
-                  <div className="no-file" style={{ textAlign: "center", padding: "40px 20px" }}>
-                    <p style={{ marginBottom: 12 }}>Chưa có file PDF gốc để đối chiếu.</p>
-                    <label className="btn-sm primary" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      📎 {attachBusy ? "Đang nạp file…" : "Tải file PDF gốc lên ngay"}
-                      <input
-                        type="file"
-                        accept="application/pdf,.pdf"
-                        hidden
-                        disabled={attachBusy}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) onAttachPdf(cur.id, f);
-                        }}
-                      />
-                    </label>
+                  <div className="no-file">
+                    <EmptyState
+                      icon="file-text"
+                      compact
+                      title="Chưa có file PDF gốc để đối chiếu"
+                      description="Tải tệp PDF hóa đơn điện tử lên để xem song song khi rà soát."
+                      action={
+                        <label className="ui-btn ui-btn--primary ui-btn--sm ui-clickable">
+                          <AppIcon name="paperclip" size={14} />
+                          <span>{attachBusy ? "Đang nạp file…" : "Tải file PDF gốc lên ngay"}</span>
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            hidden
+                            disabled={attachBusy}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) void onAttachPdf(cur.id, f);
+                            }}
+                          />
+                        </label>
+                      }
+                    />
                   </div>
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </AppModal>
 
+      {/* Modal Đối chiếu bảng kê thuế */}
       <AppModal
         open={!!bangKe}
         onClose={() => setBangKe(null)}
         title="Đối chiếu bảng kê thuế"
         size="lg"
-        footer={<button onClick={() => setBangKe(null)}>Đóng</button>}
+        footer={
+          <AppButton variant="secondary" onClick={() => setBangKe(null)}>
+            Đóng
+          </AppButton>
+        }
       >
         {bangKe && (
-          <>
-            <h4>
-              <span className="chip green sm">✓ Khớp</span> <span className="count">{bangKe.khop.length}</span>
+          <div className="ui-stack">
+            <h4 className="ui-subhead ui-mt-4">
+              <StatusBadge tone="success" size="sm" icon="check">
+                Khớp
+              </StatusBadge>
+              <span className="count">{bangKe.khop.length}</span>
             </h4>
             {bangKe.khop.length > 0 && (
               <DataView
                 mobileMode="scroll"
                 desktop={
-                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                  <div className="table-wrap ui-scroll-sm">
                     <table className="dt">
                       <thead>
                         <tr>
                           <th>Số HĐ</th>
                           <th>Ngày</th>
                           <th>Bên bán</th>
-                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                          <th className="ui-text-right">Giá trị</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bangKe.khop.map((r, i) => (
                           <tr key={i}>
-                            <td>{r.so_hd}</td>
-                            <td>{r.ngay}</td>
+                            <td className="num">{r.so_hd}</td>
+                            <td className="num">{r.ngay}</td>
                             <td>{r.ten_ban}</td>
-                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                            <td className="ui-text-right num">{vnd(r.gia_tri)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1344,33 +1929,35 @@ export function PurchaseImport({
               />
             )}
 
-            <h4>
-              <span className="chip amber sm">⚠ Lệch tiền</span>{" "}
+            <h4 className="ui-subhead ui-mt-4">
+              <StatusBadge tone="warning" size="sm" icon="alert-triangle">
+                Lệch tiền
+              </StatusBadge>
               <span className="count">{bangKe.lech_tien.length}</span>
             </h4>
             {bangKe.lech_tien.length > 0 && (
               <DataView
                 mobileMode="scroll"
                 desktop={
-                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                  <div className="table-wrap ui-scroll-sm">
                     <table className="dt">
                       <thead>
                         <tr>
                           <th>Số HĐ</th>
                           <th>Ngày</th>
                           <th>Bên bán</th>
-                          <th style={{ textAlign: "right" }}>Bảng kê</th>
-                          <th style={{ textAlign: "right" }}>Đã import</th>
+                          <th className="ui-text-right">Bảng kê</th>
+                          <th className="ui-text-right">Đã import</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bangKe.lech_tien.map((r, i) => (
                           <tr key={i}>
-                            <td>{r.so_hd}</td>
-                            <td>{r.ngay}</td>
+                            <td className="num">{r.so_hd}</td>
+                            <td className="num">{r.ngay}</td>
                             <td>{r.ten_ban}</td>
-                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
-                            <td style={{ textAlign: "right" }}>{vnd(r.purchase_gia_tri ?? 0)}</td>
+                            <td className="ui-text-right num">{vnd(r.gia_tri)}</td>
+                            <td className="ui-text-right num">{vnd(r.purchase_gia_tri ?? 0)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1380,32 +1967,37 @@ export function PurchaseImport({
               />
             )}
 
-            <h4>
-              <span className="chip red sm">✗ Thiếu file</span>{" "}
+            <h4 className="ui-subhead ui-mt-4">
+              <StatusBadge tone="danger" size="sm" icon="x">
+                Thiếu file
+              </StatusBadge>
               <span className="count">{bangKe.thieu_file.length}</span>
             </h4>
-            <p className="muted">Có trong bảng kê thuế nhưng chưa import file hóa đơn — cần xin lại file từ nhà cung cấp.</p>
+            <p className="ui-muted">
+              Có trong bảng kê thuế nhưng chưa import file hóa đơn — cần xin lại file từ nhà cung
+              cấp.
+            </p>
             {bangKe.thieu_file.length > 0 && (
               <DataView
                 mobileMode="scroll"
                 desktop={
-                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                  <div className="table-wrap ui-scroll-sm">
                     <table className="dt">
                       <thead>
                         <tr>
                           <th>Số HĐ</th>
                           <th>Ngày</th>
                           <th>Bên bán</th>
-                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                          <th className="ui-text-right">Giá trị</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bangKe.thieu_file.map((r, i) => (
                           <tr key={i}>
-                            <td>{r.so_hd}</td>
-                            <td>{r.ngay}</td>
+                            <td className="num">{r.so_hd}</td>
+                            <td className="num">{r.ngay}</td>
                             <td>{r.ten_ban}</td>
-                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                            <td className="ui-text-right num">{vnd(r.gia_tri)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1415,31 +2007,33 @@ export function PurchaseImport({
               />
             )}
 
-            <h4>
-              <span className="chip gray sm">？Ngoài bảng kê</span>{" "}
+            <h4 className="ui-subhead ui-mt-4">
+              <StatusBadge tone="neutral" size="sm" icon="help-circle">
+                Ngoài bảng kê
+              </StatusBadge>
               <span className="count">{bangKe.ngoai_bang_ke.length}</span>
             </h4>
             {bangKe.ngoai_bang_ke.length > 0 && (
               <DataView
                 mobileMode="scroll"
                 desktop={
-                  <div className="table-wrap" style={{ maxHeight: "20vh", overflow: "auto" }}>
+                  <div className="table-wrap ui-scroll-sm">
                     <table className="dt">
                       <thead>
                         <tr>
                           <th>Số HĐ</th>
                           <th>Ngày</th>
                           <th>Bên bán</th>
-                          <th style={{ textAlign: "right" }}>Giá trị</th>
+                          <th className="ui-text-right">Giá trị</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bangKe.ngoai_bang_ke.map((r, i) => (
                           <tr key={i}>
-                            <td>{r.so_hd}</td>
-                            <td>{r.ngay}</td>
+                            <td className="num">{r.so_hd}</td>
+                            <td className="num">{r.ngay}</td>
                             <td>{r.ten_ban}</td>
-                            <td style={{ textAlign: "right" }}>{vnd(r.gia_tri)}</td>
+                            <td className="ui-text-right num">{vnd(r.gia_tri)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1448,7 +2042,7 @@ export function PurchaseImport({
                 }
               />
             )}
-          </>
+          </div>
         )}
       </AppModal>
 
@@ -1466,6 +2060,6 @@ export function PurchaseImport({
         onClose={() => setEmailSyncOpen(false)}
         onSyncSuccess={load}
       />
-    </div>
+    </PageShell>
   );
 }

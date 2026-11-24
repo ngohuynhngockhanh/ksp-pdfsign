@@ -1,16 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   api,
   EmailSyncJobRun,
   EmailSyncSettings,
   EmailSyncTestResult,
 } from "../api";
-import { AppModal, DataView, FormGrid, ResponsiveTabs } from "./ui";
+import {
+  AppButton,
+  AppModal,
+  DataView,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  MobileCard,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  ResponsiveTabs,
+  StatusBadge,
+} from "./ui";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSyncSuccess?: () => void;
+}
+
+function runStatusTone(status: string): "success" | "warning" | "danger" {
+  if (status === "success") return "success";
+  if (status === "needs_action") return "warning";
+  return "danger";
 }
 
 export function EmailSyncModal({ isOpen, onClose, onSyncSuccess }: Props) {
@@ -41,6 +61,16 @@ export function EmailSyncModal({ isOpen, onClose, onSyncSuccess }: Props) {
   const [runs, setRuns] = useState<EmailSyncJobRun[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const daysId = useId();
+  const clientIdId = useId();
+  const clientSecretId = useId();
+  const grantTokenId = useId();
+  const serverId = useId();
+  const portId = useId();
+  const usernameId = useId();
+  const mailboxId = useId();
+  const passwordId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -153,36 +183,32 @@ export function EmailSyncModal({ isOpen, onClose, onSyncSuccess }: Props) {
   const footer =
     tab === "sync" ? (
       <>
-        <button type="button" onClick={onClose} disabled={busy}>
+        <AppButton variant="secondary" onClick={onClose} disabled={busy}>
           Đóng
-        </button>
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || !isConfigured}
+        </AppButton>
+        <AppButton
+          variant="primary"
+          leftIcon="refresh"
+          loading={busy}
+          disabled={!isConfigured}
           onClick={handleRunSync}
         >
           {busy ? "Đang quét email và giải nén…" : "Bắt đầu quét & Đồng bộ"}
-        </button>
+        </AppButton>
       </>
     ) : tab === "settings" ? (
       <>
-        <button type="button" disabled={busy} onClick={handleTest}>
+        <AppButton variant="secondary" leftIcon="wifi" loading={busy} onClick={handleTest}>
           {busy ? "Đang thử…" : "Test kết nối"}
-        </button>
-        <button
-          type="button"
-          className="primary"
-          disabled={busy}
-          onClick={handleSaveSettings}
-        >
+        </AppButton>
+        <AppButton variant="primary" leftIcon="save" loading={busy} onClick={handleSaveSettings}>
           {busy ? "Đang lưu…" : "Lưu cấu hình"}
-        </button>
+        </AppButton>
       </>
     ) : (
-      <button type="button" onClick={onClose}>
+      <AppButton variant="secondary" onClick={onClose}>
         Đóng
-      </button>
+      </AppButton>
     );
 
   return (
@@ -194,430 +220,401 @@ export function EmailSyncModal({ isOpen, onClose, onSyncSuccess }: Props) {
       subtitle="Tự động quét và kéo file PDF/XML hóa đơn về hệ thống"
       footer={footer}
     >
-      <ResponsiveTabs
-        ariaLabel="Chức năng đồng bộ Email Zoho"
-        active={tab}
-        onChange={(nextTab) => {
-          setTab(nextTab);
-          if (nextTab === "history") loadHistory();
-        }}
-        tabs={[
-          { id: "sync", label: "Đồng bộ ngay" },
-          {
-            id: "settings",
-            label: `Cấu hình Zoho (${settings.mode === "rest_api" ? "REST API" : "IMAP"})`,
-          },
-          { id: "history", label: "Lịch sử", badge: runs.length },
-        ]}
-      />
+      <div className="ui-stack">
+        <ResponsiveTabs
+          ariaLabel="Chức năng đồng bộ Email Zoho"
+          active={tab}
+          onChange={(nextTab) => {
+            setTab(nextTab);
+            if (nextTab === "history") loadHistory();
+          }}
+          tabs={[
+            { id: "sync", label: "Đồng bộ ngay", icon: "refresh" },
+            {
+              id: "settings",
+              label: `Cấu hình Zoho (${settings.mode === "rest_api" ? "REST API" : "IMAP"})`,
+              icon: "settings",
+            },
+            { id: "history", label: "Lịch sử", icon: "clock", badge: runs.length },
+          ]}
+        />
 
-      {errorMsg && (
-        <div className="warn-banner danger" role="alert" style={{ marginBottom: 12 }}>
-          {errorMsg}
-        </div>
-      )}
-      {successMsg && (
-        <div className="warn-banner success" role="status" style={{ marginBottom: 12 }}>
-          {successMsg}
-        </div>
-      )}
+        {errorMsg && <InlineAlert tone="danger">{errorMsg}</InlineAlert>}
+        {successMsg && <InlineAlert tone="success">{successMsg}</InlineAlert>}
 
-      {/* Tab 1: Đồng bộ ngay */}
-      {tab === "sync" && (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div
-            style={{
-              background: "var(--surface-subtle)",
-              border: "1px solid var(--border)",
-              padding: 14,
-              borderRadius: 12,
-              display: "grid",
-              gap: 10,
-            }}
-          >
-            <div className="row-between">
-              <strong style={{ fontSize: 13.5 }}>
-                Phương thức:{" "}
-                {settings.mode === "rest_api" ? "Zoho Mail REST API (OAuth 2.0)" : "IMAP SSL"}
-              </strong>
-              <span className={`chip ${isConfigured ? "green" : "amber"} sm`}>
-                {isConfigured ? "Đã sẵn sàng" : "Chưa đủ cấu hình"}
-              </span>
-            </div>
-            <label style={{ margin: 0 }}>
-              Khoảng thời gian quét
-              <select
-                className="ui-select"
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-              >
-                <option value={7}>7 ngày gần nhất</option>
-                <option value={15}>15 ngày gần nhất</option>
-                <option value={30}>30 ngày gần nhất (Khuyên dùng)</option>
-                <option value={60}>60 ngày gần nhất</option>
-                <option value={90}>Quý gần nhất (90 ngày)</option>
-              </select>
-            </label>
-          </div>
-
-          {syncResult && syncResult.stats && (
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 14,
-                background: "#fff",
-              }}
-            >
-              <h4 style={{ margin: "0 0 8px", fontSize: 15 }}>Kết quả đợt đồng bộ</h4>
-              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.65 }}>
-                <li>
-                  Tệp hóa đơn tìm thấy: <b className="num">{syncResult.stats.attachments_found ?? 0}</b>
-                </li>
-                <li>
-                  Hóa đơn mua vào tạo mới:{" "}
-                  <b className="num" style={{ color: "var(--green)" }}>
-                    {syncResult.stats.created_new_draft ?? 0}
-                  </b>
-                </li>
-                <li>
-                  Hóa đơn cũ được gán bổ sung PDF:{" "}
-                  <b className="num" style={{ color: "var(--primary-dark)" }}>
-                    {syncResult.stats.pdf_attached_to_existing ?? 0}
-                  </b>
-                </li>
-                <li>
-                  Bỏ qua (đã có đủ file): <span className="num">{syncResult.stats.skipped_existing ?? 0}</span>
-                </li>
-                {Boolean(syncResult.stats.errors) && (
-                  <li style={{ color: "var(--red)" }}>Lỗi: {syncResult.stats.errors}</li>
-                )}
-              </ul>
-
-              {(syncResult.stats.details || []).length > 0 && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    maxHeight: 140,
-                    overflowY: "auto",
-                    background: "var(--surface-subtle)",
-                    padding: 10,
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
+        {/* Tab 1: Đồng bộ ngay */}
+        {tab === "sync" && (
+          <div className="ui-stack">
+            <div className="ui-subpanel ui-subpanel--md ui-stack">
+              <div className="ui-row-between">
+                <strong className="ui-text-strong">
+                  Phương thức:{" "}
+                  {settings.mode === "rest_api" ? "Zoho Mail REST API (OAuth 2.0)" : "IMAP SSL"}
+                </strong>
+                <StatusBadge
+                  tone={isConfigured ? "success" : "warning"}
+                  size="sm"
+                  dot
                 >
-                  {(syncResult.stats.details || []).map((d, i) => (
-                    <div key={i}>• {d}</div>
-                  ))}
-                </div>
-              )}
+                  {isConfigured ? "Đã sẵn sàng" : "Chưa đủ cấu hình"}
+                </StatusBadge>
+              </div>
+              <FormField label="Khoảng thời gian quét" htmlFor={daysId}>
+                <select
+                  id={daysId}
+                  className="ui-select"
+                  value={days}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                >
+                  <option value={7}>7 ngày gần nhất</option>
+                  <option value={15}>15 ngày gần nhất</option>
+                  <option value={30}>30 ngày gần nhất (Khuyên dùng)</option>
+                  <option value={60}>60 ngày gần nhất</option>
+                  <option value={90}>Quý gần nhất (90 ngày)</option>
+                </select>
+              </FormField>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Tab 2: Cấu hình */}
-      {tab === "settings" && (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                margin: 0,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="sync_mode"
-                checked={settings.mode === "rest_api"}
-                onChange={() => setSettings({ ...settings, mode: "rest_api" })}
-              />
-              <b>Zoho REST API (OAuth 2.0)</b>
-              <span className="chip green sm">Khuyên dùng</span>
-            </label>
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                margin: 0,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="radio"
-                name="sync_mode"
-                checked={settings.mode === "imap"}
-                onChange={() => setSettings({ ...settings, mode: "imap" })}
-              />
-              <b>IMAP SSL</b>
-            </label>
+            {syncResult && syncResult.stats && (
+              <div className="ui-subpanel ui-subpanel--card ui-stack--sm inv-email-result">
+                <h4>Kết quả đợt đồng bộ</h4>
+                <ul>
+                  <li>
+                    Tệp hóa đơn tìm thấy:{" "}
+                    <b className="num">{syncResult.stats.attachments_found ?? 0}</b>
+                  </li>
+                  <li>
+                    Hóa đơn mua vào tạo mới:{" "}
+                    <b className="num ui-text-success">
+                      {syncResult.stats.created_new_draft ?? 0}
+                    </b>
+                  </li>
+                  <li>
+                    Hóa đơn cũ được gán bổ sung PDF:{" "}
+                    <b className="num ui-text-brand">
+                      {syncResult.stats.pdf_attached_to_existing ?? 0}
+                    </b>
+                  </li>
+                  <li>
+                    Bỏ qua (đã có đủ file):{" "}
+                    <span className="num">{syncResult.stats.skipped_existing ?? 0}</span>
+                  </li>
+                  {Boolean(syncResult.stats.errors) && (
+                    <li className="ui-text-danger">Lỗi: {syncResult.stats.errors}</li>
+                  )}
+                </ul>
+
+                {(syncResult.stats.details || []).length > 0 && (
+                  <div className="ui-subpanel ui-scroll-xs ui-text-xs">
+                    {(syncResult.stats.details || []).map((d, i) => (
+                      <div key={i}>• {d}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+        )}
 
-          {settings.mode === "rest_api" ? (
-            <div style={{ display: "grid", gap: 12 }}>
-              <FormGrid cols={2}>
-                <label style={{ margin: 0 }}>
-                  Client ID
+        {/* Tab 2: Cấu hình */}
+        {tab === "settings" && (
+          <div className="ui-stack">
+            <div className="ui-row">
+              <label className="ui-check-label">
+                <input
+                  type="radio"
+                  name="sync_mode"
+                  checked={settings.mode === "rest_api"}
+                  onChange={() => setSettings({ ...settings, mode: "rest_api" })}
+                />
+                <span>Zoho REST API (OAuth 2.0)</span>
+                <StatusBadge tone="success" size="sm">
+                  Khuyên dùng
+                </StatusBadge>
+              </label>
+              <label className="ui-check-label">
+                <input
+                  type="radio"
+                  name="sync_mode"
+                  checked={settings.mode === "imap"}
+                  onChange={() => setSettings({ ...settings, mode: "imap" })}
+                />
+                <span>IMAP SSL</span>
+              </label>
+            </div>
+
+            {settings.mode === "rest_api" ? (
+              <div className="ui-stack">
+                <FormGrid cols={2}>
+                  <FormField label="Client ID" htmlFor={clientIdId}>
+                    <input
+                      id={clientIdId}
+                      className="ui-input"
+                      value={settings.client_id}
+                      placeholder="1000.XXXXXXXXXX..."
+                      onChange={(e) => setSettings({ ...settings, client_id: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField
+                    label={
+                      <>
+                        Client Secret
+                        {settings.has_client_secret && (
+                          <StatusBadge tone="success" size="sm">
+                            đã đặt
+                          </StatusBadge>
+                        )}
+                      </>
+                    }
+                    htmlFor={clientSecretId}
+                  >
+                    <input
+                      id={clientSecretId}
+                      className="ui-input"
+                      type="password"
+                      value={clientSecret}
+                      placeholder={
+                        settings.has_client_secret
+                          ? "•••••••• (để trống = giữ nguyên)"
+                          : "nhập Client Secret"
+                      }
+                      onChange={(e) => setClientSecret(e.target.value)}
+                    />
+                  </FormField>
+                </FormGrid>
+
+                <FormField
+                  label={
+                    <>
+                      Mã Code một lần (Grant Token)
+                      {settings.has_refresh_token && (
+                        <StatusBadge tone="success" size="sm">
+                          Đã có Refresh Token
+                        </StatusBadge>
+                      )}
+                    </>
+                  }
+                  htmlFor={grantTokenId}
+                >
                   <input
+                    id={grantTokenId}
                     className="ui-input"
-                    value={settings.client_id}
-                    placeholder="1000.XXXXXXXXXX..."
-                    onChange={(e) => setSettings({ ...settings, client_id: e.target.value })}
+                    value={grantToken}
+                    placeholder={
+                      settings.has_refresh_token
+                        ? "Đã cấp Refresh Token (nhập code mới nếu muốn cấp lại)"
+                        : "1000.xxxx (Tạo từ Zoho Console -> Generate Code)"
+                    }
+                    onChange={(e) => setGrantToken(e.target.value)}
                   />
-                </label>
-                <label style={{ margin: 0 }}>
-                  Client Secret{" "}
-                  {settings.has_client_secret && <span className="chip green sm">đã đặt</span>}
+                </FormField>
+
+                <div className="ui-subpanel ui-text-xs">
+                  <b>Hướng dẫn tạo token miễn phí trong 1 phút:</b>
+                  <ol>
+                    <li>
+                      Truy cập{" "}
+                      <a
+                        href="https://api-console.zoho.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Zoho Developer Console (api-console.zoho.com)
+                      </a>{" "}
+                      → Bấm <b>Add Client</b> → Chọn <b>Self Client</b>.
+                    </li>
+                    <li>
+                      Copy <b>Client ID</b> và <b>Client Secret</b> dán vào 2 ô trên.
+                    </li>
+                    <li>
+                      Trong tab <b>Generate Code</b>, nhập Scope:{" "}
+                      <code>ZohoMail.messages.READ,ZohoMail.accounts.READ</code> → Chọn 10 minutes
+                      → Bấm <b>Generate</b>.
+                    </li>
+                    <li>
+                      Copy mã Code dán vào ô <b>Mã Code</b> rồi bấm <b>Test kết nối</b> — hệ thống
+                      sẽ tự động lưu Refresh Token.
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            ) : (
+              <div className="ui-stack">
+                <FormGrid cols={2}>
+                  <FormField label="Máy chủ IMAP" htmlFor={serverId}>
+                    <input
+                      id={serverId}
+                      className="ui-input"
+                      value={settings.server}
+                      placeholder="imappro.zoho.com"
+                      onChange={(e) => setSettings({ ...settings, server: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Cổng SSL" htmlFor={portId}>
+                    <input
+                      id={portId}
+                      className="ui-input"
+                      type="number"
+                      value={settings.port}
+                      placeholder="993"
+                      onChange={(e) =>
+                        setSettings({ ...settings, port: Number(e.target.value) || 993 })
+                      }
+                    />
+                  </FormField>
+                  <FormField label="Email đăng nhập" htmlFor={usernameId}>
+                    <input
+                      id={usernameId}
+                      className="ui-input"
+                      value={settings.username}
+                      placeholder="khanhnhn@inut.vn"
+                      onChange={(e) => setSettings({ ...settings, username: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Hộp thư (Mailbox)" htmlFor={mailboxId}>
+                    <input
+                      id={mailboxId}
+                      className="ui-input"
+                      value={settings.mailbox}
+                      placeholder="INBOX"
+                      onChange={(e) => setSettings({ ...settings, mailbox: e.target.value })}
+                    />
+                  </FormField>
+                </FormGrid>
+
+                <FormField
+                  label={
+                    <>
+                      Mật khẩu ứng dụng (App Password)
+                      {settings.has_password && (
+                        <StatusBadge tone="success" size="sm">
+                          đã lưu
+                        </StatusBadge>
+                      )}
+                    </>
+                  }
+                  htmlFor={passwordId}
+                >
                   <input
+                    id={passwordId}
                     className="ui-input"
                     type="password"
-                    value={clientSecret}
+                    value={password}
                     placeholder={
-                      settings.has_client_secret
+                      settings.has_password
                         ? "•••••••• (để trống = giữ nguyên)"
-                        : "nhập Client Secret"
+                        : "Nhập App Password"
                     }
-                    onChange={(e) => setClientSecret(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
-                </label>
-              </FormGrid>
-
-              <label style={{ margin: 0 }}>
-                Mã Code một lần (Grant Token){" "}
-                {settings.has_refresh_token && (
-                  <span className="chip green sm">Đã có Refresh Token</span>
-                )}
-                <input
-                  className="ui-input"
-                  value={grantToken}
-                  placeholder={
-                    settings.has_refresh_token
-                      ? "Đã cấp Refresh Token (nhập code mới nếu muốn cấp lại)"
-                      : "1000.xxxx (Tạo từ Zoho Console -> Generate Code)"
-                  }
-                  onChange={(e) => setGrantToken(e.target.value)}
-                />
-              </label>
-
-              <div
-                style={{
-                  background: "var(--surface-subtle)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: 12,
-                  fontSize: 12.5,
-                  color: "var(--text)",
-                  lineHeight: 1.55,
-                }}
-              >
-                <b>Hướng dẫn tạo token miễn phí trong 1 phút:</b>
-                <ol style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                  <li>
-                    Truy cập{" "}
-                    <a
-                      href="https://api-console.zoho.com/"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Zoho Developer Console (api-console.zoho.com)
-                    </a>{" "}
-                    → Bấm <b>Add Client</b> → Chọn <b>Self Client</b>.
-                  </li>
-                  <li>
-                    Copy <b>Client ID</b> và <b>Client Secret</b> dán vào 2 ô trên.
-                  </li>
-                  <li>
-                    Trong tab <b>Generate Code</b>, nhập Scope:{" "}
-                    <code>ZohoMail.messages.READ,ZohoMail.accounts.READ</code> → Chọn 10 minutes →
-                    Bấm <b>Generate</b>.
-                  </li>
-                  <li>
-                    Copy mã Code dán vào ô <b>Mã Code</b> rồi bấm <b>Test kết nối</b> — hệ thống sẽ
-                    tự động lưu Refresh Token.
-                  </li>
-                </ol>
+                </FormField>
               </div>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              <FormGrid cols={2}>
-                <label style={{ margin: 0 }}>
-                  Máy chủ IMAP
-                  <input
-                    className="ui-input"
-                    value={settings.server}
-                    placeholder="imappro.zoho.com"
-                    onChange={(e) => setSettings({ ...settings, server: e.target.value })}
-                  />
-                </label>
-                <label style={{ margin: 0 }}>
-                  Cổng SSL
-                  <input
-                    className="ui-input"
-                    type="number"
-                    value={settings.port}
-                    placeholder="993"
-                    onChange={(e) =>
-                      setSettings({ ...settings, port: Number(e.target.value) || 993 })
-                    }
-                  />
-                </label>
-              </FormGrid>
+            )}
 
-              <FormGrid cols={2}>
-                <label style={{ margin: 0 }}>
-                  Email đăng nhập
-                  <input
-                    className="ui-input"
-                    value={settings.username}
-                    placeholder="khanhnhn@inut.vn"
-                    onChange={(e) => setSettings({ ...settings, username: e.target.value })}
-                  />
-                </label>
-                <label style={{ margin: 0 }}>
-                  Hộp thư (Mailbox)
-                  <input
-                    className="ui-input"
-                    value={settings.mailbox}
-                    placeholder="INBOX"
-                    onChange={(e) => setSettings({ ...settings, mailbox: e.target.value })}
-                  />
-                </label>
-              </FormGrid>
+            {testResult && (
+              <InlineAlert tone={testResult.ok ? "success" : "danger"}>
+                {testResult.message}
+              </InlineAlert>
+            )}
+          </div>
+        )}
 
-              <label style={{ margin: 0 }}>
-                Mật khẩu ứng dụng (App Password){" "}
-                {settings.has_password && <span className="chip green sm">đã lưu</span>}
-                <input
-                  className="ui-input"
-                  type="password"
-                  value={password}
-                  placeholder={
-                    settings.has_password
-                      ? "•••••••• (để trống = giữ nguyên)"
-                      : "Nhập App Password"
-                  }
-                  onChange={(e) => setPassword(e.target.value)}
+        {/* Tab 3: Lịch sử */}
+        {tab === "history" && (
+          <DataView
+            mobileMode="card"
+            empty={
+              runs.length === 0 ? (
+                <EmptyState
+                  icon="mail"
+                  compact
+                  title="Chưa có lịch sử đồng bộ email nào"
+                  description="Chuyển sang tab Đồng bộ ngay để quét hóa đơn PDF/XML từ hộp thư."
                 />
-              </label>
-            </div>
-          )}
-
-          {testResult && (
-            <div
-              className={`warn-banner ${testResult.ok ? "success" : "danger"}`}
-              role="status"
-            >
-              {testResult.message}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 3: Lịch sử */}
-      {tab === "history" && (
-        <div>
-          {runs.length === 0 ? (
-            <div className="empty">Chưa có lịch sử đồng bộ email nào.</div>
-          ) : (
-            <DataView
-              mobileMode="card"
-              desktop={
-                <div className="table-wrap">
-                  <table className="dt">
-                    <thead>
-                      <tr>
-                        <th>Thời gian</th>
-                        <th>Trạng thái</th>
-                        <th>Mới</th>
-                        <th>Gán PDF</th>
-                        <th>Lỗi</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {runs.map((r) => (
-                        <tr key={r.id}>
-                          <td className="nowrap">
-                            {r.started_at
-                              ? new Date(r.started_at).toLocaleString("vi-VN")
-                              : `#${r.id}`}
-                          </td>
-                          <td>
-                            <span
-                              className={`chip ${
-                                r.status === "success"
-                                  ? "green"
-                                  : r.status === "needs_action"
-                                    ? "amber"
-                                    : "red"
-                              } sm`}
-                            >
-                              {r.status}
-                            </span>
-                          </td>
-                          <td className="num" style={{ color: "var(--green)", fontWeight: 700 }}>
-                            {r.stats?.created_new_draft ?? 0}
-                          </td>
-                          <td className="num" style={{ color: "var(--primary-dark)", fontWeight: 700 }}>
-                            {r.stats?.pdf_attached_to_existing ?? 0}
-                          </td>
-                          <td className="num" style={{ color: r.stats?.errors ? "var(--red)" : "inherit" }}>
-                            {r.stats?.errors ?? 0}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              }
-              mobileCards={
-                <div className="ui-mobile-card-list">
-                  {runs.map((r) => (
-                    <article key={r.id} className="ui-mobile-card">
-                      <div className="ui-mobile-card-head">
-                        <h4 className="ui-mobile-card-title">
+              ) : undefined
+            }
+            desktop={
+              <div className="table-wrap">
+                <table className="dt">
+                  <thead>
+                    <tr>
+                      <th>Thời gian</th>
+                      <th>Trạng thái</th>
+                      <th className="ui-text-right">Mới</th>
+                      <th className="ui-text-right">Gán PDF</th>
+                      <th className="ui-text-right">Lỗi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runs.map((r) => (
+                      <tr key={r.id}>
+                        <td className="ui-nowrap">
                           {r.started_at
                             ? new Date(r.started_at).toLocaleString("vi-VN")
-                            : `Đợt #${r.id}`}
-                        </h4>
-                        <span
-                          className={`chip ${
-                            r.status === "success"
-                              ? "green"
-                              : r.status === "needs_action"
-                                ? "amber"
-                                : "red"
-                          } sm`}
+                            : `#${r.id}`}
+                        </td>
+                        <td>
+                          <StatusBadge tone={runStatusTone(r.status)} size="sm" dot>
+                            {r.status}
+                          </StatusBadge>
+                        </td>
+                        <td className="num ui-text-right ui-text-success ui-text-strong">
+                          {r.stats?.created_new_draft ?? 0}
+                        </td>
+                        <td className="num ui-text-right ui-text-brand ui-text-strong">
+                          {r.stats?.pdf_attached_to_existing ?? 0}
+                        </td>
+                        <td
+                          className={`num ui-text-right${r.stats?.errors ? " ui-text-danger ui-text-strong" : ""}`}
                         >
+                          {r.stats?.errors ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list">
+                {runs.map((r) => (
+                  <MobileCard key={r.id}>
+                    <MobileCardHeader
+                      title={
+                        r.started_at
+                          ? new Date(r.started_at).toLocaleString("vi-VN")
+                          : `Đợt #${r.id}`
+                      }
+                      badge={
+                        <StatusBadge tone={runStatusTone(r.status)} size="sm" dot>
                           {r.status}
-                        </span>
-                      </div>
-                      <div className="ui-mobile-card-grid">
-                        <div className="ui-mobile-card-kv">
-                          <span>Tạo mới</span>
-                          <strong className="num">{r.stats?.created_new_draft ?? 0}</strong>
-                        </div>
-                        <div className="ui-mobile-card-kv">
-                          <span>Gán PDF</span>
-                          <strong className="num">{r.stats?.pdf_attached_to_existing ?? 0}</strong>
-                        </div>
-                        <div className="ui-mobile-card-kv">
-                          <span>Lỗi</span>
-                          <strong className="num">{r.stats?.errors ?? 0}</strong>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              }
-            />
-          )}
-        </div>
-      )}
+                        </StatusBadge>
+                      }
+                    />
+                    <MobileCardGrid>
+                      <MobileCardRow
+                        label="Tạo mới"
+                        value={r.stats?.created_new_draft ?? 0}
+                        mono
+                      />
+                      <MobileCardRow
+                        label="Gán PDF"
+                        value={r.stats?.pdf_attached_to_existing ?? 0}
+                        mono
+                      />
+                      <MobileCardRow
+                        label="Lỗi"
+                        value={r.stats?.errors ?? 0}
+                        mono
+                      />
+                    </MobileCardGrid>
+                  </MobileCard>
+                ))}
+              </div>
+            }
+          />
+        )}
+      </div>
     </AppModal>
   );
 }

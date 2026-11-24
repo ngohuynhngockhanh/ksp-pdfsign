@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PayrollHrEmployee, PayrollHrMonth } from "../api";
+import { AppButton, EmptyState, SectionCard, StatusBadge } from "./ui";
 
 const money = (value = 0) => new Intl.NumberFormat("vi-VN").format(value);
 
@@ -8,7 +9,10 @@ interface Props {
 }
 
 interface Series {
-  key: keyof Pick<PayrollHrMonth, "gross_income" | "net_payable" | "employee_insurance" | "employer_insurance" | "pit_withheld">;
+  key: keyof Pick<
+    PayrollHrMonth,
+    "gross_income" | "net_payable" | "employee_insurance" | "employer_insurance" | "pit_withheld"
+  >;
   label: string;
   className: string;
 }
@@ -26,7 +30,10 @@ const deductionSeries: Series[] = [
 
 export function PayrollEmployeeCharts({ employees }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<number> | null>(null);
-  const employeeIds = useMemo(() => new Set(employees.map((employee) => employee.employee_id)), [employees]);
+  const employeeIds = useMemo(
+    () => new Set(employees.map((employee) => employee.employee_id)),
+    [employees],
+  );
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -45,89 +52,231 @@ export function PayrollEmployeeCharts({ employees }: Props) {
     });
   };
 
-  return <section className="hr-charts" aria-labelledby="hr-charts-title">
-    <header className="hr-charts-head">
-      <div>
-        <p className="eyebrow">SO SÁNH THEO THÁNG</p>
-        <h3 id="hr-charts-title">Biểu đồ lương và thuế</h3>
-        <p>Mỗi nhân viên dùng thang đo riêng để theo dõi biến động qua các tháng.</p>
-      </div>
-      <div className="hr-chart-actions">
-        <button type="button" onClick={() => setSelectedIds(new Set(employeeIds))}>Chọn tất cả</button>
-        <button type="button" onClick={() => setSelectedIds(new Set())}>Bỏ chọn</button>
-      </div>
-    </header>
-    <fieldset className="hr-chart-selector">
-      <legend>Nhân viên hiển thị</legend>
-      {employees.map((employee) => <label key={employee.employee_id}>
-        <input type="checkbox" checked={selectedIds?.has(employee.employee_id) ?? false}
-          onChange={() => toggleEmployee(employee.employee_id)} />
-        <span>Hiển thị {employee.name}</span>
-      </label>)}
-    </fieldset>
-    {!selected.length ? <p className="hr-chart-empty">Chọn ít nhất một nhân viên để xem biểu đồ.</p> :
-      <div className="hr-chart-rows">{selected.map((employee) => <EmployeeChartRow key={employee.employee_id} employee={employee} />)}</div>}
-  </section>;
+  return (
+    <section aria-labelledby="hr-charts-title">
+      <SectionCard tone="subtle" padding="compact">
+        <div className="ui-stack--lg">
+          <div className="ui-row-between">
+            <div>
+              <div className="ui-section-card-eyebrow">SO SÁNH THEO THÁNG</div>
+              <h3 id="hr-charts-title" className="ui-text-strong">
+                Biểu đồ lương và thuế
+              </h3>
+              <p className="ui-muted">
+                Mỗi nhân viên dùng thang đo riêng để theo dõi biến động qua các tháng.
+              </p>
+            </div>
+            <div className="ui-row">
+              <AppButton
+                variant="secondary"
+                size="sm"
+                onClick={() => setSelectedIds(new Set(employeeIds))}
+              >
+                Chọn tất cả
+              </AppButton>
+              <AppButton variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Bỏ chọn
+              </AppButton>
+            </div>
+          </div>
+
+          <fieldset className="ui-chart-selector">
+            <legend>Nhân viên hiển thị</legend>
+            {employees.map((employee) => (
+              <label className="ui-check-label" key={employee.employee_id}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds?.has(employee.employee_id) ?? false}
+                  onChange={() => toggleEmployee(employee.employee_id)}
+                />
+                <span>Hiển thị {employee.name}</span>
+              </label>
+            ))}
+          </fieldset>
+
+          {!selected.length ? (
+            <EmptyState
+              compact
+              icon="bar-chart"
+              title="Chọn ít nhất một nhân viên để xem biểu đồ."
+            />
+          ) : (
+            <div className="ui-stack--lg">
+              {selected.map((employee) => (
+                <EmployeeChartRow key={employee.employee_id} employee={employee} />
+              ))}
+            </div>
+          )}
+        </div>
+      </SectionCard>
+    </section>
+  );
 }
 
 function EmployeeChartRow({ employee }: { employee: PayrollHrEmployee }) {
   const months = [...employee.months].sort((left, right) => left.month.localeCompare(right.month));
-  return <article className="hr-chart-row" aria-label={`Biểu đồ của ${employee.name}`}>
-    <header><div><h4>{employee.name}</h4><span>{employee.position || employee.code}</span></div>
-      <strong>{months.length} tháng có dữ liệu</strong></header>
-    <div className="hr-chart-pair">
-      <PayrollBarChart title="Thu nhập: tổng thu nhập và thực lĩnh" months={months} series={salarySeries} />
-      <PayrollBarChart title="Bảo hiểm và thuế TNCN"
-        accessibilityLabel={`Khấu trừ và nghĩa vụ bảo hiểm của ${employee.name}`}
-        months={months} series={deductionSeries} />
-    </div>
-  </article>;
+  return (
+    <article aria-label={`Biểu đồ của ${employee.name}`}>
+      <SectionCard padding="compact">
+        <div className="ui-stack--lg">
+          <div className="ui-row-between">
+            <div>
+              <h4 className="ui-text-strong">{employee.name}</h4>
+              <span className="ui-muted">{employee.position || employee.code}</span>
+            </div>
+            <StatusBadge tone="neutral" size="sm">
+              {months.length} tháng có dữ liệu
+            </StatusBadge>
+          </div>
+          <div className="ui-chart-pair">
+            <PayrollBarChart
+              title="Thu nhập: tổng thu nhập và thực lĩnh"
+              months={months}
+              series={salarySeries}
+            />
+            <PayrollBarChart
+              title="Bảo hiểm và thuế TNCN"
+              accessibilityLabel={`Khấu trừ và nghĩa vụ bảo hiểm của ${employee.name}`}
+              months={months}
+              series={deductionSeries}
+            />
+          </div>
+        </div>
+      </SectionCard>
+    </article>
+  );
 }
 
-function PayrollBarChart({ title, accessibilityLabel = title, months, series }: {
-  title: string; accessibilityLabel?: string; months: PayrollHrMonth[]; series: Series[];
+function PayrollBarChart({
+  title,
+  accessibilityLabel = title,
+  months,
+  series,
+}: {
+  title: string;
+  accessibilityLabel?: string;
+  months: PayrollHrMonth[];
+  series: Series[];
 }) {
   const width = Math.max(520, months.length * 92 + 76);
   const height = 230;
   const chartTop = 24;
   const chartBottom = 174;
   const chartHeight = chartBottom - chartTop;
-  const maxValue = Math.max(1, ...months.flatMap((month) => series.map((item) => month[item.key])));
+  const maxValue = Math.max(
+    1,
+    ...months.flatMap((month) => series.map((item) => month[item.key])),
+  );
   const groupWidth = (width - 76) / Math.max(1, months.length);
   const barWidth = Math.min(24, (groupWidth - 18) / series.length);
 
-  return <section className="hr-chart-card" aria-label={accessibilityLabel}>
-    <header><h5>{title}</h5><div className="hr-chart-legend">{series.map((item) =>
-      <span key={item.key}><i className={item.className} />{item.label}</span>)}</div></header>
-    <div className="hr-chart-scroll" tabIndex={0} aria-label={`${title}, cuộn ngang để xem đủ các tháng`}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ minWidth: width }} role="img" aria-label={title}>
-        <line className="hr-chart-axis" x1="54" y1={chartBottom} x2={width - 12} y2={chartBottom} />
-        {[0, 0.5, 1].map((ratio) => <g key={ratio}>
-          <line className="hr-chart-grid" x1="54" y1={chartBottom - chartHeight * ratio} x2={width - 12} y2={chartBottom - chartHeight * ratio} />
-          <text className="hr-chart-scale" x="48" y={chartBottom - chartHeight * ratio + 4} textAnchor="end">
-            {money(Math.round(maxValue * ratio))}
-          </text>
-        </g>)}
-        {months.map((month, monthIndex) => {
-          const groupX = 64 + monthIndex * groupWidth;
-          return <g key={month.month} tabIndex={0} aria-label={`${month.month}: ${series.map((item) => `${item.label} ${money(month[item.key])} đồng`).join(", ")}`}>
-            <title>{month.month}: {series.map((item) => `${item.label} ${money(month[item.key])} đồng`).join(", ")}</title>
-            {series.map((item, seriesIndex) => {
-              const value = month[item.key];
-              const barHeight = value === 0 ? 2 : Math.max(3, value / maxValue * chartHeight);
-              return <rect key={item.key} className={`hr-chart-bar ${item.className}`}
-                x={groupX + seriesIndex * (barWidth + 5)} y={chartBottom - barHeight}
-                width={barWidth} height={barHeight} rx="3" />;
-            })}
-            <text className="hr-chart-month" x={groupX + (barWidth * series.length + 5) / 2} y="194" textAnchor="middle">
-              {month.month.slice(5, 7)}/{month.month.slice(2, 4)}
-            </text>
-          </g>;
-        })}
-      </svg>
-    </div>
-    <div className="hr-chart-values">{months.map((month) => <div key={month.month}>
-      <strong>{month.month}</strong>{series.map((item) => <span key={item.key}>{item.label}<b>{money(month[item.key])}</b></span>)}
-    </div>)}</div>
-  </section>;
+  return (
+    <section className="ui-chart-card" aria-label={accessibilityLabel}>
+      <header className="ui-chart-head">
+        <h5>{title}</h5>
+        <div className="ui-chart-legend">
+          {series.map((item) => (
+            <span key={item.key}>
+              <i className={item.className} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </header>
+      <div
+        className="ui-chart-scroll"
+        tabIndex={0}
+        aria-label={`${title}, cuộn ngang để xem đủ các tháng`}
+      >
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          /* ds-dynamic */
+          style={{ minWidth: width }}
+          role="img"
+          aria-label={title}
+        >
+          <line
+            className="ui-chart-axis"
+            x1="54"
+            y1={chartBottom}
+            x2={width - 12}
+            y2={chartBottom}
+          />
+          {[0, 0.5, 1].map((ratio) => (
+            <g key={ratio}>
+              <line
+                className="ui-chart-grid"
+                x1="54"
+                y1={chartBottom - chartHeight * ratio}
+                x2={width - 12}
+                y2={chartBottom - chartHeight * ratio}
+              />
+              <text
+                className="ui-chart-label"
+                x="48"
+                y={chartBottom - chartHeight * ratio + 4}
+                textAnchor="end"
+              >
+                {money(Math.round(maxValue * ratio))}
+              </text>
+            </g>
+          ))}
+          {months.map((month, monthIndex) => {
+            const groupX = 64 + monthIndex * groupWidth;
+            return (
+              <g
+                key={month.month}
+                tabIndex={0}
+                aria-label={`${month.month}: ${series.map((item) => `${item.label} ${money(month[item.key])} đồng`).join(", ")}`}
+              >
+                <title>
+                  {month.month}:{" "}
+                  {series
+                    .map((item) => `${item.label} ${money(month[item.key])} đồng`)
+                    .join(", ")}
+                </title>
+                {series.map((item, seriesIndex) => {
+                  const value = month[item.key];
+                  const barHeight =
+                    value === 0 ? 2 : Math.max(3, (value / maxValue) * chartHeight);
+                  return (
+                    <rect
+                      key={item.key}
+                      className={`ui-chart-bar ${item.className}`}
+                      x={groupX + seriesIndex * (barWidth + 5)}
+                      y={chartBottom - barHeight}
+                      width={barWidth}
+                      height={barHeight}
+                      rx="3"
+                    />
+                  );
+                })}
+                <text
+                  className="ui-chart-label"
+                  x={groupX + (barWidth * series.length + 5) / 2}
+                  y="194"
+                  textAnchor="middle"
+                >
+                  {month.month.slice(5, 7)}/{month.month.slice(2, 4)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="ui-chart-values">
+        {months.map((month) => (
+          <div key={month.month}>
+            <strong>{month.month}</strong>
+            {series.map((item) => (
+              <span key={item.key}>
+                {item.label}
+                <b>{money(month[item.key])}</b>
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }

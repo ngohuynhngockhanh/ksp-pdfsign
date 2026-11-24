@@ -2,7 +2,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type DocRecord, type OrderRec, type WebAdsDraftQuote } from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
 import { BilliardQuoteTab } from "../components/BilliardQuoteTab";
-import { DataView, PromptDialog, ResponsiveTabs } from "../components/ui";
+import {
+  AppButton,
+  DataView,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  PageHeader,
+  PageShell,
+  PromptDialog,
+  ResponsiveTabs,
+  SectionCard,
+  SkeletonBlock,
+  SplitWorkspace,
+  StatusBadge,
+  useToast,
+} from "../components/ui";
 
 type QItem = { ten: string; dvt: string; so_luong: string; don_gia: string; thue_suat: string };
 type Product = Awaited<ReturnType<typeof api.listProducts>>[number];
@@ -11,7 +27,6 @@ type Source = "tay" | "hoa_don" | "ho_so";
 
 const VAT_RATES = ["0", "5", "8", "10"];
 
-// "1.500.000" / "1,500,000" / "1500000" -> so
 function parseNum(s: string | number): number {
   if (typeof s === "number") return s;
   let t = (s || "").trim().replace(/\s/g, "");
@@ -29,7 +44,6 @@ function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
 
-// Chuan hoa ten (bo dau, thuong) de doi chieu voi mat hang ton kho
 function normName(s: string): string {
   return s
     .trim()
@@ -64,12 +78,12 @@ export function CreateQuote({
   fromLeadId?: number | null;
   onLeadDraftConsumed?: () => void;
 }) {
+  const toast = useToast();
   const [templates, setTemplates] = useState<{ key: string; label: string }[]>([]);
   const [templateKey, setTemplateKey] = useState("bao_gia");
   const [source, setSource] = useState<Source>("tay");
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  // Ton kho theo ten chuan hoa (tong cac kho) — chi de hien badge tham khao
   const [stockByName, setStockByName] = useState<Map<string, { qty: number; dvt: string }>>(new Map());
   const [orders, setOrders] = useState<OrderRec[]>([]);
   const [orderId, setOrderId] = useState("");
@@ -121,7 +135,6 @@ export function CreateQuote({
   ]);
   const [thuyetMinh, setThuyetMinh] = useState("");
   const [hieuLuc, setHieuLuc] = useState("30");
-  // De nghi thanh toan
   const [loaiTt, setLoaiTt] = useState<"toan_bo" | "co_coc" | "nhieu_phan">("toan_bo");
   const [tienCoc, setTienCoc] = useState("");
   const [daThanhToan, setDaThanhToan] = useState("");
@@ -130,7 +143,6 @@ export function CreateQuote({
   const [tongSoDot, setTongSoDot] = useState("3");
   const [hanThanhToan, setHanThanhToan] = useState("05 ngày");
   const [canCu, setCanCu] = useState("");
-  // Bien ban nghiem thu
   const [bbntGhiChu, setBbntGhiChu] = useState(
     "Bảo hành 1 năm 1 đổi 1 kể từ ngày nghiệm thu*",
   );
@@ -242,8 +254,11 @@ export function CreateQuote({
       const o = await api.createOrder({ name: name.trim(), customer_id: suggested?.id ?? null });
       setOrders((arr) => [o, ...arr]);
       setOrderId(String(o.id));
+      toast.success(`Đã tạo đơn hàng ${o.code}.`);
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      setErr(msg);
+      toast.error(msg);
     }
   }
 
@@ -256,10 +271,9 @@ export function CreateQuote({
     }
   }, [source, docs.length]);
 
-  // Doi template: cap nhat so de xuat (neu nguoi dung chua sua khac dang de xuat)
   function switchTemplate(key: string) {
     setTemplateKey(key);
-    setSo((s) => (/\/(BG|DNTT)-INUT$/.test(s) ? soDeXuat(ngay, key) : s));
+    setSo((s) => (/\/(BG|DNTT|BBNT)-INUT$/.test(s) ? soDeXuat(ngay, key) : s));
   }
 
   const totals = useMemo(() => {
@@ -305,7 +319,6 @@ export function CreateQuote({
         dvt: it.dvt,
         so_luong: String(parseNum(it.so_luong || "1") || 1),
         don_gia: String(parseNum(it.don_gia || "0") || ""),
-        // XML co TSuat tung dong ("10", "8", "KCT"->0); PDF khong co -> 10
         thue_suat:
           it.thue_suat !== undefined && it.thue_suat !== ""
             ? String(parseNum(it.thue_suat))
@@ -318,7 +331,7 @@ export function CreateQuote({
     }
     setSuggested(r.suggested_customer);
     setParsed(true);
-    // Hoa don vua parse da duoc backend ghi nho vao danh muc -> lam moi
+    toast.success("Đã bóc tách dữ liệu hóa đơn.");
     api.listProducts().then(setProducts).catch(() => {});
   }
 
@@ -330,7 +343,9 @@ export function CreateQuote({
     try {
       applyParsed(await api.parseInvoice(f));
     } catch (ex) {
-      setErr((ex as Error).message);
+      const msg = (ex as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setParsing(false);
     }
@@ -343,7 +358,9 @@ export function CreateQuote({
     try {
       applyParsed(await api.parseInvoiceDoc(Number(pickedDoc)));
     } catch (ex) {
-      setErr((ex as Error).message);
+      const msg = (ex as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setParsing(false);
     }
@@ -353,7 +370,6 @@ export function CreateQuote({
     setItems((arr) =>
       arr.map((it, j) => {
         if (j !== i) return it;
-        // Go ten khop danh muc (chon tu autocomplete) -> autofill DVT/don gia/thue
         if (k === "ten") {
           const p = products.find((x) => x.ten.toLowerCase() === v.trim().toLowerCase());
           if (p) {
@@ -371,11 +387,14 @@ export function CreateQuote({
     );
   }
 
+  function addRow() {
+    setItems((arr) => [...arr, { ten: "", dvt: "", so_luong: "1", don_gia: "", thue_suat: "10" }]);
+  }
+
   function addFromCatalog(id: string) {
     const p = products.find((x) => x.id === Number(id));
     if (!p) return;
     setItems((arr) => {
-      // Neu dong cuoi con trong thi dien vao do, nguoc lai them dong moi
       const row: QItem = {
         ten: p.ten,
         dvt: p.dvt,
@@ -415,8 +434,11 @@ export function CreateQuote({
         loai: templateKey,
       });
       setThuyetMinh(r.text);
+      toast.success("AI đã sinh đoạn thuyết minh.");
     } catch (ex) {
-      setErr((ex as Error).message);
+      const msg = (ex as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setAiBusy(false);
     }
@@ -447,13 +469,14 @@ export function CreateQuote({
     };
   }
 
-  // WYSIWYG: render lai PDF xem truoc (debounce) moi khi form thay doi
   const previewDeps = JSON.stringify([
     templateKey, so, ngay, noiLap, benB, items, thuyetMinh, hieuLuc,
     loaiTt, tienCoc, daThanhToan, soTienDotNay, dotThu, tongSoDot,
     hanThanhToan, canCu, bbntGhiChu, bbntDieuKhoan,
   ]);
+
   useEffect(() => {
+    if (activeQuoteMode !== "standard") return;
     const t = setTimeout(async () => {
       setPreviewBusy(true);
       try {
@@ -471,7 +494,7 @@ export function CreateQuote({
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewDeps]);
+  }, [previewDeps, activeQuoteMode]);
 
   const previewUrlRef = useRef("");
   useEffect(() => {
@@ -498,6 +521,7 @@ export function CreateQuote({
           })
           .catch(() => {});
       }
+      toast.success("Đã tạo chứng từ PDF.");
       onGenerated(
         r.doc_id,
         r.filename,
@@ -506,551 +530,696 @@ export function CreateQuote({
         orderId ? Number(orderId) : null,
       );
     } catch (ex) {
-      setErr((ex as Error).message);
+      const msg = (ex as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
   }
 
+  const missingUnitCount = items.filter((item) => item.ten.trim() && !item.dvt.trim()).length;
+
   return (
-    <div className="page-1col quote-page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-        <h3 style={{ margin: 0 }}>Tạo Báo giá / Đề nghị thanh toán</h3>
-        <ResponsiveTabs
-          tabs={[
-            { id: "billiard", label: "🎱 Báo giá Billiards (Camera & Billiard Live)" },
-            { id: "standard", label: "📄 Báo giá Tiêu chuẩn" },
-          ]}
-          active={activeQuoteMode}
-          onChange={(id) => setActiveQuoteMode(id as "billiard" | "standard")}
-          ariaLabel="Chế độ báo giá"
-        />
-      </div>
+    <PageShell maxWidth="wide" className="quote-page" data-page="create-quote">
+      <PageHeader
+        variant="compact"
+        icon="receipt"
+        title="Tạo Báo giá / Đề nghị thanh toán"
+        subtitle="Lập báo giá tiêu chuẩn, đề nghị thanh toán, BBNT hoặc giải pháp Billiards kèm xem trước PDF trực tiếp."
+      />
+
+      <ResponsiveTabs
+        variant="segmented"
+        tabs={[
+          { id: "billiard", label: "Báo giá Billiards (Camera & Billiard Live)", icon: "camera" },
+          { id: "standard", label: "Báo giá Tiêu chuẩn", icon: "file-text" },
+        ]}
+        active={activeQuoteMode}
+        onChange={(id) => setActiveQuoteMode(id as "billiard" | "standard")}
+        ariaLabel="Chế độ báo giá"
+      />
 
       {activeQuoteMode === "billiard" ? (
         <BilliardQuoteTab onGenerated={onGenerated} />
       ) : (
-        <div className="quote-2col" style={{ marginTop: 14 }}>
-      <div className="q-form">
-      {leadLoading && (
-        <div className="panel" style={{ padding: "10px 14px", background: "var(--primary-soft)", borderColor: "var(--border-strong)" }}>
-          ⏳ Đang nạp thông tin báo giá từ Web Lead…
-        </div>
-      )}
-      {leadBanner && (
-        <div
-          className="panel"
-          style={{
-            padding: "10px 14px",
-            background: "var(--primary-soft)",
-            borderColor: "var(--green)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ fontSize: 13, color: "var(--ink)" }}>
-            📈 <b>Đang lập báo giá từ Web Lead #{leadBanner.leadId}</b>
-            {leadBanner.customerName ? ` · ${leadBanner.customerName}` : ""}
-            {leadBanner.contact ? ` (${leadBanner.contact})` : ""}
-            {" — khi sinh PDF sẽ tự cập nhật Lead sang trạng thái Đã báo giá."}
-          </div>
-          <button
-            type="button"
-            className="btn-sm ghost"
-            onClick={() => {
-              setLinkedLeadId(null);
-              setLeadBanner(null);
-            }}
-          >
-            ✕ Bỏ gắn Lead
-          </button>
-        </div>
-      )}
-      <div className="panel">
-        <label>
-          Loại chứng từ
-          <select value={templateKey} onChange={(e) => switchTemplate(e.target.value)}>
-            {(templates.length
-              ? templates
-              : [
-                  { key: "bao_gia", label: "Báo giá" },
-                  { key: "de_nghi_tt", label: "Đề nghị thanh toán" },
-                  { key: "bbnt", label: "Biên bản nghiệm thu" },
-                ]
-            ).map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SplitWorkspace
+          variant="preview-right"
+          stickySecondary
+          mobileTabs={["Soạn chứng từ", "Xem trước PDF"]}
+          primary={
+            <div className="ui-stack--lg">
+              {leadLoading && (
+                <InlineAlert tone="info" title="Đang nạp thông tin báo giá từ Web Lead…">
+                  <SkeletonBlock variant="line" lines={1} />
+                </InlineAlert>
+              )}
 
-        <div className="grid2" style={{ marginTop: 8 }}>
-          <label>
-            📦 Đơn hàng (gom Báo giá → BBBG → BBNT → Đề nghị TT)
-            <select value={orderId} onChange={(e) => setOrderId(e.target.value)}>
-              <option value="">— không gắn đơn hàng —</option>
-              {orders.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.code} · {o.name} ({o.document_count} hồ sơ)
-                </option>
-              ))}
-            </select>
-          </label>
-          <div style={{ alignSelf: "end" }}>
-            <button onClick={newOrder}>➕ Tạo đơn hàng mới</button>
-          </div>
-        </div>
+              {leadBanner && (
+                <InlineAlert
+                  tone="success"
+                  title={`Đang lập báo giá từ Web Lead #${leadBanner.leadId}`}
+                  action={
+                    <AppButton
+                      variant="ghost"
+                      size="sm"
+                      leftIcon="x"
+                      onClick={() => {
+                        setLinkedLeadId(null);
+                        setLeadBanner(null);
+                      }}
+                    >
+                      Bỏ gắn Lead
+                    </AppButton>
+                  }
+                >
+                  {leadBanner.customerName ? `${leadBanner.customerName}` : ""}
+                  {leadBanner.contact ? ` (${leadBanner.contact})` : ""}
+                  {" — khi sinh PDF sẽ tự cập nhật Lead sang trạng thái Đã báo giá."}
+                </InlineAlert>
+              )}
 
-        <div className="grid2" style={{ marginTop: 8 }}>
-          <label>
-            Nguồn hàng hóa
-            <select value={source} onChange={(e) => setSource(e.target.value as Source)}>
-              <option value="tay">Nhập tay</option>
-              <option value="hoa_don">Từ hóa đơn (PDF/XML)</option>
-              <option value="ho_so">Từ hồ sơ có sẵn</option>
-            </select>
-          </label>
-          {source === "hoa_don" && (
-            <label>
-              Tải hóa đơn để tự điền
-              <input
-                type="file"
-                accept="application/pdf,.xml,text/xml,application/xml"
-                onChange={onInvoiceFile}
-              />
-            </label>
-          )}
-          {source === "ho_so" && (
-            <label>
-              Chọn hồ sơ (hóa đơn đã lưu)
-              <select value={pickedDoc} onChange={(e) => setPickedDoc(e.target.value)}>
-                <option value="">— chọn hồ sơ —</option>
-                {docs.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.filename}
-                    {d.customer_name ? ` · ${d.customer_name}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-        {source === "ho_so" && (
-          <button disabled={!pickedDoc || parsing} onClick={onParseStored}>
-            Đọc hàng hóa từ hồ sơ
-          </button>
-        )}
-        {parsing && <div className="muted">Đang đọc hóa đơn…</div>}
-        {parsed && <div className="ok-note">✅ Đã đọc dữ liệu — kiểm tra & sửa bên dưới.</div>}
-        {parsed && suggested && (
-          <div className="ok-note">
-            👤 Khách hàng đề xuất: <b>{suggested.name}</b> — sẽ tự gán khi ký.
-          </div>
-        )}
-      </div>
+              <SectionCard title="Thiết lập chứng từ & nguồn dữ liệu" icon="sliders">
+                <div className="ui-stack--sm">
+                  <FormGrid cols={2}>
+                    <FormField label="Loại chứng từ" htmlFor="q-template" fullWidth>
+                      <select
+                        id="q-template"
+                        className="ui-select"
+                        value={templateKey}
+                        onChange={(e) => switchTemplate(e.target.value)}
+                      >
+                        {(templates.length
+                          ? templates
+                          : [
+                              { key: "bao_gia", label: "Báo giá" },
+                              { key: "de_nghi_tt", label: "Đề nghị thanh toán" },
+                              { key: "bbnt", label: "Biên bản nghiệm thu" },
+                            ]
+                        ).map((t) => (
+                          <option key={t.key} value={t.key}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
 
-      <div className="panel">
-        <h3>Thông tin chung</h3>
-        <div className="grid2">
-          <label>
-            Số
-            <input value={so} onChange={(e) => setSo(e.target.value)} />
-          </label>
-          <label>
-            Nơi lập
-            <input
-              placeholder={isDntt ? "TP.HCM (mặc định)" : "Đắk Lắk (mặc định)"}
-              value={noiLap}
-              onChange={(e) => setNoiLap(e.target.value)}
-            />
-          </label>
-          <label>
-            Ngày
-            <input
-              type="number"
-              value={ngay.day}
-              onChange={(e) => setNgay({ ...ngay, day: +e.target.value })}
-            />
-          </label>
-          <label>
-            Tháng
-            <input
-              type="number"
-              value={ngay.month}
-              onChange={(e) => setNgay({ ...ngay, month: +e.target.value })}
-            />
-          </label>
-          <label>
-            Năm
-            <input
-              type="number"
-              value={ngay.year}
-              onChange={(e) => setNgay({ ...ngay, year: +e.target.value })}
-            />
-          </label>
-          {!isDntt && !isBbnt && (
-            <label>
-              Hiệu lực báo giá (ngày)
-              <input value={hieuLuc} onChange={(e) => setHieuLuc(e.target.value)} />
-            </label>
-          )}
-        </div>
-      </div>
+                    <FormField label="Đơn hàng (gom Báo giá → BBBG → BBNT → Đề nghị TT)" htmlFor="q-order">
+                      <select
+                        id="q-order"
+                        className="ui-select"
+                        value={orderId}
+                        onChange={(e) => setOrderId(e.target.value)}
+                      >
+                        <option value="">— không gắn đơn hàng —</option>
+                        {orders.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.code} · {o.name} ({o.document_count} hồ sơ)
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
 
-      <div className="panel">
-        <h3>Khách hàng (Kính gửi)</h3>
-        <SmartPartyPaste onApply={(data) => setBenB((current) => ({
-          ...current,
-          name: data.name || current.name,
-          address: data.address || current.address,
-          mst: data.mst || current.mst,
-          email: data.email || current.email,
-          dai_dien: data.dai_dien || current.dai_dien,
-        }))} />
-        <label>
-          Tên đơn vị
-          <input value={benB.name} onChange={(e) => setBenB({ ...benB, name: e.target.value })} />
-        </label>
-        <label>
-          Địa chỉ
-          <input
-            value={benB.address}
-            onChange={(e) => setBenB({ ...benB, address: e.target.value })}
-          />
-        </label>
-        <div className="grid2">
-          <label>
-            MST
-            <input value={benB.mst} onChange={(e) => setBenB({ ...benB, mst: e.target.value })} />
-          </label>
-          <label>
-            Email
-            <input
-              value={benB.email}
-              onChange={(e) => setBenB({ ...benB, email: e.target.value })}
-            />
-          </label>
-          {isBbnt && (
-            <>
-              <label>
-                Đại diện (bên mua)
-                <input
-                  placeholder="vd: Ông Lê Xuân Tú"
-                  value={benB.dai_dien}
-                  onChange={(e) => setBenB({ ...benB, dai_dien: e.target.value })}
-                />
-              </label>
-              <label>
-                Tên gọi tắt (in trong BBNT)
-                <input
-                  placeholder="vd: PHE VIET NAM"
-                  value={benB.ten_ngan}
-                  onChange={(e) => setBenB({ ...benB, ten_ngan: e.target.value })}
-                />
-              </label>
-            </>
-          )}
-        </div>
-      </div>
+                    <div className="ui-row ui-row--bottom">
+                      <AppButton variant="secondary" size="md" leftIcon="plus" onClick={newOrder}>
+                        Tạo đơn hàng mới
+                      </AppButton>
+                    </div>
 
-      <div className="panel">
-        <h3>Danh sách hàng hóa / hạng mục</h3>
-        <label>
-          📦 Thêm nhanh từ danh mục đã dùng ({products.length} món)
-          <select
-            value=""
-            disabled={products.length === 0}
-            onChange={(e) => addFromCatalog(e.target.value)}
-          >
-            <option value="">
-              {products.length
-                ? "— chọn món để thêm vào bảng —"
-                : "— chưa có món nào: danh mục tự lưu sau mỗi lần sinh báo giá —"}
-            </option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.ten}
-                {p.don_gia ? ` · ${vnd(p.don_gia)} đ` : ""}
-                {p.dvt ? ` / ${p.dvt}` : ""} · VAT {p.thue_suat}%
-              </option>
-            ))}
-          </select>
-        </label>
-        <datalist id="pl-products">
-          {products.map((p) => (
-            <option key={p.id} value={p.ten} />
-          ))}
-        </datalist>
-        {items.some((item) => item.ten.trim() && !item.dvt.trim()) && <div className="stock-form-alert">Thiếu đơn vị tính ở {items.filter((item) => item.ten.trim() && !item.dvt.trim()).length} dòng — cần bổ sung trước khi lập biểu.</div>}
-        <DataView
-          mobileMode="scroll"
-          desktop={
-            <table className="doc-table">
-              <thead>
-                <tr>
-                  <th>Tên hàng hóa / dịch vụ</th>
-                  <th style={{ width: "9%" }}>ĐVT</th>
-                  <th style={{ width: "8%" }}>SL</th>
-                  <th style={{ width: "14%" }}>Đơn giá</th>
-                  <th style={{ width: "13%" }}>Thành tiền</th>
-                  <th style={{ width: "9%" }}>Thuế (%)</th>
-                  <th style={{ width: "12%" }}>Tiền thuế</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it, i) => {
-                  const tt = Math.round(parseNum(it.so_luong) * parseNum(it.don_gia));
-                  const thue = Math.round((tt * parseNum(it.thue_suat)) / 100);
-                  return (
-                    <tr key={i}>
-                      <td>
+                    <FormField label="Nguồn hàng hóa" htmlFor="q-source">
+                      <select
+                        id="q-source"
+                        className="ui-select"
+                        value={source}
+                        onChange={(e) => setSource(e.target.value as Source)}
+                      >
+                        <option value="tay">Nhập tay</option>
+                        <option value="hoa_don">Từ hóa đơn (PDF/XML)</option>
+                        <option value="ho_so">Từ hồ sơ có sẵn</option>
+                      </select>
+                    </FormField>
+
+                    {source === "hoa_don" && (
+                      <FormField label="Tải hóa đơn để tự điền" htmlFor="q-inv-file">
                         <input
-                          value={it.ten}
-                          list="pl-products"
-                          placeholder="gõ để gợi ý từ danh mục…"
-                          onChange={(e) => setItem(i, "ten", e.target.value)}
+                          id="q-inv-file"
+                          className="ui-input"
+                          type="file"
+                          accept="application/pdf,.xml,text/xml,application/xml"
+                          onChange={onInvoiceFile}
                         />
-                        {(() => {
-                          const stock = stockByName.get(normName(it.ten));
-                          if (!stock || !it.ten.trim()) return null;
-                          const du = stock.qty >= parseNum(it.so_luong);
-                          return (
-                            <span
-                              className={`chip sm ${du ? "green" : "red"}`}
-                              title={`Khả dụng tại ngày ${ngay.day}/${ngay.month}/${ngay.year} (báo giá không trừ kho)`}
-                            >
-                              Tồn ngày {ngay.day}/{ngay.month}: {stock.qty} {stock.dvt || "(thiếu ĐVT)"}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        <input className={it.ten.trim() && !it.dvt.trim() ? "field-missing" : ""} value={it.dvt} placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""} onChange={(e) => setItem(i, "dvt", e.target.value)} />
-                      </td>
-                      <td>
-                        <input
-                          value={it.so_luong}
-                          onChange={(e) => setItem(i, "so_luong", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={it.don_gia}
-                          onChange={(e) => setItem(i, "don_gia", e.target.value)}
-                        />
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(tt)}</td>
-                      <td>
+                      </FormField>
+                    )}
+
+                    {source === "ho_so" && (
+                      <FormField label="Chọn hồ sơ (hóa đơn đã lưu)" htmlFor="q-stored-doc">
                         <select
-                          value={it.thue_suat}
-                          onChange={(e) => setItem(i, "thue_suat", e.target.value)}
+                          id="q-stored-doc"
+                          className="ui-select"
+                          value={pickedDoc}
+                          onChange={(e) => setPickedDoc(e.target.value)}
                         >
-                          {!VAT_RATES.includes(it.thue_suat) && (
-                            <option value={it.thue_suat}>{it.thue_suat}%</option>
-                          )}
-                          {VAT_RATES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}%
+                          <option value="">— chọn hồ sơ —</option>
+                          {docs.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.filename}
+                              {d.customer_name ? ` · ${d.customer_name}` : ""}
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td style={{ textAlign: "right" }}>{vnd(thue)}</td>
-                      <td>
-                        <button
-                          className="danger-link"
-                          onClick={() => setItems(items.filter((_, j) => j !== i))}
-                        >
-                          Xóa
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          }
-        />
-        <button
-          onClick={() =>
-            setItems([...items, { ten: "", dvt: "", so_luong: "1", don_gia: "", thue_suat: "10" }])
-          }
-        >
-          + Thêm dòng
-        </button>
+                      </FormField>
+                    )}
+                  </FormGrid>
 
-        {isBbnt ? (
-          <div className="muted" style={{ marginTop: 8 }}>
-            ℹ️ BBNT không in giá — chỉ dùng tên hạng mục, ĐVT và số lượng.
-          </div>
-        ) : (
-          <div className="totals-box">
-            <div>
-              Cộng tiền hàng: <b>{vnd(totals.truocThue)} đ</b>
-            </div>
-            <div>
-              Thuế GTGT: <b>{vnd(totals.thue)} đ</b>
-            </div>
-            <div className="grand">
-              TỔNG THANH TOÁN: <b>{vnd(totals.tong)} đ</b>
-            </div>
-          </div>
-        )}
-      </div>
+                  {source === "ho_so" && (
+                    <div>
+                      <AppButton
+                        variant="secondary"
+                        size="sm"
+                        leftIcon="file-search"
+                        loading={parsing}
+                        disabled={!pickedDoc || parsing}
+                        onClick={onParseStored}
+                      >
+                        Đọc hàng hóa từ hồ sơ
+                      </AppButton>
+                    </div>
+                  )}
 
-      {isBbnt && (
-        <div className="panel">
-          <h3>Biên bản nghiệm thu</h3>
-          <label>
-            Ghi chú in trên từng hạng mục
-            <input value={bbntGhiChu} onChange={(e) => setBbntGhiChu(e.target.value)} />
-          </label>
-          <label>
-            Điều kiện bảo hành / điều khoản
-            <textarea
-              rows={5}
-              placeholder="Để trống = dùng điều kiện bảo hành mặc định của INUT (1 năm 1 đổi 1, loại trừ hư hỏng do vận hành sai, hỏa hoạn, tự ý sửa chữa…)"
-              value={bbntDieuKhoan}
-              onChange={(e) => setBbntDieuKhoan(e.target.value)}
-            />
-          </label>
-        </div>
-      )}
+                  {parsing && <InlineAlert tone="info">Đang đọc hóa đơn…</InlineAlert>}
+                  {parsed && (
+                    <InlineAlert tone="success" title="Đã đọc dữ liệu — kiểm tra & sửa bên dưới">
+                      {suggested ? (
+                        <>Khách hàng đề xuất: <strong>{suggested.name}</strong> — sẽ tự gán khi ký.</>
+                      ) : (
+                        "Chưa khớp khách hàng trong CRM."
+                      )}
+                    </InlineAlert>
+                  )}
+                </div>
+              </SectionCard>
 
-      {isDntt && (
-        <div className="panel">
-          <h3>Đề nghị thanh toán</h3>
-          <div className="grid2">
-            <label>
-              Loại thanh toán
-              <select
-                value={loaiTt}
-                onChange={(e) => setLoaiTt(e.target.value as typeof loaiTt)}
-              >
-                <option value="toan_bo">Thanh toán toàn bộ</option>
-                <option value="co_coc">Đã đặt cọc — thanh toán phần còn lại</option>
-                <option value="nhieu_phan">Thanh toán nhiều đợt</option>
-              </select>
-            </label>
-            <label>
-              Căn cứ (tùy chọn)
-              <input
-                placeholder="vd: theo hợp đồng số 01/2026/HĐKT"
-                value={canCu}
-                onChange={(e) => setCanCu(e.target.value)}
+              <SectionCard title="Thông tin chung" icon="calendar">
+                <FormGrid cols={3}>
+                  <FormField label="Số chứng từ" htmlFor="q-so">
+                    <input id="q-so" className="ui-input" value={so} onChange={(e) => setSo(e.target.value)} />
+                  </FormField>
+                  <FormField label="Nơi lập" htmlFor="q-noi-lap">
+                    <input
+                      id="q-noi-lap"
+                      className="ui-input"
+                      placeholder={isDntt ? "TP.HCM (mặc định)" : "Đắk Lắk (mặc định)"}
+                      value={noiLap}
+                      onChange={(e) => setNoiLap(e.target.value)}
+                    />
+                  </FormField>
+                  {!isDntt && !isBbnt && (
+                    <FormField label="Hiệu lực báo giá (ngày)" htmlFor="q-hieu-luc">
+                      <input id="q-hieu-luc" className="ui-input" value={hieuLuc} onChange={(e) => setHieuLuc(e.target.value)} />
+                    </FormField>
+                  )}
+                  <FormField label="Ngày" htmlFor="q-day">
+                    <input
+                      id="q-day"
+                      className="ui-input"
+                      type="number"
+                      value={ngay.day}
+                      onChange={(e) => setNgay({ ...ngay, day: +e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Tháng" htmlFor="q-month">
+                    <input
+                      id="q-month"
+                      className="ui-input"
+                      type="number"
+                      value={ngay.month}
+                      onChange={(e) => setNgay({ ...ngay, month: +e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Năm" htmlFor="q-year">
+                    <input
+                      id="q-year"
+                      className="ui-input"
+                      type="number"
+                      value={ngay.year}
+                      onChange={(e) => setNgay({ ...ngay, year: +e.target.value })}
+                    />
+                  </FormField>
+                </FormGrid>
+              </SectionCard>
+
+              <SmartPartyPaste
+                onApply={(data) =>
+                  setBenB((current) => ({
+                    ...current,
+                    name: data.name || current.name,
+                    address: data.address || current.address,
+                    mst: data.mst || current.mst,
+                    email: data.email || current.email,
+                    dai_dien: data.dai_dien || current.dai_dien,
+                  }))
+                }
               />
-            </label>
-            {(loaiTt === "co_coc" || loaiTt === "nhieu_phan") && (
-              <label>
-                Số tiền đã đặt cọc
-                <input value={tienCoc} onChange={(e) => setTienCoc(e.target.value)} />
-              </label>
-            )}
-            {loaiTt === "nhieu_phan" && (
-              <>
-                <label>
-                  Đã thanh toán các đợt trước
-                  <input value={daThanhToan} onChange={(e) => setDaThanhToan(e.target.value)} />
-                </label>
-                <label>
-                  Số tiền đợt này (trống = tự tính phần còn lại)
-                  <input value={soTienDotNay} onChange={(e) => setSoTienDotNay(e.target.value)} />
-                </label>
-                <label>
-                  Đợt thứ
-                  <input value={dotThu} onChange={(e) => setDotThu(e.target.value)} />
-                </label>
-                <label>
-                  Tổng số đợt
-                  <input value={tongSoDot} onChange={(e) => setTongSoDot(e.target.value)} />
-                </label>
-              </>
-            )}
-            <label>
-              Hạn thanh toán
-              <input value={hanThanhToan} onChange={(e) => setHanThanhToan(e.target.value)} />
-            </label>
-          </div>
-          <div className="totals-box">
-            <div className="grand">
-              {loaiTt === "nhieu_phan" ? "SỐ TIỀN ĐỢT NÀY" : "CÒN LẠI CẦN THANH TOÁN"}:{" "}
-              <b>{vnd(conLai)} đ</b>
+
+              <SectionCard title="Khách hàng (Kính gửi)" icon="building-2">
+                <FormGrid cols={2}>
+                  <FormField label="Tên đơn vị" htmlFor="q-buyer-name" fullWidth required>
+                    <input
+                      id="q-buyer-name"
+                      className="ui-input"
+                      value={benB.name}
+                      onChange={(e) => setBenB({ ...benB, name: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Địa chỉ" htmlFor="q-buyer-addr" fullWidth>
+                    <input
+                      id="q-buyer-addr"
+                      className="ui-input"
+                      value={benB.address}
+                      onChange={(e) => setBenB({ ...benB, address: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="MST" htmlFor="q-buyer-mst">
+                    <input
+                      id="q-buyer-mst"
+                      className="ui-input"
+                      value={benB.mst}
+                      onChange={(e) => setBenB({ ...benB, mst: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Email" htmlFor="q-buyer-email">
+                    <input
+                      id="q-buyer-email"
+                      className="ui-input"
+                      value={benB.email}
+                      onChange={(e) => setBenB({ ...benB, email: e.target.value })}
+                    />
+                  </FormField>
+                  {isBbnt && (
+                    <>
+                      <FormField label="Đại diện (bên mua)" htmlFor="q-buyer-rep">
+                        <input
+                          id="q-buyer-rep"
+                          className="ui-input"
+                          placeholder="vd: Ông Lê Xuân Tú"
+                          value={benB.dai_dien}
+                          onChange={(e) => setBenB({ ...benB, dai_dien: e.target.value })}
+                        />
+                      </FormField>
+                      <FormField label="Tên gọi tắt (in trong BBNT)" htmlFor="q-buyer-short">
+                        <input
+                          id="q-buyer-short"
+                          className="ui-input"
+                          placeholder="vd: PHE VIET NAM"
+                          value={benB.ten_ngan}
+                          onChange={(e) => setBenB({ ...benB, ten_ngan: e.target.value })}
+                        />
+                      </FormField>
+                    </>
+                  )}
+                </FormGrid>
+              </SectionCard>
+
+              <SectionCard
+                title="Danh sách hàng hóa / hạng mục"
+                icon="package"
+                actions={
+                  <AppButton variant="secondary" size="sm" leftIcon="plus" onClick={addRow}>
+                    Thêm dòng
+                  </AppButton>
+                }
+              >
+                <div className="ui-stack--sm">
+                  <FormField
+                    label={`Thêm nhanh từ danh mục đã dùng (${products.length} món)`}
+                    htmlFor="q-catalog-pick"
+                  >
+                    <select
+                      id="q-catalog-pick"
+                      className="ui-select"
+                      value=""
+                      disabled={products.length === 0}
+                      onChange={(e) => addFromCatalog(e.target.value)}
+                    >
+                      <option value="">
+                        {products.length
+                          ? "— chọn món để thêm vào bảng —"
+                          : "— chưa có món nào: danh mục tự lưu sau mỗi lần sinh báo giá —"}
+                      </option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.ten}
+                          {p.don_gia ? ` · ${vnd(p.don_gia)} đ` : ""}
+                          {p.dvt ? ` / ${p.dvt}` : ""} · VAT {p.thue_suat}%
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+
+                  <datalist id="pl-products">
+                    {products.map((p) => (
+                      <option key={p.id} value={p.ten} />
+                    ))}
+                  </datalist>
+
+                  {missingUnitCount > 0 && (
+                    <InlineAlert tone="warning">
+                      Thiếu đơn vị tính ở {missingUnitCount} dòng — cần bổ sung trước khi lập biểu.
+                    </InlineAlert>
+                  )}
+
+                  <DataView
+                    mobileMode="scroll"
+                    empty={
+                      items.length === 0 ? (
+                        <EmptyState
+                          compact
+                          icon="package"
+                          title="Chưa có hạng mục"
+                          description="Chọn từ danh mục hoặc nhấn Thêm dòng để lập báo giá."
+                          action={
+                            <AppButton variant="secondary" size="sm" leftIcon="plus" onClick={addRow}>
+                              Thêm dòng
+                            </AppButton>
+                          }
+                        />
+                      ) : undefined
+                    }
+                    desktop={
+                      <table className="doc-table studio-line-table">
+                        <thead>
+                          <tr>
+                            <th>Tên hàng hóa / dịch vụ</th>
+                            <th className="col-unit">ĐVT</th>
+                            <th className="col-qty">SL</th>
+                            <th className="col-price">Đơn giá</th>
+                            <th className="col-amount">Thành tiền</th>
+                            <th className="col-vat">Thuế (%)</th>
+                            <th className="col-tax">Tiền thuế</th>
+                            <th className="col-act">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((it, i) => {
+                            const tt = Math.round(parseNum(it.so_luong) * parseNum(it.don_gia));
+                            const thue = Math.round((tt * parseNum(it.thue_suat)) / 100);
+                            const stock = it.ten.trim() ? stockByName.get(normName(it.ten)) : undefined;
+                            const du = stock ? stock.qty >= parseNum(it.so_luong) : false;
+                            return (
+                              <tr key={i}>
+                                <td>
+                                  <div className="ui-stack--xs">
+                                    <input
+                                      className="ui-input"
+                                      aria-label={`Tên hàng hóa dòng ${i + 1}`}
+                                      value={it.ten}
+                                      list="pl-products"
+                                      placeholder="gõ để gợi ý từ danh mục…"
+                                      onChange={(e) => setItem(i, "ten", e.target.value)}
+                                    />
+                                    {stock && (
+                                      <div>
+                                        <StatusBadge
+                                          size="sm"
+                                          tone={du ? "success" : "danger"}
+                                          dot
+                                          title={`Khả dụng tại ngày ${ngay.day}/${ngay.month}/${ngay.year} (báo giá không trừ kho)`}
+                                        >
+                                          Tồn ngày {ngay.day}/{ngay.month}: {stock.qty} {stock.dvt || "(thiếu ĐVT)"}
+                                        </StatusBadge>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td>
+                                  <input
+                                    aria-label={`Đơn vị tính dòng ${i + 1}`}
+                                    className={`ui-input${it.ten.trim() && !it.dvt.trim() ? " field-missing" : ""}`}
+                                    value={it.dvt}
+                                    placeholder={it.ten.trim() ? "Thiếu ĐVT" : ""}
+                                    onChange={(e) => setItem(i, "dvt", e.target.value)}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    aria-label={`Số lượng dòng ${i + 1}`}
+                                    className="ui-input ui-num"
+                                    value={it.so_luong}
+                                    onChange={(e) => setItem(i, "so_luong", e.target.value)}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    aria-label={`Đơn giá dòng ${i + 1}`}
+                                    className="ui-input ui-num"
+                                    value={it.don_gia}
+                                    onChange={(e) => setItem(i, "don_gia", e.target.value)}
+                                  />
+                                </td>
+                                <td className="ui-num">{vnd(tt)}</td>
+                                <td>
+                                  <select
+                                    aria-label={`Thuế suất dòng ${i + 1}`}
+                                    className="ui-select"
+                                    value={it.thue_suat}
+                                    onChange={(e) => setItem(i, "thue_suat", e.target.value)}
+                                  >
+                                    {!VAT_RATES.includes(it.thue_suat) && (
+                                      <option value={it.thue_suat}>{it.thue_suat}%</option>
+                                    )}
+                                    {VAT_RATES.map((r) => (
+                                      <option key={r} value={r}>
+                                        {r}%
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="ui-num">{vnd(thue)}</td>
+                                <td>
+                                  <AppButton
+                                    variant="ghost"
+                                    size="sm"
+                                    iconOnly
+                                    leftIcon="trash"
+                                    aria-label={`Xóa dòng ${i + 1}`}
+                                    onClick={() => setItems(items.filter((_, j) => j !== i))}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    }
+                  />
+
+                  {isBbnt ? (
+                    <InlineAlert tone="info">
+                      BBNT không in giá — chỉ dùng tên hạng mục, ĐVT và số lượng.
+                    </InlineAlert>
+                  ) : (
+                    <div className="ui-totals-grid">
+                      <div className="ui-total-cell">
+                        <span>Cộng tiền hàng</span>
+                        <strong>{vnd(totals.truocThue)} đ</strong>
+                      </div>
+                      <div className="ui-total-cell">
+                        <span>Thuế GTGT</span>
+                        <strong>{vnd(totals.thue)} đ</strong>
+                      </div>
+                      <div className="ui-total-cell is-grand">
+                        <span>TỔNG THANH TOÁN</span>
+                        <strong>{vnd(totals.tong)} đ</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+
+              {isBbnt && (
+                <SectionCard title="Biên bản nghiệm thu" icon="clipboard-check">
+                  <div className="ui-stack--sm">
+                    <FormField label="Ghi chú in trên từng hạng mục" htmlFor="q-bbnt-note">
+                      <input
+                        id="q-bbnt-note"
+                        className="ui-input"
+                        value={bbntGhiChu}
+                        onChange={(e) => setBbntGhiChu(e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="Điều kiện bảo hành / điều khoản" htmlFor="q-bbnt-terms">
+                      <textarea
+                        id="q-bbnt-terms"
+                        className="ui-textarea"
+                        rows={5}
+                        placeholder="Để trống = dùng điều kiện bảo hành mặc định của INUT (1 năm 1 đổi 1, loại trừ hư hỏng do vận hành sai, hỏa hoạn, tự ý sửa chữa…)"
+                        value={bbntDieuKhoan}
+                        onChange={(e) => setBbntDieuKhoan(e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                </SectionCard>
+              )}
+
+              {isDntt && (
+                <SectionCard title="Đề nghị thanh toán" icon="wallet">
+                  <div className="ui-stack--sm">
+                    <FormGrid cols={2}>
+                      <FormField label="Loại thanh toán" htmlFor="q-loai-tt">
+                        <select
+                          id="q-loai-tt"
+                          className="ui-select"
+                          value={loaiTt}
+                          onChange={(e) => setLoaiTt(e.target.value as typeof loaiTt)}
+                        >
+                          <option value="toan_bo">Thanh toán toàn bộ</option>
+                          <option value="co_coc">Đã đặt cọc — thanh toán phần còn lại</option>
+                          <option value="nhieu_phan">Thanh toán nhiều đợt</option>
+                        </select>
+                      </FormField>
+                      <FormField label="Căn cứ (tùy chọn)" htmlFor="q-can-cu">
+                        <input
+                          id="q-can-cu"
+                          className="ui-input"
+                          placeholder="vd: theo hợp đồng số 01/2026/HĐKT"
+                          value={canCu}
+                          onChange={(e) => setCanCu(e.target.value)}
+                        />
+                      </FormField>
+                      {(loaiTt === "co_coc" || loaiTt === "nhieu_phan") && (
+                        <FormField label="Số tiền đã đặt cọc" htmlFor="q-tien-coc">
+                          <input id="q-tien-coc" className="ui-input" value={tienCoc} onChange={(e) => setTienCoc(e.target.value)} />
+                        </FormField>
+                      )}
+                      {loaiTt === "nhieu_phan" && (
+                        <>
+                          <FormField label="Đã thanh toán các đợt trước" htmlFor="q-da-tt">
+                            <input id="q-da-tt" className="ui-input" value={daThanhToan} onChange={(e) => setDaThanhToan(e.target.value)} />
+                          </FormField>
+                          <FormField label="Số tiền đợt này (trống = tự tính phần còn lại)" htmlFor="q-dot-nay">
+                            <input id="q-dot-nay" className="ui-input" value={soTienDotNay} onChange={(e) => setSoTienDotNay(e.target.value)} />
+                          </FormField>
+                          <FormField label="Đợt thứ" htmlFor="q-dot-thu">
+                            <input id="q-dot-thu" className="ui-input" value={dotThu} onChange={(e) => setDotThu(e.target.value)} />
+                          </FormField>
+                          <FormField label="Tổng số đợt" htmlFor="q-tong-dot">
+                            <input id="q-tong-dot" className="ui-input" value={tongSoDot} onChange={(e) => setTongSoDot(e.target.value)} />
+                          </FormField>
+                        </>
+                      )}
+                      <FormField label="Hạn thanh toán" htmlFor="q-han-tt">
+                        <input id="q-han-tt" className="ui-input" value={hanThanhToan} onChange={(e) => setHanThanhToan(e.target.value)} />
+                      </FormField>
+                    </FormGrid>
+                    <div className="ui-total-cell is-grand">
+                      <span>{loaiTt === "nhieu_phan" ? "SỐ TIỀN ĐỢT NÀY" : "CÒN LẠI CẦN THANH TOÁN"}</span>
+                      <strong>{vnd(conLai)} đ</strong>
+                    </div>
+                  </div>
+                </SectionCard>
+              )}
+
+              {!isBbnt && (
+                <SectionCard
+                  title="Thuyết minh (tùy chọn)"
+                  icon="sparkles"
+                  actions={
+                    <AppButton
+                      variant="secondary"
+                      size="sm"
+                      leftIcon="bot"
+                      loading={aiBusy}
+                      disabled={aiBusy || !aiInfo?.enabled || itemsPayload().length === 0}
+                      onClick={genNarrative}
+                      title={aiInfo?.enabled ? `Model: ${aiInfo.model}` : "Chưa cấu hình AI trong .env"}
+                    >
+                      {aiBusy ? "AI đang viết…" : "Sinh thuyết minh (AI)"}
+                    </AppButton>
+                  }
+                >
+                  <div className="ui-stack--sm">
+                    {aiInfo && !aiInfo.enabled && (
+                      <InlineAlert tone="info">
+                        Chưa cấu hình AI (đặt AI_ENABLED=true trong .env) để sinh thuyết minh tự động.
+                      </InlineAlert>
+                    )}
+                    <FormField label="Gợi ý thêm cho AI (tùy chọn)" htmlFor="q-ai-note">
+                      <input
+                        id="q-ai-note"
+                        className="ui-input"
+                        placeholder="vd: nhấn mạnh bảo hành 24 tháng, triển khai trong 2 tuần"
+                        value={aiNote}
+                        onChange={(e) => setAiNote(e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="Nội dung thuyết minh" htmlFor="q-narrative">
+                      <textarea
+                        id="q-narrative"
+                        className="ui-textarea"
+                        rows={5}
+                        placeholder="Đoạn giới thiệu/thuyết minh in trên chứng từ — có thể tự viết hoặc bấm nút AI rồi sửa lại."
+                        value={thuyetMinh}
+                        onChange={(e) => setThuyetMinh(e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                </SectionCard>
+              )}
+
+              {err && <InlineAlert tone="danger" onDismiss={() => setErr("")}>{err}</InlineAlert>}
+
+              <AppButton
+                variant="primary"
+                size="lg"
+                fullWidth
+                leftIcon="file-signature"
+                loading={busy}
+                disabled={busy || !benB.name || itemsPayload().length === 0}
+                onClick={generate}
+              >
+                {busy
+                  ? "Đang sinh…"
+                  : isDntt
+                    ? "Sinh Đề nghị thanh toán → Ký ngay"
+                    : isBbnt
+                      ? "Sinh Biên bản nghiệm thu → Ký ngay"
+                      : "Sinh Báo giá → Ký ngay"}
+              </AppButton>
             </div>
-          </div>
-        </div>
-      )}
-
-      {!isBbnt && (
-      <div className="panel">
-        <h3>Thuyết minh (tùy chọn)</h3>
-        <div className="grid2">
-          <label>
-            Gợi ý thêm cho AI (tùy chọn)
-            <input
-              placeholder="vd: nhấn mạnh bảo hành 24 tháng, triển khai trong 2 tuần"
-              value={aiNote}
-              onChange={(e) => setAiNote(e.target.value)}
-            />
-          </label>
-          <div style={{ alignSelf: "end" }}>
-            <button
-              disabled={aiBusy || !aiInfo?.enabled || itemsPayload().length === 0}
-              onClick={genNarrative}
-              title={aiInfo?.enabled ? `Model: ${aiInfo.model}` : "Chưa cấu hình AI trong .env"}
+          }
+          secondary={
+            <SectionCard
+              title="Xem trước PDF"
+              icon="eye"
+              padding="compact"
+              actions={
+                <StatusBadge tone={previewBusy ? "info" : "neutral"} size="sm">
+                  {previewBusy ? "Đang cập nhật…" : "Tự cập nhật khi sửa"}
+                </StatusBadge>
+              }
             >
-              {aiBusy ? "AI đang viết…" : "🤖 Sinh thuyết minh (AI)"}
-            </button>
-            {aiInfo && !aiInfo.enabled && (
-              <span className="muted"> Chưa cấu hình AI (đặt AI_ENABLED=true trong .env)</span>
-            )}
-          </div>
-        </div>
-        <textarea
-          rows={6}
-          placeholder="Đoạn giới thiệu/thuyết minh in trên chứng từ — có thể tự viết hoặc bấm nút AI rồi sửa lại."
-          value={thuyetMinh}
-          onChange={(e) => setThuyetMinh(e.target.value)}
+              <div className="ui-stack--sm">
+                {previewErr && <InlineAlert tone="danger">{previewErr}</InlineAlert>}
+                {previewUrl ? (
+                  <iframe
+                    className="ui-iframe-tall"
+                    src={previewUrl + "#toolbar=0&navpanes=0"}
+                    title="Xem trước PDF"
+                  />
+                ) : (
+                  <EmptyState
+                    compact
+                    icon="file-search"
+                    title="Đang tạo bản xem trước…"
+                    description="Bản PDF sẽ hiển thị tự động ngay sau khi nạp xong."
+                  />
+                )}
+              </div>
+            </SectionCard>
+          }
         />
-      </div>
       )}
 
-      {err && <div className="error">{err}</div>}
-      <button
-        className="primary"
-        disabled={busy || !benB.name || itemsPayload().length === 0}
-        onClick={generate}
-      >
-        {busy
-          ? "Đang sinh…"
-          : isDntt
-            ? "Sinh Đề nghị thanh toán → Ký ngay"
-            : isBbnt
-              ? "Sinh Biên bản nghiệm thu → Ký ngay"
-              : "Sinh Báo giá → Ký ngay"}
-      </button>
-      </div>
-
-      <div className="q-preview">
-        <div className="pv-head">
-          <b>👁️ Xem trước</b>
-          <span className="muted">
-            {previewBusy ? "Đang cập nhật…" : "tự cập nhật khi sửa"}
-          </span>
-        </div>
-        {previewErr && <div className="error">{previewErr}</div>}
-        {previewUrl ? (
-          <iframe src={previewUrl + "#toolbar=0&navpanes=0"} title="Xem trước PDF" />
-        ) : (
-          <div className="pv-empty">Đang tạo bản xem trước…</div>
-        )}
-      </div>
-        </div>
-      )}
       <PromptDialog
         open={newOrderPrompt !== null}
         title="Tạo đơn hàng mới"
@@ -1059,6 +1228,6 @@ export function CreateQuote({
         onConfirm={confirmNewOrder}
         onCancel={() => setNewOrderPrompt(null)}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -11,13 +11,36 @@ import {
 } from "../api";
 import { DateFilter, DateRange } from "../components/DateFilter";
 import { NegStockModal } from "../components/NegStockModal";
-import { AppModal, DataView, FormGrid, PromptDialog } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  AppModal,
+  DataView,
+  EmptyState,
+  FilterBar,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  MobileCard,
+  MobileCardActions,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  PageHeader,
+  PageShell,
+  PromptDialog,
+  StatusBadge,
+  TableSkeleton,
+  useConfirm,
+  useToast,
+} from "../components/ui";
 import { getParam, setParam } from "../util";
 import { openExternalSafe } from "../utils/url";
 
 function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
+
 function today(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -35,6 +58,9 @@ interface DraftLine {
 }
 
 export function Production() {
+  const toast = useToast();
+  const askConfirm = useConfirm();
+
   const [list, setList] = useState<InvProduction[]>([]);
   const [recipes, setRecipes] = useState<InvRecipe[]>([]);
   const [whs, setWhs] = useState<InvWarehouse[]>([]);
@@ -70,9 +96,7 @@ export function Production() {
     results: { id: number; ma_hang: string; ten: string; dvt: string }[];
   } | null>(null);
   const [addNvlQ, setAddNvlQ] = useState("");
-  const [addNvlResults, setAddNvlResults] = useState<
-    { id: number; ma_hang: string; ten: string; dvt: string }[]
-  >([]);
+  const [addNvlResults, setAddNvlResults] = useState<{ id: number; ma_hang: string; ten: string; dvt: string }[]>([]);
   const [newOutputModal, setNewOutputModal] = useState<{ ma: string; ten: string } | null>(null);
   const [recipePrompt, setRecipePrompt] = useState<{
     mode: "create" | "view";
@@ -84,21 +108,28 @@ export function Production() {
 
   async function load() {
     try {
-      setList(await api.invProductions("", dateRange));
-      setRecipes(await api.invRecipes());
+      const [prods, recs] = await Promise.all([api.invProductions("", dateRange), api.invRecipes()]);
+      setList(Array.isArray(prods) ? prods : []);
+      setRecipes(Array.isArray(recs) ? recs : []);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setListLoaded(true);
     }
   }
+
   useEffect(() => {
-    api.invWarehouses().then(setWhs).catch(() => {});
+    api
+      .invWarehouses()
+      .then((rows) => setWhs(Array.isArray(rows) ? rows : []))
+      .catch(() => {});
   }, []);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.tu, dateRange.den]);
+
   // F5 giu context: sau khi list load lan dau, tu mo lai lenh theo ?lsx=<production_id>
   useEffect(() => {
     if (!listLoaded || autoLsxRef.current) return;
@@ -110,11 +141,12 @@ export function Production() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listLoaded]);
+
   useEffect(() => {
     if (!creating) return;
     api
       .invAvailability(ngay)
-      .then((r) => setAvail(r.rows))
+      .then((r) => setAvail(Array.isArray(r.rows) ? r.rows : []))
       .catch((e) => setErr((e as Error).message));
   }, [creating, ngay]);
 
@@ -238,6 +270,7 @@ export function Production() {
       const it = await api.invCreateItem({ ma_hang: ma, ten, dvt: "Bộ" });
       addOutput(it);
       setNewOutputModal(null);
+      toast.success(`Đã tạo mã thành phẩm ${it.ma_hang}.`);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -292,7 +325,6 @@ export function Production() {
     if (mode === "create") {
       const out = lines.find((l) => l.chieu === "ra");
       if (!out) return;
-      // Chuan hoa ve "dinh muc cho 1 san pham": chia vat tu cho SL thanh pham.
       const perSp = out.so_luong || 1;
       try {
         await api.invRecipeCreate({
@@ -308,6 +340,7 @@ export function Production() {
             })),
         });
         setRecipes(await api.invRecipes());
+        toast.success(`Đã lưu công thức "${name}".`);
       } catch (e) {
         setErr((e as Error).message);
       }
@@ -329,7 +362,7 @@ export function Production() {
         })),
       });
       setRecipes(await api.invRecipes());
-      window.alert(`Đã lưu công thức "${name}" — lần sau chọn được ở "Đổi sang công thức khác".`);
+      toast.success(`Đã lưu công thức "${name}" — lần sau chọn được ở "Đổi sang công thức khác".`);
     } catch (e) {
       setErr((e as Error).message);
     }
@@ -375,6 +408,7 @@ export function Production() {
       if (shouldPost) {
         try {
           await api.invProductionPost(prod.id);
+          toast.success(`Đã ghi sổ lệnh sản xuất LSX#${prod.id}.`);
         } catch (e) {
           if (e instanceof NegStockError) {
             setNegModal({ violations: e.violations, prodId: prod.id });
@@ -385,6 +419,8 @@ export function Production() {
           }
           throw e;
         }
+      } else {
+        toast.success(`Đã lưu nháp lệnh sản xuất LSX#${prod.id}.`);
       }
       setCreating(false);
       resetCreateForm();
@@ -394,32 +430,98 @@ export function Production() {
     }
   }
 
+  async function handleRecalcCost() {
+    const ok = await askConfirm({
+      title: "Tính lại giá xuất kho",
+      message: "Tính lại giá xuất kho bình quân gia quyền cho toàn bộ sổ kho?",
+      confirmLabel: "Tính lại ngay",
+      tone: "warning",
+    });
+    if (!ok) return;
+    setErr("");
+    try {
+      const r = await api.invRecalcCost();
+      load();
+      toast.success(`Đã tính lại ${r.pairs} cặp (mặt hàng, kho).`);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function handleDeleteDraft(p: InvProduction) {
+    const ok = await askConfirm({
+      title: "Xóa lệnh sản xuất nháp",
+      message: `Xóa lệnh nháp ${p.so_ct || `LSX#${p.id}`}?`,
+      confirmLabel: "Xóa lệnh nháp",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await api.invProductionDelete(p.id);
+      toast.success(`Đã xóa lệnh nháp ${p.so_ct || `LSX#${p.id}`}.`);
+      load();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
+  async function handleCreateAndPost() {
+    if (over.length > 0) {
+      const ok = await askConfirm({
+        title: "Thiếu tồn khả dụng",
+        message: `Có ${over.length} mặt hàng không đủ tồn khả dụng. Bạn có chắc muốn tiếp tục ghi sổ sản xuất (cho phép duyệt âm kho)?`,
+        confirmLabel: "Tiếp tục ghi sổ",
+        tone: "warning",
+      });
+      if (!ok) return;
+    }
+    await saveOrder(true);
+  }
+
   function openView(prod: InvProduction) {
     setErr("");
     setView(prod);
     setParam("lsx", String(prod.id));
     if (prod.status === "draft") {
-      api.invAvailability(prod.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
+      api
+        .invAvailability(prod.ngay)
+        .then((r) => setViewAvail(Array.isArray(r.rows) ? r.rows : []))
+        .catch(() => {});
     }
   }
+
   function closeView() {
     setView(null);
     setParam("lsx", null);
   }
+
   function patchViewLine(lineId: number, patch: Partial<InvProductionLine>) {
     setView((v) => (v ? { ...v, lines: v.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l)) } : v));
   }
+
   function khaDungFor(itemId: number, warehouseId: number): number {
     return viewAvail.find((r) => r.item_id === itemId && r.warehouse_id === warehouseId)?.kha_dung ?? 0;
   }
+
   async function viewVoid() {
-    if (!view || !window.confirm(`Hủy ghi sổ LSX#${view.id} để sửa? Tồn kho sẽ tính lại.`)) return;
+    if (!view) return;
+    const ok = await askConfirm({
+      title: "Hủy ghi sổ lệnh sản xuất",
+      message: `Hủy ghi sổ LSX#${view.id} để sửa? Tồn kho sẽ được tính lại.`,
+      confirmLabel: "Hủy ghi sổ",
+      tone: "danger",
+    });
+    if (!ok) return;
     setViewBusy(true);
     setErr("");
     try {
       const updated = await api.invProductionVoid(view.id);
       setView(updated);
-      api.invAvailability(updated.ngay).then((r) => setViewAvail(r.rows)).catch(() => {});
+      api
+        .invAvailability(updated.ngay)
+        .then((r) => setViewAvail(Array.isArray(r.rows) ? r.rows : []))
+        .catch(() => {});
+      toast.info(`Đã hủy ghi sổ LSX#${view.id}.`);
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -427,6 +529,7 @@ export function Production() {
       setViewBusy(false);
     }
   }
+
   async function viewSave(): Promise<InvProduction | null> {
     if (!view) return null;
     return api.invProductionSave(view.id, {
@@ -447,19 +550,23 @@ export function Production() {
         warehouse_id: l.warehouse_id,
         so_luong: l.so_luong,
         don_gia_tam: l.don_gia_tam || 0,
-        lot_number: l.lot_number || (l.chieu === "ra" ? (view.lot_number || "") : ""),
-        serial_numbers: l.serial_numbers || (l.chieu === "ra" ? (view.serial_numbers || "") : ""),
+        lot_number: l.lot_number || (l.chieu === "ra" ? view.lot_number || "" : ""),
+        serial_numbers: l.serial_numbers || (l.chieu === "ra" ? view.serial_numbers || "" : ""),
         note: l.note || "",
         orig_item_id: l.orig_item_id,
       })),
     });
   }
+
   async function doViewSave() {
     setViewBusy(true);
     setErr("");
     try {
       const updated = await viewSave();
-      if (updated) setView(updated);
+      if (updated) {
+        setView(updated);
+        toast.success("Đã lưu lệnh sản xuất.");
+      }
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -467,6 +574,7 @@ export function Production() {
       setViewBusy(false);
     }
   }
+
   async function doViewPost() {
     setViewBusy(true);
     setErr("");
@@ -475,6 +583,7 @@ export function Production() {
       if (saved) {
         const posted = await api.invProductionPost(saved.id);
         setView(posted);
+        toast.success(`Đã ghi sổ lệnh sản xuất ${posted.so_ct || `LSX#${posted.id}`}.`);
         load();
       }
     } catch (e) {
@@ -487,6 +596,7 @@ export function Production() {
       setViewBusy(false);
     }
   }
+
   // User da nhap ly do -> ghi so LSX kem override_reason (chap nhan am kho NVL)
   async function confirmNegPost(reason: string) {
     if (!negModal) return;
@@ -496,6 +606,7 @@ export function Production() {
       const posted = await api.invProductionPost(negModal.prodId, reason);
       setView(posted);
       setNegModal(null);
+      toast.success("Đã ghi sổ lệnh sản xuất (có duyệt âm kho).");
       load();
     } catch (e) {
       setErr((e as Error).message);
@@ -504,7 +615,6 @@ export function Production() {
     }
   }
 
-  // Doi mot dong NVL cu (vd het thẻ nhớ model cu) sang mot ma khac — giu nguyen SL.
   async function searchSwap(lineId: number, q: string) {
     setSwapSearch({ lineId, q, results: swapSearch?.lineId === lineId ? swapSearch.results : [] });
     if (q.trim().length >= 2) {
@@ -515,6 +625,7 @@ export function Production() {
       }
     }
   }
+
   function swapViewLine(lineId: number, it: { id: number; ma_hang: string; ten: string; dvt: string }) {
     setView((v) =>
       v
@@ -524,7 +635,10 @@ export function Production() {
               l.id === lineId
                 ? {
                     ...l,
-                    item_id: it.id, ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt,
+                    item_id: it.id,
+                    ma_hang: it.ma_hang,
+                    ten: it.ten,
+                    dvt: it.dvt,
                     orig_item_id: l.orig_item_id ?? l.item_id,
                     note: `Thay hàng do hết mã gốc — đổi sang ${it.ma_hang}`,
                   }
@@ -535,7 +649,7 @@ export function Production() {
     );
     setSwapSearch(null);
   }
-  // Them 1 dong NVL MOI vao LSX dang nhap (vd BOM thieu "hop nhom" chua co san).
+
   async function searchAddNvl(q: string) {
     setAddNvlQ(q);
     if (q.trim().length >= 2) {
@@ -546,19 +660,20 @@ export function Production() {
       }
     } else setAddNvlResults([]);
   }
+
   async function addViewConsume(it: { id: number; ma_hang: string; ten: string; dvt: string }) {
     if (!view) return;
     if (view.lines.some((l) => l.chieu === "vao" && l.item_id === it.id)) {
       setAddNvlQ("");
       setAddNvlResults([]);
-      return; // da co dong nay roi, khong them trung
+      return;
     }
     let warehouseId = whs.find((w) => w.code === "HH")?.id ?? 1;
     try {
       const c = await api.invItemCost(it.id, view.ngay);
       if (c.warehouse_id != null) warehouseId = c.warehouse_id;
     } catch {
-      /* ignore — mac dinh kho HH, sua tay duoc sau */
+      /* ignore */
     }
     setView((v) =>
       v
@@ -590,11 +705,18 @@ export function Production() {
     setAddNvlQ("");
     setAddNvlResults([]);
   }
-  function removeViewLine(lineId: number) {
-    setView((v) => (v ? { ...v, lines: v.lines.filter((l) => l.id !== lineId) } : v));
+
+  async function confirmRemoveViewLine(l: InvProductionLine) {
+    const ok = await askConfirm({
+      title: "Xóa dòng vật tư",
+      message: `Xóa dòng "${l.ma_hang} · ${l.ten}" khỏi lệnh sản xuất?`,
+      confirmLabel: "Xóa dòng",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setView((v) => (v ? { ...v, lines: v.lines.filter((x) => x.id !== l.id) } : v));
   }
-  // Ap 1 cong thuc (BOM) KHAC len LSX dang nhap co san — giu nguyen SL thanh pham,
-  // thay toan bo dong tieu hao theo cong thuc moi (dung khi BOM cu het NVL).
+
   function applyRecipeToView(r: InvRecipe) {
     if (!view) return;
     const out = vOutputs[0];
@@ -622,6 +744,7 @@ export function Production() {
       v ? { ...v, recipe_id: r.id, lines: [...consume, ...v.lines.filter((l) => l.chieu === "ra")] } : v,
     );
   }
+
   function saveRecipeFromView() {
     if (!view) return;
     const out = vOutputs[0];
@@ -640,6 +763,7 @@ export function Production() {
     try {
       const updated = await api.invProductionDescribe(view.id);
       setView(updated);
+      toast.success("AI đã sinh mô tả lệnh sản xuất.");
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -657,7 +781,6 @@ export function Production() {
   const outputs = lines.filter((l) => l.chieu === "ra");
   const over = consumes.filter((l) => l.so_luong > l.kha_dung);
 
-  // Tinh toan gia thanh cho modal xem (LSX)
   const vConsumes = view ? view.lines.filter((l) => l.chieu === "vao") : [];
   const vOutputs = view ? view.lines.filter((l) => l.chieu === "ra") : [];
   const nvlCost = vConsumes.reduce((s, l) => s + l.gia_tri, 0);
@@ -667,163 +790,178 @@ export function Production() {
   const giaBan = view?.gia_ban_du_kien || 0;
   const tiSuat = giaBan ? ((giaBan - giaThanhDv) / giaBan) * 100 : null;
   const hasDinhMuc = vConsumes.some((l) => l.so_luong_dinh_muc != null);
-  const nvlThieuGia =
-    view?.status === "posted" && vConsumes.some((l) => l.gia_tri === 0);
-  // BOM khac cho CUNG thanh pham (uu tien), fallback toan bo neu chua co BOM nao khac gan the.
+  const nvlThieuGia = view?.status === "posted" && vConsumes.some((l) => l.gia_tri === 0);
   const sameItemRecipes = recipes.filter((r) => r.output_item_id === vOutputs[0]?.item_id);
   const viewRecipeOptions = sameItemRecipes.length > 0 ? sameItemRecipes : recipes;
+  const activeFilterCount = dateRange.tu || dateRange.den ? 1 : 0;
 
   return (
-    <div className="docs-page">
-      <div className="docs-toolbar">
-        <h3>
-          Sản xuất <span className="count">{list.length}</span>
-        </h3>
-        <div className="tb-group">
-          <DateFilter value={dateRange} onChange={setDateRange} />
-          <button
-            className="btn-sm ghost"
-            title="Chạy lại bình quân gia quyền, khắc phục phiếu treo giá vốn"
-            onClick={async () => {
-              if (!window.confirm("Tính lại giá xuất kho cho toàn bộ sổ kho?")) return;
-              setErr("");
-              try {
-                const r = await api.invRecalcCost();
-                load();
-                window.alert(`Đã tính lại ${r.pairs} cặp (mặt hàng, kho).`);
-              } catch (e) {
-                setErr((e as Error).message);
-              }
-            }}
-          >
-            🔄 Tính lại giá xuất kho
-          </button>
-          <button className="btn-sm" onClick={() => setCreating(true)}>
-            ＋ Tạo lệnh sản xuất
-          </button>
-          <button
-            className="btn-sm ghost"
-            onClick={() =>
-              openExternalSafe(
-                api.invExportUrl("productions", "xlsx", { tu: dateRange.tu, den: dateRange.den }),
-              )
-            }
-          >
-            ⬇ Excel
-          </button>
-        </div>
-      </div>
-      {err && <div className="error">{err}</div>}
-      <p className="muted">
-        Gom nguyên vật liệu / hàng hóa → sản xuất thành phẩm. Giá thành thành phẩm = tổng giá vốn
-        vật tư tiêu hao (bình quân gia quyền tại ngày sản xuất).
-      </p>
-
-      <DataView
-        mobileMode="card"
-        desktop={
-          <div className="table-wrap">
-            <table className="dt">
-              <thead>
-                <tr>
-                  <th>Số CT</th>
-                  <th>Ngày</th>
-                  <th>Thành phẩm</th>
-                  <th>Số Lô / Serial</th>
-                  <th>Tiêu hao</th>
-                  <th style={{ textAlign: "right" }}>Giá thành</th>
-                  <th>Trạng thái</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((p) => {
-                  const outs = p.lines.filter((l) => l.chieu === "ra");
-                  const ins = p.lines.filter((l) => l.chieu === "vao");
-                  const outQ = outs.reduce((s, l) => s + l.so_luong, 0);
-                  const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
-                  const posted = p.status === "posted";
-                  const total = posted ? (p.tong_gia_thanh || cost) : p.tong_gia_thanh_uoc;
-                  const dv = posted ? (outQ ? total / outQ : 0) : p.gia_thanh_dv_uoc;
-                  return (
-                    <tr key={p.id} style={{ cursor: "pointer" }} title="Xem/sửa lệnh sản xuất" onClick={() => openView(p)}>
-                      <td className="muted nowrap">
-                        {p.so_ct || `LSX#${p.id}`}
-                        {p.sale_id != null && (
-                          <div className="chip gray sm" style={{ marginTop: 2 }}>
-                            🧾 HĐ bán #{p.sale_id}
-                          </div>
-                        )}
-                      </td>
-                      <td className="nowrap">{p.ngay}</td>
-                      <td>{outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ")}</td>
-                      <td className="nowrap">
-                        {p.lot_number && (
-                          <span className="chip gray sm" style={{ marginRight: 4 }} title={`Số lô: ${p.lot_number}`}>
-                            Lô: {p.lot_number}
-                          </span>
-                        )}
-                        {p.serial_numbers && (
-                          <span className="chip gray sm" title={`Serial: ${p.serial_numbers}`}>
-                            SN: {p.serial_numbers}
-                          </span>
-                        )}
-                        {!p.lot_number && !p.serial_numbers && <span className="muted">—</span>}
-                      </td>
-                      <td className="muted">{ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
-                      <td style={{ textAlign: "right" }} className="nowrap">
-                        {posted ? vnd(total) : <span className="muted">~{vnd(total)}</span>}
-                        {outQ > 1 && dv > 0 && (
-                          <div className="muted" style={{ fontSize: 11 }}>
-                            {posted ? "" : "~"}{vnd(dv)}/đv
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`chip sm ${p.status === "posted" ? "green" : "amber"}`}>
-                          {p.status === "posted" ? "Đã ghi sổ" : "Nháp"}
-                        </span>
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {p.status !== "posted" && (
-                          <button
-                            type="button"
-                            className="ui-btn-icon"
-                            title="Xóa lệnh nháp"
-                            onClick={async () => {
-                              if (!window.confirm(`Xóa lệnh nháp LSX#${p.id}?`)) return;
-                              await api.invProductionDelete(p.id);
-                              load();
-                            }}
-                          >
-                            🗑
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {list.length === 0 && (
-                  <tr>
-                    <td colSpan={8}>
-                      <div className="empty">
-                        <div className="empty-ic">🏭</div>
-                        <div>Chưa có lệnh sản xuất nào.</div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+    <PageShell data-page="production">
+      <PageHeader
+        variant="compact"
+        icon="factory"
+        title="Sản xuất"
+        subtitle="Gom nguyên vật liệu và hàng hóa để sản xuất thành phẩm theo giá vốn bình quân gia quyền."
+        actions={
+          <>
+            <AppButton
+              variant="secondary"
+              leftIcon="refresh"
+              title="Chạy lại bình quân gia quyền, khắc phục phiếu treo giá vốn"
+              onClick={handleRecalcCost}
+            >
+              Tính lại giá xuất kho
+            </AppButton>
+            <AppButton variant="primary" leftIcon="plus" onClick={() => setCreating(true)}>
+              Tạo lệnh sản xuất
+            </AppButton>
+          </>
         }
-        mobileCards={
-          list.length === 0 ? (
-            <div className="empty">
-              <div className="empty-ic">🏭</div>
-              <div>Chưa có lệnh sản xuất nào.</div>
+      />
+
+      <FilterBar
+        collapsibleMobile
+        activeCount={activeFilterCount}
+        onReset={() => setDateRange({ tu: "", den: "" })}
+        filters={<DateFilter value={dateRange} onChange={setDateRange} />}
+        actions={
+          <>
+            <StatusBadge tone="brand" size="sm">
+              {list.length} lệnh
+            </StatusBadge>
+            <AppButton
+              variant="ghost"
+              size="sm"
+              leftIcon="file-spreadsheet"
+              onClick={() =>
+                openExternalSafe(api.invExportUrl("productions", "xlsx", { tu: dateRange.tu, den: dateRange.den }))
+              }
+            >
+              Xuất Excel
+            </AppButton>
+          </>
+        }
+      />
+
+      {err && (
+        <InlineAlert tone="danger" onDismiss={() => setErr("")}>
+          {err}
+        </InlineAlert>
+      )}
+
+      {!listLoaded ? (
+        <TableSkeleton rows={6} cols={8} />
+      ) : (
+        <DataView
+          mobileMode="card"
+          empty={
+            list.length === 0 ? (
+              <EmptyState
+                icon="factory"
+                title="Chưa có lệnh sản xuất nào"
+                description='Bấm "Tạo lệnh sản xuất" để lập lệnh lắp ráp hoặc sản xuất thành phẩm mới.'
+                action={
+                  <AppButton variant="primary" leftIcon="plus" onClick={() => setCreating(true)}>
+                    Tạo lệnh sản xuất
+                  </AppButton>
+                }
+              />
+            ) : undefined
+          }
+          desktop={
+            <div className="ui-table-scroll-wrap" tabIndex={0}>
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th>Số CT</th>
+                    <th>Ngày</th>
+                    <th>Thành phẩm</th>
+                    <th>Số Lô / Serial</th>
+                    <th>Tiêu hao</th>
+                    <th className="num">Giá thành</th>
+                    <th>Trạng thái</th>
+                    <th className="ui-col-chk"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((p) => {
+                    const outs = p.lines.filter((l) => l.chieu === "ra");
+                    const ins = p.lines.filter((l) => l.chieu === "vao");
+                    const outQ = outs.reduce((s, l) => s + l.so_luong, 0);
+                    const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
+                    const posted = p.status === "posted";
+                    const total = posted ? p.tong_gia_thanh || cost : p.tong_gia_thanh_uoc;
+                    const dv = posted ? (outQ ? total / outQ : 0) : p.gia_thanh_dv_uoc;
+                    return (
+                      <tr
+                        key={p.id}
+                        className="ui-clickable"
+                        title="Xem/sửa lệnh sản xuất"
+                        onClick={() => openView(p)}
+                      >
+                        <td className="nowrap">
+                          <strong>{p.so_ct || `LSX#${p.id}`}</strong>
+                          {p.sale_id != null && (
+                            <div className="ui-mt-2">
+                              <StatusBadge tone="neutral" size="sm" icon="receipt">
+                                HĐ bán #{p.sale_id}
+                              </StatusBadge>
+                            </div>
+                          )}
+                        </td>
+                        <td className="nowrap">{p.ngay}</td>
+                        <td>{outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ")}</td>
+                        <td className="nowrap">
+                          <div className="ui-row">
+                            {p.lot_number && (
+                              <StatusBadge tone="neutral" size="sm" title={`Số lô: ${p.lot_number}`}>
+                                Lô: {p.lot_number}
+                              </StatusBadge>
+                            )}
+                            {p.serial_numbers && (
+                              <StatusBadge tone="neutral" size="sm" title={`Serial: ${p.serial_numbers}`}>
+                                SN: {p.serial_numbers}
+                              </StatusBadge>
+                            )}
+                            {!p.lot_number && !p.serial_numbers && <span className="muted">—</span>}
+                          </div>
+                        </td>
+                        <td className="muted">{ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}</td>
+                        <td className="num nowrap">
+                          {posted ? vnd(total) : <span className="muted">~{vnd(total)}</span>}
+                          {outQ > 1 && dv > 0 && (
+                            <div className="muted">
+                              {posted ? "" : "~"}
+                              {vnd(dv)}/đv
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <StatusBadge tone={posted ? "success" : "warning"} size="sm">
+                            {posted ? "Đã ghi sổ" : "Nháp"}
+                          </StatusBadge>
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {!posted && (
+                            <AppButton
+                              variant="ghost"
+                              size="sm"
+                              iconOnly
+                              leftIcon="trash"
+                              aria-label={`Xóa lệnh nháp ${p.so_ct || `LSX#${p.id}`}`}
+                              title="Xóa lệnh nháp"
+                              onClick={() => handleDeleteDraft(p)}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          ) : (
+          }
+          mobileCards={
             <div className="ui-mobile-card-list">
               {list.map((p) => {
                 const outs = p.lines.filter((l) => l.chieu === "ra");
@@ -831,71 +969,85 @@ export function Production() {
                 const outQ = outs.reduce((s, l) => s + l.so_luong, 0);
                 const cost = outs.reduce((s, l) => s + l.gia_tri, 0);
                 const posted = p.status === "posted";
-                const total = posted ? (p.tong_gia_thanh || cost) : p.tong_gia_thanh_uoc;
+                const total = posted ? p.tong_gia_thanh || cost : p.tong_gia_thanh_uoc;
                 const dv = posted ? (outQ ? total / outQ : 0) : p.gia_thanh_dv_uoc;
                 return (
-                  <div key={p.id} className="ui-mobile-card" onClick={() => openView(p)}>
-                    <div className="ui-mobile-card-head">
-                      <div>
-                        <div className="ui-mobile-card-title">{p.so_ct || `LSX#${p.id}`}</div>
-                        <div className="ui-mobile-card-meta">{p.ngay}</div>
-                      </div>
-                      <span className={`chip sm ${posted ? "green" : "amber"}`}>
-                        {posted ? "Đã ghi sổ" : "Nháp"}
-                      </span>
-                    </div>
-                    <div className="ui-mobile-card-body">
-                      <div>
-                        <strong>Thành phẩm:</strong>{" "}
-                        {outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ") || "—"}
-                      </div>
+                  <MobileCard key={p.id}>
+                    <MobileCardHeader
+                      title={p.so_ct || `LSX#${p.id}`}
+                      subtitle={p.ngay}
+                      badge={
+                        <StatusBadge tone={posted ? "success" : "warning"} size="sm">
+                          {posted ? "Đã ghi sổ" : "Nháp"}
+                        </StatusBadge>
+                      }
+                    />
+                    <MobileCardGrid>
+                      <MobileCardRow
+                        label="Thành phẩm"
+                        value={outs.map((l) => `${l.ma_hang || l.ten}×${l.so_luong}`).join(", ") || "—"}
+                        fullWidth
+                      />
                       {ins.length > 0 && (
-                        <div className="muted">
-                          Tiêu hao: {ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
-                        </div>
+                        <MobileCardRow
+                          label="Tiêu hao"
+                          value={ins.map((l) => `${l.ma_hang}×${l.so_luong}`).join(", ")}
+                          fullWidth
+                        />
                       )}
-                      {(p.sale_id != null || p.lot_number || p.serial_numbers) && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                          {p.sale_id != null && <span className="chip gray sm">🧾 HĐ bán #{p.sale_id}</span>}
-                          {p.lot_number && <span className="chip gray sm">Lô: {p.lot_number}</span>}
-                          {p.serial_numbers && <span className="chip gray sm">SN: {p.serial_numbers}</span>}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6 }}>
-                        <span className="muted">Giá thành</span>
-                        <strong>
-                          {posted ? vnd(total) : `~${vnd(total)}`} đ
-                          {outQ > 1 && dv > 0 ? ` (${posted ? "" : "~"}${vnd(dv)}/đv)` : ""}
-                        </strong>
+                      <MobileCardRow
+                        label="Giá thành"
+                        value={`${posted ? vnd(total) : `~${vnd(total)}`} đ${outQ > 1 && dv > 0 ? ` (${posted ? "" : "~"}${vnd(dv)}/đv)` : ""}`}
+                        mono
+                        fullWidth
+                      />
+                    </MobileCardGrid>
+                    {(p.sale_id != null || p.lot_number || p.serial_numbers) && (
+                      <div className="ui-row">
+                        {p.sale_id != null && (
+                          <StatusBadge tone="neutral" size="sm" icon="receipt">
+                            HĐ bán #{p.sale_id}
+                          </StatusBadge>
+                        )}
+                        {p.lot_number && (
+                          <StatusBadge tone="neutral" size="sm">
+                            Lô: {p.lot_number}
+                          </StatusBadge>
+                        )}
+                        {p.serial_numbers && (
+                          <StatusBadge tone="neutral" size="sm">
+                            SN: {p.serial_numbers}
+                          </StatusBadge>
+                        )}
                       </div>
+                    )}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <MobileCardActions>
+                        <AppButton variant="secondary" size="sm" leftIcon="eye" onClick={() => openView(p)}>
+                          Xem / Sửa
+                        </AppButton>
+                        {!posted && (
+                          <AppButton
+                            variant="ghost"
+                            size="sm"
+                            iconOnly
+                            leftIcon="trash"
+                            aria-label={`Xóa lệnh nháp ${p.so_ct || `LSX#${p.id}`}`}
+                            title="Xóa lệnh nháp"
+                            onClick={() => handleDeleteDraft(p)}
+                          />
+                        )}
+                      </MobileCardActions>
                     </div>
-                    <div className="ui-mobile-card-actions" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="ui-btn-chip" onClick={() => openView(p)}>
-                        Xem / Sửa
-                      </button>
-                      {!posted && (
-                        <button
-                          type="button"
-                          className="ui-btn-icon"
-                          title="Xóa lệnh nháp"
-                          onClick={async () => {
-                            if (!window.confirm(`Xóa lệnh nháp LSX#${p.id}?`)) return;
-                            await api.invProductionDelete(p.id);
-                            load();
-                          }}
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  </MobileCard>
                 );
               })}
             </div>
-          )
-        }
-      />
+          }
+        />
+      )}
 
+      {/* Create Production Modal */}
       <AppModal
         open={creating}
         onClose={() => setCreating(false)}
@@ -903,359 +1055,407 @@ export function Production() {
         size="full"
         footer={
           <>
-            <button type="button" disabled={outputs.length === 0 || consumes.length === 0} onClick={saveRecipe}>
-              💾 Lưu công thức
-            </button>
-            <button type="button" onClick={() => setCreating(false)}>Hủy</button>
-            <button
-              type="button"
+            <AppButton
+              variant="secondary"
+              leftIcon="bookmark"
+              disabled={outputs.length === 0 || consumes.length === 0}
+              onClick={saveRecipe}
+            >
+              Lưu công thức
+            </AppButton>
+            <AppButton variant="secondary" onClick={() => setCreating(false)}>
+              Hủy
+            </AppButton>
+            <AppButton
+              variant="secondary"
+              leftIcon="save"
               disabled={outputs.length === 0 || consumes.length === 0 || lines.some((l) => l.so_luong <= 0)}
               onClick={() => saveOrder(false)}
               title="Lưu lệnh sản xuất ở trạng thái nháp (chưa trừ tồn kho)"
             >
-              💾 Lưu nháp
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={
-                outputs.length === 0 ||
-                consumes.length === 0 ||
-                lines.some((l) => l.so_luong <= 0)
-              }
-              onClick={() => {
-                if (over.length > 0) {
-                  if (window.confirm(`Có ${over.length} mặt hàng không đủ tồn khả dụng.\n\nBạn có chắc muốn tiếp tục ghi sổ sản xuất (cho phép duyệt âm kho)?`)) {
-                    saveOrder(true);
-                  }
-                } else {
-                  saveOrder(true);
-                }
-              }}
+              Lưu nháp
+            </AppButton>
+            <AppButton
+              variant="primary"
+              leftIcon="check-circle"
+              disabled={outputs.length === 0 || consumes.length === 0 || lines.some((l) => l.so_luong <= 0)}
+              onClick={handleCreateAndPost}
             >
-              ✅ Ghi sổ sản xuất
-            </button>
+              Ghi sổ sản xuất
+            </AppButton>
           </>
         }
       >
-        <FormGrid cols={recipes.length > 0 ? 3 : 2}>
-          <label>
-            Ngày
-            <input className="ui-input" type="date" value={ngay} onChange={(e) => setNgay(e.target.value)} />
-          </label>
-          <label>
-            Ghi chú
-            <input className="ui-input" value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
-          {recipes.length > 0 && (
-            <label>
-              Áp công thức
-              <select
-                className="ui-select"
-                value={recipeId ?? ""}
-                onChange={(e) => {
-                  const r = recipes.find((x) => x.id === Number(e.target.value));
-                  if (r) applyRecipe(r);
-                }}
-              >
-                <option value="">— chọn —</option>
-                {recipes.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </FormGrid>
-        <FormGrid cols={3} style={{ marginTop: 8 }}>
-          <label>
-            CP nhân công (622)
-            <input
-              className="ui-input"
-              style={{ textAlign: "right" }}
-              type="number"
-              min={0}
-              value={cpNhanCong}
-              onChange={(e) => setCpNhanCong(Number(e.target.value) || 0)}
-            />
-          </label>
-          <label>
-            CP SX chung (627)
-            <input
-              className="ui-input"
-              style={{ textAlign: "right" }}
-              type="number"
-              min={0}
-              value={cpSxc}
-              onChange={(e) => setCpSxc(Number(e.target.value) || 0)}
-            />
-          </label>
-          <label>
-            Giá bán dự kiến (/đvị TP)
-            <input
-              className="ui-input"
-              style={{ textAlign: "right" }}
-              type="number"
-              min={0}
-              value={giaBanDuKien}
-              onChange={(e) => setGiaBanDuKien(Number(e.target.value) || 0)}
-            />
-          </label>
-        </FormGrid>
+        <div className="ui-stack">
+          <FormGrid cols={recipes.length > 0 ? 3 : 2}>
+            <FormField label="Ngày" htmlFor="prod-create-date">
+              <input
+                id="prod-create-date"
+                className="ui-input"
+                type="date"
+                value={ngay}
+                onChange={(e) => setNgay(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Ghi chú" htmlFor="prod-create-note">
+              <input
+                id="prod-create-note"
+                className="ui-input"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </FormField>
+            {recipes.length > 0 && (
+              <FormField label="Áp công thức" htmlFor="prod-create-recipe">
+                <select
+                  id="prod-create-recipe"
+                  className="ui-select"
+                  value={recipeId ?? ""}
+                  onChange={(e) => {
+                    const r = recipes.find((x) => x.id === Number(e.target.value));
+                    if (r) applyRecipe(r);
+                  }}
+                >
+                  <option value="">— chọn —</option>
+                  {recipes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            )}
+          </FormGrid>
 
-        <h4>Thành phẩm (nhập kho TP)</h4>
-        {outputs.map((l) => (
-          <div key={l.item_id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-            <b>{l.label}</b> · SL:{" "}
-            <input
-              className="ui-input"
-              style={{ width: 96, textAlign: "right" }}
-              type="number"
-              min={0}
-              value={l.so_luong}
-              onChange={(e) => {
-                const v = Number(e.target.value) || 0;
-                updateOutputQty(v);
-              }}
-            />{" "}
-            <button type="button" className="ui-btn-icon" onClick={() => setLines(lines.filter((x) => x !== l))}>
-              ✕
-            </button>
-          </div>
-        ))}
-        {outputs.length === 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <input
-              className="ui-input"
-              placeholder="🔍 tìm mã/tên thành phẩm…"
-              value={outQ}
-              onChange={(e) => searchOutput(e.target.value)}
-            />
-            {outResults.slice(0, 5).map((it) => (
-              <div key={it.id}>
-                <button type="button" className="ui-btn-chip" onClick={() => addOutput(it)}>
-                  {it.ma_hang} · {it.ten.slice(0, 50)}
-                </button>
+          <FormGrid cols={3}>
+            <FormField label="CP nhân công (622)" htmlFor="prod-create-nc">
+              <input
+                id="prod-create-nc"
+                className="ui-input ui-num"
+                type="number"
+                min={0}
+                value={cpNhanCong}
+                onChange={(e) => setCpNhanCong(Number(e.target.value) || 0)}
+              />
+            </FormField>
+            <FormField label="CP SX chung (627)" htmlFor="prod-create-sxc">
+              <input
+                id="prod-create-sxc"
+                className="ui-input ui-num"
+                type="number"
+                min={0}
+                value={cpSxc}
+                onChange={(e) => setCpSxc(Number(e.target.value) || 0)}
+              />
+            </FormField>
+            <FormField label="Giá bán dự kiến (/đvị TP)" htmlFor="prod-create-price">
+              <input
+                id="prod-create-price"
+                className="ui-input ui-num"
+                type="number"
+                min={0}
+                value={giaBanDuKien}
+                onChange={(e) => setGiaBanDuKien(Number(e.target.value) || 0)}
+              />
+            </FormField>
+          </FormGrid>
+
+          <div>
+            <h4 className="ui-subhead ui-mt-4">
+              <AppIcon name="package" size={16} />
+              <span>Thành phẩm (nhập kho TP)</span>
+            </h4>
+            {outputs.map((l) => (
+              <div key={l.item_id} className="ui-row ui-mb-2">
+                <b>{l.label}</b>
+                <span>· SL:</span>
+                <input
+                  className="ui-input ui-input-qty"
+                  type="number"
+                  min={0}
+                  value={l.so_luong}
+                  onChange={(e) => updateOutputQty(Number(e.target.value) || 0)}
+                />
+                <AppButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  leftIcon="x"
+                  aria-label="Xóa thành phẩm"
+                  onClick={() => setLines(lines.filter((x) => x !== l))}
+                />
               </div>
             ))}
-            <div>
-              <button type="button" className="btn-sm" onClick={createOutputItem}>
-                ＋ Tạo mã thành phẩm mới
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Batch/Lot and Serial Number Tracking (R3) */}
-        {outputs.length > 0 && (
-          <FormGrid
-            cols={4}
-            style={{
-              marginTop: 8,
-              padding: "10px 12px",
-              background: "var(--surface-subtle)",
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-            }}
-          >
-            <label>
-              Số Lô (Lot/Batch)
-              <input
-                className="ui-input"
-                placeholder="vd: LO-202608-01"
-                value={lotNumber}
-                onChange={(e) => setLotNumber(e.target.value)}
-              />
-            </label>
-            <label>
-              Số Serial
-              <input
-                className="ui-input"
-                placeholder="vd: SN001, SN002..."
-                value={serialNumbers}
-                onChange={(e) => setSerialNumbers(e.target.value)}
-              />
-            </label>
-            <label>
-              Ngày sản xuất (NSX)
-              <input
-                className="ui-input"
-                type="date"
-                value={mfgDate}
-                onChange={(e) => setMfgDate(e.target.value)}
-              />
-            </label>
-            <label>
-              Hạn dùng (HSD)
-              <input
-                className="ui-input"
-                type="date"
-                value={expDate}
-                onChange={(e) => setExpDate(e.target.value)}
-              />
-            </label>
-          </FormGrid>
-        )}
-
-        <h4>Vật tư tiêu hao</h4>
-        {consumes.length > 0 && (
-          <DataView
-            mobileMode="scroll"
-            desktop={
-              <div className="table-wrap">
-                <table className="dt">
-                  <tbody>
-                    {consumes.map((l) => (
-                      <tr key={`${l.item_id}-${l.warehouse_id}`}>
-                        <td>{l.label}</td>
-                        <td style={{ textAlign: "right" }} className="muted">
-                          khả dụng {l.kha_dung} {l.dvt}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <input
-                            className="ui-input"
-                            style={{ width: 88, textAlign: "right" }}
-                            type="number"
-                            min={0}
-                            value={l.so_luong}
-                            onChange={(e) => {
-                              const v = Number(e.target.value) || 0;
-                              setLines(lines.map((x) => (x === l ? { ...x, so_luong: v } : x)));
-                            }}
-                          />
-                          {l.so_luong > l.kha_dung && <span className="chip red sm"> vượt!</span>}
-                        </td>
-                        <td style={{ textAlign: "right" }} title="Giá tạm tính khi NVL chưa có giá vốn">
-                          <input
-                            className="ui-input"
-                            style={{ width: 110, textAlign: "right" }}
-                            type="number"
-                            min={0}
-                            placeholder="giá tạm"
-                            value={l.don_gia_tam || 0}
-                            onChange={(e) => {
-                              const v = Number(e.target.value) || 0;
-                              setLines(lines.map((x) => (x === l ? { ...x, don_gia_tam: v } : x)));
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <button type="button" className="ui-btn-icon" onClick={() => setLines(lines.filter((x) => x !== l))}>
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {outputs.length === 0 && (
+              <div className="ui-stack--sm">
+                <input
+                  className="ui-input"
+                  placeholder="Tìm mã/tên thành phẩm…"
+                  value={outQ}
+                  onChange={(e) => searchOutput(e.target.value)}
+                />
+                {outResults.slice(0, 5).map((it) => (
+                  <div key={it.id}>
+                    <AppButton variant="secondary" size="sm" onClick={() => addOutput(it)}>
+                      {it.ma_hang} · {it.ten.slice(0, 50)}
+                    </AppButton>
+                  </div>
+                ))}
+                <div>
+                  <AppButton variant="secondary" size="sm" leftIcon="plus" onClick={createOutputItem}>
+                    Tạo mã thành phẩm mới
+                  </AppButton>
+                </div>
               </div>
-            }
-          />
-        )}
-        <input
-          className="search ui-input"
-          placeholder="🔍 Tìm vật tư khả dụng để thêm…"
-          value={pickQ}
-          onChange={(e) => setPickQ(e.target.value)}
-        />
-        <DataView
-          mobileMode="scroll"
-          desktop={
-            <div className="table-wrap" style={{ maxHeight: "25vh", overflow: "auto", marginTop: 6 }}>
-              <table className="dt">
-                <tbody>
-                  {pickable.slice(0, 30).map((r) => (
-                    <tr
-                      key={`${r.item_id}-${r.warehouse_id}`}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => addConsume(r)}
-                    >
-                      <td className="nowrap">{r.ma_hang}</td>
-                      <td>{r.ten}</td>
-                      <td>
-                        <span className="chip gray sm">{r.warehouse_code}</span>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        khả dụng <b>{r.kha_dung}</b> {r.dvt}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          }
-        />
+            )}
 
-        {/* Pre-Production Stock Shortage Summary Warning (R2/R4) */}
-        {over.length > 0 && (
-          <div className="warn-banner" style={{ marginTop: 10, borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber-soft)", padding: "10px 14px" }}>
-            <div style={{ fontWeight: "bold", color: "var(--amber)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-              <span>⚠️ Cảnh báo thiếu hụt vật tư trước khi sản xuất ({over.length} mặt hàng thiếu)</span>
-            </div>
+            {outputs.length > 0 && (
+              <FormGrid cols={4} className="ui-subpanel ui-subpanel--md ui-mt-2">
+                <FormField label="Số Lô (Lot/Batch)" htmlFor="prod-lot">
+                  <input
+                    id="prod-lot"
+                    className="ui-input"
+                    placeholder="vd: LO-202608-01"
+                    value={lotNumber}
+                    onChange={(e) => setLotNumber(e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Số Serial" htmlFor="prod-serial">
+                  <input
+                    id="prod-serial"
+                    className="ui-input"
+                    placeholder="vd: SN001, SN002..."
+                    value={serialNumbers}
+                    onChange={(e) => setSerialNumbers(e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Ngày sản xuất (NSX)" htmlFor="prod-mfg">
+                  <input
+                    id="prod-mfg"
+                    className="ui-input"
+                    type="date"
+                    value={mfgDate}
+                    onChange={(e) => setMfgDate(e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Hạn dùng (HSD)" htmlFor="prod-exp">
+                  <input
+                    id="prod-exp"
+                    className="ui-input"
+                    type="date"
+                    value={expDate}
+                    onChange={(e) => setExpDate(e.target.value)}
+                  />
+                </FormField>
+              </FormGrid>
+            )}
+          </div>
+
+          <div>
+            <h4 className="ui-subhead ui-mt-4">
+              <AppIcon name="wrench" size={16} />
+              <span>Vật tư tiêu hao</span>
+            </h4>
+            {consumes.length > 0 && (
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="ui-table-scroll-wrap ui-mb-2" tabIndex={0}>
+                    <table className="ui-table">
+                      <tbody>
+                        {consumes.map((l) => (
+                          <tr key={`${l.item_id}-${l.warehouse_id}`}>
+                            <td>{l.label}</td>
+                            <td className="num muted">
+                              khả dụng {l.kha_dung} {l.dvt}
+                            </td>
+                            <td className="num">
+                              <div className="ui-row-end">
+                                <input
+                                  className="ui-input ui-input-qty"
+                                  type="number"
+                                  min={0}
+                                  value={l.so_luong}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value) || 0;
+                                    setLines(lines.map((x) => (x === l ? { ...x, so_luong: v } : x)));
+                                  }}
+                                />
+                                {l.so_luong > l.kha_dung && (
+                                  <StatusBadge tone="danger" size="sm">
+                                    Vượt
+                                  </StatusBadge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="num" title="Giá tạm tính khi NVL chưa có giá vốn">
+                              <input
+                                className="ui-input ui-input-price"
+                                type="number"
+                                min={0}
+                                placeholder="giá tạm"
+                                value={l.don_gia_tam || 0}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value) || 0;
+                                  setLines(lines.map((x) => (x === l ? { ...x, don_gia_tam: v } : x)));
+                                }}
+                              />
+                            </td>
+                            <td className="col-act">
+                              <AppButton
+                                variant="ghost"
+                                size="sm"
+                                iconOnly
+                                leftIcon="x"
+                                aria-label="Xóa vật tư"
+                                onClick={() => setLines(lines.filter((x) => x !== l))}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
+            )}
+
+            <input
+              className="ui-input"
+              placeholder="Tìm vật tư khả dụng để thêm…"
+              value={pickQ}
+              onChange={(e) => setPickQ(e.target.value)}
+            />
+
             <DataView
               mobileMode="scroll"
               desktop={
-                <div className="table-wrap" style={{ maxHeight: "140px", overflow: "auto" }}>
-                  <table className="dt" style={{ fontSize: "12px", width: "100%" }}>
-                    <thead>
-                      <tr>
-                        <th>Vật tư</th>
-                        <th style={{ textAlign: "right" }}>Nhu cầu</th>
-                        <th style={{ textAlign: "right" }}>Khả dụng</th>
-                        <th style={{ textAlign: "right" }}>Thiếu hụt</th>
-                        <th>Trạng thái</th>
-                      </tr>
-                    </thead>
+                <div className="ui-table-scroll-wrap ui-scroll-sm ui-mt-2" tabIndex={0}>
+                  <table className="ui-table">
                     <tbody>
-                      {over.map((l) => {
-                        const deficit = Number(Math.max(0, l.so_luong - l.kha_dung).toFixed(4));
-                        const isRed = l.kha_dung <= 0;
-                        return (
-                          <tr key={`${l.item_id}-${l.warehouse_id}`}>
-                            <td>{l.label}</td>
-                            <td style={{ textAlign: "right" }}>{l.so_luong} {l.dvt}</td>
-                            <td style={{ textAlign: "right" }}>{l.kha_dung} {l.dvt}</td>
-                            <td style={{ textAlign: "right", color: "var(--red)", fontWeight: "bold" }}>-{deficit} {l.dvt}</td>
-                            <td>
-                              <span className={`chip sm ${isRed ? "red" : "amber"}`}>
-                                {isRed ? "🔴 Hết hàng" : "🟡 Thiếu"}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {pickable.slice(0, 30).map((r) => (
+                        <tr
+                          key={`${r.item_id}-${r.warehouse_id}`}
+                          className="ui-clickable"
+                          onClick={() => addConsume(r)}
+                        >
+                          <td className="nowrap">{r.ma_hang}</td>
+                          <td>{r.ten}</td>
+                          <td>
+                            <StatusBadge tone="neutral" size="sm">
+                              {r.warehouse_code}
+                            </StatusBadge>
+                          </td>
+                          <td className="num">
+                            khả dụng <b>{r.kha_dung}</b> {r.dvt}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               }
             />
-            <p className="muted" style={{ margin: "6px 0 0 0", fontSize: 12 }}>
-              💡 Bạn có thể lưu nháp lệnh sản xuất hoặc ghi sổ (sẽ yêu cầu xác nhận lý do duyệt âm kho).
-            </p>
           </div>
-        )}
+
+          {over.length > 0 && (
+            <InlineAlert
+              tone="warning"
+              title={`Cảnh báo thiếu hụt vật tư trước khi sản xuất (${over.length} mặt hàng thiếu)`}
+            >
+              <div className="ui-stack--sm ui-mt-2">
+                <DataView
+                  mobileMode="scroll"
+                  desktop={
+                    <div className="ui-table-scroll-wrap ui-scroll-xs" tabIndex={0}>
+                      <table className="ui-table">
+                        <thead>
+                          <tr>
+                            <th>Vật tư</th>
+                            <th className="num">Nhu cầu</th>
+                            <th className="num">Khả dụng</th>
+                            <th className="num">Thiếu hụt</th>
+                            <th>Trạng thái</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {over.map((l) => {
+                            const deficit = Number(Math.max(0, l.so_luong - l.kha_dung).toFixed(4));
+                            const isRed = l.kha_dung <= 0;
+                            return (
+                              <tr key={`${l.item_id}-${l.warehouse_id}`}>
+                                <td>{l.label}</td>
+                                <td className="num">
+                                  {l.so_luong} {l.dvt}
+                                </td>
+                                <td className="num">
+                                  {l.kha_dung} {l.dvt}
+                                </td>
+                                <td className="num ui-text-danger">
+                                  -{deficit} {l.dvt}
+                                </td>
+                                <td>
+                                  <StatusBadge tone={isRed ? "danger" : "warning"} size="sm" dot>
+                                    {isRed ? "Hết hàng" : "Thiếu"}
+                                  </StatusBadge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                />
+                <div className="muted">
+                  Bạn có thể lưu nháp lệnh sản xuất hoặc ghi sổ (sẽ yêu cầu xác nhận lý do duyệt âm kho).
+                </div>
+              </div>
+            </InlineAlert>
+          )}
+        </div>
       </AppModal>
 
+      {/* View / Edit Production Modal */}
       <AppModal
         open={!!view}
         onClose={closeView}
-        title={view ? `Lệnh sản xuất ${view.so_ct || `LSX#${view.id}`}` : ""}
-        subtitle={view ? (view.status === "posted" ? "Trạng thái: Đã ghi sổ" : "Trạng thái: Nháp") : undefined}
+        title={
+          view ? (
+            <span className="ui-row">
+              <span>Lệnh sản xuất {view.so_ct || `LSX#${view.id}`}</span>
+              <StatusBadge tone={view.status === "posted" ? "success" : "warning"} size="sm">
+                {view.status === "posted" ? "Đã ghi sổ" : "Nháp"}
+              </StatusBadge>
+            </span>
+          ) : (
+            ""
+          )
+        }
+        subtitle={
+          view
+            ? view.sale_id != null
+              ? `Sinh từ HĐ bán #${view.sale_id}${view.note ? ` · ${view.note}` : ""}`
+              : view.note || undefined
+            : undefined
+        }
         size="full"
         footer={
           view && (
             <>
-              <button type="button" onClick={closeView}>Đóng</button>
+              <AppButton variant="secondary" onClick={closeView}>
+                Đóng
+              </AppButton>
               {view.status === "draft" && (
                 <>
-                  <button type="button" disabled={viewBusy} onClick={doViewSave}>
-                    💾 Lưu
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={viewBusy}
+                  <AppButton variant="secondary" leftIcon="save" disabled={viewBusy} onClick={doViewSave}>
+                    Lưu
+                  </AppButton>
+                  <AppButton
+                    variant="primary"
+                    leftIcon="check-circle"
+                    loading={viewBusy}
                     title={
                       view.lines
                         .filter((l) => l.chieu === "vao")
@@ -1265,8 +1465,8 @@ export function Production() {
                     }
                     onClick={doViewPost}
                   >
-                    ✅ Ghi sổ lại
-                  </button>
+                    Ghi sổ lại
+                  </AppButton>
                 </>
               )}
             </>
@@ -1274,509 +1474,533 @@ export function Production() {
         }
       >
         {view && (
-          <>
-            <div style={{ marginBottom: 8 }}>
-              <span className={`chip sm ${view.status === "posted" ? "green" : "amber"}`}>
-                {view.status === "posted" ? "Đã ghi sổ" : "Nháp"}
-              </span>
-            </div>
-            {err && <div className="error" style={{ marginBottom: 8 }}>{err}</div>}
-            {view.sale_id != null && (
-              <p className="muted" style={{ margin: "4px 0" }}>
-                🧾 Sinh từ HĐ bán #{view.sale_id}
-              </p>
+          <div className="ui-stack">
+            {err && (
+              <InlineAlert tone="danger" onDismiss={() => setErr("")}>
+                {err}
+              </InlineAlert>
             )}
-            {view.note && <p className="muted" style={{ margin: "4px 0" }}>{view.note}</p>}
-            <div style={{ margin: "6px 0" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                <label style={{ margin: 0 }}>Mô tả</label>
-                <button type="button" className="ui-btn-chip" disabled={aiBusy} onClick={aiDescribeView} title="AI nhìn trọn bộ NVL để sinh mô tả">
-                  {aiBusy ? "⏳ Đang sinh…" : "✨ AI sinh mô tả"}
-                </button>
+
+            <div className="ui-stack--xs">
+              <div className="ui-row">
+                <label className="ui-field-label" htmlFor="prod-view-desc">
+                  Mô tả
+                </label>
+                <AppButton
+                  variant="secondary"
+                  size="sm"
+                  leftIcon="sparkles"
+                  loading={aiBusy}
+                  onClick={aiDescribeView}
+                  title="AI nhìn trọn bộ NVL để sinh mô tả"
+                >
+                  {aiBusy ? "Đang sinh…" : "AI sinh mô tả"}
+                </AppButton>
               </div>
               <textarea
-                className="ui-textarea"
-                style={{ width: "100%", minHeight: 56, resize: "vertical" }}
-                placeholder="Mô tả lệnh sản xuất / công dụng bộ NVL… (bấm ✨ để AI gợi ý)"
+                id="prod-view-desc"
+                className="ui-textarea ui-textarea-sm"
+                placeholder="Mô tả lệnh sản xuất / công dụng bộ NVL… (bấm AI sinh mô tả để gợi ý)"
                 value={view.description}
                 disabled={view.status !== "draft"}
                 onChange={(e) => setView({ ...view, description: e.target.value })}
               />
             </div>
+
             {view.status === "posted" && (
-              <div className="warn-banner" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <span>🔒 <b>Đã ghi sổ</b> nên số lượng bị khóa. Bấm <b>Hủy ghi sổ</b> để sửa lại.</span>
-                <button type="button" className="btn-sm danger" disabled={viewBusy} onClick={viewVoid}>
-                  ↩️ Hủy ghi sổ để sửa
-                </button>
-              </div>
+              <InlineAlert
+                tone="warning"
+                title="Đã ghi sổ"
+                action={
+                  <AppButton variant="danger" size="sm" leftIcon="rotate-ccw" disabled={viewBusy} onClick={viewVoid}>
+                    Hủy ghi sổ để sửa
+                  </AppButton>
+                }
+              >
+                Số lượng đang bị khóa. Bấm <b>Hủy ghi sổ để sửa</b> nếu cần điều chỉnh.
+              </InlineAlert>
             )}
-            <FormGrid cols={2} style={{ margin: "8px 0" }}>
-              <label>
-                Ngày
+
+            <FormGrid cols={2}>
+              <FormField label="Ngày" htmlFor="prod-view-date">
                 <input
+                  id="prod-view-date"
                   className="ui-input"
                   type="date"
                   value={view.ngay}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, ngay: e.target.value })}
                 />
-              </label>
-              <label>
-                Ghi chú
+              </FormField>
+              <FormField label="Ghi chú" htmlFor="prod-view-note">
                 <input
+                  id="prod-view-note"
                   className="ui-input"
                   value={view.note}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, note: e.target.value })}
                 />
-              </label>
+              </FormField>
             </FormGrid>
 
-            {/* Chi phi che bien: nhan cong (622) + SX chung (627) */}
-            <FormGrid cols={3} style={{ margin: "6px 0" }}>
-              <label>
-                CP nhân công (622)
+            <FormGrid cols={3}>
+              <FormField label="CP nhân công (622)" htmlFor="prod-view-nc">
                 <input
-                  className="ui-input"
-                  style={{ textAlign: "right" }}
+                  id="prod-view-nc"
+                  className="ui-input ui-num"
                   type="number"
                   min={0}
                   value={view.cp_nhan_cong}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, cp_nhan_cong: Number(e.target.value) || 0 })}
                 />
-              </label>
-              <label>
-                CP SX chung (627)
+              </FormField>
+              <FormField label="CP SX chung (627)" htmlFor="prod-view-sxc">
                 <input
-                  className="ui-input"
-                  style={{ textAlign: "right" }}
+                  id="prod-view-sxc"
+                  className="ui-input ui-num"
                   type="number"
                   min={0}
                   value={view.cp_sxc}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, cp_sxc: Number(e.target.value) || 0 })}
                 />
-              </label>
-              <label>
-                Giá bán dự kiến (/đvị)
+              </FormField>
+              <FormField label="Giá bán dự kiến (/đvị)" htmlFor="prod-view-price">
                 <input
-                  className="ui-input"
-                  style={{ textAlign: "right" }}
+                  id="prod-view-price"
+                  className="ui-input ui-num"
                   type="number"
                   min={0}
                   value={view.gia_ban_du_kien}
                   disabled={view.status !== "draft"}
                   onChange={(e) => setView({ ...view, gia_ban_du_kien: Number(e.target.value) || 0 })}
                 />
-              </label>
+              </FormField>
             </FormGrid>
 
-            <h4>Thành phẩm (nhập kho — TK 155)</h4>
-            <DataView
-              mobileMode="scroll"
-              desktop={
-                <div className="table-wrap">
-                  <table className="dt">
-                    <thead>
-                      <tr>
-                        <th>Thành phẩm</th>
-                        <th style={{ textAlign: "right" }}>SL</th>
-                        <th style={{ textAlign: "right" }}>Giá thành</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vOutputs.map((l) => (
-                        <tr key={l.id}>
-                          <td>{l.ma_hang || l.ten}</td>
-                          <td style={{ textAlign: "right" }}>
-                            {view.status === "draft" ? (
-                              <input
-                                className="ui-input"
-                                style={{ width: 80, textAlign: "right" }}
-                                type="number"
-                                value={l.so_luong}
-                                onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
-                              />
-                            ) : (
-                              l.so_luong
-                            )}
-                          </td>
-                          <td style={{ textAlign: "right" }} className="muted">
-                            {vnd(l.gia_tri)}
-                          </td>
+            <div>
+              <h4 className="ui-subhead ui-mt-4">
+                <AppIcon name="package" size={16} />
+                <span>Thành phẩm (nhập kho — TK 155)</span>
+              </h4>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="ui-table-scroll-wrap" tabIndex={0}>
+                    <table className="ui-table">
+                      <thead>
+                        <tr>
+                          <th>Thành phẩm</th>
+                          <th className="num">SL</th>
+                          <th className="num">Giá thành</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              }
-            />
-
-            {/* Batch / Serial / Mfg / Exp Tracking for Finished Goods in View Modal */}
-            <FormGrid
-              cols={4}
-              style={{
-                margin: "8px 0",
-                padding: "10px 12px",
-                background: "var(--surface-subtle)",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-              }}
-            >
-              <label>
-                Số Lô (Lot/Batch)
-                <input
-                  className="ui-input"
-                  value={view.lot_number || ""}
-                  disabled={view.status !== "draft"}
-                  placeholder="—"
-                  onChange={(e) => setView({ ...view, lot_number: e.target.value })}
-                />
-              </label>
-              <label>
-                Số Serial
-                <input
-                  className="ui-input"
-                  value={view.serial_numbers || ""}
-                  disabled={view.status !== "draft"}
-                  placeholder="—"
-                  onChange={(e) => setView({ ...view, serial_numbers: e.target.value })}
-                />
-              </label>
-              <label>
-                Ngày sản xuất
-                <input
-                  className="ui-input"
-                  type="date"
-                  value={view.mfg_date || ""}
-                  disabled={view.status !== "draft"}
-                  onChange={(e) => setView({ ...view, mfg_date: e.target.value })}
-                />
-              </label>
-              <label>
-                Hạn dùng
-                <input
-                  className="ui-input"
-                  type="date"
-                  value={view.exp_date || ""}
-                  disabled={view.status !== "draft"}
-                  onChange={(e) => setView({ ...view, exp_date: e.target.value })}
-                />
-              </label>
-            </FormGrid>
-
-            {view.status === "draft" && recipes.length > 0 && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "6px 0" }}>
-                <label>
-                  🔁 Đổi sang công thức khác (BOM thay thế)
-                  <select
-                    className="ui-select"
-                    value=""
-                    onChange={(e) => {
-                      const r = viewRecipeOptions.find((x) => x.id === Number(e.target.value));
-                      if (r) applyRecipeToView(r);
-                    }}
-                  >
-                    <option value="">— chọn —</option>
-                    {viewRecipeOptions.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" className="ui-btn-chip" onClick={saveRecipeFromView}>
-                  💾 Lưu thành công thức mới
-                </button>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  Dùng khi BOM cũ hết NVL (vd đổi thẻ nhớ khác) — chọn BOM đã lưu sẵn, hoặc đổi tay từng
-                  dòng bên dưới rồi lưu thành BOM mới để tái sử dụng.
-                </span>
-              </div>
-            )}
-            <h4>
-              Nguyên vật liệu tiêu hao (TK 621)
-              {hasDinhMuc && <span className="muted" style={{ fontWeight: 400 }}> — so định mức / thực tế / chênh lệch</span>}
-            </h4>
-            <DataView
-              mobileMode="scroll"
-              desktop={
-                <div className="table-wrap">
-                  <table className="dt">
-                    <thead>
-                      <tr>
-                        <th>Vật tư</th>
-                        {hasDinhMuc && <th style={{ textAlign: "right" }}>SL định mức</th>}
-                        <th style={{ textAlign: "right" }}>SL thực xuất</th>
-                        {hasDinhMuc && <th style={{ textAlign: "right" }}>Chênh lệch SL</th>}
-                        {view.status === "draft" && <th style={{ textAlign: "right" }}>Giá tạm</th>}
-                        {hasDinhMuc && <th style={{ textAlign: "right" }}>GT định mức</th>}
-                        <th style={{ textAlign: "right" }}>GT thực tế</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vConsumes.map((l) => {
-                        const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
-                        const overkd = kd !== null && l.so_luong > kd;
-                        const dmSl = l.so_luong_dinh_muc;
-                        const clSl = dmSl != null ? l.so_luong - dmSl : null;
-                        return (
-                          <tr key={l.id} className={overkd ? "row-treo" : ""}>
-                            <td>
-                              {l.ma_hang} · {l.ten}
-                              {l.note && (
-                                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                                  💬 {l.note}
-                                </div>
-                              )}
-                              {view.status === "draft" && (
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                  <button
-                                    type="button"
-                                    className="ui-btn-chip"
-                                    title="Đổi mã vật tư này (vd hết hàng, thay model khác)"
-                                    onClick={() =>
-                                      setSwapSearch(
-                                        swapSearch?.lineId === l.id ? null : { lineId: l.id, q: "", results: [] },
-                                      )
-                                    }
-                                  >
-                                    🔄 đổi mã
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ui-btn-chip"
-                                    title="Xoá dòng vật tư này khỏi LSX"
-                                    onClick={() => {
-                                      if (window.confirm(`Xoá dòng "${l.ma_hang} · ${l.ten}" khỏi LSX?`)) {
-                                        removeViewLine(l.id);
-                                      }
-                                    }}
-                                  >
-                                    ✕ xoá
-                                  </button>
-                                  {swapSearch?.lineId === l.id && (
-                                    <div style={{ width: "100%", marginTop: 4 }}>
-                                      <input
-                                        autoFocus
-                                        className="ui-input"
-                                        style={{ width: 200 }}
-                                        placeholder="tìm mã/tên thay thế…"
-                                        value={swapSearch.q}
-                                        onChange={(e) => searchSwap(l.id, e.target.value)}
-                                      />
-                                      {swapSearch.results.slice(0, 6).map((it) => (
-                                        <div key={it.id} style={{ marginTop: 4 }}>
-                                          <button type="button" className="ui-btn-chip" onClick={() => swapViewLine(l.id, it)}>
-                                            <b>{it.ma_hang}</b> · {it.ten}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            {hasDinhMuc && (
-                              <td style={{ textAlign: "right" }} className="muted">
-                                {dmSl != null ? dmSl : "—"}
-                              </td>
-                            )}
-                            <td style={{ textAlign: "right" }}>
+                      </thead>
+                      <tbody>
+                        {vOutputs.map((l) => (
+                          <tr key={l.id}>
+                            <td>{l.ma_hang || l.ten}</td>
+                            <td className="num">
                               {view.status === "draft" ? (
-                                <>
-                                  <input
-                                    className="ui-input"
-                                    style={{ width: 80, textAlign: "right" }}
-                                    type="number"
-                                    value={l.so_luong}
-                                    onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
-                                  />
-                                  <div className="muted" style={{ fontSize: 12 }}>
-                                    khả dụng {kd}
-                                    {overkd && <span className="chip red sm"> vượt!</span>}
-                                  </div>
-                                </>
+                                <input
+                                  className="ui-input ui-input-qty"
+                                  type="number"
+                                  value={l.so_luong}
+                                  onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
+                                />
                               ) : (
                                 l.so_luong
                               )}
                             </td>
-                            {hasDinhMuc && (
-                              <td style={{ textAlign: "right" }} className={clSl && clSl > 0 ? "" : "muted"}>
-                                {clSl != null ? (clSl > 0 ? `+${vnd(clSl)}` : vnd(clSl)) : "—"}
-                              </td>
-                            )}
-                            {view.status === "draft" && (
-                              <td style={{ textAlign: "right" }}>
-                                <input
-                                  className="ui-input"
-                                  style={{ width: 100, textAlign: "right" }}
-                                  type="number"
-                                  min={0}
-                                  placeholder="giá tạm"
-                                  value={l.don_gia_tam || 0}
-                                  onChange={(e) => patchViewLine(l.id, { don_gia_tam: Number(e.target.value) || 0 })}
-                                />
-                              </td>
-                            )}
-                            {hasDinhMuc && (
-                              <td style={{ textAlign: "right" }} className="muted">
-                                {l.gia_tri_dinh_muc != null ? vnd(l.gia_tri_dinh_muc) : "—"}
-                              </td>
-                            )}
-                            <td style={{ textAlign: "right" }} className="muted">
-                              {view.status === "posted" ? vnd(l.gia_tri) : `~${vnd(l.gia_tri_uoc)}`}
-                            </td>
+                            <td className="num muted">{vnd(l.gia_tri)}</td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              }
-            />
-            {view.status === "draft" && (
-              <div style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 6 }}>
-                <label>
-                  ➕ Thêm vật tư vào LSX (vd thiếu "hộp nhôm" chưa có trong BOM)
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
+
+              <FormGrid cols={4} className="ui-subpanel ui-subpanel--md ui-mt-2">
+                <FormField label="Số Lô (Lot/Batch)" htmlFor="prod-view-lot">
                   <input
+                    id="prod-view-lot"
                     className="ui-input"
-                    style={{ marginTop: 4 }}
-                    placeholder="tìm mã/tên vật tư…"
-                    value={addNvlQ}
-                    onChange={(e) => searchAddNvl(e.target.value)}
+                    value={view.lot_number || ""}
+                    disabled={view.status !== "draft"}
+                    placeholder="—"
+                    onChange={(e) => setView({ ...view, lot_number: e.target.value })}
                   />
-                </label>
-                {addNvlResults.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {addNvlResults.slice(0, 8).map((it) => (
-                      <div key={it.id}>
-                        <button type="button" className="ui-btn-chip" onClick={() => addViewConsume(it)}>
+                </FormField>
+                <FormField label="Số Serial" htmlFor="prod-view-serial">
+                  <input
+                    id="prod-view-serial"
+                    className="ui-input"
+                    value={view.serial_numbers || ""}
+                    disabled={view.status !== "draft"}
+                    placeholder="—"
+                    onChange={(e) => setView({ ...view, serial_numbers: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Ngày sản xuất" htmlFor="prod-view-mfg">
+                  <input
+                    id="prod-view-mfg"
+                    className="ui-input"
+                    type="date"
+                    value={view.mfg_date || ""}
+                    disabled={view.status !== "draft"}
+                    onChange={(e) => setView({ ...view, mfg_date: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Hạn dùng" htmlFor="prod-view-exp">
+                  <input
+                    id="prod-view-exp"
+                    className="ui-input"
+                    type="date"
+                    value={view.exp_date || ""}
+                    disabled={view.status !== "draft"}
+                    onChange={(e) => setView({ ...view, exp_date: e.target.value })}
+                  />
+                </FormField>
+              </FormGrid>
+            </div>
+
+            {view.status === "draft" && recipes.length > 0 && (
+              <div className="ui-subpanel ui-subpanel--md ui-stack--sm">
+                <div className="ui-row">
+                  <FormField label="Đổi sang công thức khác (BOM thay thế)" htmlFor="prod-view-recipe">
+                    <select
+                      id="prod-view-recipe"
+                      className="ui-select"
+                      value=""
+                      onChange={(e) => {
+                        const r = viewRecipeOptions.find((x) => x.id === Number(e.target.value));
+                        if (r) applyRecipeToView(r);
+                      }}
+                    >
+                      <option value="">— chọn —</option>
+                      {viewRecipeOptions.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <AppButton variant="secondary" size="sm" leftIcon="bookmark" onClick={saveRecipeFromView}>
+                    Lưu thành công thức mới
+                  </AppButton>
+                </div>
+                <span className="muted">
+                  Dùng khi BOM cũ hết NVL (vd đổi thẻ nhớ khác) — chọn BOM đã lưu sẵn, hoặc đổi tay từng dòng bên dưới
+                  rồi lưu thành BOM mới để tái sử dụng.
+                </span>
+              </div>
+            )}
+
+            <div>
+              <h4 className="ui-subhead ui-mt-4">
+                <AppIcon name="wrench" size={16} />
+                <span>Nguyên vật liệu tiêu hao (TK 621)</span>
+                {hasDinhMuc && <span className="muted">— so định mức / thực tế / chênh lệch</span>}
+              </h4>
+              <DataView
+                mobileMode="scroll"
+                desktop={
+                  <div className="ui-table-scroll-wrap" tabIndex={0}>
+                    <table className="ui-table">
+                      <thead>
+                        <tr>
+                          <th>Vật tư</th>
+                          {hasDinhMuc && <th className="num">SL định mức</th>}
+                          <th className="num">SL thực xuất</th>
+                          {hasDinhMuc && <th className="num">Chênh lệch SL</th>}
+                          {view.status === "draft" && <th className="num">Giá tạm</th>}
+                          {hasDinhMuc && <th className="num">GT định mức</th>}
+                          <th className="num">GT thực tế</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vConsumes.map((l) => {
+                          const kd = view.status === "draft" ? khaDungFor(l.item_id, l.warehouse_id) : null;
+                          const overkd = kd !== null && l.so_luong > kd;
+                          const dmSl = l.so_luong_dinh_muc;
+                          const clSl = dmSl != null ? l.so_luong - dmSl : null;
+                          return (
+                            <tr key={l.id} className={overkd ? "row-treo" : ""}>
+                              <td>
+                                <div>
+                                  {l.ma_hang} · {l.ten}
+                                </div>
+                                {l.note && (
+                                  <div className="muted ui-row ui-mt-2">
+                                    <AppIcon name="message-square" size={12} />
+                                    <span>{l.note}</span>
+                                  </div>
+                                )}
+                                {view.status === "draft" && (
+                                  <div className="ui-stack--xs ui-mt-2">
+                                    <div className="ui-row">
+                                      <AppButton
+                                        variant="secondary"
+                                        size="sm"
+                                        leftIcon="refresh"
+                                        title="Đổi mã vật tư này (vd hết hàng, thay model khác)"
+                                        onClick={() =>
+                                          setSwapSearch(
+                                            swapSearch?.lineId === l.id ? null : { lineId: l.id, q: "", results: [] },
+                                          )
+                                        }
+                                      >
+                                        Đổi mã
+                                      </AppButton>
+                                      <AppButton
+                                        variant="ghost"
+                                        size="sm"
+                                        leftIcon="trash"
+                                        title="Xóa dòng vật tư này khỏi LSX"
+                                        onClick={() => confirmRemoveViewLine(l)}
+                                      >
+                                        Xóa
+                                      </AppButton>
+                                    </div>
+                                    {swapSearch?.lineId === l.id && (
+                                      <div className="ui-stack--xs">
+                                        <input
+                                          autoFocus
+                                          className="ui-input ui-input-md"
+                                          placeholder="Tìm mã/tên thay thế…"
+                                          value={swapSearch.q}
+                                          onChange={(e) => searchSwap(l.id, e.target.value)}
+                                        />
+                                        {swapSearch.results.slice(0, 6).map((it) => (
+                                          <AppButton
+                                            key={it.id}
+                                            variant="secondary"
+                                            size="sm"
+                                            className="ui-wrap-btn"
+                                            onClick={() => swapViewLine(l.id, it)}
+                                          >
+                                            <b>{it.ma_hang}</b> · {it.ten}
+                                          </AppButton>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              {hasDinhMuc && <td className="num muted">{dmSl != null ? dmSl : "—"}</td>}
+                              <td className="num">
+                                {view.status === "draft" ? (
+                                  <div className="ui-stack--xs">
+                                    <input
+                                      className="ui-input ui-input-qty"
+                                      type="number"
+                                      value={l.so_luong}
+                                      onChange={(e) => patchViewLine(l.id, { so_luong: Number(e.target.value) || 0 })}
+                                    />
+                                    <div className="muted ui-row-end">
+                                      <span>khả dụng {kd}</span>
+                                      {overkd && (
+                                        <StatusBadge tone="danger" size="sm">
+                                          Vượt
+                                        </StatusBadge>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  l.so_luong
+                                )}
+                              </td>
+                              {hasDinhMuc && (
+                                <td className={clSl && clSl > 0 ? "num" : "num muted"}>
+                                  {clSl != null ? (clSl > 0 ? `+${vnd(clSl)}` : vnd(clSl)) : "—"}
+                                </td>
+                              )}
+                              {view.status === "draft" && (
+                                <td className="num">
+                                  <input
+                                    className="ui-input ui-input-price"
+                                    type="number"
+                                    min={0}
+                                    placeholder="giá tạm"
+                                    value={l.don_gia_tam || 0}
+                                    onChange={(e) => patchViewLine(l.id, { don_gia_tam: Number(e.target.value) || 0 })}
+                                  />
+                                </td>
+                              )}
+                              {hasDinhMuc && (
+                                <td className="num muted">
+                                  {l.gia_tri_dinh_muc != null ? vnd(l.gia_tri_dinh_muc) : "—"}
+                                </td>
+                              )}
+                              <td className="num muted">
+                                {view.status === "posted" ? vnd(l.gia_tri) : `~${vnd(l.gia_tri_uoc)}`}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                }
+              />
+
+              {view.status === "draft" && (
+                <div className="ui-stack--sm ui-mt-2">
+                  <FormField
+                    label='Thêm vật tư vào LSX (vd thiếu "hộp nhôm" chưa có trong BOM)'
+                    htmlFor="prod-view-add-nvl"
+                  >
+                    <input
+                      id="prod-view-add-nvl"
+                      className="ui-input"
+                      placeholder="Tìm mã/tên vật tư…"
+                      value={addNvlQ}
+                      onChange={(e) => searchAddNvl(e.target.value)}
+                    />
+                  </FormField>
+                  {addNvlResults.length > 0 && (
+                    <div className="ui-stack--xs">
+                      {addNvlResults.slice(0, 8).map((it) => (
+                        <AppButton
+                          key={it.id}
+                          variant="secondary"
+                          size="sm"
+                          className="ui-wrap-btn"
+                          onClick={() => addViewConsume(it)}
+                        >
                           <b>{it.ma_hang}</b> · {it.ten}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Pre-Production Shortage Warning in Draft View Modal */}
-            {view.status === "draft" && vConsumes.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id)) && (
-              <div className="warn-banner" style={{ marginTop: 10, borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber-soft)", padding: "10px 14px" }}>
-                <div style={{ fontWeight: "bold", color: "var(--amber)", marginBottom: 6 }}>
-                  ⚠️ Cảnh báo: Một số nguyên vật liệu vượt tồn khả dụng tại ngày {view.ngay}
-                </div>
-                <DataView
-                  mobileMode="scroll"
-                  desktop={
-                    <div className="table-wrap" style={{ maxHeight: "120px", overflow: "auto" }}>
-                      <table className="dt" style={{ fontSize: "12px", width: "100%" }}>
-                        <thead>
-                          <tr>
-                            <th>Vật tư</th>
-                            <th style={{ textAlign: "right" }}>Nhu cầu</th>
-                            <th style={{ textAlign: "right" }}>Khả dụng</th>
-                            <th style={{ textAlign: "right" }}>Thiếu hụt</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {vConsumes
-                            .filter((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
-                            .map((l) => {
-                              const kd = khaDungFor(l.item_id, l.warehouse_id);
-                              const deficit = Number(Math.max(0, l.so_luong - kd).toFixed(4));
-                              return (
-                                <tr key={l.id}>
-                                  <td>{l.ma_hang} · {l.ten}</td>
-                                  <td style={{ textAlign: "right" }}>{l.so_luong}</td>
-                                  <td style={{ textAlign: "right" }}>{kd}</td>
-                                  <td style={{ textAlign: "right", color: "var(--red)", fontWeight: "bold" }}>-{deficit}</td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-                  }
-                />
-              </div>
-            )}
-
-            {/* Tong hop gia thanh */}
-            <div className="warn-banner" style={{ marginTop: 10 }}>
-              {view.status === "draft" ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Giá thành ước tính (621+622+627):</span>
-                    <b>~{vnd(view.tong_gia_thanh_uoc)} đ</b>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Giá thành đơn vị ước tính:</span>
-                    <b>~{vnd(view.gia_thanh_dv_uoc)} đ</b>
-                  </div>
-                  {giaBan > 0 && view.gia_thanh_dv_uoc > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                      <span>Tỉ suất LN ước tính:</span>
-                      <b>{(((giaBan - view.gia_thanh_dv_uoc) / giaBan) * 100).toFixed(1)}%</b>
+                        </AppButton>
+                      ))}
                     </div>
                   )}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Ước tính theo giá vốn BQ hiện tại; khi <b>ghi sổ</b> dùng bình quân tại ngày SX. Nhập
-                    <b> giá tạm tính</b> cho NVL chưa có giá vốn để không bị 0đ.
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Chi phí NVL trực tiếp (621):</span>
-                    <b>{vnd(nvlCost)} đ</b>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Nhân công trực tiếp (622):</span>
-                    <b>{vnd(view.cp_nhan_cong)} đ</b>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Chi phí SX chung (627):</span>
-                    <b>{vnd(view.cp_sxc)} đ</b>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Tổng giá thành (→ 154 → 155):</span>
-                    <b>{vnd(tongGiaThanh)} đ</b>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <span>Giá thành đơn vị:</span>
-                    <b>{vnd(giaThanhDv)} đ</b>
-                  </div>
-                  {giaBan > 0 && (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <span>Giá bán dự kiến:</span>
-                        <b>{vnd(giaBan)} đ</b>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                        <span>Tỉ suất lợi nhuận:</span>
-                        <b className={tiSuat != null && tiSuat < 0 ? "chip red sm" : ""}>
-                          {tiSuat != null ? `${tiSuat.toFixed(1)}%` : "—"}
-                        </b>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              {nvlThieuGia && (
-                <div className="chip red sm" style={{ marginTop: 6 }}>
-                  ⚠ Có NVL chưa có giá vốn (giá trị = 0) → giá thành có thể thiếu. Dùng giá tạm tính hoặc
-                  bấm "Tính lại giá xuất kho".
                 </div>
               )}
             </div>
-          </>
+
+            {view.status === "draft" &&
+              vConsumes.some((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id)) && (
+                <InlineAlert
+                  tone="warning"
+                  title={`Một số nguyên vật liệu vượt tồn khả dụng tại ngày ${view.ngay}`}
+                >
+                  <div className="ui-mt-2">
+                    <DataView
+                      mobileMode="scroll"
+                      desktop={
+                        <div className="ui-table-scroll-wrap ui-scroll-xs" tabIndex={0}>
+                          <table className="ui-table">
+                            <thead>
+                              <tr>
+                                <th>Vật tư</th>
+                                <th className="num">Nhu cầu</th>
+                                <th className="num">Khả dụng</th>
+                                <th className="num">Thiếu hụt</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {vConsumes
+                                .filter((l) => l.so_luong > khaDungFor(l.item_id, l.warehouse_id))
+                                .map((l) => {
+                                  const kd = khaDungFor(l.item_id, l.warehouse_id);
+                                  const deficit = Number(Math.max(0, l.so_luong - kd).toFixed(4));
+                                  return (
+                                    <tr key={l.id}>
+                                      <td>
+                                        {l.ma_hang} · {l.ten}
+                                      </td>
+                                      <td className="num">{l.so_luong}</td>
+                                      <td className="num">{kd}</td>
+                                      <td className="num ui-text-danger">-{deficit}</td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      }
+                    />
+                  </div>
+                </InlineAlert>
+              )}
+
+            <div className="ui-subpanel ui-subpanel--md ui-stack--sm">
+              {view.status === "draft" ? (
+                <>
+                  <div className="ui-row-between">
+                    <span>Giá thành ước tính (621+622+627):</span>
+                    <b className="num">~{vnd(view.tong_gia_thanh_uoc)} đ</b>
+                  </div>
+                  <div className="ui-row-between">
+                    <span>Giá thành đơn vị ước tính:</span>
+                    <b className="num">~{vnd(view.gia_thanh_dv_uoc)} đ</b>
+                  </div>
+                  {giaBan > 0 && view.gia_thanh_dv_uoc > 0 && (
+                    <div className="ui-row-between">
+                      <span>Tỉ suất LN ước tính:</span>
+                      <b className="num">{(((giaBan - view.gia_thanh_dv_uoc) / giaBan) * 100).toFixed(1)}%</b>
+                    </div>
+                  )}
+                  <div className="muted">
+                    Ước tính theo giá vốn BQ hiện tại; khi <b>ghi sổ</b> dùng bình quân tại ngày SX. Nhập{" "}
+                    <b>giá tạm tính</b> cho NVL chưa có giá vốn để không bị 0đ.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ui-row-between">
+                    <span>Chi phí NVL trực tiếp (621):</span>
+                    <b className="num">{vnd(nvlCost)} đ</b>
+                  </div>
+                  <div className="ui-row-between">
+                    <span>Nhân công trực tiếp (622):</span>
+                    <b className="num">{vnd(view.cp_nhan_cong)} đ</b>
+                  </div>
+                  <div className="ui-row-between">
+                    <span>Chi phí SX chung (627):</span>
+                    <b className="num">{vnd(view.cp_sxc)} đ</b>
+                  </div>
+                  <div className="ui-row-between">
+                    <span>Tổng giá thành (154 → 155):</span>
+                    <b className="num">{vnd(tongGiaThanh)} đ</b>
+                  </div>
+                  <div className="ui-row-between">
+                    <span>Giá thành đơn vị:</span>
+                    <b className="num">{vnd(giaThanhDv)} đ</b>
+                  </div>
+                  {giaBan > 0 && (
+                    <>
+                      <div className="ui-row-between">
+                        <span>Giá bán dự kiến:</span>
+                        <b className="num">{vnd(giaBan)} đ</b>
+                      </div>
+                      <div className="ui-row-between">
+                        <span>Tỉ suất lợi nhuận:</span>
+                        {tiSuat != null && tiSuat < 0 ? (
+                          <StatusBadge tone="danger" size="sm">
+                            {tiSuat.toFixed(1)}%
+                          </StatusBadge>
+                        ) : (
+                          <b className="num">{tiSuat != null ? `${tiSuat.toFixed(1)}%` : "—"}</b>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {nvlThieuGia && (
+                <InlineAlert tone="danger">
+                  Có NVL chưa có giá vốn (giá trị = 0) nên giá thành có thể thiếu. Dùng giá tạm tính hoặc bấm &ldquo;Tính
+                  lại giá xuất kho&rdquo;.
+                </InlineAlert>
+              )}
+            </div>
+          </div>
         )}
       </AppModal>
 
+      {/* New Output Item Modal */}
       <AppModal
         open={!!newOutputModal}
         onClose={() => setNewOutputModal(null)}
@@ -1784,39 +2008,41 @@ export function Production() {
         size="sm"
         footer={
           <>
-            <button type="button" onClick={() => setNewOutputModal(null)}>Hủy</button>
-            <button
-              type="button"
-              className="primary"
+            <AppButton variant="secondary" onClick={() => setNewOutputModal(null)}>
+              Hủy
+            </AppButton>
+            <AppButton
+              variant="primary"
+              leftIcon="plus"
               disabled={!newOutputModal?.ma.trim() || !newOutputModal?.ten.trim()}
               onClick={confirmCreateOutputItem}
             >
               Tạo thành phẩm
-            </button>
+            </AppButton>
           </>
         }
       >
         {newOutputModal && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label>
-              Mã thành phẩm mới (vd TP0027)
+          <div className="ui-stack">
+            <FormField label="Mã thành phẩm mới (vd TP0027)" htmlFor="new-out-ma" required>
               <input
+                id="new-out-ma"
                 autoFocus
                 className="ui-input"
                 placeholder="vd: TP0027"
                 value={newOutputModal.ma}
                 onChange={(e) => setNewOutputModal({ ...newOutputModal, ma: e.target.value })}
               />
-            </label>
-            <label>
-              Tên thành phẩm
+            </FormField>
+            <FormField label="Tên thành phẩm" htmlFor="new-out-ten" required>
               <input
+                id="new-out-ten"
                 className="ui-input"
                 placeholder="Tên thành phẩm…"
                 value={newOutputModal.ten}
                 onChange={(e) => setNewOutputModal({ ...newOutputModal, ten: e.target.value })}
               />
-            </label>
+            </FormField>
           </div>
         )}
       </AppModal>
@@ -1839,6 +2065,6 @@ export function Production() {
           onCancel={() => setNegModal(null)}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

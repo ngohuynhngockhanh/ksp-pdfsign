@@ -1,25 +1,40 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { DataView } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  DataView,
+  EmptyState,
+  FilterBar,
+  InlineAlert,
+  MobileCard,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  PageHeader,
+  PageShell,
+  StatusBadge,
+  TableSkeleton,
+  type StatusBadgeTone,
+} from "../components/ui";
 
 type Row = Awaited<ReturnType<typeof api.auditLog>>["items"][number];
 
-const ACTION_CHIP: Record<string, string> = {
-  login: "green",
-  login_fail: "red",
-  login_locked: "red",
-  sign: "indigo",
-  bbbg_generate: "indigo",
-  quote_generate: "indigo",
-  ai_narrative: "indigo",
-  delete_doc: "red",
-  customer_delete: "red",
-  bulk_delete: "red",
-  password_change: "amber",
-  password_reset: "amber",
+const ACTION_TONE: Record<string, StatusBadgeTone> = {
+  login: "success",
+  login_fail: "danger",
+  login_locked: "danger",
+  sign: "brand",
+  bbbg_generate: "brand",
+  quote_generate: "brand",
+  ai_narrative: "brand",
+  delete_doc: "danger",
+  customer_delete: "danger",
+  bulk_delete: "danger",
+  password_change: "warning",
+  password_reset: "warning",
 };
 
-// Nhan loc thao tac (khop ACTION_LABELS backend)
 const ACTION_OPTIONS: [string, string][] = [
   ["", "Tất cả thao tác"],
   ["login", "Đăng nhập"],
@@ -54,23 +69,30 @@ export function AuditLog() {
   const [perPage, setPerPage] = useState(50);
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
-  const [dateFrom, setDateFrom] = useState(""); // yyyy-mm-dd (local)
+  const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const pages = Math.max(1, Math.ceil(total / perPage));
 
   async function load(p = page) {
     setErr("");
+    setLoading(true);
     try {
-      // Ngay local -> khoang thoi gian UTC (dau ngay / cuoi ngay)
       const tsFrom = dateFrom ? new Date(dateFrom + "T00:00:00").toISOString() : "";
       const tsTo = dateTo ? new Date(dateTo + "T23:59:59.999").toISOString() : "";
       const r = await api.auditLog({ search, action, tsFrom, tsTo, page: p, perPage });
-      const items = Array.isArray(r?.items) ? r.items : Array.isArray(r) ? (r as unknown as Row[]) : [];
+      const items = Array.isArray(r?.items)
+        ? r.items
+        : Array.isArray(r)
+          ? (r as unknown as Row[])
+          : [];
       setRows(items);
       setTotal(typeof r?.total === "number" ? r.total : items.length);
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -79,7 +101,6 @@ export function AuditLog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  // Doi filter -> ve trang 1 (search co debounce go phim)
   useEffect(() => {
     const t = setTimeout(
       () => {
@@ -92,179 +113,268 @@ export function AuditLog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, action, dateFrom, dateTo, perPage]);
 
-  function Pager() {
-    if (pages <= 1) return null;
-    return (
-      <div className="pager">
-        <button type="button" className="btn-sm ui-btn-chip" disabled={page <= 1} onClick={() => setPage(1)}>
-          « Đầu
-        </button>
-        <button type="button" className="btn-sm ui-btn-chip" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-          ‹ Trước
-        </button>
-        <span className="muted">
-          Trang {page}/{pages} · {total} dòng
-        </span>
-        <button type="button" className="btn-sm ui-btn-chip" disabled={page >= pages} onClick={() => setPage(page + 1)}>
-          Sau ›
-        </button>
-        <button type="button" className="btn-sm ui-btn-chip" disabled={page >= pages} onClick={() => setPage(pages)}>
-          Cuối »
-        </button>
-      </div>
-    );
+  const activeFilters =
+    (action ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (search.trim() ? 1 : 0);
+
+  function resetFilters() {
+    setSearch("");
+    setAction("");
+    setDateFrom("");
+    setDateTo("");
   }
 
-  return (
-    <div className="docs-page">
-      <div className="docs-toolbar">
-        <h3>
-          Nhật ký thao tác <span className="count">{total}</span>
-        </h3>
-        <div className="tb-group audit-filters">
-          <input
-            className="search ui-input"
-            placeholder="🔍 Tìm user / đối tượng…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            className="tb-select ui-select"
-            value={action}
-            onChange={(e) => setAction(e.target.value)}
-          >
-            {ACTION_OPTIONS.map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <label className="date-f" title="Từ ngày">
-            <input className="ui-input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </label>
-          <span className="muted">→</span>
-          <label className="date-f" title="Đến ngày">
-            <input className="ui-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </label>
-          <select
-            className="tb-select pp ui-select"
-            value={perPage}
-            onChange={(e) => setPerPage(Number(e.target.value))}
-            title="Số dòng mỗi trang"
-          >
-            {PER_PAGE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}/trang
-              </option>
-            ))}
-          </select>
-          {(search || action || dateFrom || dateTo) && (
-            <button
-              type="button"
-              className="btn-sm ui-btn-chip"
-              onClick={() => {
-                setSearch("");
-                setAction("");
-                setDateFrom("");
-                setDateTo("");
-              }}
+  const emptyNode =
+    !loading && rows.length === 0 ? (
+      <EmptyState
+        icon="clipboard-list"
+        title="Không có nhật ký khớp bộ lọc."
+        description="Thử mở rộng khoảng thời gian, đổi loại thao tác hoặc xóa từ khóa tìm kiếm."
+        action={
+          activeFilters > 0 ? (
+            <AppButton
+              variant="secondary"
+              size="sm"
+              leftIcon="rotate-ccw"
+              onClick={resetFilters}
             >
-              ✕ Xoá lọc
-            </button>
-          )}
-        </div>
-      </div>
-      {err && <div className="error">{err}</div>}
-
-      <DataView
-        mobileMode="card"
-        desktop={
-          <div className="table-wrap">
-            <table className="dt">
-              <thead>
-                <tr>
-                  <th className="nowrap">Thời gian</th>
-                  <th>Người dùng</th>
-                  <th>Thao tác</th>
-                  <th>Đối tượng</th>
-                  <th className="col-hide-sm">Chi tiết</th>
-                  <th className="col-hide-sm">IP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="muted nowrap">{new Date(r.ts).toLocaleString("vi-VN")}</td>
-                    <td>
-                      {r.username}
-                      {r.role === "admin" && <span className="chip gray sm"> admin</span>}
-                    </td>
-                    <td>
-                      <span className={"chip sm " + (ACTION_CHIP[r.action] || "gray")}>
-                        {r.action_label}
-                      </span>
-                    </td>
-                    <td className="fname">
-                      <span className="ft">{r.target}</span>
-                    </td>
-                    <td className="muted col-hide-sm">{r.detail}</td>
-                    <td className="muted col-hide-sm nowrap">{r.ip}</td>
-                  </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>
-                      <div className="empty">
-                        <div className="empty-ic">📜</div>
-                        <div>Không có nhật ký khớp bộ lọc.</div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              Xóa bộ lọc
+            </AppButton>
+          ) : undefined
         }
-        mobileCards={
-          <div className="ui-mobile-card-list">
-            {rows.map((r) => (
-              <article key={r.id} className="ui-mobile-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                    <strong style={{ color: "var(--ink)" }}>{r.username}</strong>
-                    {r.role === "admin" && <span className="chip gray sm">admin</span>}
-                  </div>
-                  <span className={"chip sm " + (ACTION_CHIP[r.action] || "gray")}>
-                    {r.action_label}
-                  </span>
-                </div>
-                {r.target && (
-                  <div style={{ marginTop: 6, fontWeight: 600, color: "var(--ink-2)", wordBreak: "break-word" }}>
-                    {r.target}
-                  </div>
-                )}
-                {r.detail && (
-                  <div className="muted" style={{ marginTop: 4, fontSize: 12.5, wordBreak: "break-word" }}>
-                    {r.detail}
-                  </div>
-                )}
-                <div className="muted" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, fontSize: 12, flexWrap: "wrap" }}>
-                  <span>{new Date(r.ts).toLocaleString("vi-VN")}</span>
-                  {r.ip && <span style={{ fontFamily: "var(--font-mono)" }}>IP: {r.ip}</span>}
-                </div>
-              </article>
-            ))}
-            {rows.length === 0 && (
-              <div className="empty">
-                <div className="empty-ic">📜</div>
-                <div>Không có nhật ký khớp bộ lọc.</div>
-              </div>
-            )}
-          </div>
+      />
+    ) : undefined;
+
+  return (
+    <PageShell data-page="audit-log">
+      <PageHeader
+        variant="compact"
+        icon="shield-check"
+        eyebrow="INUT · AUDIT TRAIL"
+        title="Nhật ký thao tác"
+        subtitle="Theo dõi lịch sử đăng nhập, ký số, phân loại hồ sơ và thay đổi quản trị."
+        badges={
+          <StatusBadge tone="brand" size="sm">
+            {total} dòng
+          </StatusBadge>
+        }
+        actions={
+          <AppButton
+            variant="secondary"
+            size="sm"
+            leftIcon="refresh"
+            loading={loading}
+            onClick={() => load(page)}
+          >
+            Làm mới
+          </AppButton>
         }
       />
 
-      <Pager />
-    </div>
+      <FilterBar
+        collapsibleMobile
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Tìm user / đối tượng…",
+          ariaLabel: "Tìm người dùng hoặc đối tượng",
+        }}
+        filters={
+          <>
+            <select
+              className="ui-select"
+              aria-label="Lọc theo loại thao tác"
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+            >
+              {ACTION_OPTIONS.map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <div className="audit-date-range">
+              <input
+                className="ui-input"
+                type="date"
+                aria-label="Từ ngày"
+                title="Từ ngày"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+              <span className="audit-date-sep" aria-hidden="true">
+                <AppIcon name="arrow-right" size={14} />
+              </span>
+              <input
+                className="ui-input"
+                type="date"
+                aria-label="Đến ngày"
+                title="Đến ngày"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+            <select
+              className="ui-select audit-per-page"
+              aria-label="Số dòng mỗi trang"
+              value={perPage}
+              onChange={(e) => setPerPage(Number(e.target.value))}
+            >
+              {PER_PAGE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}/trang
+                </option>
+              ))}
+            </select>
+          </>
+        }
+        activeCount={activeFilters}
+        onReset={resetFilters}
+      />
+
+      {err && <InlineAlert tone="danger">{err}</InlineAlert>}
+
+      {loading && rows.length === 0 ? (
+        <TableSkeleton rows={6} cols={6} />
+      ) : (
+        <DataView
+          mobileMode="card"
+          empty={emptyNode}
+          desktop={
+            <div className="ui-table-scroll-wrap">
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th className="nowrap">Thời gian</th>
+                    <th>Người dùng</th>
+                    <th>Thao tác</th>
+                    <th>Đối tượng</th>
+                    <th className="col-hide-sm">Chi tiết</th>
+                    <th className="col-hide-sm">IP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id}>
+                      <td className="muted nowrap">
+                        {new Date(r.ts).toLocaleString("vi-VN")}
+                      </td>
+                      <td>
+                        <span className="ui-inline ui-inline--md ui-inline--wrap">
+                          <strong>{r.username}</strong>
+                          {r.role === "admin" && (
+                            <StatusBadge tone="neutral" size="sm">
+                              admin
+                            </StatusBadge>
+                          )}
+                        </span>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          tone={ACTION_TONE[r.action] ?? "neutral"}
+                          size="sm"
+                        >
+                          {r.action_label}
+                        </StatusBadge>
+                      </td>
+                      <td className="doc-fname-cell">
+                        <span className="ui-truncate">{r.target}</span>
+                      </td>
+                      <td className="muted col-hide-sm">{r.detail}</td>
+                      <td className="muted col-hide-sm nowrap">
+                        <span className="ui-mono">{r.ip}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+          mobileCards={
+            <div className="ui-mobile-card-list">
+              {rows.map((r) => (
+                <MobileCard key={r.id}>
+                  <MobileCardHeader
+                    title={
+                      <span className="ui-inline ui-inline--md ui-inline--wrap">
+                        <span>{r.username}</span>
+                        {r.role === "admin" && (
+                          <StatusBadge tone="neutral" size="sm">
+                            admin
+                          </StatusBadge>
+                        )}
+                      </span>
+                    }
+                    subtitle={new Date(r.ts).toLocaleString("vi-VN")}
+                    badge={
+                      <StatusBadge
+                        tone={ACTION_TONE[r.action] ?? "neutral"}
+                        size="sm"
+                      >
+                        {r.action_label}
+                      </StatusBadge>
+                    }
+                  />
+                  <MobileCardGrid cols={1}>
+                    {r.target && (
+                      <MobileCardRow label="Đối tượng" value={r.target} fullWidth />
+                    )}
+                    {r.detail && (
+                      <MobileCardRow label="Chi tiết" value={r.detail} fullWidth />
+                    )}
+                    {r.ip && (
+                      <MobileCardRow label="Địa chỉ IP" value={r.ip} mono />
+                    )}
+                  </MobileCardGrid>
+                </MobileCard>
+              ))}
+            </div>
+          }
+        />
+      )}
+
+      {pages > 1 && (
+        <nav className="ui-pager" aria-label="Phân trang nhật ký">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            leftIcon="chevrons-left"
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+          >
+            Đầu
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="sm"
+            leftIcon="chevron-left"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Trước
+          </AppButton>
+          <span className="muted num">
+            Trang {page}/{pages} · {total} dòng
+          </span>
+          <AppButton
+            variant="secondary"
+            size="sm"
+            rightIcon="chevron-right"
+            disabled={page >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Sau
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="sm"
+            rightIcon="chevrons-right"
+            disabled={page >= pages}
+            onClick={() => setPage(pages)}
+          >
+            Cuối
+          </AppButton>
+        </nav>
+      )}
+    </PageShell>
   );
 }

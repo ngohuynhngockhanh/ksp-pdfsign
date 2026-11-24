@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { api } from "../api";
+import { AppButton, AppIcon, FormField, InlineAlert } from "../components/ui";
 
 export function Login({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState("admin");
@@ -7,7 +8,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr("");
@@ -22,39 +23,51 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="center">
-      <form className="card login" onSubmit={submit}>
-        <span className="login-kicker">INUT · SECURE WORKSPACE</span>
-        <h1>KSP Operations Suite</h1>
-        <p className="muted">Đăng nhập để ký số và kiểm tra chữ ký PDF</p>
-        <label>
-          Tài khoản
+    <div className="ui-auth-shell">
+      <form className="ui-auth-card ui-stack" onSubmit={submit}>
+        <div>
+          <span className="ui-auth-kicker">INUT · SECURE WORKSPACE</span>
+          <h1 className="ui-auth-title">KSP Operations Suite</h1>
+          <p className="ui-auth-sub">Đăng nhập để ký số và kiểm tra chữ ký PDF</p>
+        </div>
+
+        <FormField label="Tài khoản" htmlFor="login-username">
           <input
+            id="login-username"
+            className="ui-input"
             value={username}
             autoComplete="username"
             onChange={(e) => setUsername(e.target.value)}
             autoFocus
           />
-        </label>
-        <label>
-          Mật khẩu
+        </FormField>
+
+        <FormField label="Mật khẩu" htmlFor="login-password">
           <input
+            id="login-password"
+            className="ui-input"
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </label>
-        {err && <div className="error" role="alert">{err}</div>}
-        <button type="submit" disabled={busy}>
+        </FormField>
+
+        {err && <InlineAlert tone="danger">{err}</InlineAlert>}
+
+        <AppButton
+          type="submit"
+          variant="primary"
+          size="lg"
+          fullWidth
+          loading={busy}
+          leftIcon="log-in"
+        >
           {busy ? "Đang đăng nhập…" : "Đăng nhập"}
-        </button>
-        <p className="thanks-note">
-          <span className="thanks-heart" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-            </svg>
-          </span>
+        </AppButton>
+
+        <p className="ui-auth-thanks">
+          <AppIcon name="heart" size={14} className="ui-auth-heart" />
           <span>
             Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của{" "}
             <a href="https://inut.vn" target="_blank" rel="noreferrer">

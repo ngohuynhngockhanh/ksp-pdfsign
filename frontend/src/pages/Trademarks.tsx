@@ -1,35 +1,92 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
-  IpTrademark,
-  TrademarkLookupResult,
+  type IpTrademark,
+  type TrademarkLookupResult,
 } from "../api";
-import { AppModal, DataView, FormGrid, ResponsiveTabs } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  AppModal,
+  DataView,
+  EmptyState,
+  FilterBar,
+  FormGrid,
+  InlineAlert,
+  KpiStrip,
+  MobileCard,
+  MobileCardHeader,
+  PageHeader,
+  PageShell,
+  ResponsiveTabs,
+  SectionCard,
+  SkeletonBlock,
+  StatusBadge,
+  type StatusBadgeTone,
+  TableSkeleton,
+  useToast,
+} from "../components/ui";
 import { safeHttpUrl } from "../utils/url";
 
+const DEFAULT_FEE_ITEMS = [
+  {
+    code: "LP-GH",
+    name: "Lệ phí gia hạn hiệu lực văn bằng bảo hộ",
+    note: "100.000 đ × 2 nhóm Nice (9, 42)",
+    amount: 200000,
+  },
+  {
+    code: "P-SD",
+    name: "Phí sử dụng văn bằng bảo hộ (duy trì 10 năm)",
+    note: "250.000 đ nhóm đầu + 150.000 đ nhóm tiếp theo",
+    amount: 400000,
+  },
+  {
+    code: "P-TD",
+    name: "Phí thẩm định yêu cầu gia hạn",
+    note: "160.000 đ / 1 văn bằng",
+    amount: 160000,
+  },
+  {
+    code: "P-CB",
+    name: "Phí công bố quyết định gia hạn",
+    note: "120.000 đ / 1 đơn",
+    amount: 120000,
+  },
+  {
+    code: "P-DB",
+    name: "Phí đăng bạ thông tin gia hạn",
+    note: "120.000 đ / 1 văn bằng",
+    amount: 120000,
+  },
+];
+
+function resolvePhaseTone(phase?: string): StatusBadgeTone {
+  if (phase === "expired" || phase === "grace_period") return "danger";
+  if (phase === "renewal_window" || phase === "expiring_soon") return "warning";
+  return "success";
+}
+
+function calculateTimelineProgress(daysRemaining?: number): number {
+  const totalDays = 3652;
+  const remaining = daysRemaining ?? 0;
+  if (remaining <= 0) return 100;
+  const elapsed = totalDays - remaining;
+  return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)));
+}
+
 export function Trademarks() {
+  const toast = useToast();
   const [trademarks, setTrademarks] = useState<IpTrademark[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [failedLogos, setFailedLogos] = useState<Record<number, boolean>>({});
   const [failedOnlineLogos, setFailedOnlineLogos] = useState<Record<string, boolean>>({});
-  const [isNarrow, setIsNarrow] = useState<boolean>(() =>
-    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false,
-  );
 
   // Local filter & search
   const [filterStatus, setFilterStatus] = useState<"all" | "granted" | "refused">("all");
   const [searchKeyword, setSearchKeyword] = useState("");
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 640px)");
-    const onChange = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
-    setIsNarrow(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
 
   // Online WIPO lookup
   const [onlineQuery, setOnlineQuery] = useState("");
@@ -38,16 +95,7 @@ export function Trademarks() {
   const [onlineSearchedQuery, setOnlineSearchedQuery] = useState("");
   const [showOnlineModal, setShowOnlineModal] = useState(false);
 
-  // Toast feedback
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  // Load trademark list
-  const loadTrademarks = async () => {
+  const loadTrademarks = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -56,40 +104,38 @@ export function Trademarks() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Không thể tải danh sách nhãn hiệu";
       setError(msg);
-      showToast(msg, "error");
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     loadTrademarks();
-  }, []);
+  }, [loadTrademarks]);
 
-  // Sync from WIPO
   const handleSync = async () => {
     try {
       setSyncing(true);
       const res = await api.trademarks.sync("APNA:(INUT)", true);
-      showToast(
-        res.message || `Đồng bộ thành công! Hiện có ${res.total_in_db || 5} nhãn hiệu trong hệ thống.`,
-        "success"
+      toast.success(
+        res.message || `Đồng bộ thành công! Hiện có ${res.total_in_db || trademarks.length} nhãn hiệu trong hệ thống.`,
       );
       await loadTrademarks();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Lỗi khi đồng bộ từ Cổng Cục SHTT (WIPO Publish)";
-      showToast(msg, "error");
+      toast.error(
+        err instanceof Error ? err.message : "Lỗi khi đồng bộ từ Cổng Cục SHTT (WIPO Publish)",
+      );
     } finally {
       setSyncing(false);
     }
   };
 
-  // Online search from WIPO
   const handleOnlineSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const q = onlineQuery.trim();
     if (!q) {
-      showToast("Vui lòng nhập tên nhãn hiệu, MST hoặc tên công ty để tra cứu", "info");
+      toast.info("Vui lòng nhập tên nhãn hiệu, MST hoặc tên công ty để tra cứu.");
       return;
     }
     try {
@@ -98,314 +144,272 @@ export function Trademarks() {
       const res = await api.trademarks.lookupOnline(q);
       setOnlineResults(res.items || []);
       setShowOnlineModal(true);
-      showToast(`Tìm thấy ${res.total || res.items?.length || 0} kết quả từ Cổng Cục SHTT!`, "success");
+      toast.success(`Tìm thấy ${res.total || res.items?.length || 0} kết quả từ Cổng Cục SHTT.`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Lỗi khi tra cứu trực tuyến từ Cục SHTT";
-      showToast(msg, "error");
+      toast.error(
+        err instanceof Error ? err.message : "Lỗi khi tra cứu trực tuyến từ Cục SHTT",
+      );
     } finally {
       setOnlineLoading(false);
     }
   };
 
-  // Dynamic KPI Stats
   const kpiStats = useMemo(() => {
-    const total = trademarks.length;
     const granted = trademarks.filter((t) => t.status === "Cấp bằng");
     const refused = trademarks.filter((t) => t.status === "Từ chối");
-    const grantedCount = granted.length;
-    const refusedCount = refused.length;
 
-    // Nearest expiry date among granted marks
-    let nearestExpiry = "04/11/2029";
-    let nearestWindowStart = "04/05/2029";
-    let nearestTimeFormatted = "Còn ~3 năm 1 tháng";
-
+    let nearestExpiry = "—";
+    let nearestWindowStart = "—";
     if (granted.length > 0) {
-      // Sort by days_remaining
-      const sorted = [...granted].sort((a, b) => {
-        const d1 = a.validity?.days_remaining ?? 99999;
-        const d2 = b.validity?.days_remaining ?? 99999;
-        return d1 - d2;
-      });
+      const sorted = [...granted].sort(
+        (a, b) => (a.validity?.days_remaining ?? 99999) - (b.validity?.days_remaining ?? 99999),
+      );
       const earliest = sorted[0];
       if (earliest.validity?.expiry_date) {
         nearestExpiry = earliest.validity.expiry_date;
-        nearestWindowStart = earliest.validity.renewal_window_start || "";
-        nearestTimeFormatted = earliest.validity.time_remaining_formatted || "";
+        nearestWindowStart = earliest.validity.renewal_window_start || "—";
       }
     }
 
-    // Total fees for granted marks
-    const totalFees = granted.reduce((acc, t) => {
-      return acc + (t.fee_breakdown?.total_amount || 1000000);
-    }, 0);
-
-    const totalFeesFormatted =
-      totalFees > 0
-        ? `${totalFees.toLocaleString("vi-VN")} VNĐ`
-        : "4.000.000 VNĐ";
+    const totalFees = granted.reduce((acc, t) => acc + (t.fee_breakdown?.total_amount || 1000000), 0);
 
     return {
-      total: total || 5,
-      grantedCount: grantedCount || 4,
-      refusedCount: refusedCount || 1,
+      total: trademarks.length,
+      grantedCount: granted.length,
+      refusedCount: refused.length,
+      grantedSub:
+        granted.length > 0
+          ? granted.map((g) => g.mark_name).slice(0, 4).join(", ")
+          : "Chưa có văn bằng cấp",
+      refusedSub:
+        refused.length > 0
+          ? refused.map((r) => `${r.mark_name} (${r.application_number})`).slice(0, 2).join(", ")
+          : "Không có đơn từ chối",
       nearestExpiry,
       nearestWindowStart,
-      nearestTimeFormatted,
-      totalFeesFormatted,
+      totalFeesFormatted: `${totalFees.toLocaleString("vi-VN")} VNĐ`,
     };
   }, [trademarks]);
 
-  // Filtered trademarks for display
   const filteredTrademarks = useMemo(() => {
     return trademarks.filter((tm) => {
-      // Status filter
       if (filterStatus === "granted" && tm.status !== "Cấp bằng") return false;
       if (filterStatus === "refused" && tm.status !== "Từ chối") return false;
 
-      // Search keyword filter
       if (searchKeyword.trim()) {
         const kw = searchKeyword.toLowerCase().trim();
-        const matchName = tm.mark_name?.toLowerCase().includes(kw);
-        const matchAppNo = tm.application_number?.toLowerCase().includes(kw);
-        const matchRegNo = tm.registration_number?.toLowerCase().includes(kw);
-        const matchClasses = (Array.isArray(tm.nice_classes)
-          ? tm.nice_classes.join(",")
-          : String(tm.nice_classes || "")
-        )
-          .toLowerCase()
-          .includes(kw);
-        const matchOwner = tm.owner_name?.toLowerCase().includes(kw);
-        if (!matchName && !matchAppNo && !matchRegNo && !matchClasses && !matchOwner) {
-          return false;
-        }
+        const classesStr = (
+          Array.isArray(tm.nice_classes) ? tm.nice_classes.join(",") : String(tm.nice_classes || "")
+        ).toLowerCase();
+        const matched =
+          tm.mark_name?.toLowerCase().includes(kw) ||
+          tm.application_number?.toLowerCase().includes(kw) ||
+          tm.registration_number?.toLowerCase().includes(kw) ||
+          classesStr.includes(kw) ||
+          tm.owner_name?.toLowerCase().includes(kw);
+        if (!matched) return false;
       }
       return true;
     });
   }, [trademarks, filterStatus, searchKeyword]);
 
-  // Timeline progress calculation (10 years)
-  const calculateTimelineProgress = (filingDateStr?: string, daysRemaining?: number) => {
-    const totalDays = 3652; // 10 years approx
-    const remaining = daysRemaining ?? 0;
-    if (remaining <= 0) return 100;
-    const elapsed = totalDays - remaining;
-    const pct = Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)));
-    return pct;
-  };
+  const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (searchKeyword.trim() ? 1 : 0);
 
   return (
-    <div className="trademarks-page">
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`tm-toast tm-toast-${toast.type}`} role="status">
-          <span className="tm-toast-icon">
-            {toast.type === "success" ? "✅" : toast.type === "error" ? "⚠️" : "ℹ️"}
-          </span>
-          <span className="tm-toast-message">{toast.message}</span>
-          <button
-            type="button"
-            className="tm-toast-close"
-            onClick={() => setToast(null)}
-            aria-label="Đóng thông báo"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Page Header */}
-      <div className="tm-page-header">
-        <div className="tm-header-left">
-          <div className="tm-eyebrow">SỞ HỮU TRÍ TUỆ · CỤC SHTT VIỆT NAM (WIPO PUBLISH)</div>
-          <h1 className="tm-page-title">
-            <span className="tm-title-icon">®️</span> Quản Lý Nhãn Hiệu & Thời Hạn Gia Hạn
-          </h1>
-          <p className="tm-page-desc">
-            Theo dõi tiến trình 5 đơn nhãn hiệu của <strong>INUT</strong>, tự động tính toán countdown 10 năm hiệu lực văn bằng (Điều 93 Luật SHTT) và bóc tách dự toán lệ phí gia hạn theo Thông tư 263/2016/TT-BTC.
-          </p>
-        </div>
-        <div className="tm-header-actions">
-          <button
-            type="button"
-            className={`tm-btn tm-btn-sync ${syncing ? "loading" : ""}`}
+    <PageShell className="trademarks-page" data-page="trademarks">
+      <PageHeader
+        variant="compact"
+        icon="award"
+        title="Quản Lý Nhãn Hiệu & Thời Hạn Gia Hạn"
+        subtitle="Cục SHTT (WIPO Publish) · Đếm ngược hiệu lực 10 năm (Điều 93 Luật SHTT) và dự toán lệ phí TT 263/2016."
+        actions={
+          <AppButton
+            variant="primary"
+            size="sm"
+            leftIcon="refresh"
+            loading={syncing}
             onClick={handleSync}
-            disabled={syncing}
             title="Đồng bộ lại toàn bộ dữ liệu và logo từ Cổng Cục SHTT"
           >
-            {syncing ? (
+            {syncing ? "Đang đồng bộ WIPO..." : "Đồng bộ từ Cục SHTT (WIPO)"}
+          </AppButton>
+        }
+      />
+
+      {/* Unified INUT KPI Strip */}
+      <KpiStrip
+        columns={5}
+        loading={loading}
+        items={[
+          {
+            label: "Tổng số đơn",
+            value: kpiStats.total,
+            sub: "Đơn nộp tại Cục SHTT",
+            icon: "file-badge",
+            tone: "brand",
+            active: filterStatus === "all",
+            onClick: () => setFilterStatus("all"),
+          },
+          {
+            label: "Đã cấp bằng",
+            value: kpiStats.grantedCount,
+            sub: kpiStats.grantedSub,
+            icon: "badge-check",
+            tone: "success",
+            active: filterStatus === "granted",
+            onClick: () => setFilterStatus("granted"),
+          },
+          {
+            label: "Bị từ chối",
+            value: kpiStats.refusedCount,
+            sub: kpiStats.refusedSub,
+            icon: "ban",
+            tone: "danger",
+            active: filterStatus === "refused",
+            onClick: () => setFilterStatus("refused"),
+          },
+          {
+            label: "Hạn gia hạn gần nhất",
+            value: kpiStats.nearestExpiry,
+            sub: (
               <>
-                <span className="tm-spinner" aria-hidden="true" /> Đang đồng bộ WIPO...
+                Mở tiếp nhận từ <strong>{kpiStats.nearestWindowStart}</strong>
               </>
-            ) : (
-              <>
-                <span className="tm-btn-icon">🔄</span> Đồng bộ từ Cục SHTT (WIPO)
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+            ),
+            icon: "calendar",
+            tone: "warning",
+          },
+          {
+            label: "Dự toán lệ phí",
+            value: kpiStats.totalFeesFormatted,
+            sub: `${kpiStats.grantedCount} nhãn hiệu (TT 263/2016)`,
+            icon: "coins",
+            tone: "gold",
+          },
+        ]}
+      />
 
-      {/* KPI Hero Banner */}
-      <div className="tm-kpi-grid">
-        <div className="tm-kpi-card tm-kpi-total">
-          <div className="tm-kpi-label">Tổng số đơn đăng ký</div>
-          <div className="tm-kpi-value">{kpiStats.total}</div>
-          <div className="tm-kpi-sub">Đơn nộp tại Cục SHTT Việt Nam</div>
-        </div>
-
-        <div className="tm-kpi-card tm-kpi-granted">
-          <div className="tm-kpi-label">Đã cấp Giấy chứng nhận</div>
-          <div className="tm-kpi-value">{kpiStats.grantedCount}</div>
-          <div className="tm-kpi-sub">iNut, iNut Platform, iNut Door, iNutMuro</div>
-        </div>
-
-        <div className="tm-kpi-card tm-kpi-refused">
-          <div className="tm-kpi-label">Bị từ chối</div>
-          <div className="tm-kpi-value">{kpiStats.refusedCount}</div>
-          <div className="tm-kpi-sub">iNutNebi (Đơn số 4-2019-48906)</div>
-        </div>
-
-        <div className="tm-kpi-card tm-kpi-renewal">
-          <div className="tm-kpi-label">Hạn gia hạn gần nhất</div>
-          <div className="tm-kpi-value tm-kpi-date">{kpiStats.nearestExpiry}</div>
-          <div className="tm-kpi-sub">
-            Mở tiếp nhận từ <strong>{kpiStats.nearestWindowStart}</strong>
-          </div>
-        </div>
-
-        <div className="tm-kpi-card tm-kpi-fees">
-          <div className="tm-kpi-label">Tổng dự toán lệ phí nhà nước</div>
-          <div className="tm-kpi-value tm-kpi-money">{kpiStats.totalFeesFormatted}</div>
-          <div className="tm-kpi-sub">1.000.000 đ × 4 nhãn (Thông tư 263/2016)</div>
-        </div>
-      </div>
-
-      {/* Action Bar: Filters & Online Search */}
-      <div className="tm-action-bar">
-        <div className="tm-action-filters" style={{ minWidth: 0, flexWrap: "wrap" }}>
-          <ResponsiveTabs
-            className="tm-pills"
-            ariaLabel="Lọc trạng thái nhãn hiệu"
-            active={filterStatus}
-            onChange={(id) => setFilterStatus(id as "all" | "granted" | "refused")}
-            tabs={[
-              { id: "all", label: "Tất cả", badge: trademarks.length },
-              {
-                id: "granted",
-                label: "✓ Đã cấp bằng",
-                badge: trademarks.filter((t) => t.status === "Cấp bằng").length,
-              },
-              {
-                id: "refused",
-                label: "✕ Từ chối",
-                badge: trademarks.filter((t) => t.status === "Từ chối").length,
-              },
-            ]}
-          />
-
-          <div className="tm-search-box" style={{ minWidth: 0, flex: "1 1 min(100%, 240px)" }}>
-            <span className="tm-search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Lọc tên nhãn hiệu, số đơn, số bằng, nhóm Nice..."
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              className="tm-search-input ui-input"
+      {/* Local Search, Status Tabs & Online WIPO Lookup Bar */}
+      <FilterBar
+        collapsibleMobile
+        search={{
+          value: searchKeyword,
+          onChange: setSearchKeyword,
+          placeholder: "Lọc tên nhãn hiệu, số đơn, số bằng, nhóm Nice...",
+          ariaLabel: "Lọc danh mục nhãn hiệu",
+        }}
+        activeCount={activeFilterCount}
+        onReset={() => {
+          setFilterStatus("all");
+          setSearchKeyword("");
+        }}
+        filters={
+          <>
+            <ResponsiveTabs
+              variant="segmented"
+              className="tm-tabs-inline"
+              ariaLabel="Lọc trạng thái nhãn hiệu"
+              active={filterStatus}
+              onChange={(id) => setFilterStatus(id as "all" | "granted" | "refused")}
+              tabs={[
+                { id: "all", label: "Tất cả", badge: trademarks.length },
+                {
+                  id: "granted",
+                  label: "Cấp bằng",
+                  icon: "check-circle",
+                  badge: kpiStats.grantedCount,
+                },
+                {
+                  id: "refused",
+                  label: "Từ chối",
+                  icon: "ban",
+                  badge: kpiStats.refusedCount,
+                },
+              ]}
             />
-            {searchKeyword && (
-              <button
-                type="button"
-                className="tm-search-clear ui-btn-icon"
-                onClick={() => setSearchKeyword("")}
-                title="Xóa bộ lọc"
-                aria-label="Xóa bộ lọc"
+            <form className="tm-wipo-form" onSubmit={handleOnlineSearch}>
+              <input
+                type="text"
+                placeholder="Tra cứu toàn quốc trên WIPO (tên nhãn, MST...)"
+                aria-label="Tra cứu nhãn hiệu trực tuyến trên Cục SHTT"
+                value={onlineQuery}
+                onChange={(e) => setOnlineQuery(e.target.value)}
+                className="ui-input tm-wipo-input"
+              />
+              <AppButton
+                type="submit"
+                variant="primary"
+                size="sm"
+                leftIcon="globe"
+                loading={onlineLoading}
               >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+                {onlineLoading ? "Đang tra..." : "Tra cứu WIPO"}
+              </AppButton>
+            </form>
+          </>
+        }
+      />
 
-        {/* Online Search Form */}
-        <form className="tm-online-search-form" onSubmit={handleOnlineSearch} style={{ flexWrap: "wrap", minWidth: 0 }}>
-          <div className="tm-online-input-wrapper" style={{ minWidth: 0, flex: "1 1 min(100%, 240px)" }}>
-            <span className="tm-online-icon">🌐</span>
-            <input
-              type="text"
-              placeholder="Tra cứu nhãn hiệu toàn quốc (tên nhãn, MST...)"
-              value={onlineQuery}
-              onChange={(e) => setOnlineQuery(e.target.value)}
-              className="tm-online-input ui-input"
-            />
-          </div>
-          <button
-            type="submit"
-            className="tm-btn tm-btn-online ui-btn-chip"
-            disabled={onlineLoading}
-          >
-            {onlineLoading ? (
-              <>
-                <span className="tm-spinner-sm" /> Đang tra...
-              </>
-            ) : (
-              <>Tra cứu WIPO</>
-            )}
-          </button>
-        </form>
-      </div>
-
-      {/* Main Content: Trademark Cards List */}
+      {/* Main Content */}
       {loading ? (
-        <div className="tm-loading-state">
-          <div className="tm-big-spinner" />
-          <p>Đang tải danh mục nhãn hiệu và tính toán thời hạn gia hạn...</p>
+        <div className="ui-stack--lg">
+          <SkeletonBlock variant="card" />
+          <TableSkeleton rows={4} cols={4} />
         </div>
       ) : error ? (
-        <div className="tm-error-card">
-          <h3>Đã xảy ra lỗi</h3>
-          <p>{error}</p>
-          <button type="button" className="tm-btn" onClick={loadTrademarks}>
-            Thử lại
-          </button>
-        </div>
+        <InlineAlert
+          tone="danger"
+          title="Không thể tải danh sách nhãn hiệu"
+          action={
+            <AppButton variant="secondary" size="sm" leftIcon="refresh" onClick={loadTrademarks}>
+              Thử lại
+            </AppButton>
+          }
+        >
+          {error}
+        </InlineAlert>
       ) : filteredTrademarks.length === 0 ? (
-        <div className="tm-empty-state">
-          <div className="tm-empty-icon">📂</div>
-          <h3>Không tìm thấy nhãn hiệu phù hợp</h3>
-          <p>Thử xóa từ khóa tìm kiếm hoặc bấm "Đồng bộ từ Cục SHTT (WIPO)"</p>
-          <button
-            type="button"
-            className="tm-btn"
-            onClick={() => {
-              setFilterStatus("all");
-              setSearchKeyword("");
-            }}
-          >
-            Đặt lại bộ lọc
-          </button>
-        </div>
+        <EmptyState
+          icon="award"
+          title="Không tìm thấy nhãn hiệu phù hợp"
+          description='Thử xóa từ khóa tìm kiếm hoặc bấm "Đồng bộ từ Cục SHTT (WIPO)".'
+          action={
+            <AppButton
+              variant="secondary"
+              leftIcon="rotate-ccw"
+              onClick={() => {
+                setFilterStatus("all");
+                setSearchKeyword("");
+              }}
+            >
+              Đặt lại bộ lọc
+            </AppButton>
+          }
+        />
       ) : (
-        <div className="tm-cards-list">
+        <div className="ui-stack--lg">
           {filteredTrademarks.map((tm) => {
             const isGranted = tm.status === "Cấp bằng";
             const isRefused = tm.status === "Từ chối";
             const validity = tm.validity;
             const fees = tm.fee_breakdown;
-            const progress = calculateTimelineProgress(tm.filing_date, validity?.days_remaining);
+            const feeItems = fees?.items && fees.items.length > 0 ? fees.items : DEFAULT_FEE_ITEMS;
+            const progress = calculateTimelineProgress(validity?.days_remaining);
+            const niceList = (
+              Array.isArray(tm.nice_classes)
+                ? tm.nice_classes
+                : String(tm.nice_classes || "").split(",")
+            )
+              .map((c) => String(c).trim())
+              .filter(Boolean);
 
             return (
-              <article key={tm.id} className={`tm-card ${isGranted ? "tm-card-granted" : isRefused ? "tm-card-refused" : ""}`}>
-                {/* Trademark Card Top Info */}
-                <div className="tm-card-header">
-                  {/* Trademark Logo */}
-                  <div className="tm-logo-container">
+              <SectionCard key={tm.id}>
+                <div className="tm-card-top">
+                  <div className="ui-logo-frame ui-logo-frame--md">
                     {failedLogos[tm.id] ? (
-                      <div className="tm-logo-fallback">
-                        <span className="tm-logo-fallback-text">
-                          {(tm.mark_name || "?").charAt(0)}
-                        </span>
-                        <span className="tm-logo-fallback-r">®</span>
+                      <div className="ui-logo-fallback tm-logo-fallback" aria-hidden="true">
+                        <AppIcon name="award" size={24} />
                       </div>
                     ) : (
                       <img
@@ -420,390 +424,234 @@ export function Trademarks() {
                     )}
                   </div>
 
-                  {/* Trademark Basic Meta */}
-                  <div className="tm-card-meta">
-                    <div className="tm-meta-title-row">
+                  <div className="ui-stack ui-flex-1">
+                    <div className="ui-row-between">
                       <h2 className="tm-mark-name">{tm.mark_name}</h2>
-                      <div className="tm-badges-row">
-                        <span
-                          className={`tm-badge-status ${
-                            isGranted ? "badge-granted" : isRefused ? "badge-refused" : "badge-pending"
-                          }`}
+                      <div className="ui-row">
+                        <StatusBadge
+                          tone={isGranted ? "success" : isRefused ? "danger" : "warning"}
+                          icon={isGranted ? "check-circle" : isRefused ? "ban" : "clock"}
+                          dot
                         >
-                          {isGranted ? "✓ Đã cấp bằng" : isRefused ? "✕ Bị từ chối" : tm.status}
-                        </span>
+                          {isGranted ? "Đã cấp bằng" : isRefused ? "Bị từ chối" : tm.status}
+                        </StatusBadge>
 
                         {tm.registration_number && (
-                          <span className="tm-badge-reg" title="Số Giấy chứng nhận đăng ký nhãn hiệu">
-                            Bằng số: <strong>{tm.registration_number}</strong>
-                          </span>
+                          <StatusBadge
+                            tone="brand"
+                            variant="outline"
+                            title="Số Giấy chứng nhận đăng ký nhãn hiệu"
+                          >
+                            Bằng số: {tm.registration_number}
+                          </StatusBadge>
                         )}
 
-                        <span className="tm-badge-app" title="Số đơn đăng ký nhãn hiệu">
-                          Số đơn: <strong>{tm.application_number}</strong>
-                        </span>
+                        <StatusBadge tone="neutral" title="Số đơn đăng ký nhãn hiệu">
+                          Số đơn: {tm.application_number}
+                        </StatusBadge>
                       </div>
                     </div>
 
-                    {/* Dates & Owner */}
-                    <div className="tm-meta-grid">
-                      <div className="tm-meta-item">
-                        <span className="tm-meta-label">Ngày nộp đơn:</span>
-                        <span className="tm-meta-value">{tm.filing_date || "—"}</span>
+                    <div className="ui-grid-4">
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Ngày nộp đơn</span>
+                        <span className="ui-meta-value num">{tm.filing_date || "—"}</span>
                       </div>
-                      <div className="tm-meta-item">
-                        <span className="tm-meta-label">Ngày cấp bằng:</span>
-                        <span className="tm-meta-value">
-                          {tm.grant_date ? (
-                            <strong className="tm-grant-highlight">{tm.grant_date}</strong>
-                          ) : (
-                            "—"
-                          )}
-                        </span>
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Ngày cấp bằng</span>
+                        <span className="ui-meta-value num">{tm.grant_date || "—"}</span>
                       </div>
-                      <div className="tm-meta-item">
-                        <span className="tm-meta-label">Ngày công bố:</span>
-                        <span className="tm-meta-value">{tm.publication_date || "—"}</span>
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Ngày công bố</span>
+                        <span className="ui-meta-value num">{tm.publication_date || "—"}</span>
                       </div>
-                      <div className="tm-meta-item tm-meta-owner">
-                        <span className="tm-meta-label">Chủ văn bằng:</span>
-                        <span className="tm-meta-value" title={tm.owner_address || tm.owner_name}>
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Chủ văn bằng</span>
+                        <span className="ui-meta-value" title={tm.owner_address || tm.owner_name}>
                           {tm.owner_name}
                         </span>
                       </div>
                     </div>
 
-                    {/* Nice Classes & Classification */}
-                    <div className="tm-classes-row">
-                      <span className="tm-classes-label">Phân nhóm Nice:</span>
-                      <div className="tm-nice-badges">
-                        {(Array.isArray(tm.nice_classes)
-                          ? tm.nice_classes
-                          : String(tm.nice_classes || "").split(",")
-                        )
-                          .map((c) => String(c).trim())
-                          .filter(Boolean)
-                          .map((cls) => (
-                            <span key={cls} className="tm-nice-tag">
-                              Nhóm {cls}
-                            </span>
-                          ))}
-                      </div>
+                    <div className="ui-row">
+                      <span className="ui-meta-label">Phân nhóm Nice:</span>
+                      {niceList.map((cls) => (
+                        <StatusBadge key={cls} tone="info" size="sm">
+                          Nhóm {cls}
+                        </StatusBadge>
+                      ))}
                       {tm.mark_type && (
-                        <span className="tm-meta-pill">Kiểu: {tm.mark_type}</span>
+                        <StatusBadge tone="neutral" size="sm">
+                          Kiểu: {tm.mark_type}
+                        </StatusBadge>
                       )}
                       {tm.colors && (
-                        <span className="tm-meta-pill" title={tm.colors}>
+                        <StatusBadge tone="neutral" size="sm" title={tm.colors}>
                           Màu sắc: {tm.colors}
-                        </span>
+                        </StatusBadge>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Goods / Services details */}
                 {tm.goods_services && (
-                  <div className="tm-goods-section">
-                    <div className="tm-goods-title">Danh mục hàng hóa & Dịch vụ bảo hộ:</div>
-                    <div className="tm-goods-content">{tm.goods_services}</div>
+                  <div className="ui-subpanel ui-mt-3">
+                    <div className="ui-meta-label ui-mb-2">Danh mục hàng hóa & Dịch vụ bảo hộ</div>
+                    <div className="ui-text-body">{tm.goods_services}</div>
                   </div>
                 )}
 
-                {/* Refused State Message */}
                 {isRefused && (
-                  <div className="tm-refused-notice">
-                    <div className="tm-refused-icon">⚠️</div>
-                    <div>
-                      <strong>Đơn nhãn hiệu đã bị từ chối cấp văn bằng bảo hộ</strong>
-                      <p>
-                        Nhãn hiệu <em>{tm.mark_name}</em> (Đơn số <code>{tm.application_number}</code> nộp ngày {tm.filing_date}) không được cấp văn bằng, do đó không phát sinh thời hạn hiệu lực 10 năm và không phát sinh lệ phí gia hạn nhà nước.
-                      </p>
-                    </div>
+                  <div className="ui-stack ui-divider-top ui-mt-4">
+                    <InlineAlert
+                      tone="warning"
+                      title="Đơn nhãn hiệu đã bị từ chối cấp văn bằng bảo hộ"
+                    >
+                      Nhãn hiệu <strong>{tm.mark_name}</strong> (Đơn số <code>{tm.application_number}</code> nộp ngày{" "}
+                      {tm.filing_date}) không được cấp văn bằng, nên không phát sinh hiệu lực 10 năm và lệ phí gia hạn nhà nước.
+                    </InlineAlert>
                   </div>
                 )}
 
-                {/* Granted State: Renewal Countdown & 10-Year Timeline */}
                 {isGranted && (
-                  <div className="tm-granted-sections">
-                    {/* Renewal Countdown Card */}
-                    <div className="tm-countdown-box">
-                      <div className="tm-countdown-header">
-                        <div className="tm-countdown-title-group">
-                          <span className="tm-section-icon">⏳</span>
-                          <h3>Thời Hạn Hiệu Lực & Đếm Ngược Gia Hạn (Điều 93 Luật SHTT)</h3>
-                        </div>
-                        <span className={`tm-phase-badge tm-phase-${validity?.phase || "active"}`}>
+                  <>
+                    {/* 10-Year Renewal Countdown & Timeline */}
+                    <div className="ui-stack ui-divider-top ui-mt-4">
+                      <div className="ui-row-between">
+                        <h3 className="ui-subhead">
+                          <AppIcon name="clock" size={16} />
+                          <span>Thời Hạn Hiệu Lực & Đếm Ngược Gia Hạn (Điều 93 Luật SHTT)</span>
+                        </h3>
+                        <StatusBadge tone={resolvePhaseTone(validity?.phase)} dot>
                           {validity?.phase_label || "Đang có hiệu lực"}
-                        </span>
+                        </StatusBadge>
                       </div>
 
-                      {/* Remaining time big hero display */}
-                      <div className="tm-countdown-hero">
-                        <div className="tm-countdown-digits-card">
-                          <div className="tm-digits-label">THỜI GIAN CÒN LẠI ĐẾN HẾT HẠN</div>
-                          <div className="tm-digits-value">
-                            {validity?.time_remaining_formatted || "Còn 3 năm 1 tháng"}
-                          </div>
-                          <div className="tm-digits-sub">
-                            Hiệu lực 10 năm tính từ ngày nộp đơn ({tm.filing_date})
-                          </div>
+                      <div className="ui-grid-4">
+                        <div className="ui-stat-tile ui-stat-tile--accent">
+                          <span className="ui-meta-label">Thời gian còn lại</span>
+                          <span className="tm-date-val">
+                            {validity?.time_remaining_formatted || "—"}
+                          </span>
+                          <span className="ui-muted">Hiệu lực 10 năm từ {tm.filing_date}</span>
                         </div>
 
-                        <div className="tm-key-dates-grid">
-                          <div className="tm-key-date-card">
-                            <span className="tm-kd-icon">📅</span>
-                            <div>
-                              <div className="tm-kd-label">Ngày hết hiệu lực văn bằng</div>
-                              <div className="tm-kd-value tm-highlight-expiry">
-                                {validity?.expiry_date || tm.expiry_date}
-                              </div>
-                              <div className="tm-kd-sub">10 năm từ ngày nộp đơn</div>
-                            </div>
-                          </div>
+                        <div className="ui-stat-tile">
+                          <span className="ui-meta-label">Ngày hết hiệu lực</span>
+                          <span className="tm-date-val">{validity?.expiry_date || tm.expiry_date || "—"}</span>
+                          <span className="ui-muted">10 năm từ ngày nộp đơn</span>
+                        </div>
 
-                          <div className="tm-key-date-card">
-                            <span className="tm-kd-icon">🚪</span>
-                            <div>
-                              <div className="tm-kd-label">Mở tiếp nhận đơn gia hạn</div>
-                              <div className="tm-kd-value tm-highlight-window">
-                                {validity?.renewal_window_start || tm.renewal_window_start}
-                              </div>
-                              <div className="tm-kd-sub">Trước 6 tháng theo luật định</div>
-                            </div>
-                          </div>
+                        <div className="ui-stat-tile">
+                          <span className="ui-meta-label">Mở tiếp nhận gia hạn</span>
+                          <span className="tm-date-val">
+                            {validity?.renewal_window_start || tm.renewal_window_start || "—"}
+                          </span>
+                          <span className="ui-muted">Trước 6 tháng theo luật định</span>
+                        </div>
 
-                          <div className="tm-key-date-card">
-                            <span className="tm-kd-icon">⚠️</span>
-                            <div>
-                              <div className="tm-kd-label">Hạn chót ân hạn nộp muộn</div>
-                              <div className="tm-kd-value">
-                                {validity?.grace_period_end || "—"}
-                              </div>
-                              <div className="tm-kd-sub">+6 tháng sau ngày hết hạn (+10%/tháng)</div>
-                            </div>
-                          </div>
+                        <div className="ui-stat-tile">
+                          <span className="ui-meta-label">Hạn chót ân hạn muộn</span>
+                          <span className="tm-date-val">{validity?.grace_period_end || "—"}</span>
+                          <span className="ui-muted">+6 tháng sau hết hạn (+10%/tháng)</span>
                         </div>
                       </div>
 
-                      {/* Visual 10-Year Timeline Progress Bar */}
-                      <div className="tm-timeline-container">
-                        <div className="tm-timeline-bar-wrapper">
-                          <div
-                            className="tm-timeline-bar-fill"
-                            style={{ width: `${progress}%` }}
-                            title={`Tiến trình hiệu lực: ${progress}%`}
-                          />
-                          {/* 6-Month Renewal Window Marker */}
-                          <div
-                            className="tm-timeline-window-zone"
-                            style={{ left: "95%", width: "5%" }}
-                            title="Khung nộp đơn gia hạn (6 tháng trước hết hạn)"
-                          />
-                          {/* Marker pin on current day */}
-                          <div
-                            className="tm-timeline-pin"
-                            style={{ left: `${progress}%` }}
-                            title="Vị trí hiện tại"
-                          />
-                        </div>
+                      <div className="ui-stack">
+                        <progress
+                          className="ui-progress"
+                          value={progress}
+                          max={100}
+                          aria-label={`Tiến trình hiệu lực văn bằng ${tm.mark_name}: ${progress}%`}
+                        />
 
-                        <div
-                          className="tm-timeline-milestones"
-                          style={
-                            isNarrow
-                              ? {
-                                  display: "grid",
-                                  gridTemplateColumns: "1fr",
-                                  gap: 8,
-                                  position: "static",
-                                  height: "auto",
-                                  marginTop: 12,
-                                }
-                              : undefined
-                          }
-                        >
-                          <div
-                            className="tm-milestone tm-ms-start"
-                            style={
-                              isNarrow
-                                ? {
-                                    position: "static",
-                                    left: "auto",
-                                    transform: "none",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                    textAlign: "left",
-                                  }
-                                : undefined
-                            }
-                          >
-                            <span className="tm-ms-dot" />
-                            <span className="tm-ms-text">Nộp đơn: {tm.filing_date}</span>
-                            <span className="tm-ms-label">Năm 0</span>
+                        <div className="ui-milestones">
+                          <div className="ui-milestone">
+                            <span className="ui-status-dot" aria-hidden="true" />
+                            <div className="ui-stack--xs ui-flex-1">
+                              <span className="ui-text-xs ui-text-strong">Nộp đơn: {tm.filing_date || "—"}</span>
+                              <span className="ui-muted">Năm 0</span>
+                            </div>
                           </div>
 
-                          <div
-                            className="tm-milestone tm-ms-current"
-                            style={
-                              isNarrow
-                                ? {
-                                    position: "static",
-                                    left: "auto",
-                                    transform: "none",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                    textAlign: "left",
-                                  }
-                                : { left: `${progress}%` }
-                            }
-                          >
-                            <span className="tm-ms-indicator">📍 Hôm nay ({progress}%)</span>
+                          <div className="ui-milestone">
+                            <span className="ui-status-dot ui-status-dot--brand" aria-hidden="true" />
+                            <div className="ui-stack--xs ui-flex-1">
+                              <span className="ui-text-xs ui-text-strong">Hôm nay ({progress}%)</span>
+                              <span className="ui-muted">Vị trí hiệu lực hiện tại</span>
+                            </div>
                           </div>
 
-                          <div
-                            className="tm-milestone tm-ms-window"
-                            style={
-                              isNarrow
-                                ? {
-                                    position: "static",
-                                    left: "auto",
-                                    transform: "none",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                    textAlign: "left",
-                                  }
-                                : { left: "95%" }
-                            }
-                          >
-                            <span className="tm-ms-dot tm-dot-orange" />
-                            <span className="tm-ms-text">Mở gia hạn: {validity?.renewal_window_start}</span>
-                            <span className="tm-ms-label">Trước 6 tháng</span>
+                          <div className="ui-milestone">
+                            <span className="ui-status-dot ui-status-dot--warning" aria-hidden="true" />
+                            <div className="ui-stack--xs ui-flex-1">
+                              <span className="ui-text-xs ui-text-strong">
+                                Mở gia hạn: {validity?.renewal_window_start || "—"}
+                              </span>
+                              <span className="ui-muted">Trước 6 tháng</span>
+                            </div>
                           </div>
 
-                          <div
-                            className="tm-milestone tm-ms-end"
-                            style={
-                              isNarrow
-                                ? {
-                                    position: "static",
-                                    left: "auto",
-                                    transform: "none",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                    textAlign: "left",
-                                  }
-                                : undefined
-                            }
-                          >
-                            <span className="tm-ms-dot tm-dot-red" />
-                            <span className="tm-ms-text">Hết hạn: {validity?.expiry_date}</span>
-                            <span className="tm-ms-label">Năm thứ 10</span>
+                          <div className="ui-milestone">
+                            <span className="ui-status-dot ui-status-dot--danger" aria-hidden="true" />
+                            <div className="ui-stack--xs ui-flex-1">
+                              <span className="ui-text-xs ui-text-strong">
+                                Hết hạn: {validity?.expiry_date || "—"}
+                              </span>
+                              <span className="ui-muted">Năm thứ 10</span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Official Government Fee Breakdown Table */}
-                    <div className="tm-fees-box">
-                      <div className="tm-fees-header">
-                        <div className="tm-fees-title-group">
-                          <span className="tm-section-icon">🏛️</span>
-                          <h3>Dự Toán Lệ Phí Gia Hạn Nhà Nước (Thông Tư 263/2016/TT-BTC)</h3>
-                        </div>
-                        <span className="tm-fees-legal-badge">
+                    {/* Government Fee Breakdown */}
+                    <div className="ui-stack ui-divider-top ui-mt-4">
+                      <div className="ui-row-between">
+                        <h3 className="ui-subhead">
+                          <AppIcon name="landmark" size={16} />
+                          <span>Dự Toán Lệ Phí Gia Hạn Nhà Nước</span>
+                        </h3>
+                        <StatusBadge tone="neutral" size="sm">
                           Căn cứ TT 263/2016/TT-BTC & TT 63/2023/TT-BTC
-                        </span>
+                        </StatusBadge>
                       </div>
 
                       <DataView
                         mobileMode="card"
                         desktop={
-                          <div className="tm-table-responsive">
-                            <table className="tm-fee-table">
+                          <div className="ui-table-scroll-wrap" tabIndex={0}>
+                            <table className="ui-table">
                               <thead>
                                 <tr>
-                                  <th style={{ width: "48px" }}>STT</th>
+                                  <th>STT</th>
                                   <th>Khoản mục lệ phí / phí nhà nước</th>
                                   <th>Diễn giải & Căn cứ tính</th>
-                                  <th style={{ width: "160px", textAlign: "right" }}>Số tiền</th>
+                                  <th className="col-num">Số tiền</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {fees?.items && fees.items.length > 0 ? (
-                                  fees.items.map((item, idx) => (
-                                    <tr key={item.code || idx}>
-                                      <td className="tm-td-stt">{idx + 1}</td>
-                                      <td className="tm-td-name">
-                                        <strong>{item.name}</strong>
-                                        <div className="tm-item-code">Mã: {item.code}</div>
-                                      </td>
-                                      <td className="tm-td-note">{item.note}</td>
-                                      <td className="tm-td-amount">
-                                        {item.amount.toLocaleString("vi-VN")} đ
-                                      </td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  // Default standard 5 items if not pre-computed
-                                  <>
-                                    <tr>
-                                      <td className="tm-td-stt">1</td>
-                                      <td className="tm-td-name">
-                                        <strong>Lệ phí gia hạn hiệu lực văn bằng bảo hộ</strong>
-                                      </td>
-                                      <td className="tm-td-note">100.000 đ × 2 nhóm Nice (9, 42)</td>
-                                      <td className="tm-td-amount">200.000 đ</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="tm-td-stt">2</td>
-                                      <td className="tm-td-name">
-                                        <strong>Phí sử dụng văn bằng bảo hộ (duy trì 10 năm)</strong>
-                                      </td>
-                                      <td className="tm-td-note">250.000 đ nhóm đầu + 150.000 đ nhóm tiếp theo</td>
-                                      <td className="tm-td-amount">400.000 đ</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="tm-td-stt">3</td>
-                                      <td className="tm-td-name">
-                                        <strong>Phí thẩm định yêu cầu gia hạn</strong>
-                                      </td>
-                                      <td className="tm-td-note">160.000 đ / 1 văn bằng</td>
-                                      <td className="tm-td-amount">160.000 đ</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="tm-td-stt">4</td>
-                                      <td className="tm-td-name">
-                                        <strong>Phí công bố quyết định gia hạn</strong>
-                                      </td>
-                                      <td className="tm-td-note">120.000 đ / 1 đơn</td>
-                                      <td className="tm-td-amount">120.000 đ</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="tm-td-stt">5</td>
-                                      <td className="tm-td-name">
-                                        <strong>Phí đăng bạ thông tin gia hạn</strong>
-                                      </td>
-                                      <td className="tm-td-note">120.000 đ / 1 văn bằng</td>
-                                      <td className="tm-td-amount">120.000 đ</td>
-                                    </tr>
-                                  </>
-                                )}
+                                {feeItems.map((item, idx) => (
+                                  <tr key={item.code || idx}>
+                                    <td className="num">{idx + 1}</td>
+                                    <td>
+                                      <strong>{item.name}</strong>
+                                      {item.code && <div className="muted">Mã: {item.code}</div>}
+                                    </td>
+                                    <td className="muted">{item.note}</td>
+                                    <td className="col-num">
+                                      {item.amount.toLocaleString("vi-VN")} đ
+                                    </td>
+                                  </tr>
+                                ))}
                               </tbody>
                               <tfoot>
-                                <tr className="tm-tfoot-total">
-                                  <td colSpan={3} className="tm-total-label">
-                                    <strong>TỔNG LỆ PHÍ NHÀ NƯỚC CHO 1 NHÃN HIỆU (2 NHÓM):</strong>
+                                <tr className="ui-row-selected ui-text-strong">
+                                  <td colSpan={3}>
+                                    TỔNG LỆ PHÍ NHÀ NƯỚC CHO 1 NHÃN HIỆU ({niceList.length || 2} NHÓM)
                                   </td>
-                                  <td className="tm-total-value">
-                                    <strong>{fees?.total_formatted || "1.000.000 VNĐ"}</strong>
+                                  <td className="col-num">
+                                    {fees?.total_formatted || "1.000.000 VNĐ"}
                                   </td>
                                 </tr>
                               </tfoot>
@@ -812,54 +660,46 @@ export function Trademarks() {
                         }
                         mobileCards={
                           <div className="ui-mobile-card-list">
-                            {(fees?.items && fees.items.length > 0
-                              ? fees.items
-                              : [
-                                  { code: "LP-GH", name: "Lệ phí gia hạn hiệu lực văn bằng bảo hộ", note: "100.000 đ × 2 nhóm Nice (9, 42)", amount: 200000 },
-                                  { code: "P-SD", name: "Phí sử dụng văn bằng bảo hộ (duy trì 10 năm)", note: "250.000 đ nhóm đầu + 150.000 đ nhóm tiếp theo", amount: 400000 },
-                                  { code: "P-TD", name: "Phí thẩm định yêu cầu gia hạn", note: "160.000 đ / 1 văn bằng", amount: 160000 },
-                                  { code: "P-CB", name: "Phí công bố quyết định gia hạn", note: "120.000 đ / 1 đơn", amount: 120000 },
-                                  { code: "P-DB", name: "Phí đăng bạ thông tin gia hạn", note: "120.000 đ / 1 văn bằng", amount: 120000 },
-                                ]
-                            ).map((item, idx) => (
-                              <div key={item.code || idx} className="ui-mobile-card">
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                                  <strong style={{ color: "var(--ink)" }}>{idx + 1}. {item.name}</strong>
-                                  <strong className="nowrap" style={{ color: "var(--primary-dark)" }}>
-                                    {item.amount.toLocaleString("vi-VN")} đ
-                                  </strong>
-                                </div>
-                                {item.note && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{item.note}</div>}
-                              </div>
+                            {feeItems.map((item, idx) => (
+                              <MobileCard key={item.code || idx}>
+                                <MobileCardHeader
+                                  title={`${idx + 1}. ${item.name}`}
+                                  subtitle={item.note}
+                                  badge={
+                                    <StatusBadge tone="brand" size="sm">
+                                      {item.amount.toLocaleString("vi-VN")} đ
+                                    </StatusBadge>
+                                  }
+                                />
+                              </MobileCard>
                             ))}
-                            <div className="ui-mobile-card" style={{ background: "var(--primary-soft)", borderColor: "var(--primary)" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <strong style={{ color: "var(--ink)" }}>TỔNG LỆ PHÍ NHÀ NƯỚC</strong>
-                                <strong style={{ color: "var(--primary-dark)", fontSize: 16 }}>
-                                  {fees?.total_formatted || "1.000.000 VNĐ"}
-                                </strong>
-                              </div>
-                            </div>
+                            <MobileCard className="ui-stat-tile--accent">
+                              <MobileCardHeader
+                                title="TỔNG LỆ PHÍ NHÀ NƯỚC"
+                                badge={
+                                  <StatusBadge tone="brand" variant="solid">
+                                    {fees?.total_formatted || "1.000.000 VNĐ"}
+                                  </StatusBadge>
+                                }
+                              />
+                            </MobileCard>
                           </div>
                         }
                       />
 
-                      <div className="tm-fees-footer-note">
-                        <span>💡</span>
-                        <span>
-                          Biểu phí áp dụng theo Mục 1 Biểu mức thu phí, lệ phí SHTT kèm Thông tư 263/2016/TT-BTC. Lệ phí nộp trực tiếp vào Kho bạc Nhà nước khi nộp hồ sơ gia hạn tại Cục Sở hữu trí tuệ.
-                        </span>
-                      </div>
+                      <InlineAlert tone="info">
+                        Biểu phí áp dụng theo Mục 1 Biểu mức thu phí, lệ phí SHTT kèm Thông tư 263/2016/TT-BTC. Lệ phí nộp trực tiếp vào Kho bạc Nhà nước khi nộp hồ sơ gia hạn tại Cục Sở hữu trí tuệ.
+                      </InlineAlert>
                     </div>
-                  </div>
+                  </>
                 )}
-              </article>
+              </SectionCard>
             );
           })}
         </div>
       )}
 
-      {/* Online Lookup Modal Dialog */}
+      {/* Online WIPO Lookup Modal */}
       <AppModal
         open={showOnlineModal}
         onClose={() => setShowOnlineModal(false)}
@@ -867,40 +707,43 @@ export function Trademarks() {
         subtitle="CỔNG DỮ LIỆU CỤC SỞ HỮU TRÍ TUỆ (WIPO PUBLISH)"
         size="lg"
         footer={
-          <button
-            type="button"
-            className="tm-btn tm-btn-secondary ui-btn-chip"
-            onClick={() => setShowOnlineModal(false)}
-          >
+          <AppButton variant="secondary" onClick={() => setShowOnlineModal(false)}>
             Đóng
-          </button>
+          </AppButton>
         }
       >
         {!onlineResults || onlineResults.length === 0 ? (
-          <div className="tm-modal-empty">
-            <div className="tm-empty-icon">🔍</div>
-            <p>Không tìm thấy kết quả nào khớp với từ khóa trên Cổng Cục SHTT.</p>
-          </div>
+          <EmptyState
+            icon="search"
+            compact
+            title="Không tìm thấy kết quả"
+            description="Không tìm thấy nhãn hiệu nào khớp với từ khóa trên Cổng Cục SHTT."
+          />
         ) : (
-          <div className="tm-modal-results-list">
-            <div className="tm-modal-count-bar">
-              Tìm thấy <strong>{onlineResults.length}</strong> nhãn hiệu trên hệ thống Cục SHTT
-            </div>
+          <div className="ui-stack">
+            <InlineAlert tone="info">
+              Tìm thấy <strong>{onlineResults.length}</strong> nhãn hiệu trên hệ thống Cục SHTT.
+            </InlineAlert>
+
             {onlineResults.map((item, i) => {
               const itemKey = item.application_number || String(i);
               const safeThumb = safeHttpUrl(item.thumbnail_url);
               const safeDetailUrl = safeHttpUrl(item.detail_url);
+              const badgeTone: StatusBadgeTone =
+                item.status === "Cấp bằng"
+                  ? "success"
+                  : item.status === "Từ chối"
+                    ? "danger"
+                    : "warning";
+
               return (
-                <div
-                  key={itemKey}
-                  className="tm-online-item"
-                  style={isNarrow ? { flexDirection: "column", alignItems: "stretch" } : undefined}
-                >
-                  <div className="tm-online-item-logo">
+                <article key={itemKey} className="ui-subpanel ui-subpanel--1 ui-row ui-row--md ui-row--start tm-online-card">
+                  <div className="ui-logo-frame ui-logo-frame--md">
                     {safeThumb && !failedOnlineLogos[itemKey] ? (
                       <img
                         src={safeThumb}
                         alt={item.mark_name}
+                        className="tm-logo-img"
                         onError={() => {
                           setFailedOnlineLogos((prev) =>
                             prev[itemKey] ? prev : { ...prev, [itemKey]: true },
@@ -908,65 +751,69 @@ export function Trademarks() {
                         }}
                       />
                     ) : (
-                      <div className="tm-online-fallback-logo">®</div>
+                      <div className="ui-logo-fallback tm-logo-fallback" aria-hidden="true">
+                        <AppIcon name="award" size={22} />
+                      </div>
                     )}
                   </div>
-                  <div className="tm-online-item-info" style={{ minWidth: 0 }}>
-                    <div className="tm-online-item-top" style={{ flexWrap: "wrap", gap: 8 }}>
-                      <h4 className="tm-online-mark-name">{item.mark_name}</h4>
-                      <span
-                        className={`tm-badge-status ${
-                          item.status === "Cấp bằng"
-                            ? "badge-granted"
-                            : item.status === "Từ chối"
-                            ? "badge-refused"
-                            : "badge-pending"
-                        }`}
-                      >
+
+                  <div className="ui-stack--sm ui-flex-1">
+                    <div className="ui-row-between">
+                      <h3 className="tm-mark-name">{item.mark_name}</h3>
+                      <StatusBadge tone={badgeTone} dot size="sm">
                         {item.status || "Chưa rõ"}
-                      </span>
+                      </StatusBadge>
                     </div>
 
-                    <FormGrid cols={2} className="tm-online-grid">
-                      <div>
-                        <strong>Số đơn:</strong> {item.application_number}
+                    <FormGrid cols={2}>
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Số đơn</span>
+                        <span className="ui-meta-value num">{item.application_number}</span>
                       </div>
-                      <div>
-                        <strong>Số bằng:</strong> {item.registration_number || "Chưa cấp"}
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Số bằng</span>
+                        <span className="ui-meta-value num">
+                          {item.registration_number || "Chưa cấp"}
+                        </span>
                       </div>
-                      <div>
-                        <strong>Ngày nộp đơn:</strong> {item.filing_date || "—"}
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Ngày nộp đơn</span>
+                        <span className="ui-meta-value num">{item.filing_date || "—"}</span>
                       </div>
-                      <div>
-                        <strong>Ngày cấp:</strong> {item.grant_date || "—"}
+                      <div className="ui-meta-item">
+                        <span className="ui-meta-label">Ngày cấp</span>
+                        <span className="ui-meta-value num">{item.grant_date || "—"}</span>
                       </div>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <strong>Chủ đơn:</strong> {item.owner_name || "—"}
+                      <div className="ui-meta-item ui-form-grid-span-full">
+                        <span className="ui-meta-label">Chủ đơn</span>
+                        <span className="ui-meta-value">{item.owner_name || "—"}</span>
                       </div>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <strong>Nhóm Nice:</strong> {item.nice_classes || "—"}
+                      <div className="ui-meta-item ui-form-grid-span-full">
+                        <span className="ui-meta-label">Nhóm Nice</span>
+                        <span className="ui-meta-value">{item.nice_classes || "—"}</span>
                       </div>
                     </FormGrid>
 
                     {safeDetailUrl && (
-                      <div className="tm-online-link-row">
+                      <div>
                         <a
                           href={safeDetailUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="tm-btn-link ui-btn-chip"
+                          className="ui-link"
                         >
-                          Xem hồ sơ gốc trên WIPO Publish ↗
+                          <span>Xem hồ sơ gốc trên WIPO Publish</span>
+                          <AppIcon name="external-link" size={14} />
                         </a>
                       </div>
                     )}
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         )}
       </AppModal>
-    </div>
+    </PageShell>
   );
 }

@@ -3,12 +3,30 @@ import {
   api,
   TaxFinding,
   TaxGrid,
+  TaxPolicy,
+  TaxReport,
   TaxReviewItem,
   TaxReviewSummary,
-  TaxReport,
-  TaxPolicy,
 } from "../api";
-import { DataView } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  DataView,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  KpiStrip,
+  PageHeader,
+  PageShell,
+  ResponsiveTabs,
+  SectionCard,
+  SplitWorkspace,
+  StatusBadge,
+  TableSkeleton,
+  useConfirm,
+  useToast,
+} from "../components/ui";
 
 function vnd(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -26,85 +44,104 @@ const DEFAULT_KY = `${thisYear}-Q${curQuarter}`;
 /** Mã chỉ tiêu bị đánh lỗi -> tô đỏ ô trong grid. */
 function flaggedCodes(findings: TaxFinding[]): Set<string> {
   const s = new Set<string>();
-  for (const f of findings)
-    for (const c of f.cells) if (/^\d+[a-z]?$/.test(c)) s.add(c);
+  for (const f of findings) {
+    for (const c of f.cells) {
+      if (/^\d+[a-z]?$/.test(c)) s.add(c);
+    }
+  }
   return s;
 }
 
-function Findings({ findings, active, onSelect }: { findings: TaxFinding[]; active: number; onSelect: (index: number) => void }) {
-  if (!findings.length)
+function Findings({
+  findings,
+  active,
+  onSelect,
+}: {
+  findings: TaxFinding[];
+  active: number;
+  onSelect: (index: number) => void;
+}) {
+  if (!findings.length) {
     return (
-      <div className="panel" style={{ borderLeft: "4px solid var(--green, #16a34a)" }}>
-        ✅ Không phát hiện lỗi tự động. Vẫn nên soát lại chứng từ gốc.
-      </div>
+      <InlineAlert tone="success">
+        Không phát hiện lỗi tự động. Vẫn nên soát lại chứng từ gốc.
+      </InlineAlert>
     );
+  }
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div className="ui-stack--sm">
       {findings.map((f, i) => (
-        <button
+        <AppButton
           key={i}
-          className={`panel finding-card${active === i ? " active" : ""}`}
+          variant="ghost"
+          className={`ui-list-btn tax-finding-btn ${f.level === "do" ? "is-danger" : "is-warning"}${active === i ? " is-active" : ""}`}
           onClick={() => onSelect(i)}
-          style={{
-            borderLeft: `4px solid ${f.level === "do" ? "var(--red)" : "var(--amber)"}`,
-          }}
         >
-          <div style={{ fontWeight: 600 }}>
-            <span className={`chip ${f.level === "do" ? "red" : "amber"}`}>
+          <span className="ui-row">
+            <StatusBadge tone={f.level === "do" ? "danger" : "warning"} size="sm">
               {f.level === "do" ? "ĐỎ" : "VÀNG"}
-            </span>{" "}
-            {f.title}
-          </div>
-          <div className="muted" style={{ marginTop: 4 }}>
-            {f.detail}
-          </div>
-          <span className="finding-open">Xem vùng lỗi trong Excel →</span>
-        </button>
+            </StatusBadge>
+            <strong className="ui-text-strong">{f.title}</strong>
+          </span>
+          <span className="ui-muted">{f.detail}</span>
+          <span className="ui-row">
+            <span className="ui-text-success">Xem vùng lỗi trong Excel</span>
+            <AppIcon name="arrow-right" size={14} />
+          </span>
+        </AppButton>
       ))}
     </div>
   );
 }
 
 function Summary({ s }: { s: TaxReviewSummary }) {
-  const items: [string, string][] = [
-    ["Doanh thu bán ra", vnd(s.ban_ra_dt)],
-    ["Thuế bán ra [35]", vnd(s.ban_ra_thue)],
-    ["Mua vào [23]", vnd(s.mua_vao_dt)],
-    ["Thuế mua vào [25]", vnd(s.mua_vao_thue)],
-    ["Khấu trừ kỳ trước [22]", vnd(s.khau_tru_ky_truoc)],
-    ["Phát sinh [36]", vnd(s.ct_36)],
-    ["Phải nộp [40]", vnd(s.ct_40)],
-    ["Chuyển kỳ sau [43]", vnd(s.ct_43)],
-    ["Số HĐ bán / mua", `${s.so_hd_ban} / ${s.so_hd_mua}`],
-  ];
   return (
-    <div className="tax-sum">
-      {items.map(([k, v]) => (
-        <div key={k} className="tax-sum-i">
-          <div className="muted">{k}</div>
-          <div style={{ fontWeight: 600 }}>{v}</div>
-        </div>
-      ))}
-    </div>
+    <KpiStrip
+      columns={3}
+      items={[
+        { label: "Doanh thu bán ra", value: vnd(s.ban_ra_dt), tone: "brand" },
+        { label: "Thuế bán ra [35]", value: vnd(s.ban_ra_thue), tone: "info" },
+        { label: "Mua vào [23]", value: vnd(s.mua_vao_dt), tone: "neutral" },
+        { label: "Thuế mua vào [25]", value: vnd(s.mua_vao_thue), tone: "info" },
+        { label: "Khấu trừ kỳ trước [22]", value: vnd(s.khau_tru_ky_truoc), tone: "neutral" },
+        { label: "Phát sinh [36]", value: vnd(s.ct_36), tone: "brand" },
+        {
+          label: "Phải nộp [40]",
+          value: vnd(s.ct_40),
+          tone: (s.ct_40 ?? 0) > 0 ? "warning" : "success",
+        },
+        { label: "Chuyển kỳ sau [43]", value: vnd(s.ct_43), tone: "success" },
+        { label: "Số HĐ bán / mua", value: `${s.so_hd_ban} / ${s.so_hd_mua}`, tone: "neutral" },
+      ]}
+    />
   );
 }
 
-function GridView({ grid, flags, focusCode }: { grid: TaxGrid; flags: Set<string>; focusCode: string }) {
-  // Ô bị merge (không phải góc trên-trái) -> bỏ qua khi render.
+function GridView({
+  grid,
+  flags,
+  focusCode,
+}: {
+  grid: TaxGrid;
+  flags: Set<string>;
+  focusCode: string;
+}) {
   const covered = new Set<string>();
   const anchor = new Map<string, { rs: number; cs: number }>();
   for (const [r1, c1, r2, c2] of grid.merges) {
     anchor.set(`${r1},${c1}`, { rs: r2 - r1 + 1, cs: c2 - c1 + 1 });
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
         if (!(r === r1 && c === c1)) covered.add(`${r},${c}`);
+      }
+    }
   }
   return (
     <DataView
       mobileMode="scroll"
       desktop={
-        <div className="table-wrap xls-wrap">
-          <table className="xls">
+        <div className="ui-sheet-wrap">
+          <table className="ui-sheet-table">
             <tbody>
               {grid.rows.map((row, r) => (
                 <tr key={r}>
@@ -113,7 +150,6 @@ function GridView({ grid, flags, focusCode }: { grid: TaxGrid; flags: Set<string
                     const a = anchor.get(`${r},${c}`);
                     const code = cell.trim().replace(/^\[|\]$/g, "");
                     const flagged = /^\[\d+[a-z]?\]$/.test(cell.trim()) && flags.has(code);
-                    // tô cả ô giá trị liền phải nhãn bị lỗi
                     const prev = c > 0 ? row[c - 1].trim() : "";
                     const prevFlag =
                       /^\[\d+[a-z]?\]$/.test(prev) && flags.has(prev.replace(/^\[|\]$/g, ""));
@@ -124,11 +160,13 @@ function GridView({ grid, flags, focusCode }: { grid: TaxGrid; flags: Set<string
                         id={/^\[\d+[a-z]?\]$/.test(cell.trim()) ? `tax-cell-${code}` : undefined}
                         rowSpan={a?.rs}
                         colSpan={a?.cs}
-                        className={
-                          (flagged || (prevFlag && cell.trim()) ? "flag " : "") +
-                          (focusCode === code ? "focus-cell " : "") +
-                          (num ? "num" : "")
-                        }
+                        className={[
+                          flagged || (prevFlag && cell.trim()) ? "flag" : "",
+                          focusCode === code ? "focus-cell" : "",
+                          num ? "num" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                       >
                         {cell}
                       </td>
@@ -149,18 +187,30 @@ function FindingSnapshot({ grid, code }: { grid: TaxGrid; code: string }) {
   if (hit < 0) return null;
   const from = Math.max(0, hit - 2);
   return (
-    <div className="finding-snapshot">
-      <div className="snapshot-label">Ảnh chụp vùng Excel liên quan · [{code}]</div>
+    <div className="ui-subpanel ui-stack--sm">
+      <div className="ui-row-between">
+        <StatusBadge tone="brand" size="sm" icon="scan-line">
+          Ảnh chụp vùng Excel liên quan · [{code}]
+        </StatusBadge>
+      </div>
       <DataView
         mobileMode="scroll"
         desktop={
-          <div className="table-wrap"><table className="xls"><tbody>
-            {grid.rows.slice(from, hit + 3).map((row, i) => (
-              <tr key={from + i}>{row.map((cell, c) => (
-                <td key={c} className={cell.trim() === `[${code}]` ? "focus-cell" : ""}>{cell}</td>
-              ))}</tr>
-            ))}
-          </tbody></table></div>
+          <div className="ui-sheet-wrap">
+            <table className="ui-sheet-table">
+              <tbody>
+                {grid.rows.slice(from, hit + 3).map((row, i) => (
+                  <tr key={from + i}>
+                    {row.map((cell, c) => (
+                      <td key={c} className={cell.trim() === `[${code}]` ? "focus-cell" : ""}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         }
       />
     </div>
@@ -168,8 +218,11 @@ function FindingSnapshot({ grid, code }: { grid: TaxGrid; code: string }) {
 }
 
 export function TaxReview() {
+  const askConfirm = useConfirm();
+  const toast = useToast();
   const [kyFilter, setKyFilter] = useState("");
   const [list, setList] = useState<TaxReviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState<{
     id: number;
     ky: string;
@@ -186,23 +239,36 @@ export function TaxReview() {
   const [dragging, setDragging] = useState(false);
   const [err, setErr] = useState("");
   const [reports, setReports] = useState<TaxReport[]>([]);
-  const [diffs, setDiffs] = useState<{ indicator: string; crm: number; accountant: number; difference: number; match: boolean }[]>([]);
+  const [diffs, setDiffs] = useState<
+    { indicator: string; crm: number; accountant: number; difference: number; match: boolean }[]
+  >([]);
   const [activeFinding, setActiveFinding] = useState(-1);
   const [focusCode, setFocusCode] = useState("");
   const [policy, setPolicy] = useState<TaxPolicy | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function reload() {
+    setLoading(true);
     try {
-      const [uploads, reportRows] = await Promise.all([api.taxReviewList(kyFilter), api.taxReports()]);
-      setList(uploads); setReports(reportRows);
+      const [uploads, reportRows] = await Promise.all([
+        api.taxReviewList(kyFilter),
+        api.taxReports(),
+      ]);
+      setList(uploads);
+      setReports(reportRows);
     } catch (e) {
       setErr((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
+
   useEffect(() => {
     reload();
-    api.taxPolicy().then(setPolicy).catch(() => undefined);
+    api
+      .taxPolicy()
+      .then(setPolicy)
+      .catch(() => undefined);
   }, [kyFilter]);
 
   async function upload(files: FileList | null) {
@@ -212,6 +278,7 @@ export function TaxReview() {
     try {
       const r = await api.taxReviewUpload(files[0], ky, note);
       setNote("");
+      toast.success("Đã tải lên và rà soát file tờ khai.");
       await reload();
       await open(r.id);
     } catch (e) {
@@ -230,36 +297,79 @@ export function TaxReview() {
       setSheet(0);
       setActiveFinding(-1);
       setFocusCode("");
+      setDiffs([]);
     } catch (e) {
       setErr((e as Error).message);
     }
   }
 
   async function del(id: number) {
-    if (!confirm("Xóa phiên bản này?")) return;
+    const ok = await askConfirm({
+      title: "Xóa phiên bản tờ khai?",
+      message: "Phiên bản BCT này sẽ bị xóa khỏi danh sách đối chiếu.",
+      confirmLabel: "Xóa phiên bản",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await api.taxReviewDelete(id);
       if (sel?.id === id) setSel(null);
+      toast.success("Đã xóa phiên bản tờ khai.");
       await reload();
     } catch (e) {
       setErr((e as Error).message);
     }
   }
 
-  const flags = useMemo(
-    () => (sel ? flaggedCodes(sel.findings) : new Set<string>()),
-    [sel],
-  );
+  const flags = useMemo(() => (sel ? flaggedCodes(sel.findings) : new Set<string>()), [sel]);
   const matchingReport = sel ? reports.find((r) => r.ky === sel.ky) : undefined;
+
   async function compare() {
     if (!sel || !matchingReport) return;
-    try { setDiffs((await api.compareTaxReport(matchingReport.id, sel.id)).differences); }
-    catch (e) { setErr((e as Error).message); }
+    setErr("");
+    try {
+      const res = await api.compareTaxReport(matchingReport.id, sel.id);
+      setDiffs(res.differences);
+      const mismatched = res.differences.filter((d) => !d.match).length;
+      toast.info(
+        mismatched
+          ? `Phát hiện ${mismatched} chỉ tiêu lệch giữa CRM và file kế toán.`
+          : "Tất cả chỉ tiêu CRM và file kế toán đều khớp.",
+      );
+    } catch (e) {
+      setErr((e as Error).message);
+    }
   }
+
   async function lockReport() {
-    if (!matchingReport || !confirm(`Khóa bản đối chiếu ${matchingReport.ky}? Job tự động sẽ không sửa bản này.`)) return;
-    await api.lockTaxReport(matchingReport.id); await reload();
+    if (!matchingReport) return;
+    const ok = await askConfirm({
+      title: `Khóa bản đối chiếu ${matchingReport.ky}?`,
+      message: "Job tự động sẽ không sửa bản này sau khi khóa.",
+      confirmLabel: "Khóa bản CRM",
+      tone: "warning",
+    });
+    if (!ok) return;
+    try {
+      await api.lockTaxReport(matchingReport.id);
+      toast.success(`Đã khóa bản đối chiếu CRM ${matchingReport.ky}.`);
+      await reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
   }
+
+  async function generateReport() {
+    setErr("");
+    try {
+      await api.generateTaxReport(ky);
+      toast.success(`Đã sinh / cập nhật bản tính CRM cho ${ky}.`);
+      await reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
   function selectFinding(index: number) {
     if (!sel) return;
     const code = sel.findings[index].cells.find((c) => /^\d+[a-z]?$/.test(c)) || "";
@@ -271,87 +381,415 @@ export function TaxReview() {
     );
     if (gridIndex >= 0) setSheet(gridIndex);
     window.setTimeout(() => {
-      document.getElementById(`tax-cell-${code}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      document
+        .getElementById(`tax-cell-${code}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
     }, 100);
   }
 
   const currentReport = reports.find((r) => r.ky === ky);
+
   return (
-    <div className="tax-studio">
-      <header className="tax-studio-hero">
-        <div>
-          <span className="tax-kicker">VAT CONTROL ROOM</span>
-          <h1>Review tờ khai quý</h1>
-          <p>Đối chiếu file kế toán với XML hóa đơn, chính sách theo ngày và dữ liệu CRM.</p>
-        </div>
-        <div className="tax-hero-score">
-          <span>Kỳ đang làm</span><strong>{ky}</strong>
-          <small>{policy?.reduction_active ? "Checkpoint giảm thuế 8% đang hiệu lực" : "Áp chính sách theo ngày hóa đơn"}</small>
-        </div>
-      </header>
+    <PageShell data-page="tax-review">
+      <div className="ui-stack--lg">
+        <PageHeader
+          variant="compact"
+          icon="calculator"
+          eyebrow="VAT CONTROL ROOM"
+          title="Review tờ khai quý"
+          subtitle="Đối chiếu file kế toán với XML hóa đơn, chính sách theo ngày và dữ liệu CRM."
+          badges={
+            <>
+              <StatusBadge tone="brand" icon="calendar">
+                Kỳ đang làm: {ky}
+              </StatusBadge>
+              <StatusBadge tone={policy?.reduction_active ? "success" : "info"}>
+                {policy?.reduction_active
+                  ? "Checkpoint giảm thuế 8% đang hiệu lực"
+                  : "Áp chính sách theo ngày hóa đơn"}
+              </StatusBadge>
+            </>
+          }
+        />
 
-      <section className="tax-policy-bar">
-        <span className="policy-mark">§</span>
-        <div><b>Phần mềm KCT → [26]</b><small>Không đưa vào 0% [29]. Nhóm đủ điều kiện giảm còn 8% đến 31/12/2026; nhóm loại trừ vẫn 10%.</small></div>
-        {policy && <span className="policy-law">{policy.legal_basis.join(" · ")}</span>}
-      </section>
+        <InlineAlert
+          tone="warning"
+          title="Phần mềm KCT → [26]"
+          action={
+            policy ? (
+              <StatusBadge tone="warning" size="sm" className="ui-wrap">
+                {policy.legal_basis.join(" · ")}
+              </StatusBadge>
+            ) : undefined
+          }
+        >
+          Không đưa vào 0% [29]. Nhóm đủ điều kiện giảm còn 8% đến 31/12/2026; nhóm loại trừ vẫn
+          10%.
+        </InlineAlert>
 
-      <section className="tax-command-grid">
-        <div className="tax-command-card upload-card">
-          <div className="command-head"><span>01</span><div><b>Nhận file kế toán</b><small>Upload và lưu từng phiên bản</small></div></div>
-          <div className="command-fields">
-            <select value={ky} onChange={(e) => setKy(e.target.value)}>{KY_OPTS.map((k) => <option key={k}>{k}</option>)}</select>
-            <input placeholder="Ghi chú phiên bản" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={(e) => upload(e.target.files)} />
-          <div className={`studio-drop${dragging ? " dragging" : ""}${busy ? " busy" : ""}`} role="button" tabIndex={0}
-            onClick={() => !busy && fileRef.current?.click()}
-            onKeyDown={(e) => !busy && (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
-            onDragEnter={(e) => { e.preventDefault(); if (!busy) setDragging(true); }} onDragOver={(e) => e.preventDefault()}
-            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
-            onDrop={(e) => { e.preventDefault(); setDragging(false); if (!busy) upload(e.dataTransfer.files); }}>
-            <span className="drop-badge">{busy ? "···" : "XLSX"}</span><div><b>{busy ? "Đang rà soát…" : "Thả file vào đây"}</b><small>hoặc bấm để chọn từ máy</small></div>
-          </div>
-        </div>
-        <div className="tax-command-card crm-card">
-          <div className="command-head"><span>02</span><div><b>Bản tính từ CRM</b><small>Tách KCT · 8% · 10% theo hóa đơn</small></div></div>
-          <div className="crm-report-state"><strong>{currentReport ? `v${currentReport.version}` : "Chưa sinh"}</strong><span>{currentReport?.status === "locked" ? "Đã khóa" : "Bản nháp tự cập nhật"}</span></div>
-          <div className="command-actions"><button className="studio-primary" onClick={async () => { await api.generateTaxReport(ky); await reload(); }}>Sinh / cập nhật {ky}</button>{currentReport && <a href={api.taxReportFileUrl(currentReport.id)}>Tải XLSX</a>}</div>
-        </div>
-      </section>
+        <FormGrid cols={2}>
+          <SectionCard
+            title="Nhận file kế toán"
+            subtitle="Upload và lưu từng phiên bản (.xlsx)"
+            icon="file-up"
+            padding="compact"
+          >
+            <div className="ui-stack--lg">
+              <FormGrid cols={2}>
+                <FormField label="Kỳ tờ khai" htmlFor="tax-rev-ky">
+                  <select
+                    id="tax-rev-ky"
+                    className="ui-select"
+                    value={ky}
+                    onChange={(e) => setKy(e.target.value)}
+                  >
+                    {KY_OPTS.map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Ghi chú phiên bản" htmlFor="tax-rev-note">
+                  <input
+                    id="tax-rev-note"
+                    className="ui-input"
+                    placeholder="Ghi chú phiên bản"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                </FormField>
+              </FormGrid>
 
-      {err && <div className="error tax-studio-error">{err}</div>}
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx"
+                hidden
+                onChange={(e) => upload(e.target.files)}
+              />
+              <div
+                className={`ui-dropzone${dragging ? " is-dragging" : ""}${busy ? " is-busy" : ""}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => !busy && fileRef.current?.click()}
+                onKeyDown={(e) =>
+                  !busy && (e.key === "Enter" || e.key === " ") && fileRef.current?.click()
+                }
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  if (!busy) setDragging(true);
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    setDragging(false);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  if (!busy) upload(e.dataTransfer.files);
+                }}
+              >
+                <span className="ui-dropzone-icon ui-dropzone-icon--solid" aria-hidden="true">
+                  <AppIcon name={busy ? "loader" : "file-spreadsheet"} size={20} />
+                </span>
+                <div>
+                  <div className="ui-text-strong">
+                    {busy ? "Đang rà soát…" : "Thả file XLSX vào đây"}
+                  </div>
+                  <div className="ui-muted">hoặc bấm để chọn từ máy</div>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
 
-      <section className={`tax-workspace${sel ? " has-selection" : ""}`}>
-        <aside className="tax-review-rail">
-          <div className="rail-head"><div><span className="tax-kicker">PHIÊN BẢN</span><h2>File kế toán</h2></div><select value={kyFilter} onChange={(e) => setKyFilter(e.target.value)}><option value="">Tất cả</option>{KY_OPTS.map((k) => <option key={k}>{k}</option>)}</select></div>
-          <div className="version-list">
-            {list.length === 0 && <div className="rail-empty">Chưa có file BCT.</div>}
-            {list.map((r) => <div key={r.id} className={`version-card${sel?.id === r.id ? " active" : ""}`} role="button" tabIndex={0} onClick={() => open(r.id)} onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r.id); }
-            }}>
-              <div className="version-top"><strong>{r.ky || "Chưa rõ kỳ"}</strong><span>{r.n_do ? `${r.n_do} đỏ` : r.n_vang ? `${r.n_vang} vàng` : "OK"}</span></div>
-              <b className="version-file">{r.ten_file}</b><small>{r.note || "Không có ghi chú"}</small>
-              <div className="version-meta"><span>{r.uploaded_at?.slice(0, 16).replace("T", " ")}</span><span className="version-actions" onClick={(e) => e.stopPropagation()}><a href={api.taxReviewFileUrl(r.id)}>Tải</a><button type="button" onClick={() => del(r.id)}>Xóa</button></span></div>
-            </div>)}
-          </div>
-          {sel && <div className="rail-findings"><div className="rail-section-title"><span>KẾT QUẢ RÀ SOÁT</span><b>{sel.findings.length}</b></div><Findings findings={sel.findings} active={activeFinding} onSelect={selectFinding} /></div>}
-        </aside>
+          <SectionCard
+            title="Bản tính từ CRM"
+            subtitle="Tách KCT · 8% · 10% theo hóa đơn"
+            icon="database"
+            padding="compact"
+            actions={
+              <StatusBadge tone={currentReport?.status === "locked" ? "success" : "info"}>
+                {currentReport?.status === "locked" ? "Đã khóa" : "Bản nháp tự cập nhật"}
+              </StatusBadge>
+            }
+          >
+            <div className="ui-stack--lg">
+              <div className="ui-row-between">
+                <div>
+                  <div className="ui-muted">Phiên bản hiện tại</div>
+                  <strong className="ui-text-strong">
+                    {currentReport ? `v${currentReport.version}` : "Chưa sinh"}
+                  </strong>
+                </div>
+                <div className="ui-row">
+                  <AppButton variant="primary" leftIcon="sparkles" onClick={generateReport}>
+                    Sinh / cập nhật {ky}
+                  </AppButton>
+                  {currentReport && (
+                    <a
+                      className="ui-btn ui-btn--secondary ui-btn--md"
+                      href={api.taxReportFileUrl(currentReport.id)}
+                    >
+                      <AppIcon name="download" size={16} />
+                      <span>Tải XLSX</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+        </FormGrid>
 
-        <main className="tax-review-stage">
-          {!sel ? <div className="tax-stage-empty"><span>↖</span><h2>Chọn một phiên bản để bắt đầu</h2><p>Hoặc tải file Excel mới ở khu vực phía trên. CRM sẽ dò sai nhóm thuế, công thức và chỉ tiêu.</p></div> : <>
-            <header className="stage-head"><div><span className="tax-kicker">ĐANG REVIEW · {sel.ky}</span><h2>{sel.ten_file}</h2></div><div className="stage-verdict"><span className={sel.summary.do ? "bad" : "ok"}>{sel.summary.do ? `${sel.summary.do} lỗi cần sửa` : "Không có lỗi đỏ"}</span><small>{sel.summary.vang} điểm cần xác nhận</small></div></header>
-            <Summary s={sel.summary} />
+        {err && (
+          <InlineAlert tone="danger" onDismiss={() => setErr("")}>
+            {err}
+          </InlineAlert>
+        )}
 
-            {matchingReport && <section className="compare-strip"><div><b>CRM v{matchingReport.version}</b><span>↔</span><b>File kế toán</b></div><div><button onClick={compare}>So sánh chỉ tiêu</button>{matchingReport.status === "draft" && <button onClick={lockReport}>Khóa bản CRM</button>}</div></section>}
-            {diffs.length > 0 && <DataView mobileMode="scroll" desktop={<div className="compare-results"><table className="dt"><thead><tr><th>Chỉ tiêu</th><th>CRM</th><th>Kế toán</th><th>Kết quả</th></tr></thead><tbody>{diffs.map((d) => <tr key={d.indicator} className={d.match ? "" : "row-neg"}><td>[{d.indicator}]</td><td className="num">{vnd(d.crm)}</td><td className="num">{vnd(d.accountant)}</td><td>{d.match ? "Khớp" : `Lệch ${vnd(d.difference)}`}</td></tr>)}</tbody></table></div>} />}
-            {activeFinding >= 0 && focusCode && sel.grids[sheet] && <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />}
+        <SplitWorkspace
+          variant="sidebar-left"
+          mobileTabs={["Phiên bản & Lỗi", "Bảng tính Excel"]}
+          primary={
+            <div className="ui-stack--lg">
+              <SectionCard
+                eyebrow="PHIÊN BẢN"
+                title="File kế toán"
+                icon="folder"
+                padding="compact"
+                actions={
+                  <select
+                    aria-label="Lọc theo kỳ"
+                    className="ui-select"
+                    value={kyFilter}
+                    onChange={(e) => setKyFilter(e.target.value)}
+                  >
+                    <option value="">Tất cả</option>
+                    {KY_OPTS.map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                }
+              >
+                {loading ? (
+                  <TableSkeleton rows={4} cols={2} />
+                ) : list.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon="file-spreadsheet"
+                    title="Chưa có file BCT"
+                    description="Tải file Excel (.xlsx) từ khung Nhận file kế toán để bắt đầu."
+                  />
+                ) : (
+                  <div className="ui-stack--sm">
+                    {list.map((r) => (
+                      <div
+                        key={r.id}
+                        className={`ui-subpanel ui-subpanel--1 ui-clickable tax-version-card${sel?.id === r.id ? " is-active" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => open(r.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            open(r.id);
+                          }
+                        }}
+                      >
+                        <div className="ui-row-between">
+                          <strong className="ui-text-strong">{r.ky || "Chưa rõ kỳ"}</strong>
+                          <StatusBadge
+                            tone={r.n_do ? "danger" : r.n_vang ? "warning" : "success"}
+                            size="sm"
+                          >
+                            {r.n_do ? `${r.n_do} đỏ` : r.n_vang ? `${r.n_vang} vàng` : "OK"}
+                          </StatusBadge>
+                        </div>
+                        <b className="tax-version-file">{r.ten_file}</b>
+                        <div className="ui-muted">{r.note || "Không có ghi chú"}</div>
+                        <div className="ui-row-between">
+                          <span className="ui-muted">
+                            {r.uploaded_at?.slice(0, 16).replace("T", " ")}
+                          </span>
+                          <span
+                            className="ui-row"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <a
+                              className="ui-btn ui-btn--ghost ui-btn--sm"
+                              href={api.taxReviewFileUrl(r.id)}
+                            >
+                              Tải
+                            </a>
+                            <AppButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => del(r.id)}
+                            >
+                              Xóa
+                            </AppButton>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
 
-            <div className="excel-toolbar"><div className="tax-sheets">{sel.grids.map((g, i) => <button key={g.name} className={i === sheet ? "active" : ""} onClick={() => setSheet(i)}>{g.name}</button>)}</div><span>{focusCode ? `Đang xem chỉ tiêu [${focusCode}]` : "Bấm cảnh báo để nhảy tới ô liên quan"}</span></div>
-            {sel.grids[sheet] && <GridView grid={sel.grids[sheet]} flags={flags} focusCode={focusCode} />}
-          </>}
-        </main>
-      </section>
-    </div>
+              {sel && (
+                <SectionCard
+                  eyebrow="KẾT QUẢ RÀ SOÁT"
+                  title="Cảnh báo tự động"
+                  icon="shield-alert"
+                  padding="compact"
+                  actions={
+                    <StatusBadge
+                      tone={sel.findings.length ? "danger" : "success"}
+                      size="sm"
+                    >
+                      {sel.findings.length}
+                    </StatusBadge>
+                  }
+                >
+                  <Findings
+                    findings={sel.findings}
+                    active={activeFinding}
+                    onSelect={selectFinding}
+                  />
+                </SectionCard>
+              )}
+            </div>
+          }
+          secondary={
+            !sel ? (
+              <SectionCard>
+                <EmptyState
+                  icon="file-search"
+                  title="Chọn một phiên bản để bắt đầu"
+                  description="Hoặc tải file Excel mới ở khu vực phía trên. CRM sẽ dò sai nhóm thuế, công thức và chỉ tiêu."
+                />
+              </SectionCard>
+            ) : (
+              <div className="ui-stack--lg">
+                <SectionCard
+                  eyebrow={`ĐANG REVIEW · ${sel.ky}`}
+                  title={sel.ten_file}
+                  icon="file-spreadsheet"
+                  actions={
+                    <div className="ui-row">
+                      <StatusBadge tone={sel.summary.do ? "danger" : "success"}>
+                        {sel.summary.do ? `${sel.summary.do} lỗi cần sửa` : "Không có lỗi đỏ"}
+                      </StatusBadge>
+                      <StatusBadge tone={sel.summary.vang ? "warning" : "neutral"} size="sm">
+                        {sel.summary.vang} điểm cần xác nhận
+                      </StatusBadge>
+                    </div>
+                  }
+                >
+                  <div className="ui-stack--lg">
+                    <Summary s={sel.summary} />
+
+                    {matchingReport && (
+                      <div className="ui-row-between">
+                        <div className="ui-row">
+                          <StatusBadge tone="brand">CRM v{matchingReport.version}</StatusBadge>
+                          <AppIcon name="arrow-right" size={14} />
+                          <strong className="ui-text-strong">File kế toán</strong>
+                        </div>
+                        <div className="ui-row">
+                          <AppButton
+                            variant="primary"
+                            size="sm"
+                            leftIcon="scale"
+                            onClick={compare}
+                          >
+                            So sánh chỉ tiêu
+                          </AppButton>
+                          {matchingReport.status === "draft" && (
+                            <AppButton
+                              variant="secondary"
+                              size="sm"
+                              leftIcon="lock"
+                              onClick={lockReport}
+                            >
+                              Khóa bản CRM
+                            </AppButton>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {diffs.length > 0 && (
+                      <DataView
+                        mobileMode="scroll"
+                        desktop={
+                          <table className="dt ui-table ui-table-sticky-col">
+                            <thead>
+                              <tr>
+                                <th>Chỉ tiêu</th>
+                                <th className="num">CRM</th>
+                                <th className="num">Kế toán</th>
+                                <th>Kết quả</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {diffs.map((d) => (
+                                <tr key={d.indicator} className={d.match ? "" : "row-neg"}>
+                                  <td>[{d.indicator}]</td>
+                                  <td className="num">{vnd(d.crm)}</td>
+                                  <td className="num">{vnd(d.accountant)}</td>
+                                  <td>
+                                    <StatusBadge
+                                      tone={d.match ? "success" : "danger"}
+                                      size="sm"
+                                    >
+                                      {d.match ? "Khớp" : `Lệch ${vnd(d.difference)}`}
+                                    </StatusBadge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        }
+                      />
+                    )}
+
+                    {activeFinding >= 0 && focusCode && sel.grids[sheet] && (
+                      <FindingSnapshot grid={sel.grids[sheet]} code={focusCode} />
+                    )}
+
+                    <div className="ui-row-between">
+                      <ResponsiveTabs
+                        variant="segmented"
+                        ariaLabel="Chọn sheet Excel"
+                        active={String(sheet)}
+                        onChange={(id) => setSheet(Number(id))}
+                        tabs={sel.grids.map((g, i) => ({
+                          id: String(i),
+                          label: g.name,
+                        }))}
+                      />
+                      <span className="ui-muted">
+                        {focusCode
+                          ? `Đang xem chỉ tiêu [${focusCode}]`
+                          : "Bấm cảnh báo để nhảy tới ô liên quan"}
+                      </span>
+                    </div>
+
+                    {sel.grids[sheet] && (
+                      <GridView grid={sel.grids[sheet]} flags={flags} focusCode={focusCode} />
+                    )}
+                  </div>
+                </SectionCard>
+              </div>
+            )
+          }
+        />
+      </div>
+    </PageShell>
   );
 }

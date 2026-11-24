@@ -120,8 +120,8 @@ test("renders INUT Operations Dark Emerald header and stats cards", async ({ pag
 
   // Verify 3 Stats Cards
   await expect(page.getByText("Tổng Vận Đơn")).toBeVisible();
-  await expect(page.getByText("🔴 Chưa In Tem")).toBeVisible();
-  await expect(page.getByText("🟢 Đã In Tem")).toBeVisible();
+  await expect(page.getByText("Chưa In Tem")).toBeVisible();
+  await expect(page.getByText("Đã In Tem")).toBeVisible();
 });
 
 test("supports sound toggle and auto-print switch", async ({ page }) => {

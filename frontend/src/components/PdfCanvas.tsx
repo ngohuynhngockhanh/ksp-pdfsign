@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Rect } from "../api";
+import {
+  AppButton,
+  AppIcon,
+  InlineAlert,
+  SkeletonBlock,
+  StatusBadge,
+} from "./ui";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -21,6 +28,10 @@ interface SelectionBox {
   nh: number;
 }
 
+const MIN_SCALE = 0.45;
+const MAX_SCALE = 2.2;
+const SCALE_STEP = 0.1;
+
 // Render từng trang PDF ra canvas + cho phép kéo chọn ô chữ nhật bằng chuột HOẶC cảm ứng (Pointer Events).
 // Tọa độ ô chọn được chuyển về ĐIỂM PDF bằng viewport.convertToPdfPoint
 // (tự động xử lý scale, CSS fit-width ratio và lật trục Y).
@@ -32,6 +43,8 @@ export function PdfCanvas({ url, onSelect }: Props) {
   const [userZoomed, setUserZoomed] = useState(false);
   const [mode, setMode] = useState<InteractionMode>("draw");
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState("");
   const [page1WidthPt, setPage1WidthPt] = useState<number>(595);
   const [selection, setSelection] = useState<SelectionBox | null>(null);
 
@@ -39,21 +52,35 @@ export function PdfCanvas({ url, onSelect }: Props) {
     let cancelled = false;
     setSelection(null);
     setUserZoomed(false);
+    setPdf(null);
+    setNumPages(0);
+    setLoading(true);
+    setLoadErr("");
+
     (async () => {
-      const doc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
-      if (cancelled) return;
-      setPdf(doc);
-      setNumPages(doc.numPages);
       try {
-        const p1 = await doc.getPage(1);
-        if (!cancelled) {
-          const vp1 = p1.getViewport({ scale: 1 });
-          if (vp1.width > 0) setPage1WidthPt(vp1.width);
+        const doc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+        if (cancelled) return;
+        setPdf(doc);
+        setNumPages(doc.numPages);
+        try {
+          const p1 = await doc.getPage(1);
+          if (!cancelled) {
+            const vp1 = p1.getViewport({ scale: 1 });
+            if (vp1.width > 0) setPage1WidthPt(vp1.width);
+          }
+        } catch {
+          /* fallback 595pt A4 */
         }
-      } catch {
-        /* fallback 595pt A4 */
+      } catch (ex) {
+        if (!cancelled) {
+          setLoadErr((ex as Error).message || "Không thể đọc tệp PDF.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -65,7 +92,7 @@ export function PdfCanvas({ url, onSelect }: Props) {
     if (!el) return;
     const recompute = () => {
       const avail = Math.max(260, el.clientWidth - 24);
-      const computed = Math.min(1.4, Math.max(0.45, Number((avail / page1WidthPt).toFixed(2))));
+      const computed = Math.min(1.4, Math.max(MIN_SCALE, Number((avail / page1WidthPt).toFixed(2))));
       setFitScale(computed);
       if (!userZoomed) {
         setScale(avail < 760 ? computed : Math.min(1.3, computed));
@@ -109,68 +136,121 @@ export function PdfCanvas({ url, onSelect }: Props) {
     });
   }, [pdf, numPages, onSelect]);
 
+  const adjustScale = (delta: number) => {
+    setUserZoomed(true);
+    setScale((prev) =>
+      Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number((prev + delta).toFixed(2)))),
+    );
+  };
+
   return (
-    <div className="pdf-area" ref={areaRef}>
-      <div className="pdf-toolbar">
-        <strong>{numPages} trang</strong>
+    <div className="ui-pdf-stage" ref={areaRef}>
+      <div className="ui-viewer-toolbar">
+        <StatusBadge tone="neutral" icon="file-text" size="sm" className="num">
+          {numPages} trang
+        </StatusBadge>
+
         <div className="pdf-mode-group" role="group" aria-label="Chế độ tương tác PDF">
-          <button
-            type="button"
-            className={`pdf-mode-btn${mode === "draw" ? " is-active" : ""}`}
+          <AppButton
+            size="sm"
+            variant={mode === "draw" ? "primary" : "secondary"}
+            leftIcon="pen-tool"
             aria-pressed={mode === "draw"}
             onClick={() => setMode("draw")}
           >
             Vẽ vùng ký
-          </button>
-          <button
-            type="button"
-            className={`pdf-mode-btn${mode === "scroll" ? " is-active" : ""}`}
+          </AppButton>
+          <AppButton
+            size="sm"
+            variant={mode === "scroll" ? "primary" : "secondary"}
+            leftIcon="hand"
             aria-pressed={mode === "scroll"}
             onClick={() => setMode("scroll")}
           >
             Cuộn trang
-          </button>
-          <button
-            type="button"
-            className="pdf-mode-btn"
+          </AppButton>
+          <AppButton
+            size="sm"
+            variant="secondary"
+            leftIcon="stamp"
             disabled={!pdf}
             onClick={placePresetBox}
             title="Đặt nhanh ô chữ ký chuẩn ở góc dưới phải trang cuối"
           >
             Đặt khung mẫu
-          </button>
+          </AppButton>
         </div>
-        <label>
-          Phóng ({Math.round(scale * 100)}%)
-          <input
-            type="range"
-            min={0.45}
-            max={2.2}
-            step={0.05}
-            value={scale}
-            onChange={(e) => {
-              setUserZoomed(true);
-              setScale(parseFloat(e.target.value));
-            }}
+
+        <div className="ui-pdf-zoom">
+          <AppButton
+            size="sm"
+            variant="ghost"
+            iconOnly
+            leftIcon="zoom-out"
+            aria-label="Thu nhỏ"
+            disabled={scale <= MIN_SCALE}
+            onClick={() => adjustScale(-SCALE_STEP)}
           />
-        </label>
-        <button
-          type="button"
-          className="btn-sm"
-          onClick={() => {
-            setUserZoomed(false);
-            setScale(fitScale);
-          }}
-        >
-          Vừa khung
-        </button>
-        <span className="muted">
-          {mode === "draw"
-            ? "Kéo chuột hoặc chạm kéo trên trang để vẽ khung chữ ký"
-            : "Đang ở chế độ cuộn — chuyển sang 'Vẽ vùng ký' để chọn ô ký"}
+          <label className="ui-pdf-zoom-label">
+            <span className="ui-pdf-zoom-pct num">{Math.round(scale * 100)}%</span>
+            <input
+              type="range"
+              aria-label="Tỷ lệ thu phóng PDF"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={0.05}
+              value={scale}
+              onChange={(e) => {
+                setUserZoomed(true);
+                setScale(parseFloat(e.target.value));
+              }}
+            />
+          </label>
+          <AppButton
+            size="sm"
+            variant="ghost"
+            iconOnly
+            leftIcon="zoom-in"
+            aria-label="Phóng to"
+            disabled={scale >= MAX_SCALE}
+            onClick={() => adjustScale(SCALE_STEP)}
+          />
+          <AppButton
+            size="sm"
+            variant="secondary"
+            leftIcon="maximize"
+            onClick={() => {
+              setUserZoomed(false);
+              setScale(fitScale);
+            }}
+          >
+            Vừa khung
+          </AppButton>
+        </div>
+
+        <span className="ui-pdf-hint">
+          <AppIcon name={mode === "draw" ? "pen-tool" : "move"} size={13} />
+          <span>
+            {mode === "draw"
+              ? "Kéo chuột hoặc chạm kéo trên trang để vẽ khung chữ ký"
+              : "Đang ở chế độ cuộn — chuyển sang Vẽ vùng ký để chọn ô ký"}
+          </span>
         </span>
       </div>
-      <div className="pdf-pages">
+
+      {loadErr && (
+        <InlineAlert tone="danger" title="Không thể hiển thị tài liệu PDF">
+          {loadErr}
+        </InlineAlert>
+      )}
+
+      {loading && !loadErr && (
+        <div className="ui-row-center ui-pad-3" role="status" aria-busy="true" aria-label="Đang tải trang PDF">
+          <SkeletonBlock variant="rect" className="ui-pdf-skeleton" />
+        </div>
+      )}
+
+      <div className="ui-pdf-pages">
         {pdf &&
           Array.from({ length: numPages }, (_, i) => (
             <PageCanvas
@@ -360,6 +440,7 @@ function PageCanvas({
           <div
             className="sel-rect"
             style={{
+              /* ds-dynamic */
               left: `${shown.nx * 100}%`,
               top: `${shown.ny * 100}%`,
               width: `${shown.nw * 100}%`,

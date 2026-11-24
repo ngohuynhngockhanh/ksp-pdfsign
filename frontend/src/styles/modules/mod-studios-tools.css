@@ -1,0 +1,31 @@
+/* mod-studios-tools.css — A4 Document Studios & PymidCoop (DS v2) */
+.studio-smart-paste-input { min-height: 76px; border-style: dashed; background: var(--surface-1); resize: vertical; }
+.studio-line-table { min-width: 680px; width: 100%; }
+.studio-line-table .col-unit { width: 92px; }
+.studio-line-table .col-qty { width: 84px; }
+.studio-line-table .col-price { width: 124px; }
+.studio-line-table .col-amount, .studio-line-table .col-vat { width: 120px; }
+.studio-line-table .col-tax { width: 112px; }
+.studio-line-table .col-act { width: 86px; }
+.studio-party-a {
+  display: flex; flex-direction: column; gap: 3px; padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--primary); border-radius: var(--radius-sm);
+  background: var(--surface-2); font-size: var(--text-caption); color: var(--muted);
+}
+.studio-party-a strong { color: var(--ink); font-size: var(--text-body); }
+.studio-terms-area { min-height: 520px; resize: vertical; font-family: var(--font-mono); font-size: var(--text-mono); line-height: 1.55; }
+.studio-toggle-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-body); font-weight: 700; color: var(--ink); }
+.studio-toggle-desc { margin-top: 2px; font-size: var(--text-caption); color: var(--muted); line-height: 1.4; }
+.studio-delivery-grid { display: grid; grid-template-columns: minmax(0, 1fr) 200px auto; gap: var(--space-3); align-items: end; }
+.studio-invoice-line strong { text-align: right; color: var(--primary-dark); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1024px) {
+  .studio-delivery-grid { grid-template-columns: 1fr 200px; }
+  .studio-delivery-copy { grid-column: 1 / -1; }
+}
+@media (max-width: 820px) {
+  .studio-step-flow { flex-wrap: wrap; overflow-x: visible; }
+  .studio-step-flow .ui-step-sep { display: none; }
+  .studio-delivery-grid { grid-template-columns: 1fr; }
+  .studio-terms-area { min-height: 320px; }
+}

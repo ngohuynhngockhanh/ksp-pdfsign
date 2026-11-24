@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { DataView, FormGrid, PageHeader } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  DataView,
+  EmptyState,
+  FilterBar,
+  InlineAlert,
+  MobileCard,
+  MobileCardActions,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+  TableSkeleton,
+  useToast,
+  type StatusBadgeTone,
+} from "../components/ui";
 import { safeHttpUrl } from "../utils/url";
 
 interface GovSource {
@@ -58,21 +77,37 @@ interface VerifyResult {
   }[];
 }
 
-const CATEGORY_LABELS: Record<string, { label: string; bg: string; fg: string }> = {
-  thue_ke_toan: { label: "Thuế & Kế toán (CS7)", bg: "#fdf3de", fg: "#8a5710" },
-  lao_dong_y_te: { label: "Lao động & Y tế", bg: "var(--primary-soft)", fg: "var(--ink)" },
-  cong_nghe_ai_iot: { label: "KHCN · AI · Solar", bg: "#e6f2ef", fg: "var(--primary-dark)" },
-  doanh_nghiep_tuy_hoa: { label: "ĐB Tuy Hòa · Đắk Lắk", bg: "var(--paper)", fg: "var(--ink)" },
-  khac: { label: "Hành chính chung", bg: "var(--bg)", fg: "var(--text)" },
+const CATEGORY_LABELS: Record<string, { label: string; tone: StatusBadgeTone }> = {
+  thue_ke_toan: { label: "Thuế & Kế toán (CS7)", tone: "warning" },
+  lao_dong_y_te: { label: "Lao động & Y tế", tone: "brand" },
+  cong_nghe_ai_iot: { label: "KHCN · AI · Solar", tone: "info" },
+  doanh_nghiep_tuy_hoa: { label: "ĐB Tuy Hòa · Đắk Lắk", tone: "neutral" },
+  khac: { label: "Hành chính chung", tone: "neutral" },
 };
 
+const QUICK_VERIFY_SAMPLES = [
+  { q: "16093/SYT-NVY", label: "CV 16093/SYT-NVY (Video Sơn Kế Toán)" },
+  { q: "7006/SYT-NVY", label: "CV 7006/SYT-NVY (Hà Nội)" },
+  { q: "1858/QĐ-UBND", label: "QĐ 1858/QĐ-UBND (KSK Đắk Lắk)" },
+  { q: "25/2026/TT-BYT", label: "Thông tư 25/2026/TT-BYT" },
+  { q: "880/TB-CT", label: "Thuế cơ sở 7 Tuy Hòa" },
+];
+
+function relevanceTone(score: number): StatusBadgeTone {
+  if (score >= 60) return "brand";
+  if (score >= 35) return "warning";
+  return "neutral";
+}
+
 export function GovRadar() {
+  const toast = useToast();
   const [sources, setSources] = useState<GovSource[]>([]);
   const [items, setItems] = useState<GovDocItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [syncError, setSyncError] = useState(false);
 
   // Filters
   const [portalFilter, setPortalFilter] = useState("");
@@ -111,16 +146,21 @@ export function GovRadar() {
   const handleSync = async () => {
     setSyncing(true);
     setSyncMsg("");
+    setSyncError(false);
     try {
       const res = await api.syncGovRadar(true);
-      setSyncMsg(
+      const msg =
         `Đã quét cổng Chính phủ & Thuế CS7 Đắk Lắk: +${res.added} văn bản mới, cập nhật ${res.updated} văn bản (Tổng: ${res.total})` +
-          (res.notified_count > 0 ? ` · Đã gửi ${res.notified_count} cảnh báo Telegram` : "") +
-          (res.reminder_count ? ` · Đã nhắc lại (sau 3 ngày): ${res.reminder_count}` : "")
-      );
+        (res.notified_count > 0 ? ` · Đã gửi ${res.notified_count} cảnh báo Telegram` : "") +
+        (res.reminder_count ? ` · Đã nhắc lại (sau 3 ngày): ${res.reminder_count}` : "");
+      setSyncMsg(msg);
+      toast.success(msg);
       await loadData();
     } catch (e: unknown) {
-      setSyncMsg("Lỗi khi quét: " + (e instanceof Error ? e.message : String(e)));
+      const errMsg = "Lỗi khi quét: " + (e instanceof Error ? e.message : String(e));
+      setSyncError(true);
+      setSyncMsg(errMsg);
+      toast.error(errMsg);
     } finally {
       setSyncing(false);
     }
@@ -136,6 +176,7 @@ export function GovRadar() {
       setVerifyRes(res);
     } catch (e) {
       console.error(e);
+      toast.error("Không thể kiểm chứng số công văn lúc này.");
     } finally {
       setVerifying(false);
     }
@@ -145,567 +186,534 @@ export function GovRadar() {
     try {
       const res = await api.ackGovDoc(doc.id, !doc.acknowledged);
       setItems((prev) =>
-        prev.map((x) => (x.id === doc.id ? { ...x, acknowledged: res.acknowledged } : x))
+        prev.map((x) => (x.id === doc.id ? { ...x, acknowledged: res.acknowledged } : x)),
       );
+      toast.success(res.acknowledged ? "Đã đánh dấu Đã nắm." : "Đã bỏ trạng thái Đã nắm.");
     } catch (e) {
       console.error(e);
     }
   };
 
+  const activeFilterCount =
+    (portalFilter ? 1 : 0) + (categoryFilter ? 1 : 0) + (appliesOnly ? 1 : 0);
+
+  const resetFilters = () => {
+    setPortalFilter("");
+    setCategoryFilter("");
+    setSearchQ("");
+    setAppliesOnly(false);
+  };
+
   return (
-    <div className="docs-page">
-      <PageHeader
-        eyebrow="INUT · PHÁP LÝ & THUẾ CS7"
-        title="📡 Radar Công văn Chính phủ & Thuế cơ sở 7 Đắk Lắk"
-        subtitle={
-          <>
-            Chủ động theo dõi văn bản gốc từ <strong>.gov.vn</strong> &amp;{" "}
-            <strong>Thuế cơ sở 7 tỉnh Đắk Lắk (Phường Tuy Hòa)</strong> — tự động phân tích mức độ áp dụng cho{" "}
-            <strong>INUT (MST 4401053694 · 2 nhân sự Khánh &amp; Nhâm)</strong>.
-          </>
-        }
-        badges={
-          <div
-            style={{
-              fontSize: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 8,
-              background: "rgba(255,254,250,0.12)",
-              border: "1px solid rgba(255,254,250,0.24)",
-              color: "#eef5f2",
-              padding: "5px 10px",
-              borderRadius: 8,
-              fontWeight: 500,
-            }}
-          >
-            <span>⏱️ Chu kỳ tự động: <strong>1 tuần / lần</strong></span>
-            <span>·</span>
-            <span>Công văn đã báo trong DB không báo trùng — chỉ <strong>nhắc lại 1 lần sau 3 ngày</strong> trong tuần nếu chưa bấm &ldquo;Đã nắm&rdquo;</span>
-          </div>
-        }
-        actions={
-          <button
-            className="primary"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            {syncing ? "⏳ Đang quét .gov.vn…" : "↻ Quét công văn mới & Báo Telegram"}
-          </button>
-        }
-      />
-
-      {syncMsg && (
-        <div
-          style={{
-            padding: "10px 14px",
-            marginBottom: 16,
-            borderRadius: 10,
-            background: "var(--primary-soft)",
-            border: "1px solid var(--border-strong)",
-            color: "var(--ink)",
-            fontSize: 13,
-            fontWeight: 500,
-          }}
-        >
-          ✅ {syncMsg}
-        </div>
-      )}
-
-      {/* Official Portals Cards */}
-      <div className="ui-grid-cards-sm" style={{ marginBottom: 20 }}>
-        {sources.map((s) => {
-          const portalHref = safeHttpUrl(s.portal_url);
-          const fbHref = safeHttpUrl(s.fb_url);
-          return (
-            <div
-              key={s.id}
-              className="card"
-              style={{
-                padding: 14,
-                border:
-                  portalFilter === s.id
-                    ? "2px solid var(--primary)"
-                    : s.id === "daklak_tax_cs7"
-                      ? "1px solid var(--amber)"
-                      : "1px solid var(--border)",
-                background: s.id === "daklak_tax_cs7" ? "var(--paper)" : "var(--panel)",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                gap: 10,
-                minWidth: 0,
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 99,
-                      background: s.id === "daklak_tax_cs7" ? "#fdf3de" : "var(--primary-soft)",
-                      color: s.id === "daklak_tax_cs7" ? "#8a5710" : "var(--primary-dark)",
-                    }}
-                  >
-                    {s.badge}
-                  </span>
-                  <button
-                    className="ghost ui-btn-chip"
-                    onClick={() => setPortalFilter(portalFilter === s.id ? "" : s.id)}
-                  >
-                    {portalFilter === s.id ? "✓ Đang lọc" : "Lọc nguồn này"}
-                  </button>
-                </div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>{s.name}</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: 1.4 }}>
-                  {s.jurisdiction}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                {portalHref && (
-                  <a
-                    href={portalHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ui-btn-chip"
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--primary-dark)",
-                      textDecoration: "none",
-                    }}
-                  >
-                    🌐 Mở Cổng .gov.vn ↗
-                  </a>
-                )}
-                {fbHref && (
-                  <a
-                    href={fbHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ui-btn-chip"
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--ink)",
-                      textDecoration: "none",
-                      background: "var(--primary-soft)",
-                    }}
-                  >
-                    📘 Fanpage Thuế CS7 Đắk Lắk ↗
-                  </a>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Fact-Checker Box */}
-      <div
-        className="card"
-        style={{
-          padding: 16,
-          marginBottom: 20,
-          background: "var(--paper)",
-          border: "1px solid var(--border-strong)",
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--ink)", marginBottom: 6 }}>
-          🔍 Kiểm chứng nhanh số hiệu Công văn (Chống nhiễu thông tin từ TikTok / Facebook)
-        </div>
-        <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-          Gõ bất kỳ số công văn nào anh nghe trên mạng (VD: <code>16093/SYT-NVY</code>, <code>7006/SYT-NVY</code>,{" "}
-          <code>1858/QĐ-UBND</code>, <code>25/2026/TT-BYT</code>) để đối chiếu nguồn gốc và xem có áp dụng cho INUT ở
-          Đắk Lắk hay không:
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <input
-            type="text"
-            className="ui-input"
-            value={verifyInput}
-            onChange={(e) => setVerifyInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runVerify()}
-            placeholder="Nhập số công văn hoặc từ khóa (VD: 16093/SYT-NVY, khám sức khỏe, hoàn thuế)..."
-            style={{ flex: "1 1 220px", minWidth: 0 }}
-          />
-          <button
-            className="primary"
-            onClick={() => runVerify()}
-            disabled={verifying || !verifyInput.trim()}
-          >
-            {verifying ? "Đang tra cứu…" : "Kiểm chứng ngay"}
-          </button>
-          {verifyRes && (
-            <button className="ghost ui-btn-chip" onClick={() => setVerifyRes(null)}>
-              Đóng kết quả
-            </button>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
-          <span className="muted">Thử nhanh:</span>
-          {[
-            { q: "16093/SYT-NVY", label: "CV 16093/SYT-NVY (Video Sơn Kế Toán)" },
-            { q: "7006/SYT-NVY", label: "CV 7006/SYT-NVY (Hà Nội)" },
-            { q: "1858/QĐ-UBND", label: "QĐ 1858/QĐ-UBND (KSK Đắk Lắk)" },
-            { q: "25/2026/TT-BYT", label: "Thông tư 25/2026/TT-BYT" },
-            { q: "880/TB-CT", label: "Thuế cơ sở 7 Tuy Hòa" },
-          ].map((chip) => (
-            <button
-              key={chip.q}
-              className="ghost ui-btn-chip"
-              onClick={() => runVerify(chip.q)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-
-        {verifyRes && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 14,
-              borderRadius: 10,
-              background: "var(--panel)",
-              border:
-                verifyRes.verdict_color === "warning"
-                  ? "2px solid var(--amber)"
-                  : verifyRes.verdict_color === "success"
-                    ? "2px solid var(--green)"
-                    : "1px solid var(--border-strong)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  fontWeight: 700,
-                  fontSize: 12,
-                  padding: "3px 10px",
-                  borderRadius: 99,
-                  background:
-                    verifyRes.verdict_color === "warning"
-                      ? "#fdf3de"
-                      : verifyRes.verdict_color === "success"
-                        ? "var(--primary-soft)"
-                        : "var(--bg)",
-                  color:
-                    verifyRes.verdict_color === "warning"
-                      ? "#8a5710"
-                      : verifyRes.verdict_color === "success"
-                        ? "var(--ink)"
-                        : "var(--text)",
-                }}
-              >
-                {verifyRes.verdict_badge}
-              </span>
-              <strong style={{ fontSize: 14, color: "var(--ink)" }}>Tra cứu: &ldquo;{verifyRes.query}&rdquo;</strong>
-            </div>
-            <div style={{ display: "grid", gap: 6, fontSize: 13, lineHeight: 1.5, color: "var(--text)" }}>
-              <div>
-                <strong>• Nguồn gốc ban hành:</strong> {verifyRes.origin}
-              </div>
-              <div>
-                <strong>• Căn cứ pháp lý gốc:</strong> {verifyRes.root_legal_basis}
-              </div>
-              <div>
-                <strong>• Quy định tại tỉnh Đắk Lắk (Phường Tuy Hòa):</strong> {verifyRes.daklak_equivalent}
-              </div>
-              <div
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  background: "var(--primary-soft)",
-                  border: "1px solid var(--border-strong)",
-                  color: "var(--ink)",
-                }}
-              >
-                <strong>👉 Kết luận cho INUT:</strong> {verifyRes.inut_action}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="card" style={{ padding: "12px 14px", marginBottom: 14 }}>
-        <FormGrid cols={3}>
-          <select
-            className="ui-select"
-            value={portalFilter}
-            onChange={(e) => setPortalFilter(e.target.value)}
-          >
-            <option value="">Tất cả nguồn ({total})</option>
-            <option value="daklak_tax_cs7">Thuế tỉnh Đắk Lắk &amp; Thuế cơ sở 7 (Tuy Hòa)</option>
-            <option value="daklak_ubnd">UBND Tỉnh Đắk Lắk (Chỉ đạo điều hành)</option>
-            <option value="daklak_syt">Sở Y tế Tỉnh Đắk Lắk</option>
-            <option value="chinhphu">Chính phủ &amp; Bộ ngành Trung ương</option>
-          </select>
-
-          <select
-            className="ui-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="">Tất cả lĩnh vực</option>
-            <option value="thue_ke_toan">Thuế &amp; Kế toán (CS7)</option>
-            <option value="lao_dong_y_te">Lao động, BHXH &amp; Khám sức khỏe</option>
-            <option value="cong_nghe_ai_iot">KHCN · AI · Chuyển đổi số · Solar</option>
-            <option value="doanh_nghiep_tuy_hoa">Địa bàn Tuy Hòa · Đắk Lắk</option>
-            <option value="khac">Hành chính khác</option>
-          </select>
-
-          <input
-            type="text"
-            className="ui-input"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            placeholder="Lọc theo số hiệu, trích yếu, từ khóa..."
-          />
-        </FormGrid>
-
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", marginTop: 10 }}>
-          <input
-            type="checkbox"
-            checked={appliesOnly}
-            onChange={(e) => setAppliesOnly(e.target.checked)}
-          />
-          <span>Chỉ hiện văn bản liên quan INUT</span>
-        </label>
-      </div>
-
-      {/* Document Table / Mobile Cards */}
-      {loading ? (
-        <div className="panel" style={{ padding: 32, textAlign: "center" }}>
-          Đang tải danh sách công văn Chính phủ &amp; Tỉnh Đắk Lắk…
-        </div>
-      ) : items.length === 0 ? (
-        <div className="card" style={{ padding: 32, textAlign: "center" }}>
-          <p className="muted">Không có văn bản nào khớp bộ lọc hiện tại.</p>
-        </div>
-      ) : (
-        <DataView
-          mobileMode="card"
-          desktop={
-            <div className="table-wrap">
-              <table className="dt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 150 }}>Số ký hiệu / Ngày</th>
-                    <th style={{ width: 170 }}>Cơ quan &amp; Lĩnh vực</th>
-                    <th>Trích yếu văn bản &amp; Đánh giá tác động tới INUT</th>
-                    <th style={{ width: 110, textAlign: "center" }}>Độ liên quan</th>
-                    <th style={{ width: 140 }}>Bản gốc (.gov.vn)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => {
-                    const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
-                    const detailHref = safeHttpUrl(item.detail_url);
-                    const pdfHref = safeHttpUrl(item.pdf_url);
-                    return (
-                      <tr key={item.id} style={{ borderTop: "1px solid var(--border)", verticalAlign: "top" }}>
-                        <td>
-                          <div style={{ fontWeight: 700, color: "var(--ink)" }}>{item.doc_number || item.doc_type}</div>
-                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                            {item.doc_type} · {item.published_date}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>{item.source_label}</div>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              padding: "2px 8px",
-                              borderRadius: 99,
-                              background: catMeta.bg,
-                              color: catMeta.fg,
-                            }}
-                          >
-                            {catMeta.label}
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 6, lineHeight: 1.4 }}>
-                            {item.title}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              padding: "6px 10px",
-                              borderRadius: 6,
-                              background: item.applies_to_inut ? "var(--primary-soft)" : "var(--paper)",
-                              border: "1px solid var(--border)",
-                              color: item.applies_to_inut ? "var(--ink)" : "var(--text)",
-                              lineHeight: 1.4,
-                            }}
-                          >
-                            {item.impact_summary}
-                          </div>
-                          {item.matched_keywords && (
-                            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                              Từ khóa khớp: <code>{item.matched_keywords}</code>
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              fontWeight: 700,
-                              fontSize: 12,
-                              padding: "3px 8px",
-                              borderRadius: 6,
-                              background:
-                                item.relevance_score >= 60
-                                  ? "var(--primary-soft)"
-                                  : item.relevance_score >= 35
-                                    ? "#fdf3de"
-                                    : "var(--bg)",
-                              color:
-                                item.relevance_score >= 60
-                                  ? "var(--ink)"
-                                  : item.relevance_score >= 35
-                                    ? "#8a5710"
-                                    : "var(--muted)",
-                            }}
-                          >
-                            {item.relevance_score}%
-                          </span>
-                          <div style={{ marginTop: 6 }}>
-                            {item.acknowledged ? (
-                              <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 600 }}>
-                                ✓ Đã nắm (Tắt nhắc)
-                              </span>
-                            ) : item.notify_count >= 2 ? (
-                              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
-                                🔕 Đã nhắc đủ 2 lần
-                              </span>
-                            ) : item.notify_count === 1 || item.notified ? (
-                              <span style={{ fontSize: 11, color: "var(--amber)", fontWeight: 600 }}>
-                                🔔 Đã báo L1 (+3 ngày nhắc)
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {detailHref && (
-                              <a
-                                href={detailHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ui-btn-chip"
-                                style={{ fontWeight: 600, color: "var(--primary-dark)", textDecoration: "none" }}
-                              >
-                                🌐 Xem trên Cổng ↗
-                              </a>
-                            )}
-                            {pdfHref && (
-                              <a
-                                href={pdfHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ui-btn-chip"
-                                style={{
-                                  fontWeight: 600,
-                                  color: pdfHref.includes("facebook.com") ? "var(--primary-dark)" : "var(--red)",
-                                  textDecoration: "none",
-                                }}
-                              >
-                                {pdfHref.includes("facebook.com") ? "📘 Fanpage Thuế CS7 ↗" : "📄 Tải PDF ký số ↗"}
-                              </a>
-                            )}
-                            {item.applies_to_inut && (
-                              <button
-                                className="ghost ui-btn-chip"
-                                onClick={() => toggleAck(item)}
-                                style={{
-                                  background: item.acknowledged ? "var(--primary-soft)" : "var(--panel)",
-                                  color: item.acknowledged ? "var(--ink)" : "var(--text)",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+    <PageShell data-page="gov-radar">
+      <div className="ui-stack--lg">
+        <PageHeader
+          variant="compact"
+          icon="landmark"
+          eyebrow="INUT · PHÁP LÝ & THUẾ CS7"
+          title="Radar Công văn Chính phủ & Thuế cơ sở 7 Đắk Lắk"
+          subtitle={
+            <>
+              Chủ động theo dõi văn bản gốc từ <strong>.gov.vn</strong> &amp;{" "}
+              <strong>Thuế cơ sở 7 tỉnh Đắk Lắk (Phường Tuy Hòa)</strong> — tự động phân tích mức
+              độ áp dụng cho{" "}
+              <strong>INUT (MST 4401053694 · 2 nhân sự Khánh &amp; Nhâm)</strong>.
+            </>
           }
-          mobileCards={
-            <div className="ui-mobile-card-list">
-              {items.map((item) => {
-                const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
-                const detailHref = safeHttpUrl(item.detail_url);
-                const pdfHref = safeHttpUrl(item.pdf_url);
-                return (
-                  <article key={item.id} className="ui-mobile-card">
-                    <div className="ui-mobile-card-head">
-                      <strong className="ui-mobile-card-title">{item.doc_number || item.doc_type}</strong>
-                      <span
-                        className="chip sm"
-                        style={{
-                          background: item.relevance_score >= 60 ? "var(--primary-soft)" : "#fdf3de",
-                          color: item.relevance_score >= 60 ? "var(--ink)" : "#8a5710",
-                        }}
-                      >
-                        {item.relevance_score}%
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 600, color: "var(--ink)", lineHeight: 1.4 }}>{item.title}</div>
-                    <div className="ui-mobile-card-meta">
-                      <span>{item.published_date}</span>
-                      <span>{item.source_label}</span>
-                      <span style={{ background: catMeta.bg, color: catMeta.fg, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>
-                        {catMeta.label}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        background: item.applies_to_inut ? "var(--primary-soft)" : "var(--paper)",
-                        border: "1px solid var(--border)",
-                        color: "var(--text)",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {item.impact_summary}
-                    </div>
-                    <div className="ui-mobile-card-actions">
-                      {detailHref && (
-                        <a href={detailHref} target="_blank" rel="noopener noreferrer" className="ui-btn-chip">
-                          🌐 Xem Cổng ↗
-                        </a>
-                      )}
-                      {pdfHref && (
-                        <a href={pdfHref} target="_blank" rel="noopener noreferrer" className="ui-btn-chip">
-                          {pdfHref.includes("facebook.com") ? "📘 Fanpage ↗" : "📄 PDF ↗"}
-                        </a>
-                      )}
-                      {item.applies_to_inut && (
-                        <button className="ghost ui-btn-chip" onClick={() => toggleAck(item)}>
-                          {item.acknowledged ? "✓ Đã nắm" : "Đánh dấu Đã nắm"}
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+          badges={
+            <>
+              <StatusBadge tone="info" icon="clock">
+                Chu kỳ: 1 tuần / lần
+              </StatusBadge>
+              <StatusBadge tone="neutral" icon="bell" className="ui-wrap">
+                Nhắc lại 1 lần sau 3 ngày nếu chưa Đã nắm
+              </StatusBadge>
+            </>
+          }
+          actions={
+            <AppButton
+              variant="primary"
+              leftIcon="refresh"
+              loading={syncing}
+              onClick={handleSync}
+            >
+              {syncing ? "Đang quét .gov.vn…" : "Quét công văn mới & Báo Telegram"}
+            </AppButton>
           }
         />
-      )}
-    </div>
+
+        {syncMsg && (
+          <InlineAlert
+            tone={syncError ? "danger" : "success"}
+            onDismiss={() => setSyncMsg("")}
+          >
+            {syncMsg}
+          </InlineAlert>
+        )}
+
+        {/* Official Portals Cards */}
+        {sources.length > 0 && (
+          <div className="ui-grid-cards-sm">
+            {sources.map((s) => {
+              const portalHref = safeHttpUrl(s.portal_url);
+              const fbHref = safeHttpUrl(s.fb_url);
+              const isSelected = portalFilter === s.id;
+              return (
+                <article
+                  key={s.id}
+                  className={[
+                    "ui-subpanel ui-subpanel--card gov-portal-card",
+                    s.id === "daklak_tax_cs7" ? "is-priority" : "",
+                    isSelected ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <div>
+                    <div className="ui-row-between">
+                      <StatusBadge
+                        tone={s.id === "daklak_tax_cs7" ? "warning" : "brand"}
+                        size="sm"
+                      >
+                        {s.badge}
+                      </StatusBadge>
+                      <AppButton
+                        variant={isSelected ? "primary" : "ghost"}
+                        size="sm"
+                        leftIcon={isSelected ? "check" : "filter"}
+                        onClick={() => setPortalFilter(isSelected ? "" : s.id)}
+                      >
+                        {isSelected ? "Đang lọc" : "Lọc nguồn này"}
+                      </AppButton>
+                    </div>
+                    <div className="gov-portal-title">{s.name}</div>
+                    <div className="ui-muted">{s.jurisdiction}</div>
+                  </div>
+
+                  <div className="ui-row">
+                    {portalHref && (
+                      <a
+                        href={portalHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ui-btn ui-btn--secondary ui-btn--sm"
+                      >
+                        <AppIcon name="globe" size={14} />
+                        <span>Mở Cổng .gov.vn</span>
+                        <AppIcon name="external-link" size={12} />
+                      </a>
+                    )}
+                    {fbHref && (
+                      <a
+                        href={fbHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ui-btn ui-btn--ghost ui-btn--sm"
+                      >
+                        <AppIcon name="megaphone" size={14} />
+                        <span>Fanpage Thuế CS7 Đắk Lắk</span>
+                        <AppIcon name="external-link" size={12} />
+                      </a>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Fact-Checker Box */}
+        <SectionCard
+          title="Kiểm chứng nhanh số hiệu Công văn"
+          subtitle="Chống nhiễu thông tin từ TikTok / Facebook — đối chiếu nguồn gốc và mức độ áp dụng cho INUT ở Đắk Lắk."
+          icon="search"
+          tone="subtle"
+          padding="compact"
+        >
+          <div className="ui-stack--lg">
+            <div className="ui-muted">
+              Gõ bất kỳ số công văn nào (VD: <code>16093/SYT-NVY</code>, <code>7006/SYT-NVY</code>,{" "}
+              <code>1858/QĐ-UBND</code>, <code>25/2026/TT-BYT</code>):
+            </div>
+
+            <div className="ui-row">
+              <input
+                type="text"
+                aria-label="Nhập số công văn hoặc từ khóa kiểm chứng"
+                className="ui-input ui-grow"
+                value={verifyInput}
+                onChange={(e) => setVerifyInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runVerify()}
+                placeholder="Nhập số công văn hoặc từ khóa (VD: 16093/SYT-NVY, khám sức khỏe, hoàn thuế)..."
+              />
+              <AppButton
+                variant="primary"
+                leftIcon="search"
+                loading={verifying}
+                disabled={!verifyInput.trim()}
+                onClick={() => runVerify()}
+              >
+                {verifying ? "Đang tra cứu…" : "Kiểm chứng ngay"}
+              </AppButton>
+              {verifyRes && (
+                <AppButton variant="ghost" size="sm" onClick={() => setVerifyRes(null)}>
+                  Đóng kết quả
+                </AppButton>
+              )}
+            </div>
+
+            <div className="ui-row tp-actions-wrap">
+              <span className="ui-muted">Thử nhanh:</span>
+              {QUICK_VERIFY_SAMPLES.map((sample) => (
+                <AppButton
+                  key={sample.q}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => runVerify(sample.q)}
+                >
+                  {sample.label}
+                </AppButton>
+              ))}
+            </div>
+
+            {verifyRes && (
+              <div
+                className={[
+                  "ui-subpanel ui-subpanel--card ui-mt-3 ui-stack--sm gov-verify-panel",
+                  verifyRes.verdict_color === "warning"
+                    ? "is-warning"
+                    : verifyRes.verdict_color === "success"
+                      ? "is-success"
+                      : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <div className="ui-row">
+                  <StatusBadge
+                    tone={
+                      verifyRes.verdict_color === "warning"
+                        ? "warning"
+                        : verifyRes.verdict_color === "success"
+                          ? "success"
+                          : "neutral"
+                    }
+                  >
+                    {verifyRes.verdict_badge}
+                  </StatusBadge>
+                  <strong className="ui-text-strong">
+                    Tra cứu: &ldquo;{verifyRes.query}&rdquo;
+                  </strong>
+                </div>
+                <div>
+                  <strong>Nguồn gốc ban hành:</strong> {verifyRes.origin}
+                </div>
+                <div>
+                  <strong>Căn cứ pháp lý gốc:</strong> {verifyRes.root_legal_basis}
+                </div>
+                <div>
+                  <strong>Quy định tại tỉnh Đắk Lắk (Phường Tuy Hòa):</strong>{" "}
+                  {verifyRes.daklak_equivalent}
+                </div>
+                <InlineAlert tone="info" title="Kết luận cho INUT">
+                  {verifyRes.inut_action}
+                </InlineAlert>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+
+        {/* Filter Bar */}
+        <FilterBar
+          collapsibleMobile
+          search={{
+            value: searchQ,
+            onChange: setSearchQ,
+            placeholder: "Lọc theo số hiệu, trích yếu, từ khóa...",
+            ariaLabel: "Tìm kiếm công văn",
+          }}
+          activeCount={activeFilterCount}
+          onReset={resetFilters}
+          filters={
+            <>
+              <select
+                aria-label="Lọc theo nguồn cổng"
+                className="ui-select"
+                value={portalFilter}
+                onChange={(e) => setPortalFilter(e.target.value)}
+              >
+                <option value="">Tất cả nguồn ({total})</option>
+                <option value="daklak_tax_cs7">
+                  Thuế tỉnh Đắk Lắk &amp; Thuế cơ sở 7 (Tuy Hòa)
+                </option>
+                <option value="daklak_ubnd">UBND Tỉnh Đắk Lắk (Chỉ đạo điều hành)</option>
+                <option value="daklak_syt">Sở Y tế Tỉnh Đắk Lắk</option>
+                <option value="chinhphu">Chính phủ &amp; Bộ ngành Trung ương</option>
+              </select>
+
+              <select
+                aria-label="Lọc theo lĩnh vực"
+                className="ui-select"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="">Tất cả lĩnh vực</option>
+                <option value="thue_ke_toan">Thuế &amp; Kế toán (CS7)</option>
+                <option value="lao_dong_y_te">Lao động, BHXH &amp; Khám sức khỏe</option>
+                <option value="cong_nghe_ai_iot">KHCN · AI · Chuyển đổi số · Solar</option>
+                <option value="doanh_nghiep_tuy_hoa">Địa bàn Tuy Hòa · Đắk Lắk</option>
+                <option value="khac">Hành chính khác</option>
+              </select>
+
+              <label className="ui-check-label">
+                <input
+                  type="checkbox"
+                  checked={appliesOnly}
+                  onChange={(e) => setAppliesOnly(e.target.checked)}
+                />
+                <span>Chỉ hiện văn bản liên quan INUT</span>
+              </label>
+            </>
+          }
+        />
+
+        {/* Document Table / Mobile Cards */}
+        {loading ? (
+          <SectionCard padding="flush">
+            <TableSkeleton rows={6} cols={5} />
+          </SectionCard>
+        ) : items.length === 0 ? (
+          <SectionCard>
+            <EmptyState
+              icon="file-search"
+              title="Không có văn bản nào khớp bộ lọc hiện tại"
+              description="Thử xóa bộ lọc hoặc bấm Quét công văn mới để đồng bộ dữ liệu mới nhất."
+              action={
+                activeFilterCount > 0 || searchQ ? (
+                  <AppButton variant="secondary" size="sm" onClick={resetFilters}>
+                    Xóa bộ lọc
+                  </AppButton>
+                ) : undefined
+              }
+            />
+          </SectionCard>
+        ) : (
+          <DataView
+            mobileMode="card"
+            desktop={
+              <SectionCard padding="flush">
+                <div className="table-wrap">
+                  <table className="dt ui-table gov-table">
+                    <thead>
+                      <tr>
+                        <th>Số ký hiệu / Ngày</th>
+                        <th>Cơ quan &amp; Lĩnh vực</th>
+                        <th>Trích yếu văn bản &amp; Đánh giá tác động tới INUT</th>
+                        <th className="ui-text-center">Độ liên quan</th>
+                        <th>Bản gốc (.gov.vn)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item) => {
+                        const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
+                        const detailHref = safeHttpUrl(item.detail_url);
+                        const pdfHref = safeHttpUrl(item.pdf_url);
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <div className="ui-text-strong">
+                                {item.doc_number || item.doc_type}
+                              </div>
+                              <div className="ui-muted">
+                                {item.doc_type} · {item.published_date}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="ui-text-strong">{item.source_label}</div>
+                              <StatusBadge tone={catMeta.tone} size="sm">
+                                {catMeta.label}
+                              </StatusBadge>
+                            </td>
+                            <td>
+                              <div className="ui-text-strong">{item.title}</div>
+                              <div
+                                className={`ui-subpanel ui-mt-2 ui-text-xs${item.applies_to_inut ? " ui-subpanel--brand" : ""}`}
+                              >
+                                {item.impact_summary}
+                              </div>
+                              {item.matched_keywords && (
+                                <div className="ui-muted">
+                                  Từ khóa khớp: <code>{item.matched_keywords}</code>
+                                </div>
+                              )}
+                            </td>
+                            <td className="ui-text-center">
+                              <StatusBadge tone={relevanceTone(item.relevance_score)} size="sm">
+                                {item.relevance_score}%
+                              </StatusBadge>
+                              <div>
+                                {item.acknowledged ? (
+                                  <StatusBadge tone="success" size="sm" icon="check">
+                                    Đã nắm (Tắt nhắc)
+                                  </StatusBadge>
+                                ) : item.notify_count >= 2 ? (
+                                  <StatusBadge tone="neutral" size="sm" icon="bell">
+                                    Đã nhắc đủ 2 lần
+                                  </StatusBadge>
+                                ) : item.notify_count === 1 || item.notified ? (
+                                  <StatusBadge tone="warning" size="sm" icon="bell">
+                                    Đã báo L1 (+3 ngày nhắc)
+                                  </StatusBadge>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="ui-stack--sm">
+                                {detailHref && (
+                                  <a
+                                    href={detailHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ui-btn ui-btn--secondary ui-btn--sm"
+                                  >
+                                    <AppIcon name="globe" size={14} />
+                                    <span>Xem trên Cổng</span>
+                                    <AppIcon name="external-link" size={12} />
+                                  </a>
+                                )}
+                                {pdfHref && (
+                                  <a
+                                    href={pdfHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ui-btn ui-btn--secondary ui-btn--sm"
+                                  >
+                                    <AppIcon
+                                      name={
+                                        pdfHref.includes("facebook.com") ? "megaphone" : "file-text"
+                                      }
+                                      size={14}
+                                    />
+                                    <span>
+                                      {pdfHref.includes("facebook.com")
+                                        ? "Fanpage Thuế CS7"
+                                        : "Tải PDF ký số"}
+                                    </span>
+                                    <AppIcon name="external-link" size={12} />
+                                  </a>
+                                )}
+                                {item.applies_to_inut && (
+                                  <AppButton
+                                    variant={item.acknowledged ? "secondary" : "ghost"}
+                                    size="sm"
+                                    leftIcon={item.acknowledged ? "check-circle" : "check"}
+                                    onClick={() => toggleAck(item)}
+                                  >
+                                    {item.acknowledged ? "Đã nắm" : "Đánh dấu Đã nắm"}
+                                  </AppButton>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionCard>
+            }
+            mobileCards={
+              <div className="ui-mobile-card-list">
+                {items.map((item) => {
+                  const catMeta = CATEGORY_LABELS[item.category] || CATEGORY_LABELS.khac;
+                  const detailHref = safeHttpUrl(item.detail_url);
+                  const pdfHref = safeHttpUrl(item.pdf_url);
+                  return (
+                    <MobileCard key={item.id}>
+                      <MobileCardHeader
+                        title={item.doc_number || item.doc_type}
+                        subtitle={`${item.published_date} · ${item.source_label}`}
+                        badge={
+                          <StatusBadge tone={relevanceTone(item.relevance_score)} size="sm">
+                            {item.relevance_score}%
+                          </StatusBadge>
+                        }
+                      />
+                      <div className="ui-text-strong">{item.title}</div>
+                      <MobileCardGrid cols={2}>
+                        <MobileCardRow
+                          label="Lĩnh vực"
+                          value={
+                            <StatusBadge tone={catMeta.tone} size="sm">
+                              {catMeta.label}
+                            </StatusBadge>
+                          }
+                        />
+                        <MobileCardRow
+                          label="Trạng thái"
+                          value={
+                            item.acknowledged ? (
+                              <StatusBadge tone="success" size="sm" icon="check">
+                                Đã nắm
+                              </StatusBadge>
+                            ) : (
+                              <StatusBadge tone="neutral" size="sm">
+                                Chưa xác nhận
+                              </StatusBadge>
+                            )
+                          }
+                        />
+                      </MobileCardGrid>
+                      <div
+                        className={`ui-subpanel ui-mt-2 ui-text-xs${item.applies_to_inut ? " ui-subpanel--brand" : ""}`}
+                      >
+                        {item.impact_summary}
+                      </div>
+                      <MobileCardActions>
+                        {detailHref && (
+                          <a
+                            href={detailHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ui-btn ui-btn--secondary ui-btn--sm"
+                          >
+                            <AppIcon name="globe" size={14} />
+                            <span>Xem Cổng</span>
+                          </a>
+                        )}
+                        {pdfHref && (
+                          <a
+                            href={pdfHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ui-btn ui-btn--secondary ui-btn--sm"
+                          >
+                            <AppIcon
+                              name={pdfHref.includes("facebook.com") ? "megaphone" : "file-text"}
+                              size={14}
+                            />
+                            <span>{pdfHref.includes("facebook.com") ? "Fanpage" : "PDF"}</span>
+                          </a>
+                        )}
+                        {item.applies_to_inut && (
+                          <AppButton
+                            variant={item.acknowledged ? "secondary" : "ghost"}
+                            size="sm"
+                            leftIcon={item.acknowledged ? "check-circle" : "check"}
+                            onClick={() => toggleAck(item)}
+                          >
+                            {item.acknowledged ? "Đã nắm" : "Đánh dấu Đã nắm"}
+                          </AppButton>
+                        )}
+                      </MobileCardActions>
+                    </MobileCard>
+                  );
+                })}
+              </div>
+            }
+          />
+        )}
+      </div>
+    </PageShell>
   );
 }

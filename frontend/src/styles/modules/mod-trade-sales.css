@@ -1,0 +1,57 @@
+/* mod-trade-sales.css — CustomsDriveDossiers & Kind Swatches (DS v2) */
+.customs-drive-dossiers { min-width: 0; }
+.customs-drive-year-select { width: auto; min-width: 96px; }
+.customs-drive-source { display: flex; align-items: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.customs-supplier-note-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end; gap: var(--space-3); margin-top: var(--space-3);
+}
+.customs-supplier-note-body > div { display: grid; gap: var(--space-1); color: var(--text); font-size: var(--text-caption); }
+.customs-drive-card-title small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
+.customs-drive-coverage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.customs-drive-coverage span {
+  display: grid; gap: 2px; padding: var(--space-2) var(--space-3); font-size: var(--text-caption);
+  border: 1px solid var(--sem-success-border); border-radius: var(--radius-sm);
+  background: var(--sem-success-bg); color: var(--sem-success-fg);
+}
+.customs-drive-coverage b { font-size: var(--text-label); letter-spacing: 0.08em; text-transform: uppercase; }
+.customs-drive-coverage .missing { border-color: var(--sem-danger-border); background: var(--sem-danger-bg); color: var(--sem-danger-fg); }
+.customs-drive-table { min-width: 820px; }
+.customs-drive-table td { vertical-align: top; font-size: var(--text-caption); }
+.customs-drive-table td:first-child { min-width: 190px; }
+.customs-drive-table td:nth-child(2) { width: 196px; }
+.customs-drive-table td:nth-child(3) { min-width: 240px; line-height: 1.45; }
+.customs-drive-table strong, .customs-drive-table small { display: block; }
+.customs-drive-table small { margin-top: 2px; color: var(--muted); }
+.customs-drive-table select { width: 100%; min-height: 36px; padding: var(--space-1) var(--space-2); font-size: var(--text-caption); }
+.customs-drive-assign-select { width: auto; min-width: 180px; }
+
+/* Document Kind Swatches (E2E .customs-kind-control.kind-* preserved) */
+.customs-kind-control {
+  display: grid; grid-template-columns: 6px minmax(0, 1fr); align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-2); border: 1px solid var(--kind-accent, var(--border-strong));
+  border-radius: var(--radius-sm); background: var(--kind-bg, var(--sem-neutral-bg));
+}
+.customs-kind-swatch { width: 6px; height: 24px; border-radius: var(--radius-pill); background: var(--kind-accent, var(--sem-neutral-solid)); }
+.customs-drive-table .customs-kind-control select { min-width: 0; border-color: transparent; color: var(--kind-ink, var(--text)); background: transparent; font-weight: 700; }
+.customs-doc-row td:first-child { box-shadow: inset 3px 0 var(--kind-accent, var(--border-strong)); }
+.kind-customs_declaration { --kind-accent: var(--cat-blue-fg); --kind-bg: var(--cat-blue-bg); --kind-ink: var(--cat-blue-fg); }
+.kind-ci { --kind-accent: var(--sem-warning-solid); --kind-bg: var(--sem-warning-bg); --kind-ink: var(--sem-warning-fg); }
+.kind-pl { --kind-accent: var(--sem-brand-solid); --kind-bg: var(--sem-brand-bg); --kind-ink: var(--sem-brand-fg); }
+.kind-coo { --kind-accent: var(--sem-success-solid); --kind-bg: var(--sem-success-bg); --kind-ink: var(--sem-success-fg); }
+.kind-bill_of_lading { --kind-accent: var(--cat-sky-fg); --kind-bg: var(--cat-sky-bg); --kind-ink: var(--cat-sky-fg); }
+.kind-tax_receipt { --kind-accent: var(--sem-danger-solid); --kind-bg: var(--sem-danger-bg); --kind-ink: var(--sem-danger-fg); }
+.kind-payment { --kind-accent: var(--gold-dark); --kind-bg: var(--gold-bg); --kind-ink: var(--gold-fg); }
+.kind-contract_po { --kind-accent: var(--cat-indigo-fg); --kind-bg: var(--cat-indigo-bg); --kind-ink: var(--cat-indigo-fg); }
+.kind-datasheet { --kind-accent: var(--sem-info-solid); --kind-bg: var(--sem-info-bg); --kind-ink: var(--sem-info-fg); }
+.kind-arrival_notice { --kind-accent: var(--cat-purple-fg); --kind-bg: var(--cat-purple-bg); --kind-ink: var(--cat-purple-fg); }
+.kind-product_photo { --kind-accent: var(--cat-rose-fg); --kind-bg: var(--cat-rose-bg); --kind-ink: var(--cat-rose-fg); }
+.kind-other { --kind-accent: var(--sem-neutral-solid); --kind-bg: var(--sem-neutral-bg); --kind-ink: var(--sem-neutral-fg); }
+
+@media (max-width: 820px) {
+  .customs-check-manager .ui-section-card-head, .customs-drive-dossiers .ui-section-card-head { flex-wrap: wrap; }
+  .customs-check-manager .ui-section-card-actions, .customs-drive-dossiers .ui-section-card-actions { width: 100%; max-width: 100%; }
+  .customs-drive-source { flex-direction: column; align-items: stretch; }
+  .customs-supplier-note-body, .customs-drive-coverage { grid-template-columns: 1fr; }
+  .customs-drive-assign-select { width: 100%; }
+}

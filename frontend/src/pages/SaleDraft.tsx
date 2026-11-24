@@ -1,37 +1,68 @@
 import { useEffect, useState } from "react";
-import { api, IhoadonDashboard, IhoadonDraft, IhoadonDraftDeliveryResult, IhoadonDraftSyncResult, InvItem, SaleDraftLine, TaxPolicy } from "../api";
+import {
+  api,
+  IhoadonDashboard,
+  IhoadonDraft,
+  IhoadonDraftDeliveryResult,
+  IhoadonDraftSyncResult,
+  InvItem,
+  SaleDraftLine,
+  TaxPolicy,
+} from "../api";
 import { SmartPartyPaste } from "../components/SmartPartyPaste";
-import { DataView } from "../components/ui";
+import {
+  AppButton,
+  AppIcon,
+  DataView,
+  EmptyState,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  KpiStrip,
+  MobileCard,
+  MobileCardActions,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  PageHeader,
+  PageShell,
+  SectionCard,
+  StatusBadge,
+  useConfirm,
+  useToast,
+} from "../components/ui";
 import { safeHttpUrl } from "../utils/url";
 
 function vnd(n: number): string {
   return Math.round(n || 0).toLocaleString("vi-VN");
 }
+
 function dateTime(s: string): string {
   if (!s) return "—";
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s.slice(0, 16).replace("T", " ");
   return d.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" });
 }
+
 function parseNum(s: string | number): number {
   if (typeof s === "number") return s;
   return Number(String(s).replace(/[^\d.-]/g, "")) || 0;
 }
+
 function norm(s: string): string {
   return s.trim().toLowerCase().replace(/đ/g, "d").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
 }
+
 type StockInfo = { ma_hang: string; ten: string; dvt: string; qty: number; cost: number };
 
-// Thue suat theo sheet Danh_muc cua khuon iHoadon
 const VAT_OPTIONS = ["10%", "8%", "5%", "0%", "10%x70%", "5%x70%", "Không chịu thuế"];
 
-// Thanh tien va tien thue tu 1 dong
 function tienThue(ln: SaleDraftLine): number {
   const tt = ln.thanh_tien || Math.round(ln.so_luong * ln.don_gia);
   const m = /^(\d+(?:[.,]\d+)?)%?(?:x(\d+(?:[.,]\d+)?)%?)?$/.exec(
     ln.vat_name.replace(/\s/g, "").toLowerCase(),
   );
-  if (!m) return 0; // KCT / Vat -> 0
+  if (!m) return 0;
   const base = Number(m[1].replace(",", "."));
   const factor = m[2] ? Number(m[2].replace(",", ".")) / 100 : 1;
   return Math.round((tt * base * factor) / 100);
@@ -44,11 +75,13 @@ function blankLine(): SaleDraftLine {
 }
 
 export function SaleDraft() {
+  const toast = useToast();
+  const confirmAction = useConfirm();
   const [lines, setLines] = useState<SaleDraftLine[]>([blankLine()]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState<{ row: number; q: string; results: InvItem[] } | null>(null);
-  // AI goi y
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiMoTa, setAiMoTa] = useState("");
   const [aiCtx, setAiCtx] = useState("");
@@ -85,13 +118,39 @@ export function SaleDraft() {
     }
   }
 
+  function preparedLines() {
+    return lines.filter((line) => line.ten.trim()).map((line) => ({ ...line, tien_thue: tienThue(line) }));
+  }
+
+  async function confirmStockProblems(valid: SaleDraftLine[]): Promise<boolean> {
+    const problems = valid.filter(
+      (line) => !line.is_dich_vu && (!line.ma_hang || stockByCode[line.ma_hang] == null || stockByCode[line.ma_hang] < line.so_luong),
+    );
+    if (!problems.length) return true;
+    const summary = problems
+      .map(
+        (line) =>
+          `• ${line.ma_hang || "Chưa có mã"} · cần ${line.so_luong}, tồn ${
+            line.ma_hang && stockByCode[line.ma_hang] != null ? stockByCode[line.ma_hang] : "chưa rõ"
+          }`,
+      )
+      .join("\n");
+    return confirmAction({
+      title: "Cảnh báo tồn kho trước khi tạo bản GHI_TẠM",
+      message: `${problems.length} dòng chưa map kho hoặc không đủ tồn. Vẫn tạo bản GHI_TẠM trên iHOADON?\n${summary}`,
+      confirmLabel: "Vẫn tạo GHI_TẠM",
+      cancelLabel: "Kiểm tra lại",
+      tone: "warning",
+    });
+  }
+
   async function pushDraft() {
     const valid = preparedLines();
     if (!customer.customer_name.trim()) return setErr("Chưa nhập tên khách hàng.");
     if (!customer.buyer_tax_code.trim()) return setErr("Chưa nhập mã số thuế bên mua.");
     if (!customer.buyer_address.trim()) return setErr("Chưa nhập địa chỉ bên mua.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
-    if (!confirmStockProblems(valid)) return;
+    if (!(await confirmStockProblems(valid))) return;
     setBusy(true);
     setErr("");
     try {
@@ -99,23 +158,12 @@ export function SaleDraft() {
       setAiNote(`Đã tạo hóa đơn ${r.status} trên iHOADON · mẫu ${r.template_code}/${r.invoice_series}`);
       await syncIhoadon();
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
-  }
-
-  function preparedLines() {
-    return lines.filter((line) => line.ten.trim()).map((line) => ({ ...line, tien_thue: tienThue(line) }));
-  }
-
-  function confirmStockProblems(valid: SaleDraftLine[]): boolean {
-    const problems = valid.filter((line) => !line.is_dich_vu && (!line.ma_hang || stockByCode[line.ma_hang] == null || stockByCode[line.ma_hang] < line.so_luong));
-    if (!problems.length) return true;
-    return window.confirm(
-      `${problems.length} dòng chưa map kho hoặc không đủ tồn. Vẫn tạo bản GHI_TẠM trên iHOADON?\n\n` +
-      problems.map((line) => `• ${line.ma_hang || "Chưa có mã"} · cần ${line.so_luong}, tồn ${line.ma_hang && stockByCode[line.ma_hang] != null ? stockByCode[line.ma_hang] : "chưa rõ"}`).join("\n"),
-    );
   }
 
   async function createDelivery() {
@@ -125,7 +173,7 @@ export function SaleDraft() {
     if (!customer.buyer_address.trim()) return setErr("Chưa nhập địa chỉ bên mua.");
     if (!valid.length) return setErr("Chưa có dòng hàng nào.");
     if (!expectedIssueDate) return setErr("Chưa chọn ngày dự kiến xuất hóa đơn.");
-    if (!confirmStockProblems(valid)) return;
+    if (!(await confirmStockProblems(valid))) return;
     setBusy(true);
     setErr("");
     setCopied(false);
@@ -141,7 +189,9 @@ export function SaleDraft() {
       setAiNote(`Đã tạo ${result.status}, đóng dấu bản nháp và tạo link gửi khách.`);
       await syncIhoadon();
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -158,7 +208,9 @@ export function SaleDraft() {
         : draft.customer_name;
       setAiNote(`Đã đồng bộ bản nháp ${customerLabel} vào hồ sơ CRM.`);
     } catch (error) {
-      setErr((error as Error).message);
+      const msg = (error as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setDraftSyncing("");
     }
@@ -171,20 +223,21 @@ export function SaleDraft() {
     } catch {
       const input = document.createElement("textarea");
       input.value = deliveryResult.share_url;
-      input.style.position = "fixed";
-      input.style.opacity = "0";
+      input.className = "sr-only";
       document.body.appendChild(input);
       input.select();
       document.execCommand("copy");
       input.remove();
     }
     setCopied(true);
+    toast.success("Đã sao chép link bản nháp.");
   }
 
   useEffect(() => {
     syncIhoadon();
     loadStock().catch(() => undefined);
     api.taxPolicy().then(setPolicy).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function setLine(i: number, patch: Partial<SaleDraftLine>) {
@@ -199,6 +252,7 @@ export function SaleDraft() {
       }),
     );
   }
+
   async function searchRow(i: number, q: string) {
     setSearch({ row: i, q, results: search?.row === i ? search.results : [] });
     if (q.trim().length >= 2) {
@@ -209,6 +263,7 @@ export function SaleDraft() {
       }
     }
   }
+
   async function pickItem(i: number, it: InvItem) {
     setLine(i, { ma_hang: it.ma_hang, ten: it.ten, dvt: it.dvt });
     setSearch(null);
@@ -217,7 +272,7 @@ export function SaleDraft() {
       setStockByCode((old) => ({ ...old, [it.ma_hang]: c.ton_hien_tai }));
       if (c.don_gia_bq) setLine(i, { don_gia: Math.round(c.don_gia_bq) });
     } catch {
-      /* ignore — van sua tay duoc */
+      /* ignore */
     }
   }
 
@@ -252,16 +307,28 @@ export function SaleDraft() {
     try {
       const catalog = stockCatalog.length ? stockCatalog : await loadStock();
       let matched = 0;
-      setLines((current) => current.map((line) => {
-        if (line.is_dich_vu || !line.ten.trim()) return line;
-        const hit = catalog.find((item) => item.ma_hang === line.ma_hang)
-          || catalog.find((item) => norm(item.ten) === norm(line.ten));
-        if (!hit) return line;
-        matched += 1;
-        const donGia = line.don_gia || Math.round(hit.cost);
-        return { ...line, ma_hang: hit.ma_hang, ten: hit.ten, dvt: hit.dvt || line.dvt, don_gia: donGia, thanh_tien: Math.round(line.so_luong * donGia) };
-      }));
-      setAiNote(`Đã đồng bộ ${matched} dòng từ kho. Số lượng bán được giữ nguyên; giá chỉ bổ sung cho dòng đang bằng 0.`);
+      setLines((current) =>
+        current.map((line) => {
+          if (line.is_dich_vu || !line.ten.trim()) return line;
+          const hit =
+            catalog.find((item) => item.ma_hang === line.ma_hang) ||
+            catalog.find((item) => norm(item.ten) === norm(line.ten));
+          if (!hit) return line;
+          matched += 1;
+          const donGia = line.don_gia || Math.round(hit.cost);
+          return {
+            ...line,
+            ma_hang: hit.ma_hang,
+            ten: hit.ten,
+            dvt: hit.dvt || line.dvt,
+            don_gia: donGia,
+            thanh_tien: Math.round(line.so_luong * donGia),
+          };
+        }),
+      );
+      const msg = `Đã đồng bộ ${matched} dòng từ kho. Số lượng bán được giữ nguyên; giá chỉ bổ sung cho dòng đang bằng 0.`;
+      setAiNote(msg);
+      toast.success(msg);
     } catch (e) {
       setErr(`Không đọc được tồn kho: ${(e as Error).message}`);
     }
@@ -270,7 +337,9 @@ export function SaleDraft() {
   async function checkStock() {
     try {
       await loadStock();
-      setAiNote("Đã cập nhật tồn khả dụng mới nhất từ kho CRM.");
+      const msg = "Đã cập nhật tồn khả dụng mới nhất từ kho CRM.";
+      setAiNote(msg);
+      toast.success(msg);
     } catch (e) {
       setErr(`Không kiểm tra được kho: ${(e as Error).message}`);
     }
@@ -285,11 +354,12 @@ export function SaleDraft() {
     setBusy(true);
     setErr("");
     try {
-      await api.invSaleDraftExportXlsx(
-        valid.map((l) => ({ ...l, tien_thue: tienThue(l) })),
-      );
+      await api.invSaleDraftExportXlsx(valid.map((l) => ({ ...l, tien_thue: tienThue(l) })));
+      toast.success("Đã xuất file Excel hóa đơn nháp.");
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -302,7 +372,6 @@ export function SaleDraft() {
     setAiNote("");
     try {
       const { job_id } = await api.invSaleDraftSuggestStart(aiMoTa, aiCtx);
-      // tham do ket qua toi da ~3 phut (giong BOM)
       for (let k = 0; k < 72; k++) {
         await new Promise((r) => setTimeout(r, 2500));
         const j = await api.invSaleDraftSuggestJob(job_id);
@@ -318,7 +387,9 @@ export function SaleDraft() {
             is_dich_vu: false,
           }));
           setLines((ls) => [...ls.filter((l) => l.ten.trim()), ...added]);
-          setAiNote(j.result.note || `AI gợi ý ${added.length} dòng`);
+          const msg = j.result.note || `AI gợi ý ${added.length} dòng`;
+          setAiNote(msg);
+          toast.success(msg);
           setAiOpen(false);
           return;
         }
@@ -326,7 +397,9 @@ export function SaleDraft() {
       }
       throw new Error("AI xử lý quá lâu, thử lại sau");
     } catch (e) {
-      setErr((e as Error).message);
+      const msg = (e as Error).message;
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setAiBusy(false);
     }
@@ -334,66 +407,552 @@ export function SaleDraft() {
 
   const tongTruoc = lines.reduce((s, l) => s + (l.thanh_tien || Math.round(l.so_luong * l.don_gia)), 0);
   const tongThue = lines.reduce((s, l) => s + tienThue(l), 0);
-  const stockWarnings = lines.filter((l) => l.ten.trim() && !l.is_dich_vu).map((l) => {
-    if (!l.ma_hang || stockByCode[l.ma_hang] == null) return { line: l, level: "unknown", text: "Chưa map mã kho" };
-    const ton = stockByCode[l.ma_hang];
-    return ton + 1e-6 < l.so_luong
-      ? { line: l, level: "short", text: `Thiếu ${vnd(l.so_luong - ton)} (tồn ${vnd(ton)})` }
-      : { line: l, level: "ok", text: `Đủ tồn: ${vnd(ton)}` };
-  });
+  const stockWarnings = lines
+    .filter((l) => l.ten.trim() && !l.is_dich_vu)
+    .map((l) => {
+      if (!l.ma_hang || stockByCode[l.ma_hang] == null) return { line: l, level: "warning" as const, text: "Chưa map mã kho" };
+      const ton = stockByCode[l.ma_hang];
+      return ton + 1e-6 < l.so_luong
+        ? { line: l, level: "danger" as const, text: `Thiếu ${vnd(l.so_luong - ton)} (tồn ${vnd(ton)})` }
+        : { line: l, level: "success" as const, text: `Đủ tồn: ${vnd(ton)}` };
+    });
 
   return (
-    <div className="docs-page sale-draft-studio">
-      <header className="sale-draft-hero">
-        <div><span className="eyebrow">INVOICE WORKBENCH</span><h1>Tạo hóa đơn nháp</h1><p>Soạn, kiểm tra kho và đồng bộ sang iHOADON ở trạng thái GHI_TAM.</p></div>
-        <div className="sale-draft-hero-actions"><button onClick={syncIhoadon}>Đồng bộ iHOADON</button>{safeHttpUrl(ihd?.web_url) && <a href={safeHttpUrl(ihd?.web_url)} target="_blank" rel="noopener noreferrer">Mở iHOADON ↗</a>}</div>
-      </header>
-      {policy && <div className="tax-policy-checkpoint">
-        <b>Checkpoint thuế theo ngày {new Date(policy.date).toLocaleDateString("vi-VN")}</b>
-        <span>Nhóm vốn chịu 10% và đủ điều kiện giảm: <strong>{policy.standard_eligible_rate}%</strong> đến {new Date(policy.reduction_to).toLocaleDateString("vi-VN")}.</span>
-        <span>Phần mềm thuộc diện không chịu thuế: chọn <strong>Không chịu thuế</strong>, không chọn 0%.</span>
-        <small>Căn cứ: {policy.legal_basis.join(" · ")}. Nhóm bị loại trừ vẫn áp 10%.</small>
-      </div>}
-      {err && <div className="error">{err}</div>}
-      {aiNote && <div className="warn-banner">🤖 {aiNote}</div>}
+    <PageShell maxWidth="wide" className="sale-draft-studio" data-page="sale-draft">
+      <PageHeader
+        variant="compact"
+        icon="file-spreadsheet"
+        title="Tạo hóa đơn nháp"
+        subtitle="Soạn, kiểm tra kho và đồng bộ sang iHOADON ở trạng thái GHI_TAM."
+        actions={
+          <>
+            <AppButton variant="secondary" size="sm" leftIcon="refresh" onClick={syncIhoadon}>
+              Đồng bộ iHOADON
+            </AppButton>
+            {safeHttpUrl(ihd?.web_url) && (
+              <a
+                className="ui-btn ui-btn--secondary ui-btn--sm"
+                href={safeHttpUrl(ihd?.web_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span>Mở iHOADON</span>
+                <AppIcon name="external-link" size={14} />
+              </a>
+            )}
+          </>
+        }
+      />
 
-      {ihdErr && <div className="error">{ihdErr} — kiểm tra cấu hình trong Cài đặt.</div>}
-      {ihd && (
-        <div className="ihd-stats sale-draft-stats">
-          <div><strong>{ihd.issued}</strong><span>Đã xuất</span></div>
-          <div><strong>{ihd.draft}</strong><span>Ghi tạm</span></div>
-          <div><strong>{ihd.waiting}</strong><span>Chờ xử lý</span></div>
-          <div><strong>{ihd.total}</strong><span>Tổng hóa đơn</span></div>
-        </div>
+      <InlineAlert tone="warning">
+        <strong>Chỉ tạo bản GHI_TAM</strong> (không ký số, không phát hành).
+        {policy && (
+          <>
+            {" "}
+            Checkpoint {new Date(policy.date).toLocaleDateString("vi-VN")}: giảm VAT{" "}
+            <strong>{policy.standard_eligible_rate}%</strong> đến{" "}
+            {new Date(policy.reduction_to).toLocaleDateString("vi-VN")}; phần mềm chọn{" "}
+            <strong>Không chịu thuế</strong>.
+          </>
+        )}
+      </InlineAlert>
+
+      {err && <InlineAlert tone="danger" onDismiss={() => setErr("")}>{err}</InlineAlert>}
+      {ihdErr && <InlineAlert tone="danger">{ihdErr} — kiểm tra cấu hình trong Cài đặt.</InlineAlert>}
+      {aiNote && <InlineAlert tone="success" onDismiss={() => setAiNote("")}>{aiNote}</InlineAlert>}
+
+      {pasteOpen && (
+        <SmartPartyPaste
+          onApply={(data) => {
+            setCustomer((current) => ({
+              ...current,
+              customer_name: data.name || current.customer_name,
+              buyer_tax_code: data.mst || current.buyer_tax_code,
+              buyer_name: data.nguoi_nhan || data.dai_dien || current.buyer_name,
+              buyer_email: data.email || current.buyer_email,
+              buyer_address: data.address || current.buyer_address,
+            }));
+          }}
+        />
       )}
+
+      <SectionCard
+        padding="compact"
+        title="Thông tin xuất hóa đơn"
+        subtitle="Các trường này đi thẳng sang bản nháp iHOADON."
+        icon="building-2"
+        actions={
+          <AppButton
+            variant="secondary"
+            size="sm"
+            leftIcon="sparkles"
+            onClick={() => setPasteOpen((open) => !open)}
+          >
+            {pasteOpen ? "Ẩn Smart Paste" : "Smart Paste"}
+          </AppButton>
+        }
+      >
+        <FormGrid cols={2}>
+          <FormField label="Tên khách hàng" htmlFor="sd-customer-name" fullWidth required>
+            <input
+              id="sd-customer-name"
+              className="ui-input"
+              value={customer.customer_name}
+              onChange={(e) => setCustomer({ ...customer, customer_name: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Mã số thuế" htmlFor="sd-mst" required>
+            <input
+              id="sd-mst"
+              className="ui-input"
+              value={customer.buyer_tax_code}
+              onChange={(e) => setCustomer({ ...customer, buyer_tax_code: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Người mua" htmlFor="sd-buyer">
+            <input
+              id="sd-buyer"
+              className="ui-input"
+              value={customer.buyer_name}
+              onChange={(e) => setCustomer({ ...customer, buyer_name: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Email" htmlFor="sd-email">
+            <input
+              id="sd-email"
+              className="ui-input"
+              type="email"
+              value={customer.buyer_email}
+              onChange={(e) => setCustomer({ ...customer, buyer_email: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Thanh toán" htmlFor="sd-pay">
+            <input
+              id="sd-pay"
+              className="ui-input"
+              value={customer.payment_method_name}
+              onChange={(e) => setCustomer({ ...customer, payment_method_name: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Địa chỉ" htmlFor="sd-address" fullWidth required>
+            <input
+              id="sd-address"
+              className="ui-input"
+              value={customer.buyer_address}
+              onChange={(e) => setCustomer({ ...customer, buyer_address: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Ghi chú" htmlFor="sd-note" fullWidth>
+            <input
+              id="sd-note"
+              className="ui-input"
+              value={customer.note}
+              onChange={(e) => setCustomer({ ...customer, note: e.target.value })}
+            />
+          </FormField>
+        </FormGrid>
+      </SectionCard>
+
+      <div className="ui-sticky-bar ui-sticky-bar--top">
+        <AppButton variant="secondary" size="sm" leftIcon="sparkles" onClick={() => setAiOpen((o) => !o)}>
+          AI gợi ý dòng hàng
+        </AppButton>
+        <AppButton variant="secondary" size="sm" leftIcon="warehouse" loading={stockBusy} onClick={checkStock}>
+          {stockBusy ? "Đang kiểm tra…" : "Check kho"}
+        </AppButton>
+        <AppButton variant="secondary" size="sm" leftIcon="refresh" disabled={stockBusy} onClick={syncLinesFromStock}>
+          Sync từ kho
+        </AppButton>
+        <StatusBadge tone={stockCheckedAt ? "info" : "neutral"} size="sm" icon="clock">
+          {stockCheckedAt ? `Kho kiểm tra lúc ${stockCheckedAt}` : "Kho chưa kiểm tra"}
+        </StatusBadge>
+        <div className="ui-row ui-ml-auto">
+          <AppButton variant="secondary" size="sm" leftIcon="file-spreadsheet" loading={busy} onClick={exportXlsx}>
+            {busy ? "Đang xuất…" : "Xuất Excel"}
+          </AppButton>
+          <AppButton variant="primary" size="sm" leftIcon="cloud-upload" loading={busy} onClick={pushDraft}>
+            {busy ? "Đang gửi…" : "Tạo nháp trên iHOADON"}
+          </AppButton>
+        </div>
+      </div>
+
+      {aiOpen && (
+        <SectionCard title="AI gợi ý dòng hàng" icon="bot" tone="subtle" padding="compact">
+          <div className="ui-stack--sm">
+            <FormGrid cols={2}>
+              <FormField label="Mô tả nội dung cần bán" htmlFor="sd-ai-desc">
+                <input
+                  id="sd-ai-desc"
+                  className="ui-input"
+                  placeholder="vd: bộ camera 4 mắt cho nhà xưởng, kèm đầu ghi + ổ cứng"
+                  value={aiMoTa}
+                  onChange={(e) => setAiMoTa(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Hướng dẫn thêm cho AI (tuỳ chọn)" htmlFor="sd-ai-ctx">
+                <input
+                  id="sd-ai-ctx"
+                  className="ui-input"
+                  placeholder="vd: dùng camera Dahua, thẻ nhớ 64G…"
+                  value={aiCtx}
+                  onChange={(e) => setAiCtx(e.target.value)}
+                />
+              </FormField>
+            </FormGrid>
+            <div>
+              <AppButton
+                variant="primary"
+                size="sm"
+                leftIcon="sparkles"
+                loading={aiBusy}
+                disabled={aiBusy || !aiMoTa.trim()}
+                onClick={aiSuggest}
+              >
+                {aiBusy ? "AI đang nghĩ…" : "Gợi ý dòng hàng"}
+              </AppButton>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard
+        eyebrow="02 · NỘI DUNG HÓA ĐƠN"
+        title="Dòng hàng và dịch vụ"
+        subtitle="Sync từ kho giữ nguyên số lượng đã nhập; chỉ bổ sung đơn giá cho dòng đang bằng 0."
+        icon="package"
+        actions={
+          <AppButton variant="secondary" size="sm" leftIcon="plus" onClick={() => setLines([...lines, blankLine()])}>
+            Thêm dòng
+          </AppButton>
+        }
+      >
+        <div className="ui-stack--sm">
+          {stockWarnings.length > 0 && (
+            <div className="ui-row">
+              {stockWarnings.map((w, i) => (
+                <StatusBadge key={i} tone={w.level} size="sm" dot>
+                  {w.line.ma_hang || w.line.ten}: {w.text}
+                </StatusBadge>
+              ))}
+            </div>
+          )}
+
+          <DataView
+            mobileMode="scroll"
+            empty={
+              lines.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon="package"
+                  title="Chưa có dòng hàng nào"
+                  description="Thêm dòng thủ công hoặc dùng AI gợi ý dòng hàng."
+                  action={
+                    <AppButton variant="secondary" size="sm" leftIcon="plus" onClick={() => setLines([blankLine()])}>
+                      Thêm dòng
+                    </AppButton>
+                  }
+                />
+              ) : undefined
+            }
+            desktop={
+              <table className="doc-table studio-line-table">
+                <thead>
+                  <tr>
+                    <th>Tên hàng (từ kho)</th>
+                    <th className="col-unit">ĐVT</th>
+                    <th className="col-qty">SL</th>
+                    <th className="col-price">Đơn giá</th>
+                    <th className="col-amount">Thành tiền</th>
+                    <th className="col-vat">Thuế</th>
+                    <th className="col-tax">Tiền thuế</th>
+                    <th className="col-act">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, i) => (
+                    <tr key={i}>
+                      <td>
+                        <div className="ui-stack--xs">
+                          <input
+                            className="ui-input"
+                            aria-label={`Tên hàng hóa, dịch vụ dòng ${i + 1}`}
+                            value={l.ten}
+                            placeholder="gõ ≥2 ký tự để tìm mã kho…"
+                            onChange={(e) => {
+                              setLine(i, { ten: e.target.value });
+                              searchRow(i, e.target.value);
+                            }}
+                          />
+                          {(l.ma_hang || l.is_dich_vu) && (
+                            <div className="ui-row">
+                              {l.ma_hang && (
+                                <StatusBadge size="sm" tone="success">
+                                  {l.ma_hang}
+                                </StatusBadge>
+                              )}
+                              {l.ma_hang && stockByCode[l.ma_hang] != null && (
+                                <StatusBadge
+                                  size="sm"
+                                  tone={stockByCode[l.ma_hang] + 1e-6 >= l.so_luong ? "success" : "danger"}
+                                  dot
+                                >
+                                  Kho: {vnd(stockByCode[l.ma_hang])} {l.dvt}
+                                </StatusBadge>
+                              )}
+                              {l.is_dich_vu && (
+                                <StatusBadge size="sm" tone="neutral">
+                                  dịch vụ
+                                </StatusBadge>
+                              )}
+                            </div>
+                          )}
+                          {search?.row === i && search.results.length > 0 && (
+                            <div className="ui-subpanel ui-stack--xs ui-mt-1">
+                              {search.results.slice(0, 6).map((it) => (
+                                <AppButton
+                                  key={it.id}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="ui-wrap-btn"
+                                  onClick={() => pickItem(i, it)}
+                                >
+                                  <strong>{it.ma_hang}</strong> · {it.ten}
+                                </AppButton>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Đơn vị tính dòng ${i + 1}`}
+                          className={`ui-input${l.ten.trim() && !l.is_dich_vu && !l.dvt.trim() ? " field-missing" : ""}`}
+                          value={l.dvt}
+                          placeholder={!l.is_dich_vu ? "Thiếu" : ""}
+                          onChange={(e) => setLine(i, { dvt: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Số lượng dòng ${i + 1}`}
+                          className="ui-input ui-num"
+                          value={l.so_luong}
+                          onChange={(e) => setLine(i, { so_luong: parseNum(e.target.value) })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Đơn giá dòng ${i + 1}`}
+                          className="ui-input ui-num"
+                          value={l.don_gia}
+                          onChange={(e) => setLine(i, { don_gia: parseNum(e.target.value) })}
+                        />
+                      </td>
+                      <td className="ui-num">{vnd(l.thanh_tien || l.so_luong * l.don_gia)}</td>
+                      <td>
+                        <select
+                          aria-label={`Thuế suất dòng ${i + 1}`}
+                          className="ui-select"
+                          value={l.vat_name}
+                          onChange={(e) => setLine(i, { vat_name: e.target.value })}
+                        >
+                          {!VAT_OPTIONS.includes(l.vat_name) && <option value={l.vat_name}>{l.vat_name}</option>}
+                          {VAT_OPTIONS.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="ui-num ui-muted">{vnd(tienThue(l))}</td>
+                      <td>
+                        <div className="ui-stack--xs">
+                          <label className="ui-check-label ui-text-xs">
+                            <input
+                              type="checkbox"
+                              checked={l.is_dich_vu}
+                              onChange={(e) => setLine(i, { is_dich_vu: e.target.checked })}
+                            />
+                            <span>DV</span>
+                          </label>
+                          <AppButton
+                            variant="ghost"
+                            size="sm"
+                            leftIcon="trash"
+                            onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                          >
+                            Xóa
+                          </AppButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            }
+          />
+
+          <div className="ui-totals-grid">
+            <div className="ui-total-cell">
+              <span>Tổng trước thuế</span>
+              <strong>{vnd(tongTruoc)} đ</strong>
+            </div>
+            <div className="ui-total-cell">
+              <span>Tổng tiền thuế</span>
+              <strong>{vnd(tongThue)} đ</strong>
+            </div>
+            <div className="ui-total-cell is-grand">
+              <span>Tổng thanh toán</span>
+              <strong>{vnd(tongTruoc + tongThue)} đ</strong>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        eyebrow="WORKFLOW GỬI KHÁCH"
+        title="Tạo nháp, đóng dấu và lấy link trong một lần"
+        subtitle="Hệ thống chỉ tạo trạng thái GHI_TAM, tải PDF từ iHOADON rồi đóng dấu “BẢN NHÁP”. Không ký số và không phát hành hóa đơn."
+        icon="send"
+      >
+        <div className="ui-stack--sm">
+          <div className="studio-delivery-grid">
+            <div className="studio-delivery-copy ui-muted">
+              Đóng gói PDF có dấu bản nháp và bộ ZIP lưu vào hồ sơ khách hàng, trả về link chia sẻ 7 ngày.
+            </div>
+            <FormField label="Ngày dự kiến xuất" htmlFor="sd-expected-date">
+              <input
+                id="sd-expected-date"
+                className="ui-input"
+                type="date"
+                value={expectedIssueDate}
+                onChange={(event) => setExpectedIssueDate(event.target.value)}
+              />
+            </FormField>
+            <AppButton variant="primary" size="md" leftIcon="send" loading={busy} onClick={createDelivery}>
+              {busy ? "Đang tạo bộ hồ sơ…" : "Tạo nháp & lấy link gửi khách"}
+            </AppButton>
+          </div>
+
+          {deliveryResult && (
+            <InlineAlert tone="success" title={`${deliveryResult.status} · ${deliveryResult.template_code}/${deliveryResult.invoice_series}`}>
+              <div className="ui-row-between">
+                <span>Link hết hạn {dateTime(deliveryResult.share_expires_at)} · PDF đã lưu vào hồ sơ khách hàng</span>
+                <div className="ui-row">
+                  {safeHttpUrl(deliveryResult.share_url) && (
+                    <a
+                      className="ui-btn ui-btn--secondary ui-btn--sm"
+                      href={safeHttpUrl(deliveryResult.share_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <AppIcon name="eye" size={14} />
+                      <span>Xem PDF</span>
+                    </a>
+                  )}
+                  <AppButton variant="secondary" size="sm" leftIcon="copy" onClick={copyDeliveryLink}>
+                    {copied ? "Đã copy" : "Copy link"}
+                  </AppButton>
+                  <a
+                    className="ui-btn ui-btn--primary ui-btn--sm"
+                    href={deliveryResult.zip_url}
+                    download={deliveryResult.zip_filename}
+                  >
+                    <AppIcon name="download" size={14} />
+                    <span>Tải ZIP</span>
+                  </a>
+                </div>
+              </div>
+            </InlineAlert>
+          )}
+        </div>
+      </SectionCard>
+
+      {ihd && (
+        <KpiStrip
+          columns={4}
+          items={[
+            { label: "Đã xuất", value: ihd.issued, tone: "success", icon: "check-circle" },
+            { label: "Ghi tạm", value: ihd.draft, tone: "warning", icon: "file-text" },
+            { label: "Chờ xử lý", value: ihd.waiting, tone: "info", icon: "clock" },
+            { label: "Tổng hóa đơn", value: ihd.total, tone: "brand", icon: "receipt" },
+          ]}
+        />
+      )}
+
       {drafts.length > 0 && (
-        <details className="panel ihd-drafts">
+        <details className="ui-collapsible">
           <summary>Hóa đơn ghi tạm trên iHOADON ({drafts.length} bản mới nhất)</summary>
           <DataView
             mobileMode="card"
             desktop={
-              <div className="table-wrap">
-                <table className="ihd-draft-table"><thead><tr><th>Khách hàng</th><th>MST</th><th>Mẫu</th><th className="num">Thanh toán</th><th>Ngày tạo</th><th></th></tr></thead>
-                  <tbody>{drafts.map((d) => {
+              <table className="doc-table">
+                <thead>
+                  <tr>
+                    <th>Khách hàng</th>
+                    <th>MST</th>
+                    <th>Mẫu</th>
+                    <th className="ui-num">Thanh toán</th>
+                    <th>Ngày tạo</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drafts.map((d) => {
                     const crmHref = safeHttpUrl(draftSyncResults[d.id]?.share_url);
                     const webHref = safeHttpUrl(ihd?.web_url);
-                    return <tr key={d.id}>
-                      <td data-label="Khách hàng" className="ihd-draft-customer">{d.customer_name || "Khách lẻ"}</td>
-                      <td data-label="MST">{d.buyer_tax_code || "—"}</td>
-                      <td data-label="Mẫu">{d.template_code}/{d.invoice_series}</td>
-                      <td data-label="Thanh toán" className="num ihd-draft-total">{vnd(d.total_payment)} đ</td>
-                      <td data-label="Ngày tạo" className="ihd-draft-date">{dateTime(d.created_at)}</td>
-                      <td className="ihd-draft-action">
-                        <button disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
-                          {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
-                        </button>
-                        {crmHref && <a href={crmHref} target="_blank" rel="noopener noreferrer">Mở PDF trong CRM</a>}
-                        {webHref && <a href={webHref} target="_blank" rel="noopener noreferrer" title="Mở danh sách ghi tạm để sửa trên iHOADON">Sửa trên iHOADON ↗</a>}
-                      </td>
-                    </tr>;
-                  })}</tbody>
-                </table>
-              </div>
+                    return (
+                      <tr key={d.id}>
+                        <td><strong>{d.customer_name || "Khách lẻ"}</strong></td>
+                        <td>{d.buyer_tax_code || "—"}</td>
+                        <td>
+                          <StatusBadge size="sm" tone="neutral">
+                            {d.template_code}/{d.invoice_series}
+                          </StatusBadge>
+                        </td>
+                        <td className="ui-num"><strong>{vnd(d.total_payment)} đ</strong></td>
+                        <td className="ui-muted">{dateTime(d.created_at)}</td>
+                        <td>
+                          <div className="ui-row">
+                            <AppButton
+                              variant="secondary"
+                              size="sm"
+                              leftIcon="refresh"
+                              loading={draftSyncing === d.id}
+                              onClick={() => syncDraftToCrm(d)}
+                            >
+                              {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
+                            </AppButton>
+                            {crmHref && (
+                              <a
+                                className="ui-btn ui-btn--primary ui-btn--sm"
+                                href={crmHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <AppIcon name="eye" size={14} />
+                                <span>Mở PDF trong CRM</span>
+                              </a>
+                            )}
+                            {webHref && (
+                              <a
+                                className="ui-btn ui-btn--ghost ui-btn--sm"
+                                href={webHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Mở danh sách ghi tạm để sửa trên iHOADON"
+                              >
+                                <span>Sửa trên iHOADON</span>
+                                <AppIcon name="external-link" size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             }
             mobileCards={
               <div className="ui-mobile-card-list">
@@ -401,24 +960,49 @@ export function SaleDraft() {
                   const crmHref = safeHttpUrl(draftSyncResults[d.id]?.share_url);
                   const webHref = safeHttpUrl(ihd?.web_url);
                   return (
-                    <article key={d.id} className="ui-mobile-card">
-                      <div className="ui-mobile-card-head">
-                        <strong className="ui-mobile-card-title">{d.customer_name || "Khách lẻ"}</strong>
-                        <strong style={{ fontVariantNumeric: "tabular-nums" }}>{vnd(d.total_payment)} đ</strong>
-                      </div>
-                      <div className="ui-mobile-card-meta">
-                        <span>MST: {d.buyer_tax_code || "—"}</span>
-                        <span>Mẫu: {d.template_code}/{d.invoice_series}</span>
-                        <span>{dateTime(d.created_at)}</span>
-                      </div>
-                      <div className="ui-mobile-card-actions">
-                        <button className="ui-btn-chip" disabled={draftSyncing === d.id} onClick={() => syncDraftToCrm(d)}>
+                    <MobileCard key={d.id}>
+                      <MobileCardHeader
+                        title={d.customer_name || "Khách lẻ"}
+                        subtitle={`MST: ${d.buyer_tax_code || "—"} · ${dateTime(d.created_at)}`}
+                        badge={<StatusBadge size="sm" tone="neutral">{d.template_code}/{d.invoice_series}</StatusBadge>}
+                      />
+                      <MobileCardGrid cols={1}>
+                        <MobileCardRow label="Thanh toán" value={`${vnd(d.total_payment)} đ`} mono />
+                      </MobileCardGrid>
+                      <MobileCardActions>
+                        <AppButton
+                          variant="secondary"
+                          size="sm"
+                          leftIcon="refresh"
+                          loading={draftSyncing === d.id}
+                          onClick={() => syncDraftToCrm(d)}
+                        >
                           {draftSyncing === d.id ? "Đang đồng bộ…" : "Đồng bộ vào hồ sơ"}
-                        </button>
-                        {crmHref && <a className="ui-btn-chip" href={crmHref} target="_blank" rel="noopener noreferrer">Mở PDF trong CRM</a>}
-                        {webHref && <a className="ui-btn-chip" href={webHref} target="_blank" rel="noopener noreferrer">Sửa trên iHOADON ↗</a>}
-                      </div>
-                    </article>
+                        </AppButton>
+                        {crmHref && (
+                          <a
+                            className="ui-btn ui-btn--primary ui-btn--sm"
+                            href={crmHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <AppIcon name="eye" size={14} />
+                            <span>Mở PDF trong CRM</span>
+                          </a>
+                        )}
+                        {webHref && (
+                          <a
+                            className="ui-btn ui-btn--ghost ui-btn--sm"
+                            href={webHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span>Sửa trên iHOADON</span>
+                            <AppIcon name="external-link" size={14} />
+                          </a>
+                        )}
+                      </MobileCardActions>
+                    </MobileCard>
                   );
                 })}
               </div>
@@ -426,202 +1010,6 @@ export function SaleDraft() {
           />
         </details>
       )}
-
-      <div className="panel ihd-customer sale-customer-card">
-        <div className="sale-section-head"><div><span>01 · NGƯỜI MUA</span><h3>Thông tin xuất hóa đơn</h3></div><small>Các trường này sẽ đi thẳng sang bản nháp iHOADON</small></div>
-        <SmartPartyPaste onApply={(data) => setCustomer((current) => ({
-          ...current,
-          customer_name: data.name || current.customer_name,
-          buyer_tax_code: data.mst || current.buyer_tax_code,
-          buyer_name: data.nguoi_nhan || data.dai_dien || current.buyer_name,
-          buyer_email: data.email || current.buyer_email,
-          buyer_address: data.address || current.buyer_address,
-        }))} />
-        <div className="form-grid">
-          <label className="span-2">Tên khách hàng<input value={customer.customer_name} onChange={(e) => setCustomer({ ...customer, customer_name: e.target.value })} /></label>
-          <label>Mã số thuế<input value={customer.buyer_tax_code} onChange={(e) => setCustomer({ ...customer, buyer_tax_code: e.target.value })} /></label>
-          <label>Người mua<input value={customer.buyer_name} onChange={(e) => setCustomer({ ...customer, buyer_name: e.target.value })} /></label>
-          <label>Email<input type="email" value={customer.buyer_email} onChange={(e) => setCustomer({ ...customer, buyer_email: e.target.value })} /></label>
-          <label>Thanh toán<input value={customer.payment_method_name} onChange={(e) => setCustomer({ ...customer, payment_method_name: e.target.value })} /></label>
-          <label className="span-2">Địa chỉ<input value={customer.buyer_address} onChange={(e) => setCustomer({ ...customer, buyer_address: e.target.value })} /></label>
-          <label className="span-2">Ghi chú<input value={customer.note} onChange={(e) => setCustomer({ ...customer, note: e.target.value })} /></label>
-        </div>
-      </div>
-
-      <div className="draft-command-bar">
-        <button className="btn-sm" onClick={() => setAiOpen((o) => !o)}>
-          AI gợi ý dòng hàng
-        </button>
-        <button className="btn-sm stock-command" disabled={stockBusy} onClick={checkStock}>{stockBusy ? "Đang kiểm tra…" : "Check kho"}</button>
-        <button className="btn-sm stock-command" disabled={stockBusy} onClick={syncLinesFromStock}>Sync từ kho</button>
-        <button className="btn-sm primary" disabled={busy} onClick={exportXlsx}>
-          {busy ? "Đang xuất…" : "Xuất Excel"}
-        </button>
-        <button className="btn-sm primary" disabled={busy} onClick={pushDraft}>
-          {busy ? "Đang gửi…" : "Tạo nháp trên iHOADON"}
-        </button>
-        <span className="stock-check-time">{stockCheckedAt ? `Kho kiểm tra lúc ${stockCheckedAt}` : "Kho chưa được kiểm tra"}</span>
-      </div>
-      <section className="draft-delivery-card">
-        <div className="draft-delivery-copy">
-          <span>WORKFLOW GỬI KHÁCH</span>
-          <h3>Tạo nháp, đóng dấu và lấy link trong một lần</h3>
-          <p>Hệ thống chỉ tạo trạng thái GHI_TAM, tải PDF từ iHOADON rồi đóng dấu “BẢN NHÁP”. Không ký số và không phát hành hóa đơn.</p>
-        </div>
-        <label>Ngày dự kiến xuất<input type="date" value={expectedIssueDate} onChange={(event) => setExpectedIssueDate(event.target.value)} /></label>
-        <button className="draft-delivery-submit" disabled={busy} onClick={createDelivery}>{busy ? "Đang tạo bộ hồ sơ…" : "Tạo nháp & lấy link gửi khách"}</button>
-      </section>
-      {deliveryResult && <section className="draft-delivery-result" aria-live="polite">
-        <div><span className="draft-status-dot" /><div><b>{deliveryResult.status} · {deliveryResult.template_code}/{deliveryResult.invoice_series}</b><small>Link hết hạn {dateTime(deliveryResult.share_expires_at)} · PDF đã lưu vào hồ sơ khách hàng</small></div></div>
-        <div className="draft-delivery-actions">
-          {safeHttpUrl(deliveryResult.share_url) && <a href={safeHttpUrl(deliveryResult.share_url)} target="_blank" rel="noopener noreferrer">Xem PDF</a>}
-          <button onClick={copyDeliveryLink}>{copied ? "Đã copy" : "Copy link"}</button>
-          <a href={deliveryResult.zip_url} download={deliveryResult.zip_filename}>Tải ZIP</a>
-        </div>
-      </section>}
-      {stockWarnings.length > 0 && <div className="stock-warning-strip">
-        <strong>Kiểm tra tồn kho trước khi tạo nháp</strong>
-        <div>{stockWarnings.map((w, i) => <span key={i} className={`stock-check ${w.level}`}>{w.line.ma_hang || w.line.ten}: {w.text}</span>)}</div>
-      </div>}
-
-      {aiOpen && (
-        <div className="panel" style={{ marginBottom: 10 }}>
-          <label>
-            Mô tả nội dung cần bán
-            <input
-              style={{ width: "100%" }}
-              placeholder="vd: bộ camera 4 mắt cho nhà xưởng, kèm đầu ghi + ổ cứng"
-              value={aiMoTa}
-              onChange={(e) => setAiMoTa(e.target.value)}
-            />
-          </label>
-          <label>
-            Hướng dẫn thêm cho AI (tuỳ chọn)
-            <input
-              style={{ width: "100%" }}
-              placeholder="vd: dùng camera Dahua, thẻ nhớ 64G…"
-              value={aiCtx}
-              onChange={(e) => setAiCtx(e.target.value)}
-            />
-          </label>
-          <button className="btn-sm primary" disabled={aiBusy || !aiMoTa.trim()} onClick={aiSuggest}>
-            {aiBusy ? "⏳ AI đang nghĩ…" : "✨ Gợi ý"}
-          </button>
-        </div>
-      )}
-
-      <div className="sale-section-head sale-lines-head"><div><span>02 · NỘI DUNG HÓA ĐƠN</span><h3>Dòng hàng và dịch vụ</h3></div><small>Sync kho không thay đổi số lượng anh đã nhập</small></div>
-      <DataView
-        mobileMode="scroll"
-        desktop={
-          <div className="table-wrap sale-lines-table">
-            <table className="doc-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "34%" }}>Tên hàng (từ kho)</th>
-                  <th>ĐVT</th>
-                  <th style={{ width: 70 }}>SL</th>
-                  <th style={{ width: 110 }}>Đơn giá</th>
-                  <th style={{ width: 120 }}>Thành tiền</th>
-                  <th style={{ width: 130 }}>Thuế</th>
-                  <th style={{ width: 110 }}>Tiền thuế</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i}>
-                    <td>
-                      <input
-                        aria-label={`Tên hàng hóa, dịch vụ dòng ${i + 1}`}
-                        style={{ width: "100%" }}
-                        value={l.ten}
-                        placeholder="gõ ≥2 ký tự để tìm mã kho…"
-                        onChange={(e) => {
-                          setLine(i, { ten: e.target.value });
-                          searchRow(i, e.target.value);
-                        }}
-                      />
-                      {l.ma_hang && <span className="chip green sm">{l.ma_hang}</span>}
-                      {l.ma_hang && stockByCode[l.ma_hang] != null && <span className={`chip sm ${stockByCode[l.ma_hang] + 1e-6 >= l.so_luong ? "green" : "red"}`}>Kho: {vnd(stockByCode[l.ma_hang])} {l.dvt}</span>}
-                      {l.is_dich_vu && <span className="chip gray sm">dịch vụ</span>}
-                      {search?.row === i &&
-                        search.results.slice(0, 6).map((it) => (
-                          <div key={it.id}>
-                            <button className="btn-sm ghost" onClick={() => pickItem(i, it)}>
-                              <b>{it.ma_hang}</b> · {it.ten}
-                            </button>
-                          </div>
-                        ))}
-                    </td>
-                    <td>
-                      <input aria-label={`Đơn vị tính dòng ${i + 1}`} className={l.ten.trim() && !l.is_dich_vu && !l.dvt.trim() ? "field-missing" : ""} style={{ width: 60 }} value={l.dvt} placeholder={!l.is_dich_vu ? "Thiếu" : ""} onChange={(e) => setLine(i, { dvt: e.target.value })} />
-                    </td>
-                    <td>
-                      <input
-                        aria-label={`Số lượng dòng ${i + 1}`}
-                        style={{ width: 60, textAlign: "right" }}
-                        value={l.so_luong}
-                        onChange={(e) => setLine(i, { so_luong: parseNum(e.target.value) })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        aria-label={`Đơn giá dòng ${i + 1}`}
-                        style={{ width: 100, textAlign: "right" }}
-                        value={l.don_gia}
-                        onChange={(e) => setLine(i, { don_gia: parseNum(e.target.value) })}
-                      />
-                    </td>
-                    <td style={{ textAlign: "right" }}>{vnd(l.thanh_tien || l.so_luong * l.don_gia)}</td>
-                    <td>
-                      <select aria-label={`Thuế suất dòng ${i + 1}`} value={l.vat_name} onChange={(e) => setLine(i, { vat_name: e.target.value })}>
-                        {!VAT_OPTIONS.includes(l.vat_name) && <option value={l.vat_name}>{l.vat_name}</option>}
-                        {VAT_OPTIONS.map((v) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ textAlign: "right" }} className="muted">
-                      {vnd(tienThue(l))}
-                    </td>
-                    <td>
-                      <label className="muted" style={{ fontSize: 11, display: "block" }}>
-                        <input
-                          type="checkbox"
-                          checked={l.is_dich_vu}
-                          onChange={(e) => setLine(i, { is_dich_vu: e.target.checked })}
-                        />{" "}
-                        DV
-                      </label>
-                      <button className="danger-link" onClick={() => setLines(lines.filter((_, j) => j !== i))}>
-                        Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        }
-      />
-      <button className="btn-sm" onClick={() => setLines([...lines, blankLine()])}>
-        + Thêm dòng
-      </button>
-
-      <div className="sale-draft-totals">
-        <span>
-          Tổng trước thuế: <b>{vnd(tongTruoc)}</b> đ
-        </span>
-        <span>
-          Tổng tiền thuế: <b>{vnd(tongThue)}</b> đ
-        </span>
-        <span>
-          Tổng thanh toán: <b>{vnd(tongTruoc + tongThue)}</b> đ
-        </span>
-      </div>
-    </div>
+    </PageShell>
   );
 }

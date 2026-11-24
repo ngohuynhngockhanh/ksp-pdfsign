@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AppButton, SectionCard } from "./ui";
 
 export interface SmartPartyData {
   name?: string;
@@ -53,10 +54,35 @@ export function SmartPartyPaste({ onApply }: { onApply: (data: SmartPartyData) =
   }
 
   return (
-    <div className="smart-paste">
-      <div className="smart-paste-head"><div><span>SMART PASTE</span><b>Dán một lần, tự điền Bên B</b></div><small>Hỗ trợ nội dung từ email, Zalo, chữ ký và hóa đơn</small></div>
+    <SectionCard
+      tone="subtle"
+      padding="compact"
+      className="studio-smart-paste"
+      eyebrow="SMART PASTE"
+      title="Dán một lần, tự điền Bên B"
+      subtitle="Hỗ trợ nội dung từ email, Zalo, chữ ký và hóa đơn"
+      icon="sparkles"
+      footer={
+        <>
+          <span className="ui-muted">
+            {notice || "Dữ liệu cũ chỉ bị thay khi ô mới đọc được giá trị."}
+          </span>
+          <AppButton
+            variant="primary"
+            size="sm"
+            leftIcon="sparkles"
+            disabled={!raw.trim()}
+            onClick={() => apply()}
+          >
+            Tự điền thông tin
+          </AppButton>
+        </>
+      }
+    >
       <textarea
-        rows={4}
+        className="ui-textarea studio-smart-paste-input"
+        aria-label="Dán thông tin Bên B để tự điền"
+        rows={3}
         value={raw}
         placeholder={"CÔNG TY...\nMST: ...\nĐịa chỉ: ...\nĐại diện: ... · Chức vụ: ...\nĐiện thoại / Email: ..."}
         onChange={(e) => setRaw(e.target.value)}
@@ -65,7 +91,6 @@ export function SmartPartyPaste({ onApply }: { onApply: (data: SmartPartyData) =
           window.setTimeout(() => apply(text), 0);
         }}
       />
-      <div className="smart-paste-foot"><span>{notice || "Dữ liệu cũ chỉ bị thay khi ô mới đọc được giá trị."}</span><button type="button" onClick={() => apply()}>Tự điền thông tin</button></div>
-    </div>
+    </SectionCard>
   );
 }
