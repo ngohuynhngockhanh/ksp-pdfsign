@@ -1605,7 +1605,9 @@ def _build_foxit_encoded_cmd(win_file_name: str, printer_name: str) -> str:
         "$ErrorActionPreference = 'Stop'\n"
         f"$f = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{file_b64}'))\n"
         f"$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{printer_b64}'))\n"
-        "& 'C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe' '/t' $f $p\n"
+        "$proc = Start-Process -FilePath 'C:\\Program Files (x86)\\Foxit Software\\Foxit Reader\\FoxitReader.exe' -ArgumentList '/t', $f, $p -PassThru\n"
+        "$proc.WaitForExit(15000)\n"
+        "if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }\n"
     )
     encoded = build_powershell_encoded_command(ps_script)
     return f"powershell -NoProfile -NonInteractive -EncodedCommand {encoded}"
