@@ -1,8 +1,23 @@
 import { useState } from "react";
+import { AppIcon } from "./ui/Icon";
 
 export interface DateRange {
   tu: string;
   den: string;
+}
+
+export type DateFilterMode =
+  | "all"
+  | "year"
+  | `m${number}`
+  | `q${number}`
+  | "custom";
+
+export interface DateFilterProps {
+  value: DateRange;
+  onChange: (v: DateRange) => void;
+  initialMode?: DateFilterMode;
+  className?: string;
 }
 
 function pad2(n: number): string {
@@ -35,22 +50,16 @@ export function rangeForYear(year: number): DateRange {
   return { tu: `${year}-01-01`, den: `${year}-12-31` };
 }
 
-// "all" | "year" | "m1".."m12" | "q1".."q4" | "custom"
-type Mode = "all" | "year" | `m${number}` | `q${number}` | "custom";
-
 export function DateFilter({
   value,
   onChange,
   initialMode = "all",
-}: {
-  value: DateRange;
-  onChange: (v: DateRange) => void;
-  initialMode?: Mode;
-}) {
-  const [mode, setMode] = useState<Mode>(initialMode);
+  className = "",
+}: DateFilterProps) {
+  const [mode, setMode] = useState<DateFilterMode>(initialMode);
   const year = new Date().getFullYear();
 
-  function pick(m: Mode) {
+  function pick(m: DateFilterMode) {
     setMode(m);
     if (m === "all") {
       onChange({ tu: "", den: "" });
@@ -61,14 +70,23 @@ export function DateFilter({
     } else if (m.startsWith("q")) {
       onChange(rangeForQuarter(year, Number(m.slice(1))));
     }
-    // "custom" -> giu nguyen, cho nhap tay 2 o ngay ben duoi
   }
 
+  const cls = ["tb-group", "ui-date-filter", className]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <span className="tb-group" style={{ gap: 6 }}>
-      <select className="tb-select" value={mode} onChange={(e) => pick(e.target.value as Mode)}>
-        <option value="all">⏱ Tất cả</option>
-        <option value="year">📅 Năm nay ({year})</option>
+    <span className={cls}>
+      <AppIcon name="calendar" size={15} className="ui-date-filter-icon" />
+      <select
+        className="ui-select tb-select ui-date-filter-select"
+        aria-label="Khoảng thời gian"
+        value={mode}
+        onChange={(e) => pick(e.target.value as DateFilterMode)}
+      >
+        <option value="all">Tất cả</option>
+        <option value="year">Năm nay ({year})</option>
         {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
           <option key={m} value={`m${m}`}>
             Tháng {m}
@@ -81,18 +99,23 @@ export function DateFilter({
         ))}
         <option value="custom">Tùy chọn…</option>
       </select>
+
       {mode === "custom" && (
         <>
           <input
             type="date"
-            className="tb-select"
+            className="ui-input tb-select ui-date-filter-input"
+            aria-label="Từ ngày"
             value={value.tu}
             onChange={(e) => onChange({ ...value, tu: e.target.value })}
           />
-          <span className="muted">–</span>
+          <span className="muted" aria-hidden="true">
+            –
+          </span>
           <input
             type="date"
-            className="tb-select"
+            className="ui-input tb-select ui-date-filter-input"
+            aria-label="Đến ngày"
             value={value.den}
             onChange={(e) => onChange({ ...value, den: e.target.value })}
           />

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type WebAdsDraftQuote } from "./api";
-import { PasswordModal, ToastProvider, useToast } from "./components/ui";
+import {
+  AppIcon,
+  ConfirmProvider,
+  MOBILE_QUERY,
+  PasswordModal,
+  ToastProvider,
+  useToast,
+  type IconName,
+} from "./components/ui";
 import { Login } from "./pages/Login";
 import { Signer } from "./pages/Signer";
 import { Verify } from "./pages/Verify";
@@ -164,222 +172,68 @@ function normSearch(s: string): string {
     .toLowerCase();
 }
 
-/** Uniform 18x18 stroke SVG icons replacing mixed emoji/Unicode sidebar glyphs (UI-MOB-19). */
+const TAB_ICONS: Record<Tab, IconName> = {
+  home: "layout-dashboard",
+  pymidcoop: "layers",
+  training: "sparkles",
+  webads: "trending-up",
+  messenger: "message-square",
+  telegram: "send",
+  bidding: "landmark",
+  standards: "shield-check",
+  thuesync: "refresh",
+  thuebct: "file-spreadsheet",
+  taxdefense: "scale",
+  govradar: "radio",
+  nhaphang: "download",
+  banra: "upload",
+  hoadonnhap: "file-plus",
+  tonkho: "warehouse",
+  tokhai: "clipboard-list",
+  xuatkho: "package",
+  congthuc: "sliders",
+  sanxuat: "factory",
+  settings: "settings",
+  shippingspx: "truck",
+  sign: "file-signature",
+  verify: "file-search",
+  doctracking: "eye",
+  customers: "users",
+  nas: "hard-drive",
+  payroll: "wallet",
+  quote: "receipt",
+  trademarks: "award",
+  documents: "folder",
+  mine: "folder-open",
+  bbbg: "file-check",
+  contract: "file-text",
+  khoan: "briefcase",
+  audit: "activity",
+};
+
+/** Uniform Lucide SVG navigation icons matching INUT Design System v2 stroke discipline. */
 function NavIcon({ tab }: { tab: Tab }) {
-  const common = {
-    width: 16,
-    height: 16,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.9,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true as const,
-  };
-  switch (tab) {
-    case "home":
-      return (
-        <svg {...common}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-        </svg>
-      );
-    case "pymidcoop":
-      return (
-        <svg {...common}>
-          <path d="M12 2l8 4.5v11L12 22l-8-4.5v-11L12 2z" />
-          <path d="M12 12l8-4.5M12 12v10M12 12L4 7.5" />
-        </svg>
-      );
-    case "training":
-      return (
-        <svg {...common}>
-          <path d="M12 3l2.4 5.2L20 10.5l-5.6 2.3L12 18l-2.4-5.2L4 10.5l5.6-2.3L12 3z" />
-        </svg>
-      );
-    case "webads":
-      return (
-        <svg {...common}>
-          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-          <polyline points="16 7 22 7 22 13" />
-        </svg>
-      );
-    case "messenger":
-    case "telegram":
-      return (
-        <svg {...common}>
-          <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
-        </svg>
-      );
-    case "bidding":
-      return (
-        <svg {...common}>
-          <path d="M3 21h18M4 10h16M5 21V10M9 21V10M15 21V10M19 21V10M12 3l9 7H3l9-7z" />
-        </svg>
-      );
-    case "standards":
-      return (
-        <svg {...common}>
-          <path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z" />
-          <polyline points="9 12 11 14 15 10" />
-        </svg>
-      );
-    case "thuesync":
-      return (
-        <svg {...common}>
-          <polyline points="23 4 23 10 17 10" />
-          <polyline points="1 20 1 14 7 14" />
-          <path d="M3.5 9a9 9 0 0 1 14.8-3.4L23 10M1 14l4.7 4.4A9 9 0 0 0 20.5 15" />
-        </svg>
-      );
-    case "thuebct":
-      return (
-        <svg {...common}>
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <path d="M3 9h18M9 21V9" />
-        </svg>
-      );
-    case "taxdefense":
-      return (
-        <svg {...common}>
-          <path d="M12 3v18M5 8h14M6 8l-3 6h6l-3-6zm12 0l-3 6h6l-3-6zM8 21h8" />
-        </svg>
-      );
-    case "govradar":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="2" />
-          <path d="M16.2 7.8a6 6 0 0 1 0 8.5M7.8 16.2a6 6 0 0 1 0-8.5M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2" />
-        </svg>
-      );
-    case "nhaphang":
-      return (
-        <svg {...common}>
-          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" />
-        </svg>
-      );
-    case "banra":
-      return (
-        <svg {...common}>
-          <path d="M12 15V3m0 0l-4 4m4-4l4 4M4 19h16" />
-        </svg>
-      );
-    case "hoadonnhap":
-      return (
-        <svg {...common}>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="12" y1="11" x2="12" y2="17" />
-          <line x1="9" y1="14" x2="15" y2="14" />
-        </svg>
-      );
-    case "tonkho":
-    case "tokhai":
-    case "xuatkho":
-    case "congthuc":
-      return (
-        <svg {...common}>
-          <path d="M21 8l-9-5-9 5v8l9 5 9-5V8z" />
-          <polyline points="3.3 8 12 13 20.7 8" />
-          <line x1="12" y1="22" x2="12" y2="13" />
-        </svg>
-      );
-    case "sanxuat":
-    case "settings":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-        </svg>
-      );
-    case "shippingspx":
-      return (
-        <svg {...common}>
-          <rect x="1" y="3" width="15" height="13" rx="1.5" />
-          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
-          <circle cx="5.5" cy="18.5" r="2.5" />
-          <circle cx="18.5" cy="18.5" r="2.5" />
-        </svg>
-      );
-    case "sign":
-      return (
-        <svg {...common}>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-      );
-    case "verify":
-      return (
-        <svg {...common}>
-          <circle cx="11" cy="11" r="7" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          <polyline points="8.5 11 10.2 12.7 13.8 9.2" />
-        </svg>
-      );
-    case "doctracking":
-      return (
-        <svg {...common}>
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      );
-    case "customers":
-      return (
-        <svg {...common}>
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-      );
-    case "nas":
-      return (
-        <svg {...common}>
-          <rect x="2" y="4" width="20" height="7" rx="2" />
-          <rect x="2" y="13" width="20" height="7" rx="2" />
-          <circle cx="6" cy="7.5" r="1" fill="currentColor" />
-          <circle cx="6" cy="16.5" r="1" fill="currentColor" />
-        </svg>
-      );
-    case "payroll":
-    case "quote":
-      return (
-        <svg {...common}>
-          <rect x="2" y="5" width="20" height="14" rx="2" />
-          <line x1="2" y1="10" x2="22" y2="10" />
-        </svg>
-      );
-    case "trademarks":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M9 16V8h4a2.5 2.5 0 0 1 0 5H9m3.5 0L15 16" />
-        </svg>
-      );
-    case "documents":
-    case "mine":
-      return (
-        <svg {...common}>
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...common}>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="8" y1="13" x2="16" y2="13" />
-          <line x1="8" y1="17" x2="13" y2="17" />
-        </svg>
-      );
-  }
+  return <AppIcon name={TAB_ICONS[tab]} size={16} strokeWidth={1.9} />;
+}
+
+function useIsMobileViewport(): boolean {
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.matchMedia(MOBILE_QUERY).matches : false,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(MOBILE_QUERY);
+    const onChange = () => setIsMobile(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isMobile;
 }
 
 function AppShell() {
   const { showToast } = useToast();
+  const isMobile = useIsMobileViewport();
   const [me, setMe] = useState<Me | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [tab, setTabState] = useState<Tab>("home");
@@ -692,20 +546,7 @@ function AppShell() {
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((o) => !o)}
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+          <AppIcon name="menu" size={20} strokeWidth={2.2} />
         </button>
         <div className="brand">
           <span className="mark" aria-hidden="true">K</span>
@@ -717,26 +558,28 @@ function AppShell() {
         <span className="topbar-route-pill" title={activeLabel}>
           {activeLabel}
         </span>
-        <div className="topbar-user">
-          <span className="who">
-            {me.username}
-            {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
-          </span>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => setPasswordModalOpen(true)}
-          >
-            Đổi mật khẩu
-          </button>
-          <button
-            type="button"
-            className="logout"
-            onClick={handleLogout}
-          >
-            Đăng xuất
-          </button>
-        </div>
+        {!isMobile && (
+          <div className="topbar-user">
+            <span className="who">
+              {me.username}
+              {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
+            </span>
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => setPasswordModalOpen(true)}
+            >
+              Đổi mật khẩu
+            </button>
+            <button
+              type="button"
+              className="logout"
+              onClick={handleLogout}
+            >
+              Đăng xuất
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="body-row">
@@ -749,8 +592,8 @@ function AppShell() {
         )}
         <aside className={"sidebar" + (menuOpen ? " open" : "")} aria-label="Điều hướng chức năng">
           <div className="sidebar-head">
-            <div className="sidebar-head-brand">
-              <span className="mark" style={{ width: 30, height: 30, fontSize: 16 }} aria-hidden="true">K</span>
+            <div className="sidebar-head-brand brand">
+              <span className="mark" aria-hidden="true">K</span>
               <span>KSP Suite</span>
             </div>
             <button
@@ -759,19 +602,7 @@ function AppShell() {
               aria-label="Đóng menu"
               onClick={() => setMenuOpen(false)}
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                aria-hidden="true"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <AppIcon name="x" size={18} strokeWidth={2.2} />
             </button>
           </div>
 
@@ -803,20 +634,12 @@ function AppShell() {
                     }
                   >
                     <span>{title}</span>
-                    <svg
+                    <AppIcon
+                      name="chevron-down"
+                      size={13}
+                      strokeWidth={2.4}
                       className={`nav-group-caret${isCollapsed ? " collapsed" : ""}`}
-                      width="13"
-                      height="13"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                    />
                   </button>
                   {!isCollapsed &&
                     items.map(([t, label]) => (
@@ -1007,20 +830,7 @@ function AppShell() {
                 className={`mobile-bottom-nav-item${menuOpen ? " active" : ""}`}
                 onClick={() => setMenuOpen((o) => !o)}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.1"
-                  strokeLinecap="round"
-                  aria-hidden="true"
-                >
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <line x1="4" y1="12" x2="20" y2="12" />
-                  <line x1="4" y1="18" x2="20" y2="18" />
-                </svg>
+                <AppIcon name="menu" size={16} strokeWidth={2.1} />
                 <span>Menu</span>
               </button>
             </>
@@ -1068,9 +878,7 @@ function AppShell() {
       {!isAdmin && (
         <footer className="thanks-bar">
           <span className="thanks-heart" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-            </svg>
+            <AppIcon name="heart" size={15} />
           </span>
           <span>
             Cảm ơn Quý khách đã tin tưởng sử dụng dịch vụ của{" "}
@@ -1095,7 +903,9 @@ function AppShell() {
 export function App() {
   return (
     <ToastProvider>
-      <AppShell />
+      <ConfirmProvider>
+        <AppShell />
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

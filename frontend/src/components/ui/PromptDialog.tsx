@@ -1,5 +1,14 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { AppButton } from "./AppButton";
 import { AppModal } from "./AppModal";
+import { FormField } from "./FormGrid";
 
 export interface PromptDialogProps {
   open: boolean;
@@ -25,6 +34,9 @@ export function PromptDialog({
   onCancel,
 }: PromptDialogProps) {
   const [value, setValue] = useState(defaultValue);
+  const formId = useId();
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -32,7 +44,7 @@ export function PromptDialog({
     }
   }, [open, defaultValue]);
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     onConfirm(value);
   }
@@ -43,28 +55,30 @@ export function PromptDialog({
       onClose={onCancel}
       size="sm"
       title={title}
+      initialFocusRef={inputRef}
       footer={
         <>
-          <button type="button" onClick={onCancel}>
+          <AppButton variant="secondary" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button type="submit" form="ui-prompt-dialog-form" className="primary">
+          </AppButton>
+          <AppButton type="submit" form={formId} variant="primary">
             {confirmLabel}
-          </button>
+          </AppButton>
         </>
       }
     >
-      <form id="ui-prompt-dialog-form" onSubmit={handleSubmit}>
-        <label>
-          {label}
+      <form id={formId} className="ui-prompt-form" onSubmit={handleSubmit}>
+        <FormField label={label} htmlFor={inputId}>
           <input
+            id={inputId}
+            ref={inputRef}
             className="ui-input"
-            autoFocus
             value={value}
             placeholder={placeholder}
+            aria-label={label ? undefined : placeholder || "Nhập nội dung"}
             onChange={(e) => setValue(e.target.value)}
           />
-        </label>
+        </FormField>
       </form>
     </AppModal>
   );

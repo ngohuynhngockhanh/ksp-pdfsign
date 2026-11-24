@@ -1,6 +1,6 @@
 /* ========================================================================== */
-/* 01-tokens.css — Canonical INUT Operations Design System Tokens             */
-/* Single source of truth (deprecated legacy blue :root removed).             */
+/* 01-tokens.css — INUT Design System v2 Single Source of Truth               */
+/* "Crisp Editorial-Operator" tokens + backwards-compatible legacy aliases.   */
 /* ========================================================================== */
 
 @font-face {
@@ -11,67 +11,238 @@
 }
 
 :root {
-  /* Typography */
+  /* ── Typography Families ───────────────────────────────────────────────── */
   --font-sans: "Inter", "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Tahoma, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --font-serif: Georgia, "Times New Roman", Times, serif;
-  --font-heading: Georgia, "Times New Roman", Times, serif;
+  --font-heading: var(--font-serif);
   --font-mono: "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
 
-  /* Surfaces (INUT Warm Editorial Paper + Deep Ink) */
-  --ink: #102e2c;
-  --ink-2: #164b45;
+  /* ── Typography Scale (6-step operational scale + executive hero) ─────── */
+  --text-h1-hero: 30px;
+  --text-h1: 24px;
+  --text-h2: 16px;
+  --text-h3: 14px;
+  --text-body: 13.5px;
+  --text-caption: 12px;
+  --text-label: 11px;
+  --text-mono: 12.5px;
+  --text-input-mobile: 16px;
+
+  /* ── Surface Elevation (3-tier operational surfaces) ───────────────────── */
+  --bg-canvas: #f1f5f3;
+  --surface-1: #ffffff;
+  --surface-2: #f7faf8;
+  --surface-3: #edf3f0;
+  --surface-hover: #f1f8f5;
+  --surface-row-zero: #fcfcfd;
+  --surface-glass: rgba(255, 255, 255, 0.94);
+  --surface-panel-glass: rgba(255, 254, 250, 0.96);
+  --surface-bar-glass: rgba(248, 251, 249, 0.94);
+  --surface-canvas-glow: rgba(82, 177, 151, 0.12);
+  --surface-canvas-start: #f5f1e8;
+  --surface-canvas-mid: #f1f5f3;
+  --surface-canvas-end: #edf3f1;
+  --surface-paper-glass: rgba(247, 244, 236, 0.94);
+  --surface-mint-glass: rgba(242, 247, 244, 0.94);
+
+  /* Backwards-compatible surface aliases */
   --bg: #eef3f0;
-  --bg-subtle: #f4f8f6;
+  --bg-subtle: var(--surface-2);
   --paper: #f7f4ec;
   --panel: #fffefa;
-  --surface-subtle: #f4f8f6;
+  --surface-subtle: var(--surface-2);
 
-  /* Brand & Semantic Colors */
+  /* ── Deep Ink & Dark Shell Surfaces ────────────────────────────────────── */
+  --ink: #102e2c;
+  --ink-2: #164b45;
+  --ink-deep: #091e1c;
+  --ink-mid: #143b38;
+  --ink-bright: #176c62;
+  --ink-on-dark: #ffffff;
+  --ink-on-dark-soft: #eaf5f1;
+  --ink-on-dark-muted: #c2d8d2;
+  --ink-on-dark-subtle: #9cc2b8;
+  --ink-on-dark-eyebrow: #82cfba;
+  --ink-on-dark-active: #fff6df;
+  --ink-subtle-bg: rgba(16, 46, 44, 0.08);
+  --ink-border-subtle: rgba(16, 45, 43, 0.1);
+  --ink-border-strong: rgba(16, 45, 43, 0.14);
+
+  /* Shell Glass & Overlays */
+  --topbar-glass: rgba(15, 43, 41, 0.96);
+  --sidebar-foot-bg: rgba(9, 30, 28, 0.85);
+  --sidebar-glow: rgba(34, 138, 123, 0.2);
+  --sidebar-active-start: rgba(35, 145, 129, 0.45);
+  --sidebar-active-end: rgba(35, 145, 129, 0.16);
+  --hero-glow: rgba(81, 189, 169, 0.26);
+  --gold-glow: rgba(221, 160, 68, 0.17);
+  --on-dark-border-faint: rgba(255, 255, 255, 0.08);
+  --on-dark-border-soft: rgba(255, 255, 255, 0.16);
+  --on-dark-border-strong: rgba(255, 255, 255, 0.32);
+  --on-dark-surface-faint: rgba(255, 255, 255, 0.06);
+  --on-dark-surface-soft: rgba(255, 255, 255, 0.08);
+  --on-dark-surface-hover: rgba(255, 255, 255, 0.15);
+  --on-dark-focus-border: #69c5b1;
+  --on-dark-focus-ring: 0 0 0 3px rgba(105, 197, 177, 0.24);
+  --on-dark-danger-bg: rgba(201, 83, 63, 0.22);
+  --on-dark-danger-border: rgba(235, 132, 114, 0.35);
+  --on-dark-danger-fg: #ffe3dd;
+  --overlay-backdrop: rgba(7, 28, 27, 0.6);
+  --overlay-backdrop-soft: rgba(7, 28, 27, 0.45);
+  --overlay-backdrop-strong: rgba(7, 28, 27, 0.66);
+  --panel-border-glass: rgba(255, 255, 255, 0.5);
+
+  /* ── Brand Palette & Text / Borders ────────────────────────────────────── */
   --primary: #157d72;
+  --primary-hover: #126f66;
   --primary-dark: #0f655d;
-  --primary-soft: #e2f2ec;
-  --accent-color: #157d72;
+  --primary-darker: #0d5c55;
+  --primary-soft: #e4f3ef;
+  --primary-tint: rgba(21, 125, 114, 0.07);
+  --primary-border-soft: #b7d9cd;
+  --primary-selection: #228f82;
+  --accent-color: var(--primary);
   --mint: #dff3ec;
-  --gold: #dda044;
+
+  --gold: #d4942a;
+  --gold-bright: #f2bd62;
+  --gold-dark: #b87918;
+  --gold-fg: #143b36;
+  --gold-bg: #fff5db;
+  --gold-border: #e8c780;
+
   --text: #173b38;
-  --text-primary: #173b38;
-  --muted: #52675f;
-  --text-muted: #52675f;
+  --text-primary: var(--text);
+  --muted: #4b615b;
+  --text-muted: var(--muted);
+  --text-subtle: #5c706a;
+  --text-faint: #7b8c87;
+
   --border: #dce5e0;
-  --border-color: #dce5e0;
-  --border-strong: #c8d5cf;
+  --border-color: var(--border);
+  --border-subtle: #edf1ef;
+  --border-strong: #c4d3cc;
+  --border-hover: #9bbdb5;
+  --handle-bar: #c5d4ce;
+  --scrollbar-thumb: #9dbbb3;
 
-  /* Status Colors */
-  --green: #1d7a57;
-  --green-soft: #dff3e9;
-  --amber: #b47418;
-  --amber-soft: #fff0ce;
+  /* ── Semantic WCAG AA (>=4.5:1) Triplets ───────────────────────────────── */
+  --sem-neutral-fg: #445953;
+  --sem-neutral-bg: #eef3f0;
+  --sem-neutral-border: #d2ddd8;
+  --sem-neutral-solid: #445953;
+
+  --sem-brand-fg: #0f655d;
+  --sem-brand-bg: #e4f3ef;
+  --sem-brand-border: #b6d9ce;
+  --sem-brand-solid: #0f655d;
+
+  --sem-info-fg: #0e7490;
+  --sem-info-bg: #e6f6fa;
+  --sem-info-border: #a5dce9;
+  --sem-info-solid: #0e7490;
+
+  --sem-success-fg: #157347;
+  --sem-success-bg: #e6f5ed;
+  --sem-success-border: #b2dfc8;
+  --sem-success-solid: #157347;
+
+  --sem-warning-fg: #a16207;
+  --sem-warning-bg: #fffbeb;
+  --sem-warning-border: #f0d58c;
+  --sem-warning-solid: #a16207;
+
+  --sem-danger-fg: #b91c1c;
+  --sem-danger-bg: #fef2f2;
+  --sem-danger-border: #f5bcbc;
+  --sem-danger-solid: #b91c1c;
+
+  /* Toast Dark Surfaces (high contrast >= 7:1 with --ink-on-dark) */
+  --toast-info-bg: #102e2c;
+  --toast-info-border: #2c6b63;
+  --toast-success-bg: #145c45;
+  --toast-success-border: #2c9671;
+  --toast-warning-bg: #7f4e0c;
+  --toast-warning-border: #d6983b;
+  --toast-danger-bg: #8f2d21;
+  --toast-danger-border: #d66048;
+
+  /* Legacy Document-Category Chip Tokens (02-base compatibility) */
+  --cat-indigo-bg: #e0e7ff;
+  --cat-indigo-fg: #3730a3;
+  --cat-blue-bg: #dbeafe;
+  --cat-blue-fg: #1e40af;
+  --cat-sky-bg: #dbeafe;
+  --cat-sky-fg: #075985;
+  --cat-purple-bg: #f3e8ff;
+  --cat-purple-fg: #6b21a8;
+  --cat-rose-bg: #ffe4e6;
+  --cat-rose-fg: #9f1239;
+
+  /* Backwards-compatible status aliases */
+  --green: var(--sem-success-fg);
+  --green-soft: var(--sem-success-bg);
+  --amber: var(--sem-warning-fg);
+  --amber-soft: var(--sem-warning-bg);
   --coral: #d66048;
-  --red: #b23828;
-  --red-soft: #fbe1da;
+  --red: var(--sem-danger-fg);
+  --red-soft: var(--sem-danger-bg);
 
-  /* Radii & Shadows */
-  --radius: 16px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --shadow: 0 8px 28px rgba(16, 45, 43, 0.055);
-  --shadow-md: 0 18px 55px rgba(16, 45, 43, 0.14);
-  --ring: 0 0 0 3px rgba(21, 125, 114, 0.22);
+  /* ── Chart Series Palette (6 accessible harmonious tones) ──────────────── */
+  --chart-1: #157d72;
+  --chart-2: #0e7490;
+  --chart-3: #d4942a;
+  --chart-4: #157347;
+  --chart-5: #b91c1c;
+  --chart-6: #5b6e68;
 
-  /* Spacing & Touch Targets */
+  /* ── Spacing Scale ─────────────────────────────────────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── Radii (4 canonical steps + pill) ──────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+  --radius: var(--radius-lg);
+
+  /* ── Shadows & Focus Rings (3 elevation levels) ────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(16, 46, 44, 0.05);
+  --shadow-sm: 0 6px 18px rgba(16, 46, 44, 0.08);
+  --shadow-lg: 0 20px 50px rgba(7, 28, 27, 0.22);
+  --shadow-primary: 0 6px 16px rgba(21, 125, 114, 0.22);
+  --shadow-topbar: 0 8px 28px rgba(7, 31, 29, 0.16);
+  --shadow-bottom-nav: 0 -8px 24px rgba(16, 45, 43, 0.08);
+  --shadow-mark: 0 6px 16px rgba(0, 0, 0, 0.18);
+  --shadow: var(--shadow-sm);
+  --shadow-md: var(--shadow-lg);
+  --ring: 0 0 0 3px rgba(21, 125, 114, 0.22);
+  --ring-danger: 0 0 0 3px rgba(185, 28, 28, 0.2);
+
+  /* ── Z-Index (exact 6 canonical stacking layers) ───────────────────────── */
+  --z-sticky: 20;
+  --z-topbar: 40;
+  --z-bottom-nav: 45;
+  --z-drawer: 1050;
+  --z-modal: 1080;
+  --z-toast: 1200;
+
+  /* ── Layout Shell & Touch Dimensions ───────────────────────────────────── */
   --touch-desktop: 38px;
   --touch-min: 44px;
-
-  /* Layout Shell Dimensions */
   --topbar-h-desktop: 64px;
   --topbar-h-mobile: 56px;
   --sidebar-w: 232px;
+  --sidebar-w-compact: 206px;
   --bottom-nav-h: 62px;
+  --page-max-w: 1480px;
+  --page-max-w-narrow: 1040px;
+  --page-max-w-wide: 1600px;
 }

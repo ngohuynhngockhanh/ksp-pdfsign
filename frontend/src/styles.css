@@ -1,10 +1,24 @@
 /* ========================================================================== */
-/* KSP / INUT Operations Design System — Layered Stylesheet Entrypoint        */
-/* Strict cascade order: tokens -> base -> shell -> primitives -> modules.    */
+/* KSP / INUT Operations Design System v2 — Layered Stylesheet Entrypoint     */
+/* Strict cascade: tokens -> base -> shell -> primitives -> 13 domain modules */
 /* ========================================================================== */
 
 @import "./styles/01-tokens.css";
 @import "./styles/02-base.css";
 @import "./styles/03-shell.css";
 @import "./styles/04-primitives.css";
-@import "./styles/05-modules.css";
+
+/* Disjoint per-domain module stylesheets (0 file overlap across Waves 2-4) */
+@import "./styles/modules/mod-ops-docs.css";
+@import "./styles/modules/mod-inventory-trade.css";
+@import "./styles/modules/mod-trade-sales.css";
+@import "./styles/modules/mod-spx-trademarks.css";
+@import "./styles/modules/mod-studios-tools.css";
+@import "./styles/modules/mod-pdf-tools.css";
+@import "./styles/modules/mod-tax-payroll.css";
+@import "./styles/modules/mod-settings-comms.css";
+@import "./styles/modules/mod-bidding.css";
+@import "./styles/modules/mod-piecework.css";
+@import "./styles/modules/mod-standards.css";
+@import "./styles/modules/mod-taxdefense.css";
+@import "./styles/modules/mod-webads.css";
