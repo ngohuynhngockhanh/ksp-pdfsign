@@ -1144,3 +1144,273 @@ for (const batch of ROUTE_BATCHES) {
   expect(failures, `G6 visual audit failures in ${batch.label} (${mode}):\n${failures.join("\n")}`).toEqual([]);
   });
 }
+
+// ---------------------------------------------------------------------------
+// G6-DarkMode: Dark Mode Persistence, 0px Overflow & WCAG 2.1 AA Contrast Audit
+// ---------------------------------------------------------------------------
+const DARK_MODE_AUDIT_ROUTES = [
+  "/",
+  "/ho-so",
+  "/ky-so",
+  "/dau-thau",
+  "/hop-dong-khoan",
+  "/standards",
+  "/shipping-spx",
+  "/bang-luong",
+] as const;
+
+test("G6-DarkMode: dark theme persists across reload & passes WCAG 2.1 AA across 8 routes", async ({
+  page,
+}, testInfo) => {
+  const mode = resolveAuditMode(testInfo.project.name);
+  test.skip(
+    mode !== "desktop-1440" && mode !== "mobile-390",
+    "Dark mode WCAG 2.1 AA audit runs on desktop-1280 (1440×900) and mobile-390-ios (390×844)",
+  );
+
+  test.setTimeout(120_000);
+
+  if (mode === "desktop-1440") {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+
+  await installComprehensiveMocks(page);
+
+  const pageErrors: string[] = [];
+  let activeRoute = "/";
+  page.on("pageerror", (err) => pageErrors.push(`${activeRoute}: ${String(err)}`));
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  // Toggle Dark Mode via topbar theme toggle & verify localStorage + reload persistence
+  const themeToggle = page.getByTestId("theme-toggle");
+  await expect(themeToggle).toBeVisible();
+  await themeToggle.click();
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.theme))
+    .toBe("dark");
+  expect(await page.evaluate(() => localStorage.getItem("ksp_theme"))).toBe("dark");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.theme),
+    `[data-theme="dark"] must persist after reload (${mode})`,
+  ).toBe("dark");
+
+  const failures: string[] = [];
+
+  for (const routePath of DARK_MODE_AUDIT_ROUTES) {
+    activeRoute = routePath;
+    await page.goto(routePath, { waitUntil: "domcontentloaded" });
+    await page.locator("main.app-content .ui-page-header").first().waitFor({
+      state: "visible",
+      timeout: 8000,
+    });
+    await page.waitForTimeout(100);
+    await page.evaluate(() => document.fonts?.ready);
+
+    const check = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme || "",
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+    }));
+
+    if (check.theme !== "dark") {
+      failures.push(`${routePath} [THEME]: expected dark, got "${check.theme}"`);
+    }
+    if (check.overflow > 1) {
+      failures.push(`${routePath} [DOM]: overflow=${check.overflow}px`);
+    }
+
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    const severeAxe = axe.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    if (severeAxe.length > 0) {
+      const summary = severeAxe
+        .map(
+          (v) =>
+            `${v.id}(${v.impact}, ${v.nodes.length}x: ${v.nodes
+              .slice(0, 2)
+              .map((n) => n.target.join(" "))
+              .join(", ")})`,
+        )
+        .join("; ");
+      failures.push(`${routePath} [AXE-DARK]: ${summary}`);
+    }
+  }
+
+  expect(pageErrors, `Uncaught pageerrors in dark mode (${mode})`).toEqual([]);
+  expect(
+    failures,
+    `G6 Dark Mode audit failures (${mode}):\n${failures.join("\n")}`,
+  ).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// G6-CommandPalette: Ctrl+K Vietnamese Diacritic-Insensitive Navigation & Escape
+// ---------------------------------------------------------------------------
+test("G6-CommandPalette: Ctrl+K opens, filters Vietnamese queries, navigates & closes on Escape", async ({
+  page,
+}, testInfo) => {
+  const mode = resolveAuditMode(testInfo.project.name);
+  test.skip(mode !== "desktop-1440", "Ctrl+K Command Palette keyboard test runs on desktop-1280");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installComprehensiveMocks(page);
+
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(String(err)));
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  // 1. Open via Ctrl+K, search "khoan", press Enter -> navigates to /hop-dong-khoan
+  await page.keyboard.press("Control+k");
+  const dialog = page.getByTestId("cmdk-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("role", "dialog");
+
+  const input = page.getByTestId("cmdk-input");
+  await expect(input).toBeVisible();
+  await input.fill("khoan");
+  await expect(page.getByTestId("cmdk-list").locator('[role="option"]').first()).toBeVisible();
+  await input.press("Enter");
+
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/hop-dong-khoan/);
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(1);
+
+  // 2. Open via Ctrl+K, search "dau thau", press Enter -> navigates to /bidding or /dau-thau
+  await page.keyboard.press("Control+k");
+  await expect(dialog).toBeVisible();
+  await input.fill("dau thau");
+  await expect(page.getByTestId("cmdk-list").locator('[role="option"]').first()).toBeVisible();
+  await input.press("Enter");
+
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/(bidding|dau-thau)/);
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  // 3. Open via Ctrl+K, press Escape -> closes cleanly
+  await page.keyboard.press("Control+k");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  expect(pageErrors, "Uncaught pageerrors during Ctrl+K Command Palette flow").toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// G6-DensityToggle: Compact Table Density Mode Persistence & 0px Overflow
+// ---------------------------------------------------------------------------
+test("G6-DensityToggle: compact density persists across reload with 0px overflow", async ({
+  page,
+}, testInfo) => {
+  const mode = resolveAuditMode(testInfo.project.name);
+  test.skip(mode !== "desktop-1440", "Density toggle test runs on desktop-1280");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installComprehensiveMocks(page);
+
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(String(err)));
+
+  await page.goto("/ho-so", { waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  const densityToggle = page.getByTestId("density-toggle");
+  await expect(densityToggle).toBeVisible();
+  await densityToggle.click();
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.density))
+    .toBe("compact");
+  expect(await page.evaluate(() => localStorage.getItem("ksp_density"))).toBe("compact");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  expect(await page.evaluate(() => document.documentElement.dataset.density)).toBe("compact");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(1);
+  expect(pageErrors, "Uncaught pageerrors during density toggle").toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// G6-PrintMedia: @media print Hides Navigation Chrome & Filter Bar
+// ---------------------------------------------------------------------------
+test("G6-PrintMedia: @media print hides .sidebar, .topbar & .ui-filter-bar on /ho-so", async ({
+  page,
+}, testInfo) => {
+  const mode = resolveAuditMode(testInfo.project.name);
+  test.skip(mode !== "desktop-1440", "@media print sanity test runs on desktop-1280");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installComprehensiveMocks(page);
+
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(String(err)));
+
+  await page.goto("/ho-so", { waitUntil: "domcontentloaded" });
+  await page.locator("main.app-content .ui-page-header").first().waitFor({
+    state: "visible",
+    timeout: 8000,
+  });
+
+  // Ensure elements exist & render in screen media before switching to print
+  const screenCheck = await page.evaluate(() => ({
+    sidebar: Boolean(document.querySelector(".sidebar")),
+    topbar: Boolean(document.querySelector(".topbar")),
+    filterBar: Boolean(document.querySelector(".ui-filter-bar")),
+  }));
+  expect(screenCheck).toEqual({ sidebar: true, topbar: true, filterBar: true });
+
+  await page.emulateMedia({ media: "print" });
+
+  const printDisplay = await page.evaluate(() => {
+    const disp = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).display : null;
+    };
+    return {
+      sidebar: disp(".sidebar"),
+      topbar: disp(".topbar"),
+      filterBar: disp(".ui-filter-bar"),
+      main: disp("main.app-content"),
+    };
+  });
+
+  expect(printDisplay.sidebar, ".sidebar in @media print").toBe("none");
+  expect(printDisplay.topbar, ".topbar in @media print").toBe("none");
+  expect(printDisplay.filterBar, ".ui-filter-bar in @media print").toBe("none");
+  expect(printDisplay.main, "main.app-content remains visible in @media print").not.toBe("none");
+  expect(pageErrors, "Uncaught pageerrors during @media print test").toEqual([]);
+});
