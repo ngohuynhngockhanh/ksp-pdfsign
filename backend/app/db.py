@@ -1831,6 +1831,23 @@ class RevokedToken(Base):
     revoked_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class ServiceApiKey(Base):
+    """Service API Key (luu SHA-256 hash) cho cac he thong iNut goi Email / Telegram relay."""
+
+    __tablename__ = "service_api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    key_prefix: Mapped[str] = mapped_column(String(32), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    scopes: Mapped[str] = mapped_column(String(255), default="mail:send,telegram:send")
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="admin")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 _engine = None
 _SessionLocal = None
 

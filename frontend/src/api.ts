@@ -9,6 +9,18 @@ export interface CertInfo {
   valid_to: string;
 }
 
+export interface ServiceApiKeyItem {
+  id: number;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  is_active: boolean;
+  created_by: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
 export interface TelegramStatus {
   enabled: boolean;
   bot_username: string;
@@ -2246,6 +2258,29 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, speak_tts }),
+    });
+  },
+  async listServiceKeys() {
+    return req<{
+      ok: boolean;
+      allowed_scopes: string[];
+      keys: ServiceApiKeyItem[];
+    }>("/api/service-keys");
+  },
+  async createServiceKey(name: string, scopes: string[]) {
+    return req<{
+      ok: boolean;
+      key: ServiceApiKeyItem;
+      api_key: string;
+    }>("/api/service-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, scopes }),
+    });
+  },
+  async revokeServiceKey(keyId: number) {
+    return req<{ ok: boolean; key: ServiceApiKeyItem }>(`/api/service-keys/${keyId}`, {
+      method: "DELETE",
     });
   },
   async ttsStatus(): Promise<TtsStatus> {

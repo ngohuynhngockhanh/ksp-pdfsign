@@ -177,7 +177,14 @@ def send_alert_email(db, subject: str, body: str) -> bool:
         client.send_message(msg)
     return True
 
-def send_custom_email(db, to_email: str, subject: str, plain_body: str, html_body: str | None = None) -> bool:
+def send_custom_email(
+    db,
+    to_email: str,
+    subject: str,
+    plain_body: str,
+    html_body: str | None = None,
+    attachments: list[tuple[str, str, bytes]] | None = None,
+) -> bool:
     host = _setting(db, "smtp_host")
     if not host or not to_email:
         return False
@@ -192,6 +199,19 @@ def send_custom_email(db, to_email: str, subject: str, plain_body: str, html_bod
         msg.add_alternative(html_body, subtype="html")
     else:
         msg.set_content(plain_body or "")
+    for att in attachments or []:
+        filename, content_type, data = att
+        if not filename or not data:
+            continue
+        safe_name = str(filename).replace("\r", "").replace("\n", "").replace('"', "").replace("/", "_").replace("\\", "_")[:180]
+        ct = str(content_type or "application/octet-stream").strip()
+        if "/" in ct:
+            maintype, subtype = ct.split("/", 1)
+            maintype = maintype.strip() or "application"
+            subtype = subtype.split(";", 1)[0].strip() or "octet-stream"
+        else:
+            maintype, subtype = "application", "octet-stream"
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=safe_name)
     with smtplib.SMTP(host, port, timeout=15) as client:
         client.starttls()
         if username and password:

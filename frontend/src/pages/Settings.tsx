@@ -9,6 +9,7 @@ import {
   testSpxConnection,
   type Customer,
   type CustomerInvoice,
+  type ServiceApiKeyItem,
 } from "../api";
 import { FormGrid } from "../components/ui";
 
@@ -16,7 +17,7 @@ function vnd(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
 
-type SettingIconName = "settings" | "ai" | "nas" | "invoice" | "mail" | "spx";
+type SettingIconName = "settings" | "ai" | "nas" | "invoice" | "mail" | "spx" | "key";
 
 function SettingIcon({ name }: { name: SettingIconName }) {
   const paths: Record<SettingIconName, React.ReactNode> = {
@@ -26,6 +27,7 @@ function SettingIcon({ name }: { name: SettingIconName }) {
     invoice: <><path d="M6 3h9l3 3v15l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></>,
     mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
     spx: <><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></>,
+    key: <><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></>,
   };
   return <svg className="setting-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -75,16 +77,26 @@ export function Settings({
   const [spxTestMsg, setSpxTestMsg] = useState("");
   const [spxBusy, setSpxBusy] = useState(false);
 
+  // Service API Keys (Email + Telegram Relay)
+  const [svcKeys, setSvcKeys] = useState<ServiceApiKeyItem[]>([]);
+  const [svcName, setSvcName] = useState("");
+  const [svcScopeMail, setSvcScopeMail] = useState(true);
+  const [svcScopeTg, setSvcScopeTg] = useState(true);
+  const [svcNewSecret, setSvcNewSecret] = useState("");
+  const [svcMsg, setSvcMsg] = useState("");
+  const [svcBusy, setSvcBusy] = useState(false);
+
   async function load() {
     setErr("");
     try {
-      const [settings, status, unmatchedRows, customerRows, zohoCfg, spxCfg] = await Promise.all([
+      const [settings, status, unmatchedRows, customerRows, zohoCfg, spxCfg, svcRes] = await Promise.all([
         api.getAppSettings(),
         api.ihoadonCustomerSyncStatus(),
         api.ihoadonUnmatched(),
         api.listCustomers(),
         api.emailSyncSettings().catch(() => null),
         fetchSpxSettings().catch(() => null),
+        api.listServiceKeys().catch(() => null),
       ]);
       setS(settings);
       setSyncStatus(status && typeof status.total === "number" ? status : null);
@@ -92,8 +104,54 @@ export function Settings({
       setCustomers(Array.isArray(customerRows) ? customerRows : []);
       if (zohoCfg && typeof zohoCfg.mode === "string") setZohoSettings(zohoCfg);
       if (spxCfg && typeof spxCfg.spx_username === "string") setSpxSettings(spxCfg);
+      if (svcRes && Array.isArray(svcRes.keys)) setSvcKeys(svcRes.keys);
     } catch (e) {
       setErr((e as Error).message);
+    }
+  }
+
+  async function createSvcKey() {
+    const clean = svcName.trim();
+    if (!clean) {
+      setSvcMsg("Vui lòng nhập tên ứng dụng (VD: inut-solar-hub).");
+      return;
+    }
+    const scopes: string[] = [];
+    if (svcScopeMail) scopes.push("mail:send");
+    if (svcScopeTg) scopes.push("telegram:send");
+    if (!scopes.length) {
+      setSvcMsg("Chọn ít nhất 1 quyền (Email hoặc Telegram).");
+      return;
+    }
+    setSvcBusy(true);
+    setSvcMsg("");
+    setSvcNewSecret("");
+    try {
+      const res = await api.createServiceKey(clean, scopes);
+      setSvcNewSecret(res.api_key);
+      setSvcName("");
+      setSvcMsg(`Đã tạo Service API Key cho "${res.key.name}". Hãy sao chép ngay vì hệ thống chỉ hiển thị 1 lần.`);
+      const latest = await api.listServiceKeys();
+      setSvcKeys(latest.keys);
+    } catch (e: any) {
+      setSvcMsg(`Lỗi tạo key: ${e.message || e}`);
+    } finally {
+      setSvcBusy(false);
+    }
+  }
+
+  async function revokeSvcKey(id: number, name: string) {
+    setSvcBusy(true);
+    setSvcMsg("");
+    try {
+      await api.revokeServiceKey(id);
+      setSvcMsg(`Đã thu hồi API Key "${name}".`);
+      const latest = await api.listServiceKeys();
+      setSvcKeys(latest.keys);
+    } catch (e: any) {
+      setSvcMsg(`Lỗi thu hồi key: ${e.message || e}`);
+    } finally {
+      setSvcBusy(false);
     }
   }
 
@@ -910,6 +968,105 @@ export function Settings({
           <label>Email gửi<input className="ui-input" value={s.smtp_from} onChange={(e) => set("smtp_from", e.target.value)} /></label>
           <label>Email nhận<input className="ui-input" value={s.smtp_to} onChange={(e) => set("smtp_to", e.target.value)} /></label>
         </FormGrid>
+      </section>
+
+      <section className="panel setting-card setting-service-keys">
+        <header className="setting-card-head">
+          <span className="setting-card-icon"><SettingIcon name="key" /></span>
+          <div>
+            <span className="setting-card-kicker">HỆ SINH THÁI INUT · RELAY API</span>
+            <h3>Service API Keys (Email &amp; Telegram Relay)</h3>
+            <p>Cấp khóa có phân quyền cho các hệ thống ngoài (như iNut Solar Hub) gửi Email (kèm PDF/XLSX) và Telegram qua KSP</p>
+          </div>
+          <span className={`setting-state ${svcKeys.some((k) => k.is_active) ? "on" : "off"}`}>
+            {svcKeys.filter((k) => k.is_active).length} đang hoạt động
+          </span>
+        </header>
+        <FormGrid cols={2}>
+          <label>
+            Tên ứng dụng / dịch vụ
+            <input
+              className="ui-input"
+              value={svcName}
+              onChange={(e) => setSvcName(e.target.value)}
+              placeholder="inut-solar-hub"
+            />
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "flex-end" }}>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>Phạm vi quyền (Scopes)</span>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", minHeight: 36 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, margin: 0, cursor: "pointer" }}>
+                <input type="checkbox" checked={svcScopeMail} onChange={(e) => setSvcScopeMail(e.target.checked)} />
+                <span>mail:send (Email + Đính kèm)</span>
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, margin: 0, cursor: "pointer" }}>
+                <input type="checkbox" checked={svcScopeTg} onChange={(e) => setSvcScopeTg(e.target.checked)} />
+                <span>telegram:send (Bot Telegram)</span>
+              </label>
+            </div>
+          </div>
+        </FormGrid>
+        <div className="setting-card-action" style={{ marginTop: 12 }}>
+          <span style={{ fontSize: 13 }}>{svcMsg || "Khóa chỉ lưu băm SHA-256 trong CSDL và có thể thu hồi tức thì."}</span>
+          <div className="setting-action-buttons">
+            <button type="button" className="primary" disabled={svcBusy} onClick={createSvcKey}>
+              {svcBusy ? "Đang tạo…" : "Tạo Service API Key"}
+            </button>
+          </div>
+        </div>
+        {svcNewSecret && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "1px solid #0ea5e9", background: "rgba(14,165,233,0.08)" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>API Key mới (chỉ hiển thị 1 lần duy nhất):</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <code style={{ fontSize: 12, wordBreak: "break-all", flex: 1 }}>{svcNewSecret}</code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(svcNewSecret);
+                  setSvcMsg("Đã sao chép API Key vào clipboard.");
+                }}
+              >
+                Sao chép
+              </button>
+            </div>
+          </div>
+        )}
+        {svcKeys.length > 0 && (
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border, #e2e8f0)" }}>
+                  <th style={{ padding: "6px 8px" }}>Ứng dụng</th>
+                  <th style={{ padding: "6px 8px" }}>Prefix</th>
+                  <th style={{ padding: "6px 8px" }}>Scopes</th>
+                  <th style={{ padding: "6px 8px" }}>Dùng gần nhất</th>
+                  <th style={{ padding: "6px 8px" }}>Trạng thái</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {svcKeys.map((k) => (
+                  <tr key={k.id} style={{ borderBottom: "1px solid var(--border, #e2e8f0)" }}>
+                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{k.name}</td>
+                    <td style={{ padding: "6px 8px" }}><code>{k.key_prefix}</code></td>
+                    <td style={{ padding: "6px 8px" }}>{k.scopes.join(", ")}</td>
+                    <td style={{ padding: "6px 8px" }}>{k.last_used_at ? k.last_used_at.slice(0, 16).replace("T", " ") : "Chưa dùng"}</td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <span className={`chip sm ${k.is_active ? "green" : ""}`}>{k.is_active ? "Hoạt động" : "Đã thu hồi"}</span>
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                      {k.is_active && (
+                        <button type="button" disabled={svcBusy} onClick={() => revokeSvcKey(k.id, k.name)}>
+                          Thu hồi
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       </div>

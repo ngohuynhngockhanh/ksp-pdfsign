@@ -1,6 +1,7 @@
 """FastAPI app: dang nhap, ky, kiem tra, quan ly khach hang & ho so."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import io as _io
@@ -33,7 +34,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from PIL import Image
 from fastapi.responses import (
     FileResponse,
@@ -63,6 +64,7 @@ from . import (
     money,
     nas,
     security_utils,
+    service_keys,
     settings_store,
     signing,
     tax,
@@ -215,6 +217,7 @@ _CSRF_REFERER_EXEMPT_PREFIXES = (
     "/api/lio-signer/webhook",
     "/internal/",
     "/api/mail/send",
+    "/api/telegram/send",
     "/api/login",
     "/api/logout",
     "/api/doc-telemetry",
@@ -611,12 +614,42 @@ def telegram_disconnect(
     return {"ok": True}
 
 
+_TELEGRAM_RATE_LOCK = threading.Lock()
+_TELEGRAM_RATE_BUCKETS: dict[str, list[float]] = {}
+_TELEGRAM_RATE_LIMIT = 30
+_TELEGRAM_RATE_WINDOW = 60.0
+
+
+def _check_telegram_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    with _TELEGRAM_RATE_LOCK:
+        hits = [t for t in _TELEGRAM_RATE_BUCKETS.get(key, []) if now - t < _TELEGRAM_RATE_WINDOW]
+        if len(hits) >= _TELEGRAM_RATE_LIMIT:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Quá giới hạn gửi Telegram (tối đa 30 tin/phút)",
+            )
+        hits.append(now)
+        _TELEGRAM_RATE_BUCKETS[key] = hits
+
+
 def require_telegram_send_access(
     request: Request,
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ) -> CurrentUser:
-    """Chi cho phep Admin JWT/Cookie hoac loopback service Bearer token hop le."""
+    """Cho phep Service API Key (scope telegram:send), loopback service Bearer token hoac Admin JWT/Cookie."""
+    ip = request.client.host if request.client else ""
+    svc = service_keys.authenticate_service_key(request, db, "telegram:send")
+    if svc is not None:
+        return CurrentUser(
+            id=0,
+            username=f"svc:{svc.name}#{svc.id}",
+            role="service",
+            customer_id=None,
+            training_access=False,
+            ip=ip,
+        )
     lb_user = authenticate_loopback_bearer(request, db)
     if lb_user is not None:
         return lb_user
@@ -636,31 +669,48 @@ class TelegramSendMessageIn(BaseModel):
 @app.post("/api/telegram/send")
 def telegram_send_message(
     payload: TelegramSendMessageIn,
+    request: Request,
     user: CurrentUser = Depends(require_telegram_send_access),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_session),
 ):
     """Gửi tin nhắn Telegram trực tiếp tới Admin chat hoặc chat_id chỉ định (kèm phát TTS ra loa BLE nếu bật)."""
+    ip = request.client.host if request.client else ""
+    _check_telegram_rate_limit(f"{user.username}:{ip}")
+
     if not telegram.is_configured(settings):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Telegram chưa được cấu hình trên máy chủ")
 
-    chats = [payload.chat_id] if payload.chat_id else telegram.admin_chat_ids(db)
+    raw_chat = (payload.chat_id or "").strip()
+    chats = [raw_chat] if raw_chat else telegram.admin_chat_ids(db)
     if not chats:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Chưa có tài khoản Telegram Admin nào được liên kết")
 
+    valid_chats = [str(cid).strip() for cid in chats if cid and str(cid).strip().lstrip("-").isdigit()]
+    if not valid_chats:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Telegram chat_id không hợp lệ")
+
     client = telegram.TelegramClient(settings)
     delivered = 0
+    last_err = ""
     try:
-        for cid in chats:
-            if cid and str(cid).lstrip("-").isdigit():
-                try:
-                    client.send_message(cid, payload.message, speak_tts=payload.speak_tts, parse_mode=payload.parse_mode)
-                    delivered += 1
-                except Exception as e:
-                    logger.warning("Lỗi gửi Telegram tới chat %s: %s", cid, e)
+        for cid in valid_chats:
+            try:
+                client.send_message(cid, payload.message, speak_tts=payload.speak_tts, parse_mode=payload.parse_mode)
+                delivered += 1
+            except Exception as e:
+                last_err = str(e)
+                logger.warning("Lỗi gửi Telegram tới chat %s: %s", cid, e)
     finally:
         client.close()
 
+    if delivered == 0:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"Không gửi được tin nhắn Telegram ({last_err[:160] or 'lỗi kết nối Telegram API'})",
+        )
+
+    audit.record(db, user.username, user.role, ip, "telegram_send", f"chats={delivered}", (payload.message or "")[:120])
     return {"ok": True, "delivered_count": delivered, "message": payload.message}
 
 
@@ -900,6 +950,12 @@ def tts_speaker_stop_api(
             security_utils.error_detail("Lỗi dừng loa BLE", exc, "ksp.tts"),
         ) from exc
 
+class MailAttachmentIn(BaseModel):
+    filename: str
+    content_type: str = "application/octet-stream"
+    content_b64: str
+
+
 class MailSendIn(BaseModel):
     to: str
     subject: str
@@ -908,12 +964,15 @@ class MailSendIn(BaseModel):
     username: str | None = None
     otp_code: str | None = None
     expiry_minutes: int | None = 15
+    attachments: list[MailAttachmentIn] = Field(default_factory=list)
 
 
 _MAIL_RATE_LOCK = threading.Lock()
 _MAIL_RATE_BUCKETS: dict[str, list[float]] = {}
 _MAIL_RATE_LIMIT = 30
 _MAIL_RATE_WINDOW = 60.0
+_MAIL_MAX_ATTACHMENTS = 5
+_MAIL_MAX_ATTACHMENT_TOTAL_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _check_mail_rate_limit(key: str) -> None:
@@ -929,6 +988,34 @@ def _check_mail_rate_limit(key: str) -> None:
         _MAIL_RATE_BUCKETS[key] = hits
 
 
+def _decode_mail_attachments(items: list[MailAttachmentIn]) -> list[tuple[str, str, bytes]]:
+    if not items:
+        return []
+    if len(items) > _MAIL_MAX_ATTACHMENTS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Quá số tệp đính kèm cho phép (tối đa {_MAIL_MAX_ATTACHMENTS} tệp)",
+        )
+    decoded: list[tuple[str, str, bytes]] = []
+    total_bytes = 0
+    for att in items:
+        fname = (att.filename or "").strip()
+        if not fname:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tên tệp đính kèm không được để trống")
+        try:
+            raw = base64.b64decode(att.content_b64 or "", validate=True)
+        except Exception as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Nội dung base64 đính kèm không hợp lệ ({fname})") from exc
+        if not raw:
+            continue
+        total_bytes += len(raw)
+        if total_bytes > _MAIL_MAX_ATTACHMENT_TOTAL_BYTES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tổng dung lượng tệp đính kèm vượt giới hạn 10MB")
+        ct = (att.content_type or "application/octet-stream").strip()
+        decoded.append((fname, ct, raw))
+    return decoded
+
+
 @app.post("/api/mail/send")
 async def mail_send_api(
     payload: MailSendIn,
@@ -940,6 +1027,7 @@ async def mail_send_api(
 
     Yêu cầu 1 trong các cơ chế xác thực:
     - Header `X-INUT-Mail-Signature` (HMAC-SHA256 trên raw body với `MAIL_HMAC_SECRET`)
+    - Header `X-API-Key` / `Authorization: Bearer <ksp_svc_...>` (Service API Key có scope `mail:send`)
     - Header `Authorization: Bearer <MAIL_API_TOKEN>`
     - Loopback service token hợp lệ
     - Hoặc phiên Admin (`require_admin`).
@@ -957,6 +1045,11 @@ async def mail_send_api(
         supplied_hex = sig_header[7:].strip() if sig_header.lower().startswith("sha256=") else sig_header
         if hmac.compare_digest(supplied_hex.lower(), expected_hex.lower()):
             actor = "mail-hmac"
+
+    if not actor:
+        svc = service_keys.authenticate_service_key(request, db, "mail:send")
+        if svc is not None:
+            actor = f"svc:{svc.name}#{svc.id}"
 
     if not actor and settings.mail_api_token:
         auth_header = (request.headers.get("authorization") or "").strip()
@@ -984,21 +1077,87 @@ async def mail_send_api(
     if not to_email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Thiếu địa chỉ email người nhận")
 
+    decoded_attachments = _decode_mail_attachments(payload.attachments)
     html_content = payload.html or payload.body or ""
     plain_content = payload.body or ""
 
-    ok = tax_ops.send_custom_email(
-        db,
-        to_email=to_email,
-        subject=payload.subject,
-        plain_body=plain_content,
-        html_body=html_content,
-    )
+    send_kwargs: dict[str, object] = {
+        "to_email": to_email,
+        "subject": payload.subject,
+        "plain_body": plain_content,
+        "html_body": html_content,
+    }
+    if decoded_attachments:
+        send_kwargs["attachments"] = decoded_attachments
+
+    ok = tax_ops.send_custom_email(db, **send_kwargs)
     if not ok:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Không thể gửi email qua SMTP của KSP (chưa cấu hình hoặc lỗi kết nối)")
 
-    audit.record(db, actor, role, ip, "mail_send", to_email, (payload.subject or "")[:160])
-    return {"ok": True, "message": "Email đã được gửi thành công", "to": to_email}
+    att_note = f" [{len(decoded_attachments)} att]" if decoded_attachments else ""
+    audit.record(db, actor, role, ip, "mail_send", to_email, f"{(payload.subject or '')[:140]}{att_note}")
+    return {
+        "ok": True,
+        "message": "Email đã được gửi thành công",
+        "to": to_email,
+        "attachments_count": len(decoded_attachments),
+    }
+
+
+class ServiceKeyCreateIn(BaseModel):
+    name: str
+    scopes: list[str] = Field(default_factory=lambda: list(service_keys.DEFAULT_SCOPES))
+
+
+@app.get("/api/service-keys")
+def service_keys_list_api(
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Liệt kê danh sách Service API Keys (chỉ hiện prefix an toàn, không bao giờ lộ raw key)."""
+    return {
+        "ok": True,
+        "allowed_scopes": list(service_keys.ALLOWED_SCOPES),
+        "keys": service_keys.list_service_keys(db),
+    }
+
+
+@app.post("/api/service-keys")
+def service_keys_create_api(
+    payload: ServiceKeyCreateIn,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Tạo Service API Key mới (raw key chỉ trả về 1 lần duy nhất tại thời điểm tạo)."""
+    try:
+        row, raw_key = service_keys.create_service_key(
+            db,
+            name=payload.name,
+            scopes=payload.scopes,
+            created_by=user.username,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    _audit(db, user, "service_key_create", f"key#{row.id}:{row.name}", f"scopes={row.scopes}")
+    return {
+        "ok": True,
+        "key": service_keys.serialize_service_key(row),
+        "api_key": raw_key,
+    }
+
+
+@app.delete("/api/service-keys/{key_id}")
+def service_keys_revoke_api(
+    key_id: int,
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    """Thu hồi vĩnh viễn một Service API Key."""
+    row = service_keys.revoke_service_key(db, key_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy Service API Key")
+    _audit(db, user, "service_key_revoke", f"key#{row.id}:{row.name}", "")
+    return {"ok": True, "key": service_keys.serialize_service_key(row)}
 
 # ---------------------------------------------------------------------------
 # Ky so (admin)
