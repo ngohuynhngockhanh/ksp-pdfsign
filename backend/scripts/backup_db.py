@@ -3,6 +3,8 @@
 - Backup nhat quan bang sqlite3 backup API (an toan khi server dang ghi).
 - Nen gzip; neu dat bien moi truong BACKUP_PASSPHRASE thi ma hoa doi xung (Fernet + PBKDF2-HMAC-SHA256)
   truoc khi upload len NAS: <share>/<nas_base_path>/backup-db/ksp-YYYY-MM-DD.db.gz(.enc)
+  Ghi chu van hanh: Production KSP chu dong de trong BACKUP_PASSPHRASE (khong ma hoa ban backup
+  `.db.gz` tren NAS) vi duong truyen & ha tang NAS da duoc bao ve qua VPN do anh Phu quan ly.
 - Giu 60 ngay (2 thang), file cu hon tu xoa tren NAS.
 
 Chay: cd backend && ./.venv/bin/python scripts/backup_db.py
@@ -81,8 +83,7 @@ def main() -> int:
         encrypted = True
     else:
         print(
-            "[WARN] BACKUP_PASSPHRASE chua duoc dat — ban backup upload len NAS khong duoc ma hoa!",
-            file=sys.stderr,
+            "[INFO] BACKUP_PASSPHRASE khong dat — luu ban nen .db.gz (NAS duoc bao ve qua VPN noi bo do anh Phu quan ly)."
         )
 
     # 2) Upload
