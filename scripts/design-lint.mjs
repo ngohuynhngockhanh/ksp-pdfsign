@@ -30,6 +30,9 @@ const APP_TSX = path.join(FRONTEND_SRC, "App.tsx");
 const THRESHOLDS = {
   maxModuleCssBytes: 35 * 1024, // 35 KiB
   maxModuleCssLines: 900,
+  maxPrimitivesCssBytes: 112 * 1024, // 112 KiB (04-primitives.css)
+  maxPrimitivesCssLines: 4500,
+  maxCoreCssBytes: 135 * 1024, // 135 KiB (02-base + 03-shell + 04-primitives)
   maxCssLineLength: 200,
   allowedBreakpoints: new Set([1280, 1024, 820, 430]),
   maxCanonicalBreakpoints: 4,
@@ -264,7 +267,10 @@ const CSS_ZINDEX_KEYWORDS = new Set(["auto", "inherit", "initial", "unset", "rev
 const CSS_IMPORTANT_RE = /!\s*important\b/gi;
 const MEDIA_WIDTH_RE = /(?:(?:min|max)-width\s*:\s*(\d+(?:\.\d+)?)\s*px|\bwidth\s*(?:<=|>=|<|>)\s*(\d+(?:\.\d+)?)\s*px)/gi;
 
-function analyzeCssFile(absPath, { isTokens = false, isModule = false, allowedZTokens = null } = {}) {
+function analyzeCssFile(
+  absPath,
+  { isTokens = false, isModule = false, isCore = false, isPrimitives = false, allowedZTokens = null } = {},
+) {
   const raw = fs.readFileSync(absPath, "utf8");
   const bytes = Buffer.byteLength(raw, "utf8");
   const rawLines = raw.split(/\r?\n/);
@@ -276,6 +282,8 @@ function analyzeCssFile(absPath, { isTokens = false, isModule = false, allowedZT
     file: relPath(absPath),
     isTokens,
     isModule,
+    isCore,
+    isPrimitives,
     bytes,
     lines,
     rawHex: [],
@@ -653,7 +661,14 @@ function analyzeTsxFile(absPath) {
 const t0 = performance.now();
 
 // 1. Collect ALL CSS files under frontend/src (so stray CSS outside 01-tokens.css cannot bypass G1/G2)
+const entryStylesFile = path.join(FRONTEND_SRC, "styles.css");
 const tokensFile = path.join(STYLES_DIR, "01-tokens.css");
+const primitivesFile = path.join(STYLES_DIR, "04-primitives.css");
+const coreCssFiles = new Set([
+  path.join(STYLES_DIR, "02-base.css"),
+  path.join(STYLES_DIR, "03-shell.css"),
+  primitivesFile,
+]);
 const legacyMonolith = path.join(STYLES_DIR, "05-modules.css");
 const allCssFiles = walkFiles(FRONTEND_SRC, (name) => name.endsWith(".css"));
 
@@ -667,9 +682,14 @@ const cssReports = [
   ...allCssFiles
     .filter((f) => f !== tokensFile)
     .map((f) => {
+      const isCore = coreCssFiles.has(f);
+      const isPrimitives = f === primitivesFile;
+      // Count any stray CSS outside tokens/core/styles.css into module weight so caps cannot be bypassed
       const isModule =
-        f.startsWith(MODULES_STYLES_DIR + path.sep) || f === legacyMonolith;
-      return analyzeCssFile(f, { isModule, allowedZTokens });
+        f.startsWith(MODULES_STYLES_DIR + path.sep) ||
+        f === legacyMonolith ||
+        (!isCore && f !== entryStylesFile);
+      return analyzeCssFile(f, { isModule, isCore, isPrimitives, allowedZTokens });
     }),
 ];
 
@@ -689,6 +709,8 @@ const tsxReports = allTsxFiles.map(analyzeTsxFile);
 
 const nonTokenCss = cssReports.filter((r) => !r.isTokens);
 const moduleCss = cssReports.filter((r) => r.isModule);
+const coreCss = cssReports.filter((r) => r.isCore);
+const primitivesCss = cssReports.find((r) => r.isPrimitives) || null;
 
 // G1: Color Token Purity
 const cssRawHexTotal = nonTokenCss.reduce((s, r) => s + r.rawHex.length, 0);
@@ -701,6 +723,17 @@ const g1Violations = cssRawColorsTotal + tsxRawColorsTotal;
 // G2: CSS Weight & Hygiene
 const moduleCssBytes = moduleCss.reduce((s, r) => s + r.bytes, 0);
 const moduleCssLines = moduleCss.reduce((s, r) => s + r.lines, 0);
+const primitivesCssBytes = primitivesCss ? primitivesCss.bytes : 0;
+const primitivesCssLines = primitivesCss ? primitivesCss.lines : 0;
+const coreCssBytes = coreCss.reduce((s, r) => s + r.bytes, 0);
+const coreCssLines = coreCss.reduce((s, r) => s + r.lines, 0);
+const primitivesCapOk =
+  primitivesCss !== null &&
+  primitivesCssBytes <= THRESHOLDS.maxPrimitivesCssBytes &&
+  primitivesCssLines <= THRESHOLDS.maxPrimitivesCssLines;
+const coreCssCapOk =
+  coreCss.length === coreCssFiles.size &&
+  coreCssBytes <= THRESHOLDS.maxCoreCssBytes;
 const cssLongLinesTotal = cssReports.reduce((s, r) => s + r.longLines.length, 0);
 const cssImportantTotal = cssReports.reduce((s, r) => s + r.importantViolations.length, 0);
 const cssDisallowedBpTotal = nonTokenCss.reduce((s, r) => s + r.disallowedBreakpoints.length, 0);
@@ -713,6 +746,8 @@ const zIndexTokenCount = allowedZTokens.size;
 const g2Pass =
   moduleCssBytes <= THRESHOLDS.maxModuleCssBytes &&
   moduleCssLines <= THRESHOLDS.maxModuleCssLines &&
+  primitivesCapOk &&
+  coreCssCapOk &&
   cssLongLinesTotal === 0 &&
   cssImportantTotal === 0 &&
   cssDisallowedBpTotal === 0 &&
@@ -812,6 +847,13 @@ if (isJson) {
         passed: g2Pass,
         moduleCssKiB: Number((moduleCssBytes / 1024).toFixed(2)),
         moduleCssLines,
+        primitivesCssKiB: Number((primitivesCssBytes / 1024).toFixed(2)),
+        primitivesCssLines,
+        primitivesCssCapKiB: THRESHOLDS.maxPrimitivesCssBytes / 1024,
+        primitivesCssCapLines: THRESHOLDS.maxPrimitivesCssLines,
+        coreCssKiB: Number((coreCssBytes / 1024).toFixed(2)),
+        coreCssLines,
+        coreCssCapKiB: THRESHOLDS.maxCoreCssBytes / 1024,
         longLines: cssLongLinesTotal,
         important: cssImportantTotal,
         disallowedBreakpoints: cssDisallowedBpTotal,
@@ -914,7 +956,7 @@ console.log(
   `[${mark(g1Violations === 0)}] G1 Color Token Purity   | CSS raw colors: ${cssRawColorsTotal} (${cssRawHexTotal} hex, ${cssRawColorFnTotal} fn) | TSX raw colors: ${tsxRawColorsTotal} | CSS var(): ${cssVarTotal}`,
 );
 console.log(
-  `[${mark(g2Pass)}] G2 CSS Weight & Hygiene | Modules: ${(moduleCssBytes / 1024).toFixed(1)} KiB / ${moduleCssLines}L (cap <=35 KiB / <=900L) | >200ch: ${cssLongLinesTotal} | !imp: ${cssImportantTotal} | bad @media: ${cssDisallowedBpTotal} | raw z-index: ${cssRawZIndexTotal} | z-tokens: ${zIndexTokenCount}/${THRESHOLDS.maxZIndexTokens}`,
+  `[${mark(g2Pass)}] G2 CSS Weight & Hygiene | Modules: ${(moduleCssBytes / 1024).toFixed(1)} KiB / ${moduleCssLines}L (cap <=${THRESHOLDS.maxModuleCssBytes / 1024} KiB / <=${THRESHOLDS.maxModuleCssLines}L) | Primitives: ${(primitivesCssBytes / 1024).toFixed(1)} KiB / ${primitivesCssLines}L (cap <=${THRESHOLDS.maxPrimitivesCssBytes / 1024} KiB / <=${THRESHOLDS.maxPrimitivesCssLines}L) | Core: ${(coreCssBytes / 1024).toFixed(1)} KiB (cap <=${THRESHOLDS.maxCoreCssBytes / 1024} KiB) | >200ch: ${cssLongLinesTotal} | !imp: ${cssImportantTotal} | bad @media: ${cssDisallowedBpTotal} | raw z-index: ${cssRawZIndexTotal} | z-tokens: ${zIndexTokenCount}/${THRESHOLDS.maxZIndexTokens}`,
 );
 console.log(
   `[${mark(g3Pass)}] G3 Inline style={{      | Static violations: ${staticInlineTotal} (cap 0) | Allowlisted /* ds-dynamic */: ${dynamicInlineTotal} (cap <=${THRESHOLDS.maxDynamicInlineStyles})`,
@@ -1039,6 +1081,28 @@ if (missingEmptyStatePages.length > 0) {
 if (zIndexTokenCount === 0 || zIndexTokenCount > THRESHOLDS.maxZIndexTokens) {
   console.log(
     `z-index tokens in 01-tokens.css: ${zIndexTokenCount} (cap 1..${THRESHOLDS.maxZIndexTokens}): ${[...allowedZTokens].sort().join(", ")}`,
+  );
+}
+if (
+  moduleCssBytes > THRESHOLDS.maxModuleCssBytes ||
+  moduleCssLines > THRESHOLDS.maxModuleCssLines
+) {
+  console.log(
+    `Module CSS cap exceeded: ${(moduleCssBytes / 1024).toFixed(1)} KiB / ${moduleCssLines}L (cap <=${THRESHOLDS.maxModuleCssBytes / 1024} KiB / <=${THRESHOLDS.maxModuleCssLines}L)`,
+  );
+}
+if (!primitivesCapOk) {
+  console.log(
+    primitivesCss === null
+      ? "Missing required primitives stylesheet: frontend/src/styles/04-primitives.css"
+      : `04-primitives.css cap exceeded: ${(primitivesCssBytes / 1024).toFixed(1)} KiB / ${primitivesCssLines}L (cap <=${THRESHOLDS.maxPrimitivesCssBytes / 1024} KiB / <=${THRESHOLDS.maxPrimitivesCssLines}L)`,
+  );
+}
+if (!coreCssCapOk) {
+  console.log(
+    coreCss.length !== coreCssFiles.size
+      ? `Missing required core stylesheet(s): found ${coreCss.length}/${coreCssFiles.size} (expected 02-base.css, 03-shell.css, 04-primitives.css)`
+      : `Core CSS (02-base + 03-shell + 04-primitives) cap exceeded: ${(coreCssBytes / 1024).toFixed(1)} KiB (cap <=${THRESHOLDS.maxCoreCssBytes / 1024} KiB)`,
   );
 }
 
