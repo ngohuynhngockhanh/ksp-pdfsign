@@ -133,7 +133,9 @@ function NarrativeAnswer({ text }: { text: string }) {
             const [heading, ...rest] = content.split(":");
             return (
               <li key={`${line}-${index}`}>
-                <span className="ui-step-badge">{String(index + 1).padStart(2, "0")}</span>
+                <StatusBadge tone="brand" variant="soft" size="sm" className="num ui-shrink-0">
+                  {String(index + 1).padStart(2, "0")}
+                </StatusBadge>
                 <div className="ui-stack--sm">
                   <strong>{heading}</strong>
                   {rest.length > 0 && <p>{rest.join(":").trim()}</p>}

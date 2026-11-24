@@ -159,7 +159,7 @@ export function Verify({
             className="sr-only"
             onChange={onFile}
           />
-          <span className="ui-dropzone-icon ui-dropzone-icon--pill" aria-hidden="true">
+          <span className="ui-dropzone-icon" aria-hidden="true">
             <AppIcon
               name={busy ? "loader" : "shield-check"}
               size={20}

@@ -205,7 +205,9 @@ export function PlaybooksTab({
                   <SectionCard key={st.step} tone="subtle" padding="compact">
                     <div className="ui-stack">
                       <div className="ui-row">
-                        <span className="ui-step-badge ui-step-badge--pill">{st.step}</span>
+                        <StatusBadge tone="brand" variant="solid" size="sm" className="num ui-shrink-0">
+                          {st.step}
+                        </StatusBadge>
                         <span className="ui-text-strong ui-wrap">{st.title}</span>
                       </div>
                       <p className="ui-muted">{st.description}</p>

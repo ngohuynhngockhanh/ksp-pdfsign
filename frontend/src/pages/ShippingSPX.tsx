@@ -507,14 +507,16 @@ export function ShippingSPX() {
             <StatusBadge tone="info" size="sm">
               Tỉ Lệ Vàng 65% Lệch Phải
             </StatusBadge>
-            <label className={`ui-toggle-pill${autoPrintOnScan ? " is-checked" : ""}`}>
+            <label className="ui-check-label">
               <input
                 type="checkbox"
                 aria-label="Tự động in ngay khi quét"
                 checked={autoPrintOnScan}
                 onChange={toggleAutoPrint}
               />
-              <span>Tự động in ngay khi quét</span>
+              <StatusBadge tone={autoPrintOnScan ? "brand" : "neutral"} size="sm">
+                Tự động in ngay khi quét
+              </StatusBadge>
             </label>
           </>
         }

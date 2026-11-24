@@ -339,7 +339,7 @@ export function Signer({
             aria-label="Chọn tệp PDF hoặc ZIP cần ký"
             onChange={onUpload}
           />
-          <span className="ui-dropzone-icon ui-dropzone-icon--pill" aria-hidden="true">
+          <span className="ui-dropzone-icon" aria-hidden="true">
             <AppIcon name={uploading ? "loader" : "upload"} size={20} className={uploading ? "ui-spin" : undefined} />
           </span>
           <span className="ui-text-semibold ui-wrap">
@@ -594,7 +594,7 @@ export function Signer({
             aria-label="Tải PDF hoặc ZIP cần ký trên di động"
             onChange={onUpload}
           />
-          <span className="ui-dropzone-icon ui-dropzone-icon--pill" aria-hidden="true">
+          <span className="ui-dropzone-icon" aria-hidden="true">
             <AppIcon name="upload" size={18} />
           </span>
           <span className="ui-text-semibold ui-wrap">
