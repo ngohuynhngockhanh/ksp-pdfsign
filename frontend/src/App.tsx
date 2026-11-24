@@ -10,14 +10,20 @@ import {
 } from "react";
 import { api, type WebAdsDraftQuote } from "./api";
 import {
+  AppButton,
   AppIcon,
+  CommandPalette,
   ConfirmProvider,
   MOBILE_QUERY,
   PageShell,
   PasswordModal,
+  RouteErrorBoundary,
   TableSkeleton,
+  ThemeProvider,
   ToastProvider,
+  useTheme,
   useToast,
+  type CommandPaletteItem,
   type IconName,
 } from "./components/ui";
 import { Login } from "./pages/Login";
@@ -80,6 +86,12 @@ const WebAdsLeads = lazyPage(() => import("./pages/WebAdsLeads"), "WebAdsLeads")
 function RouteFallback() {
   return (
     <PageShell>
+      <div
+        className="ui-route-progress ui-route-progress--active"
+        data-state="loading"
+        role="progressbar"
+        aria-label="Đang tải trang"
+      />
       <TableSkeleton rows={6} />
     </PageShell>
   );
@@ -249,6 +261,45 @@ const TAB_ICONS: Record<Tab, IconName> = {
   audit: "activity",
 };
 
+const ROUTE_KEYWORDS: Partial<Record<Tab, string[]>> = {
+  home: ["tong quan", "dashboard", "van hanh"],
+  sign: ["ky so pdf", "chu ky so", "usb token"],
+  bbbg: ["bien ban ban giao", "bbbg"],
+  quote: ["bao gia", "quote"],
+  contract: ["soan hop dong", "contract"],
+  khoan: ["hop dong giao khoan", "giao khoan", "ctv", "cong tac vien", "piecework"],
+  tonkho: ["ton kho", "inventory", "kho"],
+  nhaphang: ["hoa don mua", "nhap hang", "purchase"],
+  tokhai: ["/to-khai-hai-quan", "to khai hai quan", "hai quan", "nhap khau", "customs"],
+  banra: ["hoa don ban", "ban ra", "sales", "ihoadon"],
+  xuatkho: ["xuat kho", "stock issue"],
+  sanxuat: ["san xuat", "production", "in tem"],
+  congthuc: ["cong thuc", "bom", "recipes"],
+  hoadonnhap: ["tao hoa don nhap", "hd nhap"],
+  thuesync: ["dong bo hoa don thue", "gdt", "thue", "tax sync"],
+  thuebct: ["review to khai", "bao cao thue", "tax review"],
+  taxdefense: ["giai trinh thue", "quyet toan", "tax defense"],
+  documents: ["kho ho so", "tai lieu", "pdf", "documents"],
+  customers: ["khach hang", "doi tac", "customers"],
+  nas: ["nas", "synology", "luu tru"],
+  audit: ["nhat ky", "audit log", "lich su"],
+  settings: ["cai dat", "cau hinh", "settings"],
+  payroll: ["bang luong", "nhan su", "payroll"],
+  verify: ["kiem tra chu ky", "xac thuc", "neac", "verify"],
+  mine: ["ho so cua toi", "khach hang", "my documents"],
+  training: ["dao tao", "tro ly", "training"],
+  messenger: ["messenger", "fanpage", "facebook"],
+  telegram: ["telegram", "thong bao", "bot"],
+  pymidcoop: ["pymid", "hop tac", "coop"],
+  shippingspx: ["/spx", "van don spx", "in tem van don", "giao hang", "shipping"],
+  bidding: ["/dau-thau", "dau thau", "mua sam cong", "goi thau", "bidding"],
+  standards: ["/hop-chuan-hop-quy", "/qcvn", "hop chuan", "hop quy", "qcvn", "standards"],
+  trademarks: ["/nhan-hieu", "nhan hieu", "so huu tri tue", "shtt", "trademarks"],
+  doctracking: ["theo doi luot xem", "doc tracking"],
+  govradar: ["cong van chinh phu", "radar", "thue cs7"],
+  webads: ["/ads-leads", "/lead-website", "quang cao", "lead", "web ads"],
+};
+
 /** Uniform Lucide SVG navigation icons matching INUT Design System v2 stroke discipline. */
 function NavIcon({ tab }: { tab: Tab }) {
   return <AppIcon name={TAB_ICONS[tab]} size={16} strokeWidth={1.9} />;
@@ -271,6 +322,7 @@ function useIsMobileViewport(): boolean {
 
 function AppShell() {
   const { showToast } = useToast();
+  const { theme, density, toggleTheme, toggleDensity } = useTheme();
   const isMobile = useIsMobileViewport();
   const [me, setMe] = useState<Me | null>(null);
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -281,6 +333,7 @@ function AppShell() {
   const [quotePrefill, setQuotePrefill] = useState<WebAdsDraftQuote | null>(null);
   const [fromLeadId, setFromLeadId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
   const [navFilter, setNavFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -569,10 +622,118 @@ function AppShell() {
       .filter(([, items]) => items.length > 0);
   }, [groups, navFilter]);
 
+  const commandItems = useMemo<CommandPaletteItem[]>(() => {
+    if (!me) return [];
+
+    const openRoute = (target: Tab) => {
+      setMenuOpen(false);
+      navigate(target);
+    };
+
+    const quickActions: CommandPaletteItem[] = [];
+    if (isAdmin) {
+      quickActions.push(
+        {
+          id: "action-sign-pdf",
+          label: "Ký số PDF ngay",
+          group: "Thao tác nhanh",
+          icon: "file-signature",
+          meta: ROUTES.sign,
+          keywords: ["ky so", "pdf", "chu ky so"],
+          onSelect: () => openRoute("sign"),
+        },
+        {
+          id: "action-piecework",
+          label: "Tạo hợp đồng giao khoán",
+          group: "Thao tác nhanh",
+          icon: "briefcase",
+          meta: ROUTES.khoan,
+          keywords: ["hop dong khoan", "giao khoan", "ctv", "khoan"],
+          onSelect: () => openRoute("khoan"),
+        },
+        {
+          id: "action-tax-sync",
+          label: "Đồng bộ hóa đơn thuế",
+          group: "Thao tác nhanh",
+          icon: "refresh",
+          meta: ROUTES.thuesync,
+          keywords: ["thue", "hoa don", "gdt", "dong bo"],
+          onSelect: () => openRoute("thuesync"),
+        },
+        {
+          id: "action-spx-print",
+          label: "In tem vận đơn SPX",
+          group: "Thao tác nhanh",
+          icon: "truck",
+          meta: ROUTES.shippingspx,
+          keywords: ["spx", "van don", "in tem", "shipping"],
+          onSelect: () => openRoute("shippingspx"),
+        },
+      );
+    }
+
+    quickActions.push(
+      {
+        id: "action-toggle-theme",
+        label: "Chuyển giao diện Sáng / Tối",
+        group: "Thao tác nhanh",
+        icon: theme === "dark" ? "sun" : "moon",
+        meta: theme === "dark" ? "Đang dùng Tối" : "Đang dùng Sáng",
+        keywords: ["theme", "dark mode", "light mode", "giao dien", "sang", "toi"],
+        onSelect: toggleTheme,
+      },
+      {
+        id: "action-toggle-density",
+        label: "Chuyển mật độ bảng Thoáng / Gọn",
+        group: "Thao tác nhanh",
+        icon: "list",
+        meta: density === "compact" ? "Đang dùng Gọn" : "Đang dùng Thoáng",
+        keywords: ["density", "compact", "comfortable", "mat do", "bang", "thoang", "gon"],
+        onSelect: toggleDensity,
+      },
+    );
+
+    const routeItems: CommandPaletteItem[] = [];
+    const seenTabs = new Set<Tab>();
+
+    const pushRoute = (t: Tab, label: string, groupTitle: string) => {
+      if (seenTabs.has(t)) return;
+      seenTabs.add(t);
+      routeItems.push({
+        id: `route-${t}`,
+        label,
+        group: groupTitle,
+        icon: TAB_ICONS[t],
+        meta: ROUTES[t],
+        keywords: ROUTE_KEYWORDS[t],
+        onSelect: () => openRoute(t),
+      });
+    };
+
+    if (isAdmin) {
+      for (const [groupTitle, items] of groups) {
+        for (const [t, label] of items) {
+          pushRoute(t, label, groupTitle);
+        }
+      }
+      // Ensure all 36 in-shell routes (including /ho-so-cua-toi) are searchable for admin
+      pushRoute("mine", "Hồ sơ của tôi", "Hồ sơ");
+    } else if (isPymidStaff) {
+      pushRoute("pymidcoop", "INUT – PYMID CO.OP", "Hợp tác");
+    } else {
+      // Customer role: expose /ho-so-cua-toi (never admin routes)
+      pushRoute("mine", "Hồ sơ của tôi", "Hồ sơ");
+    }
+
+    return [...quickActions, ...routeItems];
+  }, [me, isAdmin, isPymidStaff, groups, theme, density, toggleTheme, toggleDensity, navigate]);
+
   if (authed === null) return <div className="center">Đang tải…</div>;
   if (!authed || !me) return <Login onLogin={() => location.reload()} />;
 
   const forcedPasswordChange = Boolean(me.must_change_password);
+  const currentPath =
+    typeof window !== "undefined" ? window.location.pathname : ROUTES[tab];
 
   return (
     <div className="app">
@@ -597,7 +758,38 @@ function AppShell() {
           {activeLabel}
         </span>
         {!isMobile && (
+          <AppButton
+            variant="ghost"
+            size="sm"
+            leftIcon="search"
+            className="topbar-cmdk-btn"
+            aria-label="Tìm nhanh lệnh và trang (Ctrl+K)"
+            data-testid="cmdk-trigger"
+            onClick={() => setCmdkOpen(true)}
+          >
+            <span>Tìm nhanh…</span>
+            <kbd className="ui-cmdk-kbd">Ctrl+K</kbd>
+          </AppButton>
+        )}
+        {!isMobile && (
           <div className="topbar-user">
+            <AppButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className={`topbar-icon-btn${density === "compact" ? " topbar-icon-btn--active" : ""}`}
+              aria-label="Chuyển mật độ bảng Thoáng / Gọn"
+              aria-pressed={density === "compact"}
+              title={
+                density === "compact"
+                  ? "Mật độ bảng: Gọn (nhấn để chuyển Thoáng)"
+                  : "Mật độ bảng: Thoáng (nhấn để chuyển Gọn)"
+              }
+              data-testid="density-toggle"
+              onClick={toggleDensity}
+            >
+              <AppIcon name="list" size={16} />
+            </AppButton>
             <span className="who">
               {me.username}
               {me.customer_name ? ` · ${me.customer_name}` : isAdmin ? " · Quản trị" : ""}
@@ -618,6 +810,23 @@ function AppShell() {
             </button>
           </div>
         )}
+        <AppButton
+          variant="ghost"
+          size={isMobile ? "lg" : "sm"}
+          iconOnly
+          className={`topbar-icon-btn${theme === "dark" ? " topbar-icon-btn--active" : ""}`}
+          aria-label="Chuyển giao diện Sáng / Tối"
+          aria-pressed={theme === "dark"}
+          title={
+            theme === "dark"
+              ? "Đang dùng giao diện Tối (nhấn để chuyển Sáng)"
+              : "Đang dùng giao diện Sáng (nhấn để chuyển Tối)"
+          }
+          data-testid="theme-toggle"
+          onClick={toggleTheme}
+        >
+          <AppIcon name={theme === "dark" ? "sun" : "moon"} size={16} />
+        </AppButton>
       </header>
 
       <div className="body-row">
@@ -701,12 +910,24 @@ function AppShell() {
             )}
           </div>
 
-          {/* Mobile Drawer Sticky Account Footer (exposes user identity + Change Password + Logout on <=820px) */}
+          {/* Mobile Drawer Sticky Account Footer (exposes user identity + Theme + Change Password + Logout on <=820px) */}
           <div className="sidebar-foot">
             <div className="sidebar-user-card">
               <strong>{me.username}</strong>
               <span>{me.customer_name || (isAdmin ? "Quản trị hệ thống" : "Tài khoản khách hàng")}</span>
             </div>
+            <AppButton
+              variant="ghost"
+              size="md"
+              fullWidth
+              leftIcon={theme === "dark" ? "sun" : "moon"}
+              className="sidebar-foot-btn"
+              data-testid="drawer-theme-toggle"
+              aria-pressed={theme === "dark"}
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? "Chuyển giao diện Sáng" : "Chuyển giao diện Tối"}
+            </AppButton>
             <div className="sidebar-foot-actions">
               <button
                 type="button"
@@ -730,8 +951,9 @@ function AppShell() {
         </aside>
 
         <main className="app-content" data-page={tab}>
-          {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
-          <Suspense fallback={<RouteFallback />}>
+          <RouteErrorBoundary key={currentPath} resetKey={currentPath}>
+            {tab === "home" && isAdmin && <Operations navigate={(t) => navigate(t as Tab)} />}
+            <Suspense fallback={<RouteFallback />}>
             {tab === "training" && (isAdmin || me.training_access) && <Training isAdmin={isAdmin} />}
             {tab === "messenger" && isAdmin && <Messenger />}
             {tab === "telegram" && isAdmin && <Telegram />}
@@ -832,7 +1054,8 @@ function AppShell() {
                 }}
               />
             )}
-          </Suspense>
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
       </div>
 
@@ -929,6 +1152,13 @@ function AppShell() {
         </footer>
       )}
 
+      {/* Global Ctrl+K Command Palette */}
+      <CommandPalette
+        open={cmdkOpen}
+        onOpenChange={setCmdkOpen}
+        items={commandItems}
+      />
+
       {/* Masked Password Change Modal — automatically forced when must_change_password === true (Conflict Guard #4) */}
       <PasswordModal
         open={passwordModalOpen || forcedPasswordChange}
@@ -942,10 +1172,12 @@ function AppShell() {
 
 export function App() {
   return (
-    <ToastProvider>
-      <ConfirmProvider>
-        <AppShell />
-      </ConfirmProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AppShell />
+        </ConfirmProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

@@ -134,5 +134,26 @@ export {
   type ToastTone,
 } from "./ToastProvider";
 
+// Power-User Shell, Theme & Error Boundary Primitives
+export {
+  ThemeProvider,
+  useTheme,
+  THEME_STORAGE_KEY,
+  DENSITY_STORAGE_KEY,
+  type DensityMode,
+  type ThemeContextValue,
+  type ThemeMode,
+  type ThemeProviderProps,
+} from "./ThemeProvider";
+export {
+  CommandPalette,
+  type CommandPaletteItem,
+  type CommandPaletteProps,
+} from "./CommandPalette";
+export {
+  RouteErrorBoundary,
+  type RouteErrorBoundaryProps,
+} from "./RouteErrorBoundary";
+
 // Backward-compatible auth re-export (moved to components/auth/PasswordModal.tsx)
 export { PasswordModal, type PasswordModalProps } from "./PasswordModal";

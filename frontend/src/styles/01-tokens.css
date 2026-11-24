@@ -11,6 +11,8 @@
 }
 
 :root {
+  color-scheme: light;
+
   /* ── Typography Families ───────────────────────────────────────────────── */
   --font-sans: "Inter", "Aptos", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Tahoma, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --font-serif: Georgia, "Times New Roman", Times, serif;
@@ -58,6 +60,11 @@
   --ink-deep: #091e1c;
   --ink-mid: #143b38;
   --ink-bright: #176c62;
+  --shell-bg: #102e2c;
+  --shell-bg-2: #164b45;
+  --shell-bg-deep: #091e1c;
+  --shell-bg-mid: #143b38;
+  --shell-bg-bright: #176c62;
   --ink-on-dark: #ffffff;
   --ink-on-dark-soft: #eaf5f1;
   --ink-on-dark-muted: #c2d8d2;
@@ -97,6 +104,10 @@
   --primary-hover: #126f66;
   --primary-dark: #0f655d;
   --primary-darker: #0d5c55;
+  --primary-btn-bg: #157d72;
+  --primary-btn-bg-end: #0f655d;
+  --primary-btn-hover: #0f655d;
+  --primary-btn-hover-end: #0d5c55;
   --primary-soft: #e4f3ef;
   --primary-tint: rgba(21, 125, 114, 0.07);
   --primary-border-soft: #b7d9cd;
@@ -107,6 +118,7 @@
   --gold: #d4942a;
   --gold-bright: #f2bd62;
   --gold-dark: #b87918;
+  --gold-on-bright: #143b36;
   --gold-fg: #143b36;
   --gold-bg: #fff5db;
   --gold-border: #e8c780;
@@ -245,4 +257,178 @@
   --page-max-w: 1480px;
   --page-max-w-narrow: 1040px;
   --page-max-w-wide: 1600px;
+
+  /* ── Print Paper & Ink Tokens (invariant across light/dark themes) ─────── */
+  --print-bg: #ffffff;
+  --print-ink: #0f172a;
+  --print-muted: #475569;
+  --print-border: #cbd5e1;
+  --print-subtle: #f1f5f9;
+}
+
+/* ========================================================================== */
+/* Forest-Pine Dark Mode — WCAG 2.1 AA/AAA Verified Token Overrides           */
+/* ========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ── Surface Elevation (3-tier deep pine-slate surfaces) ───────────────── */
+  --bg-canvas: #091312;
+  --surface-1: #101f1d;
+  --surface-2: #162a27;
+  --surface-3: #1d3632;
+  --surface-hover: #1b3430;
+  --surface-row-zero: #0e1c1a;
+  --surface-glass: rgba(20, 39, 36, 0.92);
+  --surface-panel-glass: rgba(16, 31, 29, 0.96);
+  --surface-bar-glass: rgba(16, 31, 29, 0.94);
+  --surface-canvas-glow: rgba(45, 212, 191, 0.08);
+  --surface-canvas-start: #0b1716;
+  --surface-canvas-mid: #091312;
+  --surface-canvas-end: #081110;
+  --surface-paper-glass: rgba(22, 42, 39, 0.94);
+  --surface-mint-glass: rgba(18, 38, 35, 0.94);
+
+  /* Backwards-compatible surface aliases */
+  --bg: #091312;
+  --paper: #132422;
+  --panel: #101f1d;
+
+  /* ── High-Contrast Ink & Anchored Obsidian-Pine Shell ──────────────────── */
+  --ink: #eef7f4;
+  --ink-2: #0f2c29;
+  --ink-deep: #040b0a;
+  --ink-mid: #0a1816;
+  --ink-bright: #144943;
+  --shell-bg: #06100f;
+  --shell-bg-2: #0f2c29;
+  --shell-bg-deep: #040b0a;
+  --shell-bg-mid: #0a1816;
+  --shell-bg-bright: #144943;
+  --ink-on-dark: #ffffff;
+  --ink-on-dark-soft: #eef7f4;
+  --ink-on-dark-muted: #bdd6cf;
+  --ink-on-dark-subtle: #9ec0b7;
+  --ink-on-dark-eyebrow: #6ee7d4;
+  --ink-on-dark-active: #fff6df;
+  --ink-subtle-bg: rgba(238, 247, 244, 0.1);
+  --ink-border-subtle: rgba(238, 247, 244, 0.12);
+  --ink-border-strong: rgba(238, 247, 244, 0.2);
+
+  /* Shell Glass & Overlays */
+  --topbar-glass: rgba(7, 18, 17, 0.95);
+  --sidebar-foot-bg: rgba(4, 12, 11, 0.92);
+  --sidebar-glow: rgba(45, 212, 191, 0.14);
+  --sidebar-active-start: rgba(29, 155, 138, 0.42);
+  --sidebar-active-end: rgba(29, 155, 138, 0.14);
+  --hero-glow: rgba(56, 200, 178, 0.22);
+  --gold-glow: rgba(242, 189, 98, 0.14);
+  --on-dark-border-faint: rgba(220, 245, 238, 0.1);
+  --on-dark-border-soft: rgba(220, 245, 238, 0.18);
+  --on-dark-border-strong: rgba(220, 245, 238, 0.34);
+  --on-dark-surface-faint: rgba(220, 245, 238, 0.06);
+  --on-dark-surface-soft: rgba(220, 245, 238, 0.09);
+  --on-dark-surface-hover: rgba(220, 245, 238, 0.16);
+  --overlay-backdrop: rgba(2, 10, 9, 0.72);
+  --overlay-backdrop-soft: rgba(2, 10, 9, 0.56);
+  --overlay-backdrop-strong: rgba(2, 10, 9, 0.78);
+  --panel-border-glass: rgba(220, 245, 238, 0.16);
+
+  /* ── Brand Palette & Text / Borders ────────────────────────────────────── */
+  --primary: #147e72;
+  --primary-hover: #106c62;
+  --primary-dark: #5eead4;
+  --primary-darker: #7cf2df;
+  --primary-btn-bg: #147e72;
+  --primary-btn-bg-end: #0f685e;
+  --primary-btn-hover: #106c62;
+  --primary-btn-hover-end: #0c5850;
+  --primary-soft: #113430;
+  --primary-tint: rgba(94, 234, 212, 0.1);
+  --primary-border-soft: #266960;
+  --primary-selection: #147e72;
+  --mint: #16443e;
+
+  --gold: #d4942a;
+  --gold-bright: #f2bd62;
+  --gold-dark: #e6a83a;
+  --gold-on-bright: #143b36;
+  --gold-fg: #fde68a;
+  --gold-bg: #2f230d;
+  --gold-border: #6e511c;
+
+  --text: #dcece7;
+  --muted: #9ebcb4;
+  --text-subtle: #8faea6;
+  --text-faint: #7d9e95;
+
+  --border: #233d39;
+  --border-subtle: #1b312e;
+  --border-strong: #31544f;
+  --border-hover: #497d74;
+  --handle-bar: #3d635d;
+  --scrollbar-thumb: #38625b;
+
+  /* ── Semantic WCAG AA/AAA Triplets (Dark-Calibrated) ───────────────────── */
+  --sem-neutral-fg: #b9d0c9;
+  --sem-neutral-bg: #1c312e;
+  --sem-neutral-border: #33524d;
+  --sem-neutral-solid: #47625c;
+
+  --sem-brand-fg: #67e8d6;
+  --sem-brand-bg: #103531;
+  --sem-brand-border: #236960;
+  --sem-brand-solid: #11756a;
+
+  --sem-info-fg: #7dd3fc;
+  --sem-info-bg: #0f2c3d;
+  --sem-info-border: #205975;
+  --sem-info-solid: #0c6f8c;
+
+  --sem-success-fg: #6ee7b7;
+  --sem-success-bg: #0f3325;
+  --sem-success-border: #216649;
+  --sem-success-solid: #157347;
+
+  --sem-warning-fg: #fcd34d;
+  --sem-warning-bg: #33250c;
+  --sem-warning-border: #70511a;
+  --sem-warning-solid: #9a5d07;
+
+  --sem-danger-fg: #fca5a5;
+  --sem-danger-bg: #3b1719;
+  --sem-danger-border: #7f2e32;
+  --sem-danger-solid: #c42323;
+
+  /* Category Chip Tokens (Dark-Calibrated >= 10:1) */
+  --cat-indigo-bg: #1e2347;
+  --cat-indigo-fg: #c7d2fe;
+  --cat-blue-bg: #152b49;
+  --cat-blue-fg: #bfdbfe;
+  --cat-sky-bg: #113042;
+  --cat-sky-fg: #bae6fd;
+  --cat-purple-bg: #2d1b46;
+  --cat-purple-fg: #e9d5ff;
+  --cat-rose-bg: #3d1826;
+  --cat-rose-fg: #fecdd3;
+  --coral: #f87171;
+
+  /* ── Chart Series Palette (Luminous Dark Tones) ────────────────────────── */
+  --chart-1: #2dd4bf;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #34d399;
+  --chart-5: #f87171;
+  --chart-6: #94a3b8;
+
+  /* ── Dark Elevation Shadows & Focus Rings ──────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 6px 20px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 22px 54px rgba(0, 0, 0, 0.62);
+  --shadow-primary: 0 6px 18px rgba(15, 118, 106, 0.38);
+  --shadow-topbar: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --shadow-bottom-nav: 0 -8px 26px rgba(0, 0, 0, 0.45);
+  --shadow-mark: 0 6px 16px rgba(0, 0, 0, 0.38);
+  --ring: 0 0 0 3px rgba(94, 234, 212, 0.3);
+  --ring-danger: 0 0 0 3px rgba(248, 113, 113, 0.32);
 }
