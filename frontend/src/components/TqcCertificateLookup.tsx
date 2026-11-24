@@ -1,46 +1,48 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, TqcCertificate, TqcSearchResponse } from "../api";
+import {
+  AppButton,
+  AppIcon,
+  DataView,
+  EmptyState,
+  FilterBar,
+  FormField,
+  FormGrid,
+  InlineAlert,
+  MobileCard,
+  MobileCardActions,
+  MobileCardGrid,
+  MobileCardHeader,
+  MobileCardRow,
+  SectionCard,
+  SkeletonBlock,
+  StatusBadge,
+  useToast,
+  type InlineAlertTone,
+  type StatusBadgeTone,
+} from "./ui";
 import { safeHttpUrl } from "../utils/url";
 
-const panelStyle: React.CSSProperties = {
-  background: "var(--panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 18,
-  padding: "clamp(14px, 2.5vw, 20px)",
-  boxShadow: "var(--shadow)",
-  minWidth: 0,
-};
-
-function provenanceLabel(value: string) {
+function provenanceLabel(value: string): string {
   if (value === "verified_live") return "Đã xác minh live";
   if (value === "verified_cached") return "Cache đã xác minh";
   if (value === "not_found_in_local_index") return "Chưa có trong index";
   return value;
 }
 
-function statusColor(value: string) {
-  if (value === "active") {
-    return {
-      bg: "var(--primary-soft)",
-      fg: "var(--primary-dark)",
-      border: "color-mix(in srgb, var(--primary) 35%, var(--border))",
-    };
-  }
-  if (value === "expired" || value === "cancelled") {
-    return {
-      bg: "color-mix(in srgb, var(--red) 12%, var(--panel))",
-      fg: "color-mix(in srgb, var(--red) 75%, var(--ink))",
-      border: "color-mix(in srgb, var(--red) 42%, var(--border))",
-    };
-  }
-  return {
-    bg: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
-    fg: "color-mix(in srgb, var(--amber) 68%, var(--ink))",
-    border: "color-mix(in srgb, var(--gold) 55%, var(--border))",
-  };
+function provenanceTone(value: string): StatusBadgeTone {
+  if (value === "verified_live") return "success";
+  if (value === "verified_cached") return "info";
+  return "neutral";
 }
 
-function statusLabel(value: string) {
+function statusTone(value: string): StatusBadgeTone {
+  if (value === "active") return "success";
+  if (value === "expired" || value === "cancelled") return "danger";
+  return "warning";
+}
+
+function statusLabel(value: string): string {
   if (value === "active") return "Còn hiệu lực";
   if (value === "expired") return "Hết hiệu lực";
   if (value === "cancelled") return "Đã hủy/thu hồi";
@@ -48,6 +50,7 @@ function statusLabel(value: string) {
 }
 
 export function TqcCertificateLookup() {
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [model, setModel] = useState("");
   const [manufacturer, setManufacturer] = useState("");
@@ -65,6 +68,7 @@ export function TqcCertificateLookup() {
   const [importReady, setImportReady] = useState(false);
   const [pendingCsv, setPendingCsv] = useState<File | null>(null);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<InlineAlertTone>("info");
   const [apiMode, setApiMode] = useState("");
   const mountedRef = useRef(true);
   const [failedImportJobId, setFailedImportJobId] = useState<number | null>(null);
@@ -79,7 +83,8 @@ export function TqcCertificateLookup() {
       } catch (error) {
         consecutiveFailures += 1;
         if (consecutiveFailures >= 10) throw error;
-        const retryDelay = Math.min(5000, 500 * (2 ** (consecutiveFailures - 1)));
+        const retryDelay = Math.min(5000, 500 * 2 ** (consecutiveFailures - 1));
+        setMessageTone("warning");
         setMessage(`Mất kết nối job CSV; đang thử lại (${consecutiveFailures}/10).`);
         await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
         continue;
@@ -89,6 +94,7 @@ export function TqcCertificateLookup() {
         throw new Error(job.error || "Import CSV TQC nền thất bại.");
       }
       if (job.status === "success" && job.result) return job.result;
+      setMessageTone("info");
       setMessage(`Đang import CSV: ${job.progress}% (${job.requested} dòng).`);
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
@@ -97,35 +103,57 @@ export function TqcCertificateLookup() {
 
   useEffect(() => {
     mountedRef.current = true;
-    api.standards.getTqcStatus().then((status) => setApiMode(status.search_mode)).catch(() => setApiMode("offline"));
-    api.standards.getLatestTqcImportJob().then(async ({ job }) => {
-      if (!job || !mountedRef.current) return;
-      if (job.status === "failed") {
-        setFailedImportJobId(job.job_id);
-        setMessage(job.error || "Import CSV TQC nền thất bại.");
-        return;
-      }
-      if (job.status !== "running") return;
-      setImporting(true);
-      setMessage(`Đang nối lại job CSV #${job.job_id}.`);
-      try {
-        const completed = await pollTqcImportJob(job.job_id);
-        if (completed && mountedRef.current) {
-          setMessage(`CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`);
+    api.standards
+      .getTqcStatus()
+      .then((status) => setApiMode(status.search_mode))
+      .catch(() => setApiMode("offline"));
+
+    api.standards
+      .getLatestTqcImportJob()
+      .then(async ({ job }) => {
+        if (!job || !mountedRef.current) return;
+        if (job.status === "failed") {
+          setFailedImportJobId(job.job_id);
+          setMessageTone("danger");
+          setMessage(job.error || "Import CSV TQC nền thất bại.");
+          return;
         }
-      } catch (error: any) {
-        if (mountedRef.current) setMessage(error?.message || "Import CSV TQC thất bại.");
-      } finally {
-        if (mountedRef.current) setImporting(false);
-      }
-    }).catch(() => {});
+        if (job.status !== "running") return;
+        setImporting(true);
+        setMessageTone("info");
+        setMessage(`Đang nối lại job CSV #${job.job_id}.`);
+        try {
+          const completed = await pollTqcImportJob(job.job_id);
+          if (completed && mountedRef.current) {
+            setMessageTone("success");
+            setMessage(
+              `CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`,
+            );
+            toast.success("Đã hoàn tất nối lại tác vụ import CSV TQC.");
+          }
+        } catch (error: unknown) {
+          if (mountedRef.current) {
+            setMessageTone("danger");
+            setMessage((error as Error)?.message || "Import CSV TQC thất bại.");
+          }
+        } finally {
+          if (mountedRef.current) setImporting(false);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
   const search = async (targetPage = 1) => {
-    if (![query, model, manufacturer, applicant, certificateNo, statusFilter, validOn].some((value) => value.trim())) {
+    if (
+      ![query, model, manufacturer, applicant, certificateNo, statusFilter, validOn].some((v) =>
+        v.trim(),
+      )
+    ) {
+      setMessageTone("warning");
       setMessage("Nhập ít nhất một điều kiện tìm kiếm.");
       return;
     }
@@ -146,9 +174,13 @@ export function TqcCertificateLookup() {
       setResult(response);
       setPage(targetPage);
       setSelected(null);
-      if (!response.items.length) setMessage(response.warning || "Chưa thấy trong chỉ mục nội bộ.");
-    } catch (error: any) {
-      setMessage(error?.message || "Không thể tra cứu TQC.");
+      if (!response.items.length) {
+        setMessageTone("info");
+        setMessage(response.warning || "Chưa có trong index nội bộ.");
+      }
+    } catch (error: unknown) {
+      setMessageTone("danger");
+      setMessage((error as Error)?.message || "Không thể tra cứu TQC.");
     } finally {
       setLoading(false);
     }
@@ -156,6 +188,7 @@ export function TqcCertificateLookup() {
 
   const lookupExact = async () => {
     if (!certificateNo.trim()) {
+      setMessageTone("warning");
       setMessage("Nhập số GCN để kiểm tra live.");
       return;
     }
@@ -165,21 +198,28 @@ export function TqcCertificateLookup() {
       const response = await api.standards.getTqcCertificate(certificateNo.trim(), refresh);
       setSelected(response.certificate);
       setResult(null);
-    } catch (error: any) {
+      toast.success("Đã hoàn tất xác minh số GCN trực tiếp từ TQC.");
+    } catch (error: unknown) {
       setSelected(null);
-      setMessage(error?.message || "TQC không tìm thấy số GCN này.");
+      setMessageTone("danger");
+      setMessage((error as Error)?.message || "TQC không tìm thấy số GCN này.");
     } finally {
       setLoading(false);
     }
   };
 
-  const previewEntries = importText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => (
-    /^[A-Za-z0-9]{6,120}$/.test(line) ? { certificate_no: line } : { qr_input: line }
-  ));
+  const previewEntries = importText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) =>
+      /^[A-Za-z0-9]{6,120}$/.test(line) ? { certificate_no: line } : { qr_input: line },
+    );
 
   const importPastedEntries = async () => {
     const entries = previewEntries;
     if (!entries.length) {
+      setMessageTone("warning");
       setMessage("Dán ít nhất một số GCN hoặc QR URL.");
       return;
     }
@@ -187,11 +227,16 @@ export function TqcCertificateLookup() {
     setMessage("");
     try {
       const response = await api.standards.importTqc(entries, refresh);
-      setMessage(`Đã xử lý ${response.requested}: xác minh ${response.verified}, cache ${response.cached}, không thấy ${response.not_found}, lỗi ${response.errors.length}.`);
+      setMessageTone("success");
+      setMessage(
+        `Đã xử lý ${response.requested}: xác minh ${response.verified}, cache ${response.cached}, không thấy ${response.not_found}, lỗi ${response.errors.length}.`,
+      );
+      toast.success("Đã cập nhật dữ liệu GCN vào chỉ mục TQC.");
       setImportText("");
       setImportReady(false);
-    } catch (error: any) {
-      setMessage(error?.message || "Import TQC thất bại.");
+    } catch (error: unknown) {
+      setMessageTone("danger");
+      setMessage((error as Error)?.message || "Import TQC thất bại.");
     } finally {
       setImporting(false);
     }
@@ -204,13 +249,19 @@ export function TqcCertificateLookup() {
     setMessage("");
     try {
       const started = await api.standards.importTqcCsv(file, refresh);
+      setMessageTone("info");
       setMessage(`Đã xếp hàng import ${started.requested} dòng CSV.`);
       const completed = await pollTqcImportJob(started.job_id);
       if (!completed) return;
-      setMessage(`CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`);
+      setMessageTone("success");
+      setMessage(
+        `CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`,
+      );
+      toast.success("Hoàn tất import file CSV TQC.");
       setPendingCsv(null);
-    } catch (error: any) {
-      setMessage(error?.message || "Import CSV TQC thất bại.");
+    } catch (error: unknown) {
+      setMessageTone("danger");
+      setMessage((error as Error)?.message || "Import CSV TQC thất bại.");
     } finally {
       setImporting(false);
     }
@@ -220,540 +271,534 @@ export function TqcCertificateLookup() {
     if (failedImportJobId === null) return;
     setImporting(true);
     setFailedImportJobId(null);
+    setMessageTone("info");
     setMessage(`Đang thử lại job CSV #${failedImportJobId}.`);
     try {
       await api.standards.retryTqcImportJob(failedImportJobId);
       const completed = await pollTqcImportJob(failedImportJobId);
       if (completed) {
-        setMessage(`CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`);
+        setMessageTone("success");
+        setMessage(
+          `CSV: xác minh ${completed.verified}, cache ${completed.cached}, không thấy ${completed.not_found}, lỗi ${completed.errors.length}.`,
+        );
+        toast.success("Đã chạy lại tác vụ import CSV TQC thành công.");
       }
-    } catch (error: any) {
-      setMessage(error?.message || "Không thể thử lại import CSV TQC.");
+    } catch (error: unknown) {
+      setMessageTone("danger");
+      setMessage((error as Error)?.message || "Không thể thử lại import CSV TQC.");
     } finally {
       setImporting(false);
     }
   };
 
-  const renderCertificate = (certificate: TqcCertificate) => {
-    const color = statusColor(certificate.derived_status);
-    return (
-      <article key={certificate.certificate_no} style={{ ...panelStyle, padding: "clamp(14px, 2.2vw, 18px)", minWidth: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <strong style={{ color: "var(--primary-dark)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
-            {certificate.certificate_no}
-          </strong>
-          <span
-            style={{
-              background: color.bg,
-              color: color.fg,
-              border: `1px solid ${color.border}`,
-              borderRadius: 999,
-              padding: "4px 9px",
-              fontSize: 11,
-              fontWeight: 800,
-            }}
-          >
-            {statusLabel(certificate.derived_status)}
-          </span>
-        </div>
-        <h3 style={{ margin: "12px 0 7px", color: "var(--ink)", overflowWrap: "anywhere" }}>
-          {certificate.model || "Chưa có model"}
-        </h3>
-        <div style={{ color: "var(--ink-2, var(--text))", fontSize: 13, lineHeight: 1.65 }}>
-          <div><strong>Hãng:</strong> {certificate.manufacturer || "-"}</div>
-          <div><strong>Doanh nghiệp:</strong> {certificate.applicant_name || "-"}</div>
-          <div><strong>Sản phẩm:</strong> {certificate.product_name || "-"}</div>
-          <div><strong>QCVN:</strong> {certificate.technical_regulations.join(", ") || "-"}</div>
-          <div><strong>Hiệu lực:</strong> {certificate.issue_date || "-"} → {certificate.expiry_date || "-"}</div>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>
-            {provenanceLabel(certificate.provenance.verification_status)}
-          </span>
-          <button
-            type="button"
-            className="ui-btn-chip"
-            onClick={() => setSelected(certificate)}
-            style={{
-              border: "1px solid color-mix(in srgb, var(--primary) 40%, var(--border))",
-              background: "var(--primary-soft)",
-              color: "var(--primary-dark)",
-              borderRadius: 9,
-              padding: "8px 14px",
-              minHeight: 44,
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
-          >
-            Xem chi tiết
-          </button>
-        </div>
-      </article>
-    );
+  const secondaryFilterCount =
+    (statusFilter ? 1 : 0) + (validOn ? 1 : 0) + (refresh ? 1 : 0);
+  const resetSecondaryFilters = () => {
+    setStatusFilter("");
+    setValidOn("");
+    setRefresh(false);
   };
 
-  const fields: Array<[string, string, React.Dispatch<React.SetStateAction<string>>, string]> = [
-    ["Từ khóa chung", query, setQuery, "model, sản phẩm, hãng..."],
-    ["Model", model, setModel, "T27G16"],
-    ["Hãng sản xuất", manufacturer, setManufacturer, "TOMKO"],
-    ["Doanh nghiệp nộp hồ sơ", applicant, setApplicant, "Tên doanh nghiệp"],
-    ["Số GCN", certificateNo, setCertificateNo, "C0955191224AE15A3"],
-  ];
-
   const selectedSourceUrl = safeHttpUrl(selected?.provenance.source_url);
+  const totalPages = result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <section style={{ ...panelStyle, background: "linear-gradient(135deg, var(--primary-soft), var(--paper))" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0, flex: "1 1 240px" }}>
-            <div style={{ color: "var(--primary-dark)", fontSize: 12, fontWeight: 900, letterSpacing: 1 }}>
-              TQC CNHQ INTELLIGENCE
-            </div>
-            <h2 style={{ margin: "6px 0", color: "var(--ink)" }}>Tra cứu chứng nhận theo model</h2>
-            <p style={{ margin: 0, color: "var(--ink-2, var(--text))", fontSize: 13, maxWidth: 720, lineHeight: 1.55 }}>
-              Exact lookup kiểm tra live với TQC; tìm model/hãng/doanh nghiệp dùng chỉ mục các GCN đã xác minh. Không thấy trong index không có nghĩa là không tồn tại chứng nhận.
-            </p>
-          </div>
-          <span
-            style={{
-              background: "var(--panel)",
-              color: "var(--primary-dark)",
-              border: "1px solid var(--border)",
-              borderRadius: 999,
-              padding: "7px 12px",
-              fontSize: 11,
-              fontWeight: 800,
-            }}
-          >
+    <div className="ui-stack--lg">
+      <SectionCard
+        eyebrow="TQC CNHQ Intelligence"
+        title="Tra cứu chứng nhận theo model"
+        subtitle="Exact lookup kiểm tra live với TQC; tìm model, hãng hoặc doanh nghiệp dùng chỉ mục các GCN đã xác minh. Chưa có trong index không có nghĩa là không tồn tại chứng nhận."
+        icon="badge-check"
+        actions={
+          <StatusBadge tone={apiMode === "offline" ? "danger" : "brand"} dot>
             {apiMode || "đang kiểm tra API"}
-          </span>
-        </div>
-      </section>
-
-      <section style={panelStyle}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
-          {fields.map(([label, value, setter, placeholder]) => (
-            <label
-              key={String(label)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 5,
-                color: "var(--muted)",
-                fontSize: 12,
-                fontWeight: 800,
-                minWidth: 0,
-              }}
-            >
-              {label}
+          </StatusBadge>
+        }
+      >
+        <div className="ui-stack">
+          <FormGrid cols={3}>
+            <FormField label="Từ khóa chung" htmlFor="tqc-query">
               <input
+                id="tqc-query"
                 className="ui-input"
-                value={value}
-                onChange={(event) => setter(event.target.value)}
-                placeholder={placeholder}
-                style={{
-                  width: "100%",
-                  minWidth: 0,
-                  border: "1px solid var(--border-strong, var(--border))",
-                  borderRadius: 9,
-                  padding: "10px 11px",
-                  background: "var(--panel)",
-                  color: "var(--ink)",
-                }}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="model, sản phẩm, hãng..."
               />
-            </label>
-          ))}
-        </div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              fontSize: 12,
-              color: "var(--muted)",
-              fontWeight: 800,
-              flex: "0 1 180px",
-              minWidth: 140,
-            }}
-          >
-            Trạng thái
-            <select
-              className="ui-select"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              style={{
-                border: "1px solid var(--border-strong, var(--border))",
-                borderRadius: 8,
-                padding: "8px 10px",
-                background: "var(--panel)",
-                color: "var(--ink)",
-              }}
-            >
-              <option value="">Tất cả</option>
-              <option value="active">Còn hiệu lực</option>
-              <option value="expired">Hết hiệu lực</option>
-              <option value="cancelled">Đã hủy</option>
-              <option value="unknown">Chưa xác định</option>
-            </select>
-          </label>
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              fontSize: 12,
-              color: "var(--muted)",
-              fontWeight: 800,
-              flex: "0 1 180px",
-              minWidth: 140,
-            }}
-          >
-            Có hiệu lực ngày
-            <input
-              className="ui-input"
-              aria-label="Có hiệu lực ngày"
-              type="date"
-              value={validOn}
-              onChange={(event) => setValidOn(event.target.value)}
-              style={{
-                border: "1px solid var(--border-strong, var(--border))",
-                borderRadius: 8,
-                padding: "8px 10px",
-                background: "var(--panel)",
-                color: "var(--ink)",
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => search(1)}
-            disabled={loading}
-            style={{
-              background: "var(--primary)",
-              color: "var(--panel)",
-              border: 0,
-              borderRadius: 10,
-              padding: "10px 16px",
-              minHeight: 44,
-              cursor: "pointer",
-              fontWeight: 900,
-            }}
-          >
-            {loading ? "Đang tìm..." : "Tìm trong index"}
-          </button>
-          <button
-            type="button"
-            onClick={lookupExact}
-            disabled={loading}
-            style={{
-              background: "var(--ink)",
-              color: "var(--panel)",
-              border: 0,
-              borderRadius: 10,
-              padding: "10px 16px",
-              minHeight: 44,
-              cursor: "pointer",
-              fontWeight: 900,
-            }}
-          >
-            Kiểm tra số GCN live
-          </button>
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              minHeight: 44,
-              fontSize: 12,
-              color: "var(--ink-2, var(--text))",
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={refresh}
-              onChange={(event) => setRefresh(event.target.checked)}
-            />
-            Làm mới cache
-          </label>
-        </div>
-      </section>
+            </FormField>
+            <FormField label="Model" htmlFor="tqc-model">
+              <input
+                id="tqc-model"
+                className="ui-input ui-mono ui-wrap"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="T27G16"
+              />
+            </FormField>
+            <FormField label="Hãng sản xuất" htmlFor="tqc-manufacturer">
+              <input
+                id="tqc-manufacturer"
+                className="ui-input"
+                value={manufacturer}
+                onChange={(event) => setManufacturer(event.target.value)}
+                placeholder="TOMKO"
+              />
+            </FormField>
+            <FormField label="Doanh nghiệp nộp hồ sơ" htmlFor="tqc-applicant">
+              <input
+                id="tqc-applicant"
+                className="ui-input"
+                value={applicant}
+                onChange={(event) => setApplicant(event.target.value)}
+                placeholder="Tên doanh nghiệp"
+              />
+            </FormField>
+            <FormField label="Số GCN" htmlFor="tqc-cert-no">
+              <input
+                id="tqc-cert-no"
+                className="ui-input ui-mono ui-wrap"
+                value={certificateNo}
+                onChange={(event) => setCertificateNo(event.target.value)}
+                placeholder="C0955191224AE15A3"
+              />
+            </FormField>
+          </FormGrid>
 
-      <section style={panelStyle}>
-        <h3 style={{ margin: "0 0 6px", color: "var(--ink)" }}>Nhập dữ liệu hợp pháp để mở rộng index</h3>
-        <p style={{ margin: "0 0 10px", color: "var(--muted)", fontSize: 12 }}>
-          Dán mỗi dòng một số GCN hoặc QR URL chính thức của TQC, hoặc upload CSV có cột `certificate_no`/`qr_url`.
-        </p>
-        <textarea
-          className="ui-textarea"
-          aria-label="Danh sách GCN hoặc QR TQC"
-          value={importText}
-          onChange={(event) => {
-            setImportText(event.target.value);
-            setImportReady(false);
-          }}
-          rows={4}
-          placeholder="C0955191224AE15A3\nhttps://data-cnhq.tqc.gov.vn/?q=..."
-          style={{
-            width: "100%",
-            minWidth: 0,
-            border: "1px solid var(--border-strong, var(--border))",
-            borderRadius: 10,
-            padding: 11,
-            resize: "vertical",
-            background: "var(--panel)",
-            color: "var(--ink)",
-          }}
-        />
-        {importReady && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: 10,
-              borderRadius: 9,
-              background: "var(--surface-subtle, var(--paper))",
-              color: "var(--ink-2, var(--text))",
-              border: "1px solid var(--border)",
-              fontSize: 12,
-              overflowWrap: "anywhere",
-            }}
-          >
-            Xem trước: {previewEntries.length} entry.{" "}
-            {previewEntries.slice(0, 3).map((entry) => entry.certificate_no || entry.qr_input).join(" · ")}
-            {previewEntries.length > 3 ? " · ..." : ""}
-          </div>
-        )}
-        {pendingCsv && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: 10,
-              borderRadius: 9,
-              background: "var(--surface-subtle, var(--paper))",
-              color: "var(--ink-2, var(--text))",
-              border: "1px solid var(--border)",
-              fontSize: 12,
-            }}
-          >
-            CSV chờ import: {pendingCsv.name} ({Math.ceil(pendingCsv.size / 1024)} KB)
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-          {!importReady ? (
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={() => setImportReady(true)}
-              disabled={importing || !previewEntries.length}
-              style={{
-                background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
-                color: "var(--ink)",
-                border: "1px solid color-mix(in srgb, var(--gold) 60%, var(--border))",
-                borderRadius: 10,
-                padding: "10px 15px",
-                minHeight: 44,
-                cursor: "pointer",
-                fontWeight: 900,
-              }}
-            >
-              Xem trước dữ liệu dán
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={importPastedEntries}
-              disabled={importing}
-              style={{
-                background: "var(--primary)",
-                color: "var(--panel)",
-                border: 0,
-                borderRadius: 10,
-                padding: "10px 15px",
-                minHeight: 44,
-                cursor: "pointer",
-                fontWeight: 900,
-              }}
-            >
-              {importing ? "Đang import..." : `Xác nhận import ${previewEntries.length} entry`}
-            </button>
-          )}
-          <label
-            className="ui-btn-chip"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              background: "color-mix(in srgb, var(--gold) 18%, var(--panel))",
-              color: "var(--ink)",
-              border: "1px solid color-mix(in srgb, var(--gold) 60%, var(--border))",
-              borderRadius: 10,
-              padding: "10px 14px",
-              minHeight: 44,
-              cursor: "pointer",
-              fontWeight: 800,
-              fontSize: 12,
-            }}
-          >
-            Chọn CSV
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => setPendingCsv(event.target.files?.[0] || null)}
-              style={{ display: "none" }}
-            />
-          </label>
-          {pendingCsv && (
-            <button
-              type="button"
-              onClick={() => importCsv(pendingCsv)}
-              disabled={importing}
-              style={{
-                background: "var(--primary)",
-                color: "var(--panel)",
-                border: 0,
-                borderRadius: 10,
-                padding: "10px 15px",
-                minHeight: 44,
-                cursor: "pointer",
-                fontWeight: 900,
-              }}
-            >
-              Xác nhận import CSV
-            </button>
-          )}
+          <FilterBar
+            collapsibleMobile
+            activeCount={secondaryFilterCount}
+            onReset={resetSecondaryFilters}
+            resetLabel="Xóa lọc"
+            filters={
+              <>
+                <FormField label="Trạng thái" htmlFor="tqc-status">
+                  <select
+                    id="tqc-status"
+                    className="ui-select"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                  >
+                    <option value="">Tất cả</option>
+                    <option value="active">Còn hiệu lực</option>
+                    <option value="expired">Hết hiệu lực</option>
+                    <option value="cancelled">Đã hủy</option>
+                    <option value="unknown">Chưa xác định</option>
+                  </select>
+                </FormField>
+                <FormField label="Có hiệu lực ngày" htmlFor="tqc-valid-on">
+                  <input
+                    id="tqc-valid-on"
+                    className="ui-input"
+                    aria-label="Có hiệu lực ngày"
+                    type="date"
+                    value={validOn}
+                    onChange={(event) => setValidOn(event.target.value)}
+                  />
+                </FormField>
+                <label className="ui-check-label">
+                  <input
+                    type="checkbox"
+                    checked={refresh}
+                    onChange={(event) => setRefresh(event.target.checked)}
+                  />
+                  <span>Làm mới cache</span>
+                </label>
+              </>
+            }
+            actions={
+              <div className="ui-row">
+                <AppButton
+                  variant="primary"
+                  size="md"
+                  leftIcon="search"
+                  loading={loading}
+                  onClick={() => search(1)}
+                >
+                  Tìm trong index
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  size="md"
+                  leftIcon="shield-check"
+                  disabled={loading}
+                  onClick={lookupExact}
+                >
+                  Kiểm tra số GCN live
+                </AppButton>
+              </div>
+            }
+          />
         </div>
-      </section>
+      </SectionCard>
 
       {message && (
-        <div
-          style={{
-            background: "color-mix(in srgb, var(--gold) 16%, var(--panel))",
-            color: "var(--ink)",
-            border: "1px solid color-mix(in srgb, var(--gold) 58%, var(--border))",
-            borderRadius: 12,
-            padding: "11px 14px",
-            fontSize: 13,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
+        <InlineAlert
+          tone={messageTone}
+          action={
+            failedImportJobId !== null ? (
+              <AppButton
+                variant="danger"
+                size="sm"
+                leftIcon="refresh"
+                loading={importing}
+                onClick={retryCsvImport}
+              >
+                Thử lại import CSV
+              </AppButton>
+            ) : undefined
+          }
         >
-          <span>{message}</span>
-          {failedImportJobId !== null && (
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={retryCsvImport}
-              disabled={importing}
-              style={{
-                background: "var(--ink)",
-                color: "var(--panel)",
-                border: 0,
-                borderRadius: 8,
-                padding: "8px 14px",
-                minHeight: 44,
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              {importing ? "Đang thử lại..." : "Thử lại import CSV"}
-            </button>
-          )}
-        </div>
+          {message}
+        </InlineAlert>
+      )}
+
+      {loading && !result && !selected && (
+        <SectionCard>
+          <SkeletonBlock variant="title" />
+          <SkeletonBlock variant="line" lines={3} />
+        </SectionCard>
       )}
 
       {result && (
-        <section>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-              marginBottom: 10,
-              color: "var(--muted)",
-              fontSize: 12,
-            }}
-          >
-            <strong>{result.total} bản ghi trong local index</strong>
-            <span>{result.index_last_updated_at ? `Cập nhật ${result.index_last_updated_at}` : "Chưa có dữ liệu"}</span>
+        <SectionCard
+          title={`Kết quả tra cứu (${result.total} bản ghi trong local index)`}
+          subtitle={
+            result.index_last_updated_at
+              ? `Cập nhật: ${result.index_last_updated_at}`
+              : "Chưa có dữ liệu"
+          }
+          icon="file-search"
+        >
+          <div className="ui-stack">
+            <DataView
+              mobileMode="card"
+              loading={loading}
+              skeletonRows={4}
+              skeletonCols={6}
+              empty={
+                result.items.length === 0 ? (
+                  <EmptyState
+                    icon="file-search"
+                    title="Chưa có trong index"
+                    description="Không tìm thấy chứng nhận khớp điều kiện trong chỉ mục nội bộ. Bạn có thể kiểm tra trực tiếp bằng Số GCN live hoặc nhập thêm dữ liệu vào index."
+                    compact
+                  />
+                ) : undefined
+              }
+              desktop={
+                <div className="ui-table-scroll-wrap" tabIndex={0}>
+                  <table className="ui-table">
+                    <thead>
+                      <tr>
+                        <th>Số GCN &amp; Model</th>
+                        <th>Hãng &amp; Doanh nghiệp</th>
+                        <th>Sản phẩm &amp; QCVN</th>
+                        <th>Hiệu lực</th>
+                        <th>Trạng thái &amp; Nguồn</th>
+                        <th className="col-act">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.items.map((cert) => (
+                        <tr key={cert.certificate_no}>
+                          <td>
+                            <div className="ui-mono ui-wrap ui-text-strong ui-wrap">{cert.certificate_no}</div>
+                            <div className="ui-text-strong ui-wrap">{cert.model || "Chưa có model"}</div>
+                          </td>
+                          <td>
+                            <div className="ui-text-strong ui-wrap">{cert.manufacturer || "-"}</div>
+                            <div className="ui-muted">{cert.applicant_name || "-"}</div>
+                          </td>
+                          <td>
+                            <div>{cert.product_name || "-"}</div>
+                            <div className="ui-muted ui-mono ui-wrap">
+                              {cert.technical_regulations.join(", ") || "-"}
+                            </div>
+                          </td>
+                          <td className="ui-mono ui-wrap">
+                            {cert.issue_date || "-"} - {cert.expiry_date || "-"}
+                          </td>
+                          <td>
+                            <div className="ui-stack">
+                              <StatusBadge tone={statusTone(cert.derived_status)} size="sm">
+                                {statusLabel(cert.derived_status)}
+                              </StatusBadge>
+                              <StatusBadge
+                                tone={provenanceTone(cert.provenance.verification_status)}
+                                variant="outline"
+                                size="sm"
+                              >
+                                {provenanceLabel(cert.provenance.verification_status)}
+                              </StatusBadge>
+                            </div>
+                          </td>
+                          <td className="col-act">
+                            <AppButton
+                              variant="secondary"
+                              size="sm"
+                              leftIcon="eye"
+                              onClick={() => setSelected(cert)}
+                            >
+                              Xem chi tiết
+                            </AppButton>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+              mobileCards={
+                <div className="ui-mobile-card-list">
+                  {result.items.map((cert) => (
+                    <MobileCard key={cert.certificate_no}>
+                      <MobileCardHeader
+                        title={cert.model || "Chưa có model"}
+                        subtitle={<span className="ui-mono ui-wrap">{cert.certificate_no}</span>}
+                        badge={
+                          <StatusBadge tone={statusTone(cert.derived_status)} size="sm">
+                            {statusLabel(cert.derived_status)}
+                          </StatusBadge>
+                        }
+                      />
+                      <MobileCardGrid cols={2}>
+                        <MobileCardRow label="Hãng" value={cert.manufacturer || "-"} />
+                        <MobileCardRow
+                          label="Xác minh"
+                          value={provenanceLabel(cert.provenance.verification_status)}
+                        />
+                        <MobileCardRow
+                          label="Doanh nghiệp"
+                          value={cert.applicant_name || "-"}
+                          fullWidth
+                        />
+                        <MobileCardRow
+                          label="Sản phẩm"
+                          value={cert.product_name || "-"}
+                          fullWidth
+                        />
+                        <MobileCardRow
+                          label="QCVN"
+                          value={cert.technical_regulations.join(", ") || "-"}
+                          mono
+                          fullWidth
+                        />
+                        <MobileCardRow
+                          label="Hiệu lực"
+                          value={`${cert.issue_date || "-"} - ${cert.expiry_date || "-"}`}
+                          mono
+                          fullWidth
+                        />
+                      </MobileCardGrid>
+                      <MobileCardActions>
+                        <AppButton
+                          variant="secondary"
+                          size="sm"
+                          leftIcon="eye"
+                          onClick={() => setSelected(cert)}
+                        >
+                          Xem chi tiết
+                        </AppButton>
+                      </MobileCardActions>
+                    </MobileCard>
+                  ))}
+                </div>
+              }
+            />
+
+            {result.total > result.page_size && (
+              <div className="ui-row-between ui-divider-top">
+                <span className="ui-muted ui-mono ui-wrap">
+                  Trang {page}/{totalPages}
+                </span>
+                <div className="ui-row">
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon="arrow-left"
+                    disabled={page <= 1 || loading}
+                    onClick={() => search(page - 1)}
+                  >
+                    Trang trước
+                  </AppButton>
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    rightIcon="arrow-right"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => search(page + 1)}
+                  >
+                    Trang sau
+                  </AppButton>
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14 }}>
-            {result.items.map(renderCertificate)}
-          </div>
-          {result.total > result.page_size && (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="ui-btn-chip"
-                disabled={page <= 1 || loading}
-                onClick={() => search(page - 1)}
-                style={{ minHeight: 44, padding: "8px 14px" }}
-              >
-                Trang trước
-              </button>
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                Trang {page}/{Math.ceil(result.total / result.page_size)}
-              </span>
-              <button
-                type="button"
-                className="ui-btn-chip"
-                disabled={page >= Math.ceil(result.total / result.page_size) || loading}
-                onClick={() => search(page + 1)}
-                style={{ minHeight: 44, padding: "8px 14px" }}
-              >
-                Trang sau
-              </button>
-            </div>
-          )}
-        </section>
+        </SectionCard>
       )}
 
       {selected && (
-        <section style={{ ...panelStyle, borderColor: "var(--primary)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-            <h3 style={{ margin: 0, color: "var(--ink)", overflowWrap: "anywhere" }}>
-              Chi tiết {selected.certificate_no}
-            </h3>
-            <button
-              type="button"
-              className="ui-btn-chip"
-              onClick={() => setSelected(null)}
-              style={{
-                border: "1px solid var(--border-strong, var(--border))",
-                background: "var(--surface-subtle, var(--paper))",
-                color: "var(--ink)",
-                borderRadius: 9,
-                padding: "8px 14px",
-                minHeight: 44,
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              Đóng
-            </button>
-          </div>
-          {renderCertificate(selected)}
-          <div style={{ marginTop: 10, fontSize: 11, color: "var(--muted)", wordBreak: "break-all" }}>
-            Nguồn:{" "}
-            {selectedSourceUrl ? (
-              <a
-                href={selectedSourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "var(--primary-dark)", fontWeight: 700 }}
+        <SectionCard
+          className="std-card-active"
+          title={`Chi tiết ${selected.certificate_no}`}
+          subtitle={selected.model || "Chưa có model"}
+          icon="badge-check"
+          actions={
+            <div className="ui-row">
+              <StatusBadge tone={statusTone(selected.derived_status)} size="sm">
+                {statusLabel(selected.derived_status)}
+              </StatusBadge>
+              <StatusBadge
+                tone={provenanceTone(selected.provenance.verification_status)}
+                variant="outline"
+                size="sm"
               >
-                {selectedSourceUrl}
-              </a>
+                {provenanceLabel(selected.provenance.verification_status)}
+              </StatusBadge>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                leftIcon="x"
+                onClick={() => setSelected(null)}
+              >
+                Đóng
+              </AppButton>
+            </div>
+          }
+        >
+          <div className="ui-stack">
+            <FormGrid cols={2}>
+              <div className="ui-subpanel ui-subpanel--md">
+                <div className="ui-muted">Model / Hãng sản xuất</div>
+                <div className="ui-text-strong ui-wrap">
+                  {selected.model || "-"} · {selected.manufacturer || "-"}
+                </div>
+              </div>
+              <div className="ui-subpanel ui-subpanel--md">
+                <div className="ui-muted">Doanh nghiệp nộp hồ sơ</div>
+                <div className="ui-text-strong ui-wrap">{selected.applicant_name || "-"}</div>
+              </div>
+              <div className="ui-subpanel ui-subpanel--md">
+                <div className="ui-muted">Sản phẩm</div>
+                <div className="ui-text-strong ui-wrap">{selected.product_name || "-"}</div>
+              </div>
+              <div className="ui-subpanel ui-subpanel--md">
+                <div className="ui-muted">Hiệu lực chứng nhận</div>
+                <div className="ui-text-strong ui-wrap ui-mono ui-wrap">
+                  {selected.issue_date || "-"} - {selected.expiry_date || "-"}
+                </div>
+              </div>
+            </FormGrid>
+
+            <div className="ui-subpanel ui-subpanel--md">
+              <div className="ui-muted">Quy chuẩn kỹ thuật (QCVN)</div>
+              <div className="ui-text-strong ui-wrap ui-mono ui-wrap">
+                {selected.technical_regulations.join(", ") || "-"}
+              </div>
+            </div>
+
+            <div className="ui-muted">
+              Nguồn:{" "}
+              {selectedSourceUrl ? (
+                <a
+                  href={selectedSourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ui-link ui-wrap"
+                >
+                  {selectedSourceUrl}
+                </a>
+              ) : (
+                selected.provenance.source_url || "local index"
+              )}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard
+        title="Nhập dữ liệu hợp pháp để mở rộng index"
+        subtitle="Dán mỗi dòng một số GCN hoặc QR URL chính thức của TQC, hoặc tải lên CSV có cột certificate_no / qr_url."
+        icon="upload"
+      >
+        <div className="ui-stack">
+          <FormField label="Danh sách GCN hoặc QR TQC" htmlFor="tqc-import-text">
+            <textarea
+              id="tqc-import-text"
+              className="ui-textarea ui-mono ui-wrap"
+              aria-label="Danh sách GCN hoặc QR TQC"
+              value={importText}
+              onChange={(event) => {
+                setImportText(event.target.value);
+                setImportReady(false);
+              }}
+              rows={4}
+              placeholder={"C0955191224AE15A3\nhttps://data-cnhq.tqc.gov.vn/?q=..."}
+            />
+          </FormField>
+
+          {importReady && (
+            <InlineAlert tone="info">
+              Xem trước: {previewEntries.length} entry.{" "}
+              {previewEntries
+                .slice(0, 3)
+                .map((entry) => entry.certificate_no || entry.qr_input)
+                .join(" · ")}
+              {previewEntries.length > 3 ? " · ..." : ""}
+            </InlineAlert>
+          )}
+
+          {pendingCsv && (
+            <InlineAlert tone="info">
+              CSV chờ import: {pendingCsv.name} ({Math.ceil(pendingCsv.size / 1024)} KB)
+            </InlineAlert>
+          )}
+
+          <div className="ui-row">
+            {!importReady ? (
+              <AppButton
+                variant="secondary"
+                leftIcon="eye"
+                onClick={() => setImportReady(true)}
+                disabled={importing || !previewEntries.length}
+              >
+                Xem trước dữ liệu dán
+              </AppButton>
             ) : (
-              selected.provenance.source_url || "local index"
+              <AppButton
+                variant="primary"
+                leftIcon="check-circle"
+                loading={importing}
+                onClick={importPastedEntries}
+              >
+                {importing ? "Đang import..." : `Xác nhận import ${previewEntries.length} entry`}
+              </AppButton>
+            )}
+
+            <label className="ui-btn ui-btn--secondary ui-btn--md">
+              <AppIcon name="upload" size={16} />
+              <span>Chọn CSV</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                onChange={(event) => setPendingCsv(event.target.files?.[0] || null)}
+              />
+            </label>
+
+            {pendingCsv && (
+              <AppButton
+                variant="primary"
+                leftIcon="check"
+                loading={importing}
+                onClick={() => importCsv(pendingCsv)}
+              >
+                Xác nhận import CSV
+              </AppButton>
             )}
           </div>
-        </section>
-      )}
+        </div>
+      </SectionCard>
     </div>
   );
 }

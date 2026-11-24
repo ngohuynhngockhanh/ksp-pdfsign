@@ -281,8 +281,8 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
   // Verify page title and header
   await expect(page.getByRole("heading", { name: "Quản Lý Hợp Đồng Giao Khoán & Hồ Sơ Thợ/CTV" })).toBeVisible();
   await expect(page.getByRole("button", { name: "＋ Tạo HĐ Khoán Mới" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "👥 Thêm Nhà Cung Cấp" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "⚡ Smart Paste" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thêm Nhà Cung Cấp" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Smart Paste" })).toBeVisible();
 
   // Check navigation tabs exist
   const tabContracts = page.getByRole("tab", { name: /Danh Sách Hợp Đồng Khoán/i });
@@ -376,7 +376,7 @@ test("piecework contracts page adapts layout, contractor directory and touch tar
     await expect(taxModal).toBeHidden();
 
     // Open Smart Paste modal from header
-    const smartBtn = page.getByRole("button", { name: "⚡ Smart Paste", exact: true });
+    const smartBtn = page.getByRole("button", { name: "Smart Paste", exact: true });
     await smartBtn.click();
     const smartModal = page.locator('[role="dialog"]').first();
     await expect(smartModal).toBeVisible();

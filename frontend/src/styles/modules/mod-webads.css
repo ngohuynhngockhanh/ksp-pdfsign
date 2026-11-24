@@ -1,0 +1,14 @@
+/* mod-webads.css — WebAdsLeads status select tints & funnel styles (DS v2) */
+.wa-pre { white-space: pre-wrap; word-break: break-word; }
+.wa-sel { width: auto; min-width: 128px; font-weight: 700; }
+[class*="wa-st-"] { background: var(--st-bg); color: var(--st-fg); border-color: var(--st-bd); }
+.wa-st-new { --st-bg: var(--sem-info-bg); --st-fg: var(--sem-info-fg); --st-bd: var(--sem-info-border); }
+.wa-st-contacted { --st-bg: var(--sem-warning-bg); --st-fg: var(--sem-warning-fg); --st-bd: var(--sem-warning-border); }
+.wa-st-quoted { --st-bg: var(--sem-brand-bg); --st-fg: var(--sem-brand-fg); --st-bd: var(--sem-brand-border); }
+.wa-st-won { --st-bg: var(--sem-success-bg); --st-fg: var(--sem-success-fg); --st-bd: var(--sem-success-border); }
+.wa-st-lost { --st-bg: var(--sem-neutral-bg); --st-fg: var(--sem-neutral-fg); --st-bd: var(--sem-neutral-border); }
+.wa-ans { margin-top: var(--space-1); max-height: 120px; overflow-y: auto; font-size: var(--text-caption); color: var(--text); line-height: 1.45; }
+
+@media (max-width: 820px) {
+  .wa-sel { flex: 1 1 140px; width: 100%; }
+}

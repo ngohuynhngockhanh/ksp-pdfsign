@@ -597,7 +597,7 @@ test("E2E-7: Bidding Dossier Review Tab with 18 Equipment Items and Drive Import
   await filesSubTab.click();
   await expect(page.getByText("01_Thuyet_minh_nang_luc_phap_ly.docx")).toBeVisible();
   await expect(page.getByText("06_Bien_phap_to_chuc_cung_cap_lap_dat.docx")).toBeVisible();
-  await expect(page.getByText("🚨 CẦN SỬA GẤP")).toBeVisible();
+  await expect(page.getByText("CẦN SỬA GẤP")).toBeVisible();
 
   // Switch to Sub-tab 3: 18 Equipment Items
   const itemsSubTab = page.getByRole("tab", { name: /Ma Trận Kỹ Thuật 18 Hạng Mục/i });

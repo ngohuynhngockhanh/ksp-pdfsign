@@ -1,0 +1,26 @@
+/* mod-taxdefense.css — TaxDefense matrix & tabs (DS v2) */
+.td-kpi .ui-kpi-value { font-size: 20px; overflow-wrap: anywhere; }
+[data-page="tax-defense"] .ui-section-card-head { flex-wrap: wrap; }
+[data-page="tax-defense"] .ui-section-card-actions { max-width: 100%; }
+.td-tab-nav {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1);
+  padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1);
+}
+.td-tab-btn.ui-btn { font-size: var(--text-caption); padding: 6px 10px; min-height: 36px; }
+.td-tab-btn.is-active { background: var(--primary-soft); border-color: var(--primary-border-soft); color: var(--primary-dark); font-weight: 700; }
+.td-year-select { width: auto; min-width: 196px; }
+.td-matrix-table th, .td-matrix-table td { padding: 9px 8px; }
+.td-matrix-table thead th { white-space: normal; line-height: 1.25; height: auto; }
+.td-row-danger td, .td-row-danger td:first-child { background: var(--sem-danger-bg); }
+.td-row-danger td:first-child { color: var(--sem-danger-fg); }
+.td-dossier-body { padding: var(--space-5); line-height: 1.65; max-height: 640px; }
+.td-import-card { max-width: 680px; width: 100%; margin: 0 auto; }
+.td-file-input { border-style: dashed; background: var(--surface-2); }
+
+@media (max-width: 820px) {
+  .td-kpi .ui-kpi-value { font-size: var(--text-h2); }
+  .td-tab-nav { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .td-tab-nav::-webkit-scrollbar { display: none; }
+  .td-tab-btn.ui-btn { flex: 0 0 auto; min-height: var(--touch-min); }
+  [data-page="tax-defense"] .ui-section-card-actions, .td-year-select { width: 100%; min-width: 0; }
+}
