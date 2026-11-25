@@ -67,6 +67,8 @@
 .nas-entry-btn.is-dir { color: var(--primary-dark); font-weight: 600; }
 .nas-entry-btn--card { width: 100%; white-space: normal; }
 .nas-entry-btn--card .ui-btn-label { overflow-wrap: anywhere; white-space: normal; }
+.drive-split.ui-split--sidebar-left{grid-template-columns:280px minmax(0,1fr)}
+.drive-d1{padding-left:14px}.drive-d2{padding-left:28px}.drive-d3{padding-left:42px}.drive-d4{padding-left:56px}
 
 @media (max-width: 1024px) { .ops-grid { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {

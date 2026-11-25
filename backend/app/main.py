@@ -104,6 +104,7 @@ from .db import (
     CustomerAlias,
     ContractDraft,
     Document,
+    Folder,
     InvIssue,
     IhoadonInvoice,
     JobRun,
@@ -180,6 +181,7 @@ from .trademark_api import router as trademark_router  # noqa: E402
 from .piecework_api import router as piecework_router  # noqa: E402
 from .clabel_api import router as clabel_router  # noqa: E402
 from .web_ads_api import router as web_ads_router  # noqa: E402
+from .drive_api import router as drive_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -195,6 +197,7 @@ app.include_router(trademark_router)
 app.include_router(piecework_router)
 app.include_router(clabel_router)
 app.include_router(web_ads_router)
+app.include_router(drive_router)
 
 
 
@@ -290,16 +293,19 @@ async def security_middleware(request: Request, call_next):
         or p_path.startswith("/md/")
         or p_path.startswith("/api/share/")
         or p_path.startswith("/api/documents/")
+        or p_path.startswith("/api/public/drive/")
+        or p_path.startswith("/api/drive/")
         or p_path.lower().endswith((".md", ".markdown"))
     )
     script_src = f"'self' 'nonce-{csp_nonce}'" if is_portal else "'self'"
     connect_sources = ["'self'"]
     if settings.app_dev_cors:
         connect_sources.extend(["http://localhost:5173", "ws://localhost:5173"])
-    if p_path.startswith("/s/"):
+    if p_path.startswith("/s/") or p_path.startswith("/d/") or p_path.startswith("/share/folder/"):
         connect_sources.extend(["https://ipwho.is", "https://1.1.1.1"])
     response.headers["Content-Security-Policy"] = (
-        f"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+        f"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
+        f"style-src 'self' 'unsafe-inline'; "
         f"script-src {script_src}; connect-src {' '.join(connect_sources)}; "
         "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
     )
@@ -1458,9 +1464,12 @@ def delete_customer(cid: int, user: CurrentUser = Depends(require_admin), db: Se
     # Bo gan ho so, xoa tai khoan khach hang
     for d in db.scalars(select(Document).where(Document.customer_id == cid)):
         d.customer_id = None
+    for fld in db.scalars(select(Folder).where(Folder.customer_id == cid)):
+        fld.customer_id = None
     for inv in db.scalars(select(IhoadonInvoice).where(IhoadonInvoice.customer_id == cid)):
         inv.customer_id = None
         inv.match_source = ""
+    db.execute(delete(CustomerAlias).where(CustomerAlias.customer_id == cid))
     _audit(db, user, "customer_delete", c.name)
     for u in list(c.users):
         db.delete(u)
@@ -1638,6 +1647,10 @@ def merge_customers(
         i.customer_id = tgt.id
     for inv in db.scalars(select(IhoadonInvoice).where(IhoadonInvoice.customer_id == src.id)):
         inv.customer_id = tgt.id
+    for fld in db.scalars(select(Folder).where(Folder.customer_id == src.id)):
+        fld.customer_id = tgt.id
+        if not fld.customer_name or fld.customer_name == src.name:
+            fld.customer_name = tgt.name
 
     # Field mem: dich trong ma nguon co thi lay sang
     for f in ("tax_code", "contact", "address", "email", "note"):
@@ -1855,6 +1868,10 @@ def download_document(
         ".md": "text/markdown; charset=utf-8",
         ".markdown": "text/markdown; charset=utf-8",
         ".mp4": "video/mp4",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
     }
     media_type = media_map.get(suffix.lower(), "application/octet-stream")
     if suffix.lower() == ".mp4":
@@ -1955,6 +1972,21 @@ def view_document(
             iter([raw]),
             media_type="application/pdf",
             headers={"Content-Disposition": security_utils.safe_content_disposition(d.filename, disposition="inline")},
+        )
+    image_media_map = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+    if s_low in image_media_map:
+        return FileResponse(
+            fpath,
+            media_type=image_media_map[s_low],
+            headers={
+                "Content-Disposition": security_utils.safe_content_disposition(d.filename, disposition="inline"),
+                "Cache-Control": "private, max-age=3600",
+            },
         )
     return StreamingResponse(
         iter([raw]),
@@ -3483,9 +3515,13 @@ def _share_file(token: str, db: Session, inline: bool):
         ".md": "text/markdown; charset=utf-8",
         ".markdown": "text/markdown; charset=utf-8",
         ".mp4": "video/mp4",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
     }
     media_type = media_map.get(suffix.lower(), "application/octet-stream")
-    if inline and suffix.lower() in (".pdf", ".mp4"):
+    if inline and suffix.lower() in (".pdf", ".mp4", ".png", ".jpg", ".jpeg", ".webp"):
         # Xem truc tiep trong trinh duyet
         disp = f"inline; filename*=UTF-8''{quote(d.filename)}"
     else:

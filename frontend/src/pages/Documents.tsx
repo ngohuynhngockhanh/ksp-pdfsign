@@ -1,5 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { api, DOC_TYPES, type Customer, type DocRecord, type OrderRec } from "../api";
+import {
+  api,
+  DOC_TYPES,
+  type Customer,
+  type DocRecord,
+  type DriveFolderSummary,
+  type OrderRec,
+} from "../api";
 import {
   ActionBar,
   AppButton,
@@ -473,6 +480,12 @@ export function Documents({
     taxCode: string;
     busy: boolean;
   } | null>(null);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [driveFolders, setDriveFolders] = useState<DriveFolderSummary[]>([]);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveSearch, setDriveSearch] = useState("");
+  const [driveTargetId, setDriveTargetId] = useState<number | null>(null);
+  const [driveAttaching, setDriveAttaching] = useState(false);
 
   const rowUploadInputRef = useRef<HTMLInputElement | null>(null);
   const rowUploadTargetRef = useRef<{
@@ -620,6 +633,47 @@ export function Documents({
       label: `${ids.length} hồ sơ đã chọn`,
       busy: false,
     });
+  }
+
+  async function openBulkDrivePicker() {
+    if (sel.size === 0) return;
+    setDrivePickerOpen(true);
+    setDriveSearch("");
+    setDriveTargetId(null);
+    setDriveLoading(true);
+    try {
+      const res = await api.driveListFolders({ all: true, archived: false });
+      setDriveFolders(res.items || []);
+      if (res.items && res.items.length > 0) {
+        setDriveTargetId(res.items[0].id);
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDriveLoading(false);
+    }
+  }
+
+  async function submitBulkAttachToDrive() {
+    if (!driveTargetId || sel.size === 0) return;
+    setDriveAttaching(true);
+    try {
+      const res = await api.driveAttachDocuments(driveTargetId, [...sel]);
+      const target = driveFolders.find((f) => f.id === driveTargetId);
+      const skipMsg =
+        res.skipped_document_ids.length > 0
+          ? ` (${res.skipped_document_ids.length} hồ sơ đã có sẵn được bỏ qua)`
+          : "";
+      toast.success(
+        `Đã gom ${res.total_attached} hồ sơ vào "${target?.name || "Drive"}"${skipMsg}.`,
+      );
+      setDrivePickerOpen(false);
+      setSel(new Set());
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDriveAttaching(false);
+    }
   }
 
   async function executeShare(includeAccount: boolean) {
@@ -1489,23 +1543,33 @@ export function Documents({
           selectedLabel={`Đã chọn ${sel.size} hồ sơ`}
           onClearSelection={() => setSel(new Set())}
           secondaryActions={
-            <select
-              className="ui-select doc-bulk-select"
-              aria-label="Gán khách hàng hàng loạt"
-              defaultValue=""
-              onChange={(e) => {
-                bulkAssignTo(e.target.value);
-                e.target.value = "";
-              }}
-            >
-              <option value="">Gán khách hàng…</option>
-              <option value="none">— Bỏ phân loại —</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                className="ui-select doc-bulk-select"
+                aria-label="Gán khách hàng hàng loạt"
+                defaultValue=""
+                onChange={(e) => {
+                  bulkAssignTo(e.target.value);
+                  e.target.value = "";
+                }}
+              >
+                <option value="">Gán khách hàng…</option>
+                <option value="none">— Bỏ phân loại —</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                leftIcon="folder-input"
+                onClick={openBulkDrivePicker}
+              >
+                Gom vào Drive
+              </AppButton>
+            </>
           }
           primaryActions={
             <AppButton
@@ -2044,6 +2108,103 @@ export function Documents({
             </FormField>
           </div>
         )}
+      </AppModal>
+
+      <AppModal
+        open={drivePickerOpen}
+        onClose={() => {
+          if (!driveAttaching) setDrivePickerOpen(false);
+        }}
+        dismissible={!driveAttaching}
+        title="Gom hồ sơ vào Drive"
+        subtitle={`Đã chọn ${sel.size} hồ sơ để gắn vào thư mục dự án`}
+        size="md"
+        footer={
+          <>
+            <AppButton
+              variant="secondary"
+              disabled={driveAttaching}
+              onClick={() => setDrivePickerOpen(false)}
+            >
+              Hủy
+            </AppButton>
+            <AppButton
+              variant="primary"
+              leftIcon="folder-input"
+              loading={driveAttaching}
+              disabled={!driveTargetId}
+              onClick={submitBulkAttachToDrive}
+            >
+              Gắn vào thư mục đã chọn
+            </AppButton>
+          </>
+        }
+      >
+        <div className="ui-stack">
+          <input
+            type="search"
+            className="ui-input"
+            value={driveSearch}
+            placeholder="Tìm tên thư mục, khách hàng hoặc mã dự án…"
+            aria-label="Tìm thư mục Drive"
+            onChange={(e) => setDriveSearch(e.target.value)}
+          />
+          {driveLoading ? (
+            <TableSkeleton rows={4} cols={2} />
+          ) : driveFolders.length === 0 ? (
+            <EmptyState
+              compact
+              icon="folder-open"
+              title="Chưa có thư mục Drive nào."
+              description="Vào mục Drive Hồ Sơ để tạo thư mục dự án trước khi gom tệp."
+            />
+          ) : (
+            <div className="ui-stack--xs ui-scroll-md">
+              {driveFolders
+                .filter((f) => {
+                  const q = driveSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return `${f.name} ${f.customer_name || ""} ${f.project_code || ""}`
+                    .toLowerCase()
+                    .includes(q);
+                })
+                .map((f) => {
+                  const selected = driveTargetId === f.id;
+                  return (
+                    <label
+                      key={f.id}
+                      className={`ui-choice-card${selected ? " is-active" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="drive-picker-target"
+                        checked={selected}
+                        onChange={() => setDriveTargetId(f.id)}
+                      />
+                      <div className="ui-stack--xs ui-flex-1">
+                        <strong className="ui-text-semibold">{f.name}</strong>
+                        <div className="ui-row ui-row--xs">
+                          {f.customer_name && (
+                            <StatusBadge tone="brand" size="sm">
+                              {f.customer_name}
+                            </StatusBadge>
+                          )}
+                          {f.project_code && (
+                            <StatusBadge tone="neutral" size="sm" className="num">
+                              {f.project_code}
+                            </StatusBadge>
+                          )}
+                          <span className="ui-muted">
+                            {f.stats?.total_items ?? 0} tệp
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
+        </div>
       </AppModal>
 
       <AppModal

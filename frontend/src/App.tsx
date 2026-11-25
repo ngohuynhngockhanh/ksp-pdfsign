@@ -42,6 +42,8 @@ const Signer = lazyPage(() => import("./pages/Signer"), "Signer");
 const Verify = lazyPage(() => import("./pages/Verify"), "Verify");
 const Customers = lazyPage(() => import("./pages/Customers"), "Customers");
 const Documents = lazyPage(() => import("./pages/Documents"), "Documents");
+const DriveWorkspace = lazyPage(() => import("./pages/DriveWorkspace"), "DriveWorkspace");
+const PublicDrive = lazyPage(() => import("./pages/PublicDrive"), "PublicDrive");
 const MyDocuments = lazyPage(() => import("./pages/MyDocuments"), "MyDocuments");
 const NasBrowser = lazyPage(() => import("./pages/NasBrowser"), "NasBrowser");
 const CreateBBBG = lazyPage(() => import("./pages/CreateBBBG"), "CreateBBBG");
@@ -116,6 +118,7 @@ type Tab =
   | "thuebct"
   | "taxdefense"
   | "documents"
+  | "drive"
   | "customers"
   | "nas"
   | "audit"
@@ -154,6 +157,7 @@ const ROUTES: Record<Tab, string> = {
   thuebct: "/review-to-khai",
   taxdefense: "/giai-trinh-thue",
   documents: "/ho-so",
+  drive: "/drive",
   customers: "/khach-hang",
   nas: "/nas",
   audit: "/nhat-ky",
@@ -198,7 +202,18 @@ function resolveTab(pathname: string): Tab | null {
   if (pathname.startsWith("/pymid-coop")) return "pymidcoop";
   if (pathname.startsWith("/giai-trinh-thue")) return "taxdefense";
   if (pathname.startsWith("/ads-leads") || pathname.startsWith("/web-ads") || pathname.startsWith("/lead-website")) return "webads";
+  if (pathname.startsWith("/drive")) return "drive";
   return PATH_TO_TAB[pathname] || null;
+}
+
+function matchPublicDriveToken(pathname: string): string | null {
+  const m = /^\/(?:d|share\/folder)\/([^/?#]+)\/?$/.exec(pathname);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
 }
 
 interface Me {
@@ -254,6 +269,7 @@ const TAB_ICONS: Record<Tab, IconName> = {
   quote: "receipt",
   trademarks: "award",
   documents: "folder",
+  drive: "folder-tree",
   mine: "folder-open",
   bbbg: "file-check",
   contract: "file-text",
@@ -280,6 +296,7 @@ const ROUTE_KEYWORDS: Partial<Record<Tab, string[]>> = {
   thuebct: ["review to khai", "bao cao thue", "tax review"],
   taxdefense: ["giai trinh thue", "quyet toan", "tax defense"],
   documents: ["kho ho so", "tai lieu", "pdf", "documents"],
+  drive: ["drive", "thu muc", "chia se", "ho so du an", "nghiem thu"],
   customers: ["khach hang", "doi tac", "customers"],
   nas: ["nas", "synology", "luu tru"],
   audit: ["nhat ky", "audit log", "lich su"],
@@ -432,7 +449,7 @@ function AppShell() {
         const allowed = isAdmin
           ? ([
               "home", "sign", "bbbg", "quote", "contract", "tonkho", "nhaphang", "thuesync", "thuebct", "tokhai", "banra", "hoadonnhap", "xuatkho", "sanxuat", "congthuc",
-              "documents", "customers", "nas", "audit", "settings", "payroll", "khoan", "verify", "training", "messenger", "telegram",
+              "documents", "drive", "customers", "nas", "audit", "settings", "payroll", "khoan", "verify", "training", "messenger", "telegram",
               "pymidcoop", "shippingspx", "bidding", "standards", "taxdefense", "trademarks", "doctracking", "govradar", "webads",
             ] as Tab[])
           : isPymidStaff
@@ -560,6 +577,7 @@ function AppShell() {
           ["contract", "Soạn hợp đồng"],
           ["trademarks", "Nhãn hiệu (Sở hữu trí tuệ)"],
           ["documents", "Kho hồ sơ"],
+          ["drive", "Drive Hồ Sơ"],
           ["doctracking", "Theo dõi lượt xem"],
           ["verify", "Kiểm tra chữ ký"],
         ],
@@ -1027,6 +1045,7 @@ function AppShell() {
                 }}
               />
             )}
+            {tab === "drive" && isAdmin && <DriveWorkspace />}
             {tab === "customers" && isAdmin && <Customers />}
             {tab === "nas" && isAdmin && <NasBrowser />}
             {tab === "audit" && isAdmin && <AuditLog />}
@@ -1171,11 +1190,31 @@ function AppShell() {
 }
 
 export function App() {
+  const [publicDriveToken, setPublicDriveToken] = useState<string | null>(() =>
+    typeof window !== "undefined" ? matchPublicDriveToken(window.location.pathname) : null,
+  );
+
+  useEffect(() => {
+    const onPop = () => {
+      setPublicDriveToken(matchPublicDriveToken(window.location.pathname));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   return (
     <ThemeProvider>
       <ToastProvider>
         <ConfirmProvider>
-          <AppShell />
+          {publicDriveToken ? (
+            <RouteErrorBoundary key={`/d/${publicDriveToken}`} resetKey={publicDriveToken}>
+              <Suspense fallback={<RouteFallback />}>
+                <PublicDrive token={publicDriveToken} />
+              </Suspense>
+            </RouteErrorBoundary>
+          ) : (
+            <AppShell />
+          )}
         </ConfirmProvider>
       </ToastProvider>
     </ThemeProvider>

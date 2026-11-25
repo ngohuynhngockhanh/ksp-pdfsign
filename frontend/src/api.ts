@@ -993,6 +993,58 @@ export class NegStockError extends Error {
   }
 }
 
+export class DriveApiError extends Error {
+  status: number;
+  remainingAttempts?: number;
+  retryAfterSeconds?: number;
+  constructor(
+    message: string,
+    status: number,
+    extra?: { remainingAttempts?: number; retryAfterSeconds?: number },
+  ) {
+    super(message);
+    this.name = "DriveApiError";
+    this.status = status;
+    this.remainingAttempts = extra?.remainingAttempts;
+    this.retryAfterSeconds = extra?.retryAfterSeconds;
+  }
+}
+
+async function reqDrive<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(url, { credentials: "include", ...options });
+  if (!res.ok) {
+    let msg = `Lỗi ${res.status}`;
+    let remainingAttempts: number | undefined;
+    let retryAfterSeconds: number | undefined;
+    try {
+      const j = (await res.json()) as {
+        detail?: unknown;
+        remaining_attempts?: number;
+        retry_after_seconds?: number;
+      };
+      if (typeof j.remaining_attempts === "number") remainingAttempts = j.remaining_attempts;
+      if (typeof j.retry_after_seconds === "number") retryAfterSeconds = j.retry_after_seconds;
+      if (j.detail && typeof j.detail === "object") {
+        const d = j.detail as {
+          message?: string;
+          detail?: string;
+          remaining_attempts?: number;
+          retry_after_seconds?: number;
+        };
+        if (typeof d.remaining_attempts === "number") remainingAttempts = d.remaining_attempts;
+        if (typeof d.retry_after_seconds === "number") retryAfterSeconds = d.retry_after_seconds;
+        msg = d.message || d.detail || _detailToMessage(j.detail) || msg;
+      } else {
+        msg = _detailToMessage(j.detail) ?? msg;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new DriveApiError(msg, res.status, { remainingAttempts, retryAfterSeconds });
+  }
+  return res.json() as Promise<T>;
+}
+
 async function req<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(url, { credentials: "include", ...options });
   if (!res.ok) {
@@ -4126,6 +4178,349 @@ export const api = {
       method: "POST",
     });
   },
+
+  // --- Drive Ho So Du An (Admin) ---
+  async driveListFolders(
+    opts: {
+      parentId?: number | null;
+      customerId?: number | null;
+      search?: string;
+      archived?: boolean;
+      all?: boolean;
+    } = {},
+  ) {
+    const p = new URLSearchParams();
+    if (opts.parentId != null) p.set("parent_id", String(opts.parentId));
+    if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    if (opts.search) p.set("search", opts.search);
+    if (opts.archived !== undefined) p.set("archived", String(opts.archived));
+    if (opts.all) p.set("all", "true");
+    const qs = p.toString();
+    return req<DriveFolderListResponse>(`/api/drive/folders${qs ? `?${qs}` : ""}`);
+  },
+  async driveGetTree(opts: { customerId?: number | null; archived?: boolean } = {}) {
+    const p = new URLSearchParams();
+    if (opts.customerId != null) p.set("customer_id", String(opts.customerId));
+    if (opts.archived !== undefined) p.set("archived", String(opts.archived));
+    const qs = p.toString();
+    return req<{ items: DriveTreeNode[] }>(`/api/drive/tree${qs ? `?${qs}` : ""}`);
+  },
+  async driveGetFolderTree(folderId: number) {
+    return req<DriveTreeNode>(`/api/drive/folders/${folderId}/tree`);
+  },
+  async driveCreateFolder(payload: DriveFolderCreatePayload) {
+    return req<DriveFolderDetail>("/api/drive/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveGetFolder(folderId: number) {
+    return req<DriveFolderDetail>(`/api/drive/folders/${folderId}`);
+  },
+  async driveUpdateFolder(folderId: number, payload: DriveFolderUpdatePayload) {
+    return req<DriveFolderSummary>(`/api/drive/folders/${folderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveDeleteFolder(folderId: number) {
+    return req<{ ok: boolean; deleted_folder_id: number; removed_items: number; gc_assets: number }>(
+      `/api/drive/folders/${folderId}`,
+      { method: "DELETE" },
+    );
+  },
+  async driveAttachDocuments(folderId: number, documentIds: number[], sectionTag?: string) {
+    return req<{ attached: DriveItem[]; skipped_document_ids: number[]; total_attached: number }>(
+      `/api/drive/folders/${folderId}/attach-documents`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_ids: documentIds,
+          ...(sectionTag ? { section_tag: sectionTag } : {}),
+        }),
+      },
+    );
+  },
+  async driveUploadFile(
+    folderId: number,
+    file: File,
+    opts: {
+      sectionTag?: string;
+      note?: string;
+      displayName?: string;
+      onProgress?: (p: DriveUploadProgress) => void;
+    } = {},
+  ): Promise<DriveItem> {
+    const CHUNK_THRESHOLD = 20 * 1024 * 1024;
+    const CHUNK_SIZE = 16 * 1024 * 1024;
+    if (file.size > CHUNK_THRESHOLD) {
+      const init = await req<{
+        upload_id: string;
+        chunk_size: number;
+        total_chunks: number;
+        expires_at: string;
+      }>("/api/drive/uploads/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder_id: folderId,
+          filename: file.name,
+          file_size: file.size,
+          mime_type: file.type || "application/octet-stream",
+          chunk_size: CHUNK_SIZE,
+          section_tag: opts.sectionTag || "",
+          note: opts.note || "",
+          display_name: opts.displayName || "",
+        }),
+      });
+      const step = init.chunk_size || CHUNK_SIZE;
+      const totalChunks = Math.max(1, Math.ceil(file.size / step));
+      let uploaded = 0;
+      for (let idx = 0; idx < totalChunks; idx += 1) {
+        const start = idx * step;
+        const end = Math.min(file.size, start + step);
+        const slice = file.slice(start, end);
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open(
+            "PUT",
+            `/api/drive/uploads/${encodeURIComponent(init.upload_id)}/chunk?index=${idx}`,
+          );
+          xhr.withCredentials = true;
+          xhr.setRequestHeader("Content-Type", "application/octet-stream");
+          xhr.upload.onprogress = (ev) => {
+            if (!opts.onProgress) return;
+            const cur = uploaded + (ev.lengthComputable ? ev.loaded : 0);
+            opts.onProgress({
+              loaded: Math.min(file.size, cur),
+              total: file.size,
+              percent: Math.min(99, Math.round((cur / Math.max(1, file.size)) * 100)),
+              chunkIndex: idx + 1,
+              totalChunks,
+            });
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              uploaded = end;
+              opts.onProgress?.({
+                loaded: uploaded,
+                total: file.size,
+                percent: Math.min(99, Math.round((uploaded / Math.max(1, file.size)) * 100)),
+                chunkIndex: idx + 1,
+                totalChunks,
+              });
+              resolve();
+            } else {
+              let msg = `Lỗi tải chunk ${idx + 1}/${totalChunks} (${xhr.status})`;
+              try {
+                const j = JSON.parse(xhr.responseText);
+                msg = _detailToMessage(j.detail) ?? msg;
+              } catch {
+                /* ignore */
+              }
+              reject(new Error(msg));
+            }
+          };
+          xhr.onerror = () => reject(new Error(`Lỗi mạng khi tải chunk ${idx + 1}/${totalChunks}`));
+          xhr.send(slice);
+        });
+      }
+      const item = await req<DriveItem>(
+        `/api/drive/uploads/${encodeURIComponent(init.upload_id)}/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            display_name: opts.displayName || "",
+            section_tag: opts.sectionTag || "",
+            note: opts.note || "",
+          }),
+        },
+      );
+      opts.onProgress?.({
+        loaded: file.size,
+        total: file.size,
+        percent: 100,
+        chunkIndex: totalChunks,
+        totalChunks,
+      });
+      return item;
+    }
+
+    return new Promise<DriveItem>((resolve, reject) => {
+      const fd = new FormData();
+      fd.append("files", file);
+      if (opts.sectionTag) fd.append("section_tag", opts.sectionTag);
+      if (opts.note) fd.append("note", opts.note);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/drive/folders/${folderId}/upload`);
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (ev) => {
+        if (!opts.onProgress || !ev.lengthComputable) return;
+        opts.onProgress({
+          loaded: ev.loaded,
+          total: ev.total,
+          percent: Math.min(99, Math.round((ev.loaded / Math.max(1, ev.total)) * 100)),
+        });
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const parsed = JSON.parse(xhr.responseText) as { items?: DriveItem[] } | DriveItem;
+            const created =
+              "items" in parsed && Array.isArray(parsed.items) && parsed.items.length > 0
+                ? parsed.items[0]
+                : (parsed as DriveItem);
+            opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+            resolve(created);
+          } catch {
+            reject(new Error("Phản hồi tải lên không hợp lệ"));
+          }
+        } else {
+          let msg = `Lỗi tải lên (${xhr.status})`;
+          try {
+            const j = JSON.parse(xhr.responseText);
+            msg = _detailToMessage(j.detail) ?? msg;
+          } catch {
+            /* ignore */
+          }
+          reject(new Error(msg));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Lỗi kết nối khi tải tệp lên"));
+      xhr.send(fd);
+    });
+  },
+  async driveUpdateItem(itemId: number, payload: DriveItemUpdatePayload) {
+    return req<DriveItem>(`/api/drive/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveReorderFolder(
+    folderId: number,
+    payload: { item_ids?: number[]; subfolder_ids?: number[] },
+  ) {
+    return req<{ ok: boolean }>(`/api/drive/folders/${folderId}/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveDeleteItem(itemId: number) {
+    return req<{ ok: boolean; deleted_item_id: number }>(`/api/drive/items/${itemId}`, {
+      method: "DELETE",
+    });
+  },
+  driveItemFileUrl(itemId: number, opts: { download?: boolean; format?: string } = {}) {
+    const p = new URLSearchParams();
+    if (opts.download) p.set("download", "1");
+    if (opts.format) p.set("format", opts.format);
+    const qs = p.toString();
+    return `/api/drive/items/${itemId}/file${qs ? `?${qs}` : ""}`;
+  },
+  driveItemThumbUrl(itemId: number) {
+    return `/api/drive/items/${itemId}/thumb`;
+  },
+  driveFolderZipUrl(folderId: number) {
+    return `/api/drive/folders/${folderId}/download.zip`;
+  },
+  async driveListShares(folderId: number) {
+    return req<{ items: DriveShare[] }>(`/api/drive/folders/${folderId}/shares`);
+  },
+  async driveCreateShare(folderId: number, payload: DriveShareCreatePayload) {
+    return req<DriveShare>(`/api/drive/folders/${folderId}/shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveUpdateShare(shareId: number, payload: DriveShareUpdatePayload) {
+    return req<DriveShare>(`/api/drive/shares/${shareId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  async driveRevokeShare(shareId: number) {
+    return req<{ ok: boolean; id: number; revoked: boolean }>(`/api/drive/shares/${shareId}`, {
+      method: "DELETE",
+    });
+  },
+  driveShareQrUrl(shareId: number) {
+    return `/api/drive/shares/${shareId}/qr.svg`;
+  },
+  async driveAccessLogs(
+    folderId: number,
+    opts: { page?: number; pageSize?: number; shareId?: number; action?: string } = {},
+  ) {
+    const p = new URLSearchParams();
+    p.set("page", String(opts.page ?? 1));
+    p.set("page_size", String(opts.pageSize ?? 50));
+    if (opts.shareId != null) p.set("share_id", String(opts.shareId));
+    if (opts.action) p.set("action", opts.action);
+    return req<DriveAccessLogResponse>(
+      `/api/drive/folders/${folderId}/access-logs?${p.toString()}`,
+    );
+  },
+  driveAccessLogsCsvUrl(folderId: number, shareId?: number) {
+    const p = new URLSearchParams({ format: "csv" });
+    if (shareId != null) p.set("share_id", String(shareId));
+    return `/api/drive/folders/${folderId}/access-logs?${p.toString()}`;
+  },
+
+  // --- Drive Cong Khai (Khach Hang /d/:token) ---
+  async publicDriveGet(token: string) {
+    return reqDrive<DrivePublicResponse>(`/api/public/drive/${encodeURIComponent(token)}`);
+  },
+  async publicDriveUnlock(token: string, passcode: string) {
+    return reqDrive<{ ok: boolean; unlocked: boolean }>(
+      `/api/public/drive/${encodeURIComponent(token)}/unlock`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      },
+    );
+  },
+  async publicDriveSubfolder(token: string, subId: number) {
+    return reqDrive<DrivePublicUnlockedResponse>(
+      `/api/public/drive/${encodeURIComponent(token)}/folders/${subId}`,
+    );
+  },
+  publicDriveItemViewUrl(token: string, itemId: number, format?: string) {
+    const qs = format ? `?format=${encodeURIComponent(format)}` : "";
+    return `/api/public/drive/${encodeURIComponent(token)}/items/${itemId}/view${qs}`;
+  },
+  publicDriveItemThumbUrl(token: string, itemId: number) {
+    return `/api/public/drive/${encodeURIComponent(token)}/items/${itemId}/thumb`;
+  },
+  publicDriveItemDownloadUrl(token: string, itemId: number) {
+    return `/api/public/drive/${encodeURIComponent(token)}/items/${itemId}/download`;
+  },
+  async publicDriveVerifyNeac(token: string, itemId: number) {
+    return reqDrive<DriveNeacVerifyResponse>(
+      `/api/public/drive/${encodeURIComponent(token)}/items/${itemId}/verify-neac`,
+    );
+  },
+  publicDriveZipUrl(token: string, subfolderId?: number | null) {
+    const qs = subfolderId != null ? `?subfolder_id=${subfolderId}` : "";
+    return `/api/public/drive/${encodeURIComponent(token)}/download.zip${qs}`;
+  },
+  async publicDriveTelemetry(token: string, payload: Record<string, unknown>) {
+    return reqDrive<{ ok: boolean; next_nonce?: string }>(
+      `/api/public/drive/${encodeURIComponent(token)}/telemetry`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+  },
 };
 
 // --- Kieu du lieu ton kho ---
@@ -5580,4 +5975,306 @@ export interface PieceworkContractorTaxSummary {
   }>;
   legal_bases: string[];
   tax_refund_guidance: string;
+}
+
+// --- Drive Ho So Du An (Admin & Public Share) ---
+export interface DriveFolderStats {
+  total_items: number;
+  subfolder_count: number;
+  signed_pdfs: number;
+  pdfs: number;
+  images: number;
+  videos: number;
+  others: number;
+  total_bytes: number;
+  active_shares: number;
+  views_7d: number;
+}
+
+export interface DriveKpiSummary {
+  total_folders: number;
+  total_items: number;
+  signed_pdfs: number;
+  images: number;
+  videos: number;
+  total_bytes: number;
+  active_shares: number;
+  views_7d: number;
+}
+
+export interface DriveBreadcrumb {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface DriveFolderSummary {
+  id: number;
+  parent_id: number | null;
+  root_id: number;
+  slug: string;
+  name: string;
+  customer_id: number | null;
+  order_id: number | null;
+  customer_name: string;
+  project_code: string;
+  description: string;
+  cover_meta?: Record<string, unknown> | null;
+  sort_order: number;
+  is_archived: boolean;
+  created_by?: number | null;
+  created_at: string;
+  updated_at: string;
+  stats: DriveFolderStats;
+}
+
+export interface DriveTreeNode {
+  id: number;
+  parent_id: number | null;
+  root_id: number;
+  name: string;
+  slug: string;
+  customer_id: number | null;
+  customer_name: string;
+  project_code: string;
+  is_archived: boolean;
+  sort_order: number;
+  item_count: number;
+  children: DriveTreeNode[];
+}
+
+export interface DriveMediaMeta {
+  width?: number;
+  height?: number;
+  duration_sec?: number;
+  station_code?: string;
+  sig_valid?: boolean;
+  sig_count?: number;
+  signer_summary?: string;
+  [key: string]: unknown;
+}
+
+export interface DriveItem {
+  id: number;
+  folder_id: number;
+  item_kind: "document" | "asset";
+  document_id: number | null;
+  display_name: string;
+  original_filename: string;
+  section_tag: string;
+  mime_type: string;
+  file_ext: string;
+  file_category?: "pdf" | "image" | "video" | "office" | "other";
+  file_size: number;
+  sha256: string;
+  media_meta?: DriveMediaMeta | null;
+  note: string;
+  sort_order: number;
+  is_pinned: boolean;
+  signed: boolean;
+  signer_name?: string;
+  doc_type?: string;
+  has_thumb?: boolean;
+  thumb_url?: string | null;
+  view_url?: string | null;
+  download_url?: string | null;
+  verify_neac_url?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DriveShare {
+  id: number;
+  folder_id: number;
+  token: string;
+  share_url: string;
+  public_path: string;
+  qr_svg_url: string;
+  label: string;
+  has_passcode: boolean;
+  permission: "view_download" | "view_only";
+  allow_zip_download: boolean;
+  allow_neac_verify: boolean;
+  include_subfolders: boolean;
+  notify_telegram: boolean;
+  expires_at: string | null;
+  expired: boolean;
+  max_views: number | null;
+  view_count: number;
+  revoked: boolean;
+  revoked_at: string | null;
+  created_at: string;
+  last_accessed_at: string | null;
+}
+
+export interface DriveFolderDetail {
+  folder: DriveFolderSummary;
+  breadcrumbs: DriveBreadcrumb[];
+  subfolders: DriveFolderSummary[];
+  items: DriveItem[];
+  shares: DriveShare[];
+}
+
+export interface DriveFolderListResponse {
+  items: DriveFolderSummary[];
+  kpi: DriveKpiSummary;
+}
+
+export interface DriveAccessLogItem {
+  id: number;
+  folder_id: number;
+  share_id: number | null;
+  share_label?: string;
+  item_id: number | null;
+  action: string;
+  item_name: string;
+  ip: string;
+  city: string;
+  region: string;
+  isp: string;
+  country_code: string;
+  device_type: string;
+  notified: boolean;
+  created_at: string;
+}
+
+export interface DriveAccessLogResponse {
+  items: DriveAccessLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface DriveFolderCreatePayload {
+  name: string;
+  parent_id?: number | null;
+  customer_id?: number | null;
+  order_id?: number | null;
+  customer_name?: string;
+  project_code?: string;
+  description?: string;
+  cover_meta?: Record<string, unknown>;
+  sort_order?: number;
+  preset?: "" | "solar_handover";
+}
+
+export interface DriveFolderUpdatePayload {
+  name?: string;
+  parent_id?: number | null;
+  move_to_root?: boolean;
+  customer_id?: number | null;
+  clear_customer?: boolean;
+  order_id?: number | null;
+  customer_name?: string;
+  project_code?: string;
+  description?: string;
+  cover_meta?: Record<string, unknown>;
+  sort_order?: number;
+  is_archived?: boolean;
+}
+
+export interface DriveItemUpdatePayload {
+  display_name?: string;
+  folder_id?: number;
+  section_tag?: string;
+  note?: string;
+  sort_order?: number;
+  is_pinned?: boolean;
+  media_meta?: Record<string, unknown>;
+}
+
+export interface DriveShareCreatePayload {
+  label?: string;
+  passcode?: string;
+  permission?: "view_download" | "view_only";
+  allow_zip_download?: boolean;
+  allow_neac_verify?: boolean;
+  include_subfolders?: boolean;
+  notify_telegram?: boolean;
+  expires_days?: number | null;
+  expires_at?: string | null;
+  max_views?: number | null;
+}
+
+export interface DriveShareUpdatePayload extends DriveShareCreatePayload {
+  clear_passcode?: boolean;
+  clear_expiry?: boolean;
+  clear_max_views?: boolean;
+  revoked?: boolean;
+}
+
+export interface DriveUploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+  chunkIndex?: number;
+  totalChunks?: number;
+}
+
+export interface DrivePublicBranding {
+  company?: string;
+  logo_url?: string;
+}
+
+export interface DrivePublicLockedResponse {
+  locked: true;
+  has_passcode: true;
+  folder_name: string;
+  customer_name: string;
+  project_code: string;
+  description?: string;
+  cover_meta?: Record<string, unknown> | null;
+  label?: string;
+  expires_at: string | null;
+  branding?: DrivePublicBranding;
+}
+
+export interface DrivePublicShareMeta {
+  label: string;
+  permission: "view_download" | "view_only";
+  allow_zip_download: boolean;
+  allow_neac_verify: boolean;
+  include_subfolders: boolean;
+  expires_at: string | null;
+  max_views: number | null;
+  view_count: number;
+}
+
+export interface DrivePublicUnlockedResponse {
+  locked: false;
+  has_passcode: boolean;
+  share: DrivePublicShareMeta;
+  branding?: DrivePublicBranding;
+  folder: DriveFolderSummary;
+  breadcrumbs: DriveBreadcrumb[];
+  subfolders: DriveFolderSummary[];
+  items: DriveItem[];
+  stats: DriveFolderStats;
+  telemetry_nonce?: string;
+}
+
+export type DrivePublicResponse = DrivePublicLockedResponse | DrivePublicUnlockedResponse;
+
+export interface DriveNeacVerifyResponse {
+  ok: boolean;
+  item_id?: number;
+  doc_label?: string;
+  internal_verification?: {
+    valid: boolean;
+    signatures: SignatureReport[];
+  };
+  neac_result?: {
+    signature?: {
+      data?: Array<{
+        signer?: { cn?: string; o?: string };
+        issuer?: { cn?: string; o?: string };
+        signedTime?: string;
+        ocsp?: string;
+        [key: string]: unknown;
+      }>;
+    };
+    [key: string]: unknown;
+  } | null;
+  verified_at?: string;
+  neac_portal_url?: string;
 }

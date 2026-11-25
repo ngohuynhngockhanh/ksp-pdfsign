@@ -1848,6 +1848,150 @@ class ServiceApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+# ---------------------------------------------------------------------------
+# Drive / Thu muc chia se ho so (Google Drive-style Folder & Share)
+# ---------------------------------------------------------------------------
+class Folder(Base):
+    """Cay thu muc phan cap gom ho so ky so & media nghiem thu (toi da 5 cap)."""
+
+    __tablename__ = "folders"
+    __table_args__ = (
+        UniqueConstraint("parent_id", "slug", name="uq_folders_parent_slug"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("folders.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    root_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    slug: Mapped[str] = mapped_column(String(160), default="")
+    name: Mapped[str] = mapped_column(String(255))
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_name: Mapped[str] = mapped_column(String(255), default="")
+    project_code: Mapped[str] = mapped_column(String(80), default="", index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    cover_meta: Mapped[str] = mapped_column(Text, default="{}")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    customer: Mapped["Customer | None"] = relationship()
+    order: Mapped["Order | None"] = relationship()
+
+
+class FolderItem(Base):
+    """Muc trong thu muc Drive: tham chieu Document co san hoac asset doc lap (anh/video/tai lieu)."""
+
+    __tablename__ = "folder_items"
+    __table_args__ = (
+        Index("ix_folder_items_folder_sort", "folder_id", "sort_order", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int] = mapped_column(
+        ForeignKey("folders.id", ondelete="CASCADE"), index=True
+    )
+    item_kind: Mapped[str] = mapped_column(String(20), default="asset")  # document | asset
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    storage_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    thumb_doc_id: Mapped[str] = mapped_column(String(64), default="")
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    original_filename: Mapped[str] = mapped_column(String(255), default="")
+    section_tag: Mapped[str] = mapped_column(String(64), default="", index=True)
+    mime_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    file_ext: Mapped[str] = mapped_column(String(16), default="")
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    media_meta_json: Mapped[str] = mapped_column(Text, default="{}")
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    folder: Mapped["Folder"] = relationship()
+    document: Mapped["Document | None"] = relationship()
+
+
+class FolderShare(Base):
+    """Link chia se cong khai thu muc Drive (/d/{token}) kem passcode, phan quyen, thu hoi."""
+
+    __tablename__ = "folder_shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int] = mapped_column(
+        ForeignKey("folders.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(150), default="")
+    passcode_hash: Mapped[str] = mapped_column(String(255), default="")
+    permission: Mapped[str] = mapped_column(String(30), default="view_download")  # view_only | view_download
+    allow_zip_download: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_neac_verify: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_subfolders: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_telegram: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    max_views: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    folder: Mapped["Folder"] = relationship()
+
+
+class FolderAccessLog(Base):
+    """Nhat ky truy cap & bang chung ban giao cho thu muc Drive."""
+
+    __tablename__ = "folder_access_logs"
+    __table_args__ = (
+        Index("ix_folder_access_folder_created", "folder_id", "created_at"),
+        Index("ix_folder_access_share_action_created", "share_id", "action", "created_at"),
+        Index("ix_folder_access_ip_share_created", "ip", "share_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    folder_id: Mapped[int] = mapped_column(
+        ForeignKey("folders.id", ondelete="CASCADE"), index=True
+    )
+    share_id: Mapped[int | None] = mapped_column(
+        ForeignKey("folder_shares.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("folder_items.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(40), default="")
+    item_name: Mapped[str] = mapped_column(String(255), default="")
+    ip: Mapped[str] = mapped_column(String(45), default="")
+    city: Mapped[str] = mapped_column(String(100), default="")
+    region: Mapped[str] = mapped_column(String(100), default="")
+    isp: Mapped[str] = mapped_column(String(200), default="")
+    country_code: Mapped[str] = mapped_column(String(5), default="")
+    device_type: Mapped[str] = mapped_column(String(20), default="")
+    user_agent_hash: Mapped[str] = mapped_column(String(64), default="")
+    fingerprint_hash: Mapped[str] = mapped_column(String(64), default="")
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
 _engine = None
 _SessionLocal = None
 
