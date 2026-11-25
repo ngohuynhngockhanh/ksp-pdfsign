@@ -1404,15 +1404,23 @@ def public_unlock_drive(
 
     if not verify_password(body.passcode, share.passcode_hash):
         remaining = drive.record_passcode_failure(client_ip, token)
+        geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
         drive.record_access_log(
             db,
             settings,
             folder_id=share.folder_id,
             share=share,
             action="passcode_fail",
-            ip=client_ip,
+            ip=geo["ip"],
             rate_limit_ip=client_ip,
+            city=geo["city"],
+            region=geo["region"],
+            isp=geo["isp"],
+            country_code=geo["country_code"],
+            device_type=geo["device_type"],
             user_agent=ua,
+            fingerprint_hash=geo["fingerprint_hash"],
+            allow_notify=True,
         )
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1427,16 +1435,23 @@ def public_unlock_drive(
         )
 
     drive.clear_passcode_failures(client_ip, token)
+    geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
     drive.record_access_log(
         db,
         settings,
         folder_id=share.folder_id,
         share=share,
         action="passcode_ok",
-        ip=client_ip,
+        ip=geo["ip"],
         rate_limit_ip=client_ip,
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
         user_agent=ua,
-        allow_notify=False,
+        fingerprint_hash=geo["fingerprint_hash"],
+        allow_notify=True,
     )
     jwt_val = drive.mint_unlock_cookie_token(share, settings)
     is_https = (
@@ -1468,7 +1483,27 @@ def public_get_subfolder(
     _require_public_unlocked(request, share, settings)
     target = drive.resolve_authorized_folder(db, share, sub_id)
     share.last_accessed_at = drive.utc_now().replace(tzinfo=None)
-    db.commit()
+    client_ip = drive.extract_client_ip(request)
+    ua = request.headers.get("user-agent", "")
+    geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
+    drive.record_access_log(
+        db,
+        settings,
+        folder_id=target.id,
+        share=share,
+        action="subfolder_open",
+        item_name=target.name,
+        ip=geo["ip"],
+        rate_limit_ip=client_ip,
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
+        user_agent=ua,
+        fingerprint_hash=geo["fingerprint_hash"],
+        allow_notify=True,
+    )
     return _render_public_folder_payload(db, request, share, target, settings)
 
 
@@ -1489,6 +1524,8 @@ def public_view_item(
     range_hdr = (request.headers.get("range") or "").strip().lower()
     if not range_hdr or range_hdr.startswith("bytes=0-"):
         client_ip = drive.extract_client_ip(request)
+        ua = request.headers.get("user-agent", "")
+        geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
         act = "video_play" if item.file_ext.lower() == ".mp4" else "item_view"
         drive.record_access_log(
             db,
@@ -1498,10 +1535,16 @@ def public_view_item(
             action=act,
             item_id=item.id,
             item_name=item.display_name,
-            ip=client_ip,
+            ip=geo["ip"],
             rate_limit_ip=client_ip,
-            user_agent=request.headers.get("user-agent", ""),
-            allow_notify=False,
+            city=geo["city"],
+            region=geo["region"],
+            isp=geo["isp"],
+            country_code=geo["country_code"],
+            device_type=geo["device_type"],
+            user_agent=ua,
+            fingerprint_hash=geo["fingerprint_hash"],
+            allow_notify=True,
         )
 
     tok_q = quote(token, safe="")
@@ -1549,6 +1592,8 @@ def public_download_item(
         )
     item, _folder = drive.resolve_authorized_item(db, share, item_id)
     client_ip = drive.extract_client_ip(request)
+    ua = request.headers.get("user-agent", "")
+    geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
     drive.record_access_log(
         db,
         settings,
@@ -1557,9 +1602,15 @@ def public_download_item(
         action="item_download",
         item_id=item.id,
         item_name=item.display_name,
-        ip=client_ip,
+        ip=geo["ip"],
         rate_limit_ip=client_ip,
-        user_agent=request.headers.get("user-agent", ""),
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
+        user_agent=ua,
+        fingerprint_hash=geo["fingerprint_hash"],
         allow_notify=True,
     )
     tok_q = quote(token, safe="")
@@ -1637,6 +1688,8 @@ def public_verify_item_neac(
     except Exception:
         pass
 
+    ua = request.headers.get("user-agent", "")
+    geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
     drive.record_access_log(
         db,
         settings,
@@ -1645,9 +1698,15 @@ def public_verify_item_neac(
         action="item_neac",
         item_id=item.id,
         item_name=item.display_name,
-        ip=client_ip,
+        ip=geo["ip"],
         rate_limit_ip=client_ip,
-        user_agent=request.headers.get("user-agent", ""),
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
+        user_agent=ua,
+        fingerprint_hash=geo["fingerprint_hash"],
         allow_notify=True,
     )
 
@@ -1701,6 +1760,8 @@ def public_download_zip(
     zip_name = f"{storage_drive.sanitize_zip_segment(target_folder.name, 'bo-ho-so')}.zip"
 
     client_ip = drive.extract_client_ip(request)
+    ua = request.headers.get("user-agent", "")
+    geo = drive.enrich_geo_from_cache(share.id, client_ip, ua)
     drive.record_access_log(
         db,
         settings,
@@ -1708,9 +1769,15 @@ def public_download_zip(
         share=share,
         action="zip_download",
         item_name=f"{zip_name} ({file_count} tệp)",
-        ip=client_ip,
+        ip=geo["ip"],
         rate_limit_ip=client_ip,
-        user_agent=request.headers.get("user-agent", ""),
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
+        user_agent=ua,
+        fingerprint_hash=geo["fingerprint_hash"],
         allow_notify=True,
     )
 
@@ -1773,6 +1840,7 @@ def public_drive_telemetry(
 
     allowed_actions = {
         "folder_open",
+        "subfolder_open",
         "item_view",
         "item_download",
         "item_neac",
@@ -1781,7 +1849,38 @@ def public_drive_telemetry(
     }
     act = body.action if body.action in allowed_actions else "folder_open"
     server_ip = drive.extract_client_ip(request)
-    client_geo_ip = (body.ip or "").strip()[:45] or server_ip
+    raw_client_ip = (body.ip or "").strip()[:45]
+    clean_city = (body.city or "").strip()[:100]
+    clean_region = (body.region or "").strip()[:100]
+    clean_isp = (body.isp or "").strip()[:200]
+    clean_cc = (body.country_code or "").strip()[:5]
+    clean_device = (body.device_type or "").strip()[:20]
+    clean_fp = (body.fingerprint or "").strip()[:64]
+
+    drive.cache_visitor_geo(
+        share.id,
+        server_ip,
+        ua,
+        ip=raw_client_ip,
+        city=clean_city,
+        region=clean_region,
+        isp=clean_isp,
+        country_code=clean_cc,
+        device_type=clean_device,
+        fingerprint_hash=clean_fp,
+    )
+    geo = drive.enrich_geo_from_cache(
+        share.id,
+        server_ip,
+        ua,
+        ip=raw_client_ip,
+        city=clean_city,
+        region=clean_region,
+        isp=clean_isp,
+        country_code=clean_cc,
+        device_type=clean_device,
+        fingerprint_hash=clean_fp,
+    )
 
     drive.record_access_log(
         db,
@@ -1791,15 +1890,15 @@ def public_drive_telemetry(
         action=act,
         item_id=valid_item_id,
         item_name=item_name,
-        ip=client_geo_ip,
+        ip=geo["ip"],
         rate_limit_ip=server_ip,
-        city=(body.city or "").strip()[:100],
-        region=(body.region or "").strip()[:100],
-        isp=(body.isp or "").strip()[:200],
-        country_code=(body.country_code or "").strip()[:5],
-        device_type=(body.device_type or "").strip()[:20],
+        city=geo["city"],
+        region=geo["region"],
+        isp=geo["isp"],
+        country_code=geo["country_code"],
+        device_type=geo["device_type"],
         user_agent=ua,
-        fingerprint_hash=(body.fingerprint or "").strip()[:64],
+        fingerprint_hash=geo["fingerprint_hash"],
         allow_notify=True,
     )
     next_nonce = drive.generate_telemetry_nonce(

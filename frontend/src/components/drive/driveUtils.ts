@@ -264,6 +264,7 @@ export async function firePublicDriveTelemetry(
 
 export const DRIVE_ACCESS_ACTION_LABEL: Record<string, { label: string; tone: StatusBadgeTone }> = {
   folder_open: { label: "Mở thư mục", tone: "info" },
+  subfolder_open: { label: "Mở thư mục con", tone: "info" },
   passcode_ok: { label: "Mở khóa PIN", tone: "success" },
   passcode_fail: { label: "Sai mã PIN", tone: "danger" },
   item_view: { label: "Xem tệp", tone: "brand" },

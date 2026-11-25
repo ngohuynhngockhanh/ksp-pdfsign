@@ -811,3 +811,260 @@ def test_qr_neac_telemetry_csv_redirect_csp_and_legacy_compat(client, monkeypatc
     img_pub = anon.get(f"/api/share/{img_share}/view")
     assert img_pub.status_code == 200
     assert img_pub.headers["content-type"] == "image/png"
+
+
+# ---------------------------------------------------------------------------
+# 8. Per-File, Video, Subfolder Telegram Tracking, GeoIP Enrichment & Burst Cap
+# ---------------------------------------------------------------------------
+def test_per_file_video_subfolder_telegram_tracking_and_geo_enrichment(client, monkeypatch):
+    _login(client)
+
+    # Intercept Telegram enqueues so tests stay 100% offline & deterministic
+    enqueued: list[tuple[int, int, int]] = []
+    monkeypatch.setattr(
+        drive_mod,
+        "_enqueue_drive_telegram",
+        lambda settings, log_id, folder_id, share_id: enqueued.append((log_id, folder_id, share_id)),
+    )
+
+    root = client.post(
+        "/api/drive/folders",
+        json={
+            "name": "Việt Hùng Power — Hồ sơ nghiệm thu 16 trạm",
+            "customer_name": "CÔNG TY CỔ PHẦN VIỆT HÙNG POWER",
+            "preset": "solar_handover",
+        },
+    ).json()
+    root_id = root["folder"]["id"]
+    sec1_id = root["subfolders"][0]["id"]  # 01_Hop_Dong_Va_Phap_Ly
+    sec2_id = root["subfolders"][1]["id"]  # 02_Bao_Cao_Va_Bien_Ban_Nghiem_Thu_16_Tram
+    sec4_id = root["subfolders"][3]["id"]  # 04_Video_Nghiem_Thu
+
+    item_a = client.post(
+        f"/api/drive/folders/{sec1_id}/upload",
+        files={"files": ("HopDong_A.pdf", PDF, "application/pdf")},
+    ).json()["items"][0]
+    item_b = client.post(
+        f"/api/drive/folders/{sec2_id}/upload",
+        files={"files": ("BienBan_B.pdf", PDF, "application/pdf")},
+    ).json()["items"][0]
+    mp4_bytes = _make_mp4(16 * 1024)
+    item_vid = client.post(
+        f"/api/drive/folders/{sec4_id}/upload",
+        files={"files": ("NghiemThu_16Tram.mp4", mp4_bytes, "video/mp4")},
+    ).json()["items"][0]
+
+    sh = client.post(
+        f"/api/drive/folders/{root_id}/shares",
+        json={"label": "Hồ sơ nghiệm thu 16 trạm", "notify_telegram": True},
+    ).json()
+    tok = sh["token"]
+    share_id = sh["id"]
+
+    anon = _anon()
+    ua_mobile = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148"
+
+    # 1. Open root & fire browser GeoIP telemetry -> caches GeoIP for subsequent server-side actions
+    r_root = anon.get(f"/api/public/drive/{tok}", headers={"User-Agent": ua_mobile})
+    assert r_root.status_code == 200
+    nonce = r_root.json()["telemetry_nonce"]
+    t_open = anon.post(
+        f"/api/public/drive/{tok}/telemetry",
+        json={
+            "nonce": nonce,
+            "action": "folder_open",
+            "ip": "113.160.22.88",
+            "city": "Thanh Hoa",
+            "region": "Thanh Hoa",
+            "isp": "VNPT Corp",
+            "country_code": "VN",
+            "device_type": "mobile",
+            "fingerprint": "fp_vhp_001",
+        },
+        headers={"User-Agent": ua_mobile},
+    )
+    assert t_open.status_code == 200
+    assert len(enqueued) == 1  # folder_open
+
+    # 2. Open subfolder A & subfolder B -> both log subfolder_open and trigger Telegram; repeat A deduped!
+    assert anon.get(f"/api/public/drive/{tok}/folders/{sec1_id}", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 2
+    assert anon.get(f"/api/public/drive/{tok}/folders/{sec1_id}", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 2  # same subfolder within 5 min deduped
+    assert anon.get(f"/api/public/drive/{tok}/folders/{sec2_id}", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 3  # distinct subfolder B notifies immediately!
+
+    # 3. Distinct item_view on File A and File B BOTH trigger Telegram; duplicate File A within 5 min deduped!
+    assert anon.get(f"/api/public/drive/{tok}/items/{item_a['id']}/view", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 4
+    view_a_log_id = enqueued[-1][0]
+
+    assert anon.get(f"/api/public/drive/{tok}/items/{item_a['id']}/view", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 4  # duplicate view on File A within 5 min deduped
+
+    assert anon.get(f"/api/public/drive/{tok}/items/{item_b['id']}/view", headers={"User-Agent": ua_mobile}).status_code == 200
+    assert len(enqueued) == 5  # distinct File B notifies immediately!
+
+    # 4. video_play on MP4: Range bytes=0- notifies once; mid-stream bytes=100- does NOT log or notify!
+    r_vid0 = anon.get(
+        f"/api/public/drive/{tok}/items/{item_vid['id']}/view",
+        headers={"User-Agent": ua_mobile, "Range": "bytes=0-1023"},
+    )
+    assert r_vid0.status_code == 206
+    assert len(enqueued) == 6
+    vid_log_id = enqueued[-1][0]
+
+    r_vid_seek = anon.get(
+        f"/api/public/drive/{tok}/items/{item_vid['id']}/view",
+        headers={"User-Agent": ua_mobile, "Range": "bytes=100-2047"},
+    )
+    assert r_vid_seek.status_code == 206
+    assert len(enqueued) == 6  # mid-stream seek does not notify
+
+    # Re-requesting bytes=0- within 5 min is deduped by per-item video_play cooldown
+    r_vid_again = anon.get(
+        f"/api/public/drive/{tok}/items/{item_vid['id']}/view",
+        headers={"User-Agent": ua_mobile, "Range": "bytes=0-1023"},
+    )
+    assert r_vid_again.status_code == 206
+    assert len(enqueued) == 6
+
+    # 5. Download File A -> notifies immediately AND inherits cached GeoIP!
+    r_dl = anon.get(
+        f"/api/public/drive/{tok}/items/{item_a['id']}/download",
+        headers={"User-Agent": ua_mobile},
+    )
+    assert r_dl.status_code == 200
+    assert len(enqueued) == 7
+    dl_log_id = enqueued[-1][0]
+
+    # Verify DB rows for subfolder_open, item_view, video_play, and item_download inherited GeoIP
+    logs = client.get(f"/api/drive/folders/{root_id}/access-logs", params={"page_size": 100}).json()["items"]
+    by_id = {row["id"]: row for row in logs}
+
+    # Mid-stream seek must not have inserted a second video_play row (only bytes=0- rows)
+    video_rows = [r for r in logs if r["action"] == "video_play"]
+    assert len(video_rows) == 2  # initial bytes=0- (notified=True) + replay bytes=0- (notified=False); bytes=100- skipped!
+    assert sum(1 for r in video_rows if r["notified"]) == 1
+
+    for lid, expected_action in [
+        (enqueued[1][0], "subfolder_open"),
+        (view_a_log_id, "item_view"),
+        (vid_log_id, "video_play"),
+        (dl_log_id, "item_download"),
+    ]:
+        row = by_id[lid]
+        assert row["action"] == expected_action
+        assert row["notified"] is True
+        assert row["ip"] == "113.160.22.88"
+        assert row["city"] == "Thanh Hoa"
+        assert row["region"] == "Thanh Hoa"
+        assert row["isp"] == "VNPT Corp"
+        assert row["country_code"] == "VN"
+        assert row["device_type"] == "mobile"
+
+    # 6. Render actual Telegram alert HTML for item_view and subfolder_open using mocked TelegramClient
+    from app import telegram as tg_mod
+
+    sent_messages: list[tuple[str, str, str]] = []
+
+    class _FakeTgClient:
+        def __init__(self, settings):
+            pass
+
+        def send_message(self, chat_id: str, text: str, parse_mode: str = "HTML"):
+            sent_messages.append((chat_id, text, parse_mode))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(tg_mod, "TelegramClient", _FakeTgClient)
+    monkeypatch.setattr(tg_mod, "admin_chat_ids", lambda db: ["999000111"])
+
+    settings = get_settings()
+    drive_mod._send_drive_telegram_alert(settings, view_a_log_id, sec1_id, share_id)
+    drive_mod._send_drive_telegram_alert(settings, enqueued[1][0], sec1_id, share_id)
+    drive_mod._send_drive_telegram_alert(settings, vid_log_id, sec4_id, share_id)
+
+    assert len(sent_messages) == 3
+    view_msg = sent_messages[0][1]
+    assert "👁️ <b>[Drive] Đang xem tệp</b>" in view_msg
+    assert "Việt Hùng Power — Hồ sơ nghiệm thu 16 trạm" in view_msg
+    assert "01_Hop_Dong_Va_Phap_Ly" in view_msg
+    assert "CÔNG TY CỔ PHẦN VIỆT HÙNG POWER" in view_msg
+    assert "HopDong_A.pdf" in view_msg
+    assert "113.160.22.88" in view_msg
+    assert "Thanh Hoa · Thanh Hoa · VNPT Corp" in view_msg
+    assert "📱 Mobile" in view_msg
+    assert "Mở quản trị Drive KSP" in view_msg
+
+    sub_msg = sent_messages[1][1]
+    assert "📁 <b>[Drive] Mở thư mục con</b>" in sub_msg
+    assert "01_Hop_Dong_Va_Phap_Ly" in sub_msg
+
+    vid_msg = sent_messages[2][1]
+    assert "🎬 <b>[Drive] Đang phát video</b>" in vid_msg
+    assert "NghiemThu_16Tram.mp4" in vid_msg
+
+
+def test_per_ip_burst_cap_allows_up_to_25_distinct_files(client, monkeypatch):
+    _login(client)
+    enqueued: list[tuple[int, int, int]] = []
+    monkeypatch.setattr(
+        drive_mod,
+        "_enqueue_drive_telegram",
+        lambda settings, log_id, folder_id, share_id: enqueued.append((log_id, folder_id, share_id)),
+    )
+
+    fid = client.post("/api/drive/folders", json={"name": "Burst Cap Folder"}).json()["folder"]["id"]
+    item_ids: list[int] = []
+    for idx in range(27):
+        up = client.post(
+            f"/api/drive/folders/{fid}/upload",
+            files={"files": (f"doc_{idx:02d}.pdf", PDF, "application/pdf")},
+        )
+        assert up.status_code == 200, up.text
+        item_ids.append(up.json()["items"][0]["id"])
+
+    sh = client.post(
+        f"/api/drive/folders/{fid}/shares",
+        json={"label": "Burst Test", "notify_telegram": True},
+    ).json()
+    tok = sh["token"]
+    anon = _anon()
+
+    for iid in item_ids:
+        r = anon.get(f"/api/public/drive/{tok}/items/{iid}/view")
+        assert r.status_code == 200
+
+    # Must allow >3 distinct files (specifically up to 25 per 10-min burst window) and cap at 25
+    assert len(enqueued) == 25
+
+
+def test_passcode_ok_and_fail_notify_telegram(client, monkeypatch):
+    _login(client)
+    enqueued: list[tuple[int, int, int]] = []
+    monkeypatch.setattr(
+        drive_mod,
+        "_enqueue_drive_telegram",
+        lambda settings, log_id, folder_id, share_id: enqueued.append((log_id, folder_id, share_id)),
+    )
+
+    fid = client.post("/api/drive/folders", json={"name": "PIN Notify Folder"}).json()["folder"]["id"]
+    sh = client.post(
+        f"/api/drive/folders/{fid}/shares",
+        json={"label": "PIN Test", "passcode": "VHP2026!", "notify_telegram": True},
+    ).json()
+    tok = sh["token"]
+    anon = _anon()
+
+    assert anon.post(f"/api/public/drive/{tok}/unlock", json={"passcode": "WRONG"}).status_code == 401
+    assert len(enqueued) == 1
+
+    assert anon.post(f"/api/public/drive/{tok}/unlock", json={"passcode": "VHP2026!"}).status_code == 200
+    assert len(enqueued) == 2
+
+    logs = client.get(f"/api/drive/folders/{fid}/access-logs").json()["items"]
+    actions_notified = {(row["action"], row["notified"]) for row in logs}
+    assert ("passcode_fail", True) in actions_notified
+    assert ("passcode_ok", True) in actions_notified

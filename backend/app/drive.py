@@ -81,19 +81,42 @@ _nonce_lock = threading.Lock()
 _used_nonces: dict[str, float] = {}
 _last_nonce_cleanup = 0.0
 
-# Telegram notification cooldown: 10 min per (IP, share_id) for open/view, max 3/10min per IP
-_TG_COOLDOWN_SECONDS = 600.0
-_TG_MAX_PER_IP = 3
+# Telegram notification cooldown & burst cap:
+# - 300s (5 min) per (IP, share_id, action, folder_id) for folder_open / subfolder_open
+# - 300s (5 min) per (IP, share_id, action, item_id) for item_view / video_play
+# - Download, NEAC, passcode events notify immediately (bounded by per-IP burst cap)
+# - Per-IP 10-min burst cap: 25 alerts so full customer browsing reports without spam flood
+_TG_COOLDOWN_SECONDS = 300.0
+_TG_BURST_WINDOW = 600.0
+_TG_MAX_PER_IP = 25
+_TG_NOTIFY_ACTIONS = frozenset(
+    {
+        "folder_open",
+        "subfolder_open",
+        "item_view",
+        "video_play",
+        "item_download",
+        "zip_download",
+        "item_neac",
+        "passcode_fail",
+        "passcode_ok",
+    }
+)
 _tg_lock = threading.Lock()
 _tg_cooldown: dict[str, float] = {}
 _tg_ip_counts: dict[str, list[float]] = {}
 _tg_executor: ThreadPoolExecutor | None = None
 
+# GeoIP session enrichment cache: 30-min TTL keyed by (share_id, server_ip, ua_hash_short(ua))
+_GEO_CACHE_TTL_SECONDS = 1800.0
+_geo_lock = threading.Lock()
+_geo_cache: dict[tuple[int, str, str], tuple[float, dict[str, str]]] = {}
+
 _SLUG_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 
 def reset_runtime_caches_for_tests() -> None:
-    """Clear in-memory rate-limit/nonce caches for isolated unit tests."""
+    """Clear in-memory rate-limit/nonce/geo caches for isolated unit tests."""
     with _passcode_lock:
         _passcode_failures.clear()
     with _neac_lock:
@@ -103,6 +126,8 @@ def reset_runtime_caches_for_tests() -> None:
     with _tg_lock:
         _tg_cooldown.clear()
         _tg_ip_counts.clear()
+    with _geo_lock:
+        _geo_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1245,19 +1270,125 @@ def verify_telemetry_nonce(
     return True
 
 
-def _should_notify_telegram(ip: str, share_id: int, action: str) -> bool:
+def cache_visitor_geo(
+    share_id: int,
+    server_ip: str,
+    ua: str,
+    *,
+    ip: str = "",
+    city: str = "",
+    region: str = "",
+    isp: str = "",
+    country_code: str = "",
+    device_type: str = "",
+    fingerprint_hash: str = "",
+) -> None:
+    """Cache browser-resolved GeoIP snapshot for 30 min so server-side endpoints inherit it."""
+    key = (int(share_id), (server_ip or "").strip()[:45], ua_hash_short(ua))
+    now = time.monotonic()
+    snapshot = {
+        "ip": (ip or "").strip()[:45],
+        "city": (city or "").strip()[:100],
+        "region": (region or "").strip()[:100],
+        "isp": (isp or "").strip()[:200],
+        "country_code": (country_code or "").strip()[:5],
+        "device_type": (device_type or "").strip()[:20],
+        "fingerprint_hash": (fingerprint_hash or "").strip()[:64],
+    }
+    with _geo_lock:
+        if len(_geo_cache) > 5000:
+            stale = [k for k, (exp, _) in _geo_cache.items() if exp < now]
+            for k in stale:
+                _geo_cache.pop(k, None)
+        prev = _geo_cache.get(key)
+        merged: dict[str, str] = {}
+        if prev is not None and prev[0] >= now:
+            merged.update(prev[1])
+        for field, val in snapshot.items():
+            if val:
+                merged[field] = val
+        if merged:
+            _geo_cache[key] = (now + _GEO_CACHE_TTL_SECONDS, merged)
+
+
+def enrich_geo_from_cache(
+    share_id: int,
+    server_ip: str,
+    ua: str,
+    *,
+    ip: str = "",
+    city: str = "",
+    region: str = "",
+    isp: str = "",
+    country_code: str = "",
+    device_type: str = "",
+    fingerprint_hash: str = "",
+) -> dict[str, str]:
+    """Attach cached browser GeoIP + device + fingerprint onto server-side Drive requests."""
+    clean_server_ip = (server_ip or "").strip()[:45]
+    key = (int(share_id), clean_server_ip, ua_hash_short(ua))
+    now = time.monotonic()
+    cached: dict[str, str] = {}
+    with _geo_lock:
+        entry = _geo_cache.get(key)
+        if entry is not None:
+            exp, data = entry
+            if exp >= now:
+                cached = dict(data)
+            else:
+                _geo_cache.pop(key, None)
+
+    resolved_ip = (ip or "").strip()[:45] or cached.get("ip") or clean_server_ip
+    resolved_device = (
+        (device_type or "").strip()[:20]
+        or cached.get("device_type")
+        or ("mobile" if is_mobile_ua(ua) else "desktop")
+    )
+    return {
+        "ip": resolved_ip,
+        "city": (city or "").strip()[:100] or cached.get("city", ""),
+        "region": (region or "").strip()[:100] or cached.get("region", ""),
+        "isp": (isp or "").strip()[:200] or cached.get("isp", ""),
+        "country_code": (country_code or "").strip()[:5] or cached.get("country_code", ""),
+        "device_type": resolved_device,
+        "fingerprint_hash": (fingerprint_hash or "").strip()[:64] or cached.get("fingerprint_hash", ""),
+    }
+
+
+def _should_notify_telegram(
+    ip: str,
+    share_id: int,
+    action: str,
+    *,
+    folder_id: int = 0,
+    item_id: int | None = None,
+) -> bool:
     now = time.monotonic()
     with _tg_lock:
-        ip_hits = [t for t in _tg_ip_counts.get(ip, []) if now - t < _TG_COOLDOWN_SECONDS]
+        ip_hits = [t for t in _tg_ip_counts.get(ip, []) if now - t < _TG_BURST_WINDOW]
         if len(ip_hits) >= _TG_MAX_PER_IP:
+            _tg_ip_counts[ip] = ip_hits
             return False
 
-        if action in {"folder_open", "item_view", "video_play"}:
-            key = f"{ip}:{share_id}:{action}"
-            last = _tg_cooldown.get(key, 0.0)
-            if now - last < _TG_COOLDOWN_SECONDS:
+        if action in {"folder_open", "subfolder_open"}:
+            key = f"{ip}:{share_id}:{action}:{folder_id}"
+            last = _tg_cooldown.get(key)
+            if last is not None and (now - last) < _TG_COOLDOWN_SECONDS:
+                _tg_ip_counts[ip] = ip_hits
                 return False
             _tg_cooldown[key] = now
+        elif action in {"item_view", "video_play"}:
+            key = f"{ip}:{share_id}:{action}:{item_id or 0}"
+            last = _tg_cooldown.get(key)
+            if last is not None and (now - last) < _TG_COOLDOWN_SECONDS:
+                _tg_ip_counts[ip] = ip_hits
+                return False
+            _tg_cooldown[key] = now
+
+        if len(_tg_cooldown) > 5000:
+            stale = [k for k, ts in _tg_cooldown.items() if now - ts >= _TG_COOLDOWN_SECONDS]
+            for k in stale:
+                _tg_cooldown.pop(k, None)
 
         ip_hits.append(now)
         _tg_ip_counts[ip] = ip_hits
@@ -1307,10 +1438,16 @@ def record_access_log(
         allow_notify
         and share is not None
         and share.notify_telegram
-        and action in {"folder_open", "item_download", "zip_download", "item_neac", "passcode_fail"}
+        and action in _TG_NOTIFY_ACTIONS
     ):
         cooldown_ip = (rate_limit_ip or ip or "unknown").strip()
-        if _should_notify_telegram(cooldown_ip, share.id, action):
+        if _should_notify_telegram(
+            cooldown_ip,
+            share.id,
+            action,
+            folder_id=folder_id,
+            item_id=item_id,
+        ):
             should_tg = True
             log_row.notified = True
 
@@ -1351,39 +1488,82 @@ def _send_drive_telegram_alert(settings: Settings, log_id: int, folder_id: int, 
         if not log_row or not folder:
             return
 
-        action_map = {
-            "folder_open": "Mở thư mục Drive",
-            "item_view": "Xem tệp trong Drive",
-            "item_download": "Tải xuống tệp",
-            "zip_download": "Tải toàn bộ (.zip)",
-            "item_neac": "Thẩm định chữ ký số NEAC",
-            "passcode_fail": "Nhập sai mã truy cập",
+        action_headers = {
+            "folder_open": "📂 <b>[Drive] Đang mở thư mục</b>",
+            "subfolder_open": "📁 <b>[Drive] Mở thư mục con</b>",
+            "item_view": "👁️ <b>[Drive] Đang xem tệp</b>",
+            "video_play": "🎬 <b>[Drive] Đang phát video</b>",
+            "item_download": "⬇️ <b>[Drive] Tải xuống tệp</b>",
+            "zip_download": "📦 <b>[Drive] Tải toàn bộ (.zip)</b>",
+            "item_neac": "🏛️ <b>[Drive] Thẩm định chữ ký số NEAC</b>",
+            "passcode_ok": "🔓 <b>[Drive] Mở khóa mã PIN thành công</b>",
+            "passcode_fail": "⚠️ <b>[Drive] Nhập sai mã PIN</b>",
         }
-        act_label = action_map.get(log_row.action, log_row.action)
+        header = action_headers.get(
+            log_row.action, f"📂 <b>[Drive] {_esc_html(log_row.action)}</b>"
+        )
+
+        root_folder = share.folder if (share and share.folder is not None) else folder
+        customer_name = (
+            folder.customer_name
+            or root_folder.customer_name
+            or (root_folder.customer.name if root_folder.customer else "")
+        )
+
         lines = [
-            f"<b>[Drive] {_esc_html(act_label)}</b>",
-            f"Thư mục: <b>{_esc_html(folder.name)}</b>",
+            header,
+            f"🗂️ <b>{_esc_html(root_folder.name)}</b>",
         ]
-        if folder.customer_name:
-            lines.append(f"Khách hàng: {_esc_html(folder.customer_name)}")
+        if folder.id != root_folder.id:
+            crumbs = build_breadcrumbs(db, folder, stop_at_folder_id=root_folder.id)
+            sub_path = (
+                " / ".join(c["name"] for c in crumbs[1:])
+                if len(crumbs) > 1
+                else folder.name
+            )
+            lines.append(f"📁 Thư mục con: <b>{_esc_html(sub_path)}</b>")
+        if customer_name:
+            lines.append(f"🏢 {_esc_html(customer_name)}")
         if share and share.label:
-            lines.append(f"Nhãn link: {_esc_html(share.label)}")
-        if log_row.item_name:
-            lines.append(f"Tệp: <b>{_esc_html(log_row.item_name)}</b>")
-        geo = " · ".join(p for p in (log_row.city, log_row.region, log_row.isp) if p)
+            lines.append(f"🏷️ {_esc_html(share.label)}")
+        if log_row.item_name and log_row.action != "subfolder_open":
+            lines.append(f"📄 Tệp: <b>{_esc_html(log_row.item_name)}</b>")
+        elif log_row.item_name and folder.id == root_folder.id:
+            lines.append(f"📁 <b>{_esc_html(log_row.item_name)}</b>")
+
+        lines.append("")
         if log_row.ip:
-            lines.append(f"IP: <b>{_esc_html(log_row.ip)}</b>")
-        if geo:
-            lines.append(f"Vị trí: {_esc_html(geo)} ({_esc_html(log_row.device_type or 'desktop')})")
+            lines.append(f"🌐 IP: <b>{_esc_html(log_row.ip)}</b>")
+
+        geo_parts = [p for p in (log_row.city, log_row.region, log_row.isp) if p]
+        dev_raw = (log_row.device_type or "").strip().lower()
+        device_icon = "📱" if dev_raw == "mobile" else "🖥️"
+        if dev_raw == "mobile":
+            device_label = "Mobile"
+        elif dev_raw == "desktop":
+            device_label = "Desktop"
+        elif log_row.device_type:
+            device_label = log_row.device_type.capitalize()
+        else:
+            device_label = "Desktop"
+
+        if geo_parts:
+            lines.append(
+                f"📍 {_esc_html(' · '.join(geo_parts))} · {device_icon} {_esc_html(device_label)}"
+            )
+        else:
+            lines.append(f"{device_icon} {_esc_html(device_label)}")
+
         ts_str = (
             (_as_utc(log_row.created_at) + timedelta(hours=7)).strftime("%H:%M:%S %d/%m/%Y")
             if log_row.created_at
             else ""
         )
         if ts_str:
-            lines.append(f"Thời gian: {ts_str}")
+            lines.append(f"⏰ {ts_str}")
+        lines.append("")
         base_url = settings.public_base_url.rstrip("/")
-        lines.append(f'<a href="{base_url}/drive">Mở quản trị Drive KSP</a>')
+        lines.append(f'🔗 <a href="{base_url}/drive">Mở quản trị Drive KSP</a>')
 
         body = "\n".join(lines)
         client = TelegramClient(settings)
