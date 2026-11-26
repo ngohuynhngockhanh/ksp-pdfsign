@@ -191,6 +191,10 @@ def test_ci_preview_auth_publish_telegram_and_auto_purge(client, monkeypatch):
     assert f'<img src="/api/public/drive/{token}/items/{img_item["id"]}/view"' in rep_html
     assert f'href="/api/public/drive/{token}/items/{mp4_item["id"]}/view"' in rep_html
     assert f'href="/d/{token}"' in rep_html
+    assert 'class="md-toc-mobile"' in rep_html
+    assert 'class="tb-btn tb-folder"' in rep_html
+    assert "width: 100%;" in rep_html
+    assert "align-items: stretch;" in rep_html
     assert 'src="screenshots/screenshot.png"' not in rep_html
     assert 'href="videos/desktop-flow.mp4"' not in rep_html
 

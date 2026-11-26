@@ -455,6 +455,20 @@ def render_markdown_preview_html(
   </div>
 </aside>"""
     )
+    toc_mobile_html = (
+        ""
+        if print_mode or not parsed["toc"]
+        else f"""
+<details class="md-toc-mobile" id="mdTocMobile">
+  <summary class="md-toc-summary">
+    <span>Mục lục tài liệu ({parsed["section_count"]} mục)</span>
+    <span class="md-toc-chev" aria-hidden="true">▾</span>
+  </summary>
+  <nav class="md-toc-nav md-toc-nav-mobile">
+    {toc_links_html}
+  </nav>
+</details>"""
+    )
 
     actions_html = ""
     if not print_mode:
@@ -473,14 +487,16 @@ def render_markdown_preview_html(
             else ""
         )
         folder_btn = (
-            f'<a class="tb-btn" href="{html.escape(folder_url, quote=True)}" aria-label="Mở thư mục tệp">'
-            f'<span>← Thư mục tệp</span></a>'
+            f'<a class="tb-btn tb-folder" href="{html.escape(folder_url, quote=True)}" aria-label="Quay lại thư mục tệp">'
+            f'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>'
+            f'<span>Thư mục</span></a>'
             if folder_url
             else ""
         )
         actions_html = f"""
 <header class="md-toolbar" aria-label="Thanh công cụ đọc tài liệu Markdown">
   <div class="md-tb-left">
+    {folder_btn}
     <span class="md-format-pill">MARKDOWN · MD</span>
     <h1 class="md-tb-title" title="{safe_title}">{safe_file}</h1>
     <span class="md-tb-meta">{parsed["section_count"]} mục · {parsed["table_count"]} bảng · {parsed["code_count"]} khối mã · ~{parsed["read_min"]} phút đọc</span>
@@ -494,11 +510,10 @@ def render_markdown_preview_html(
       <button type="button" class="tb-zoom-val" id="zoomLabel" data-md-action="zoom-reset" title="Đặt lại 100%" aria-label="Tỷ lệ thu phóng hiện tại">100%</button>
       <button type="button" class="tb-icon" data-md-action="zoom-in" title="Phóng to" aria-label="Phóng to">+</button>
     </div>
-    <button type="button" class="tb-btn" data-md-action="print" aria-label="In tài liệu">
+    <button type="button" class="tb-btn tb-print" data-md-action="print" aria-label="In tài liệu">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span>In</span>
     </button>
-    {folder_btn}
     {pdf_btn}
     {dl_btn}
   </div>
@@ -552,6 +567,14 @@ def render_markdown_preview_html(
   if(searchInput){{
     searchInput.addEventListener('input', function(){{ filterMarkdownSections(searchInput.value); }});
   }}
+  var tocMobile = document.getElementById('mdTocMobile');
+  if(tocMobile){{
+    tocMobile.addEventListener('click', function(ev){{
+      if(ev.target && ev.target.closest && ev.target.closest('a.md-toc-link')){{
+        tocMobile.open = false;
+      }}
+    }});
+  }}
   document.addEventListener('click', function(ev){{
     var target = ev.target && ev.target.closest ? ev.target.closest('[data-md-action],[data-copy-code]') : null;
     if(!target) return;
@@ -600,6 +623,7 @@ html, body {{
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14.5px;
   line-height: 1.62;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
 }}
 .md-toolbar {{
@@ -781,11 +805,17 @@ html, body {{
 }}
 .md-sheet {{
   flex: 1;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   background: var(--panel);
   border: {"0" if print_mode else "1px solid var(--border)"};
   border-radius: {"0" if print_mode else "16px"};
   padding: {"0" if print_mode else "32px 38px 44px"};
+  overflow-wrap: break-word;
+}}
+.md-h1, .md-h2, .md-h3, .md-h4 {{
+  scroll-margin-top: 68px;
   overflow-wrap: break-word;
 }}
 .md-h1 {{
@@ -841,6 +871,7 @@ html, body {{
   padding: 12px 16px;
   background: var(--paper);
   border: 1px solid var(--border-strong);
+  border-left: 3.5px solid var(--primary);
   border-radius: 10px;
   color: var(--ink);
 }}
@@ -859,8 +890,11 @@ html, body {{
   color: #0f3d39;
   padding: 2px 5px;
   border-radius: 5px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }}
 .md-code-card {{
+  max-width: 100%;
   margin: 14px 0 18px;
   border: 1px solid var(--border-strong);
   border-radius: 12px;
@@ -908,6 +942,7 @@ html, body {{
   color: inherit;
 }}
 .md-diagram-card {{
+  max-width: 100%;
   margin: 16px 0 20px;
   padding: 14px;
   background: #fbfdfc;
@@ -917,8 +952,10 @@ html, body {{
 }}
 .md-table-wrap {{
   width: 100%;
+  max-width: 100%;
   margin: 14px 0 20px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
 }}
@@ -963,6 +1000,8 @@ html, body {{
   font-size: 15px;
 }}
 .md-video-card {{
+  width: 100%;
+  max-width: 100%;
   margin: 16px 0 20px;
   border: 1px solid var(--border-strong);
   border-radius: 14px;
@@ -1002,14 +1041,17 @@ html, body {{
   font-size: 12px;
   text-decoration: none !important;
   white-space: nowrap;
+  flex-shrink: 0;
 }}
 .md-video-player {{
   width: 100%;
-  max-height: 70vh;
+  max-height: 62vh;
   display: block;
   background: #0f172a;
 }}
 .md-media-fig {{
+  width: 100%;
+  max-width: 100%;
   margin: 16px 0 22px;
   padding: 12px;
   background: #fbfdfc;
@@ -1018,6 +1060,8 @@ html, body {{
 }}
 .md-media-img {{
   max-width: 100%;
+  max-height: 70vh;
+  width: auto;
   height: auto;
   display: block;
   margin: 0 auto;
@@ -1029,9 +1073,48 @@ html, body {{
   text-align: center;
   font-size: 12.5px;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }}
 .md-file-link {{
   white-space: nowrap;
+}}
+.md-toc-mobile {{
+  display: none;
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}}
+.md-toc-summary {{
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}}
+.md-toc-summary::-webkit-details-marker {{
+  display: none;
+}}
+.md-toc-chev {{
+  font-size: 12px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}}
+.md-toc-mobile[open] .md-toc-chev {{
+  transform: rotate(180deg);
+}}
+.md-toc-nav-mobile {{
+  padding: 4px 10px 12px;
+  border-top: 1px solid var(--border);
+  max-height: 46vh;
+  overflow-y: auto;
 }}
 {pygments_css}
 .md-code-pre .mi, .md-code-pre .m, .md-code-pre .mf, .md-code-pre .mh, .md-code-pre .il, .md-code-pre .mo {{ color: #0b583f !important; font-weight: 600; }}
@@ -1044,27 +1127,43 @@ html, body {{
 @media (max-width: 1080px) {{
   .md-layout {{
     flex-direction: column;
-    padding: 14px 12px 36px;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 10px 36px;
   }}
   .md-toc-sidebar {{
-    width: 100%;
-    position: static;
-    max-height: 240px;
+    display: none;
+  }}
+  .md-toc-mobile {{
+    display: block;
   }}
 }}
 @media (max-width: 760px) {{
-  .md-tb-meta, .md-search-wrap {{ display: none; }}
-  .md-toolbar {{ padding: 8px 10px; flex-wrap: wrap; }}
-  .md-sheet {{ padding: 18px 14px 28px; border-radius: 12px; }}
-  .md-h1 {{ font-size: 18px; }}
-  .md-h2 {{ font-size: 16px; }}
-  .md-h3 {{ font-size: 14.5px; }}
+  .md-tb-meta, .md-search-wrap, .md-zoom-group, .md-format-pill, .tb-print {{ display: none; }}
+  .md-toolbar {{ padding: 8px 10px; gap: 8px; flex-wrap: nowrap; min-height: 48px; }}
+  .md-tb-left {{ gap: 8px; }}
+  .tb-btn {{ height: 32px; padding: 0 9px; font-size: 12px; }}
   .tb-btn span {{ display: none; }}
-  .tb-btn.primary span {{ display: inline; }}
+  .tb-btn.primary span, .tb-btn.tb-folder span {{ display: inline; }}
+  .md-sheet {{ padding: 16px 13px 28px; border-radius: 12px; }}
+  .md-h1 {{ font-size: 18px; margin-bottom: 12px; padding-bottom: 9px; }}
+  .md-h2 {{ font-size: 16px; margin: 22px 0 10px; }}
+  .md-h3 {{ font-size: 14.5px; margin: 18px 0 8px; }}
+  .md-sheet ul, .md-sheet ol {{ padding-left: 18px; }}
+  .md-sheet blockquote {{ padding: 10px 12px; font-size: 13.5px; }}
+  .md-video-card {{ margin: 12px 0 16px; border-radius: 12px; }}
+  .md-video-head {{ padding: 8px 10px; gap: 6px; flex-wrap: nowrap; }}
+  .md-video-badge {{ font-size: 10px; padding: 2px 6px; }}
+  .md-video-title {{ font-size: 12.5px; line-height: 1.35; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+  .md-media-fig {{ padding: 8px; margin: 12px 0 16px; border-radius: 10px; }}
+  .md-media-cap {{ font-size: 11.5px; }}
+  .md-table {{ width: max-content; min-width: 100%; font-size: 12px; }}
+  .md-table th, .md-table td {{ padding: 7px 9px; white-space: nowrap; }}
+  .md-file-link {{ white-space: nowrap; }}
 }}
 @media print {{
   html, body {{ background: #ffffff !important; }}
-  .md-toolbar, .md-toc-sidebar, .md-copy-btn, .md-video-card {{ display: none !important; }}
+  .md-toolbar, .md-toc-sidebar, .md-toc-mobile, .md-copy-btn, .md-video-card {{ display: none !important; }}
   .md-layout {{ padding: 0 !important; display: block !important; max-width: 100% !important; }}
   .md-sheet {{
     width: 100% !important;
@@ -1080,6 +1179,7 @@ html, body {{
 {actions_html}
 <div class="md-layout">
   {toc_aside_html}
+  {toc_mobile_html}
   <main class="md-sheet" id="mdSheet">
     {parsed["body_html"]}
   </main>
