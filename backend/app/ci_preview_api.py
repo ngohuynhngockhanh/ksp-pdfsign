@@ -206,6 +206,7 @@ async def ci_preview_publish(
 
     saved_assets: list[storage_drive.StoredDriveFile] = []
     created_items: list[FolderItem] = []
+    report_item: FolderItem | None = None
     total_bytes = 0
     mp4_count = 0
     img_count = 0
@@ -228,6 +229,7 @@ async def ci_preview_publish(
             offset = sort_offsets.get(base_sort, 0)
             sort_offsets[base_sort] = offset + 1
 
+            is_report_md = stored.file_ext == ".md"
             item = FolderItem(
                 folder_id=folder.id,
                 item_kind="asset",
@@ -244,11 +246,13 @@ async def ci_preview_publish(
                 media_meta_json=drive.dump_json_dict(stored.media_meta),
                 note="",
                 sort_order=base_sort + offset,
-                is_pinned=(stored.file_ext == ".md" and orig_name.upper().startswith("REPORT")),
+                is_pinned=(is_report_md and orig_name.upper().startswith("REPORT")),
                 created_by=created_by_uid,
             )
             db.add(item)
             created_items.append(item)
+            if is_report_md and (report_item is None or item.is_pinned):
+                report_item = item
 
         share = FolderShare(
             folder_id=folder.id,
@@ -284,7 +288,10 @@ async def ci_preview_publish(
         raise
 
     short_path = f"/d/{share.token}"
-    share_url = f"{settings.public_base_url.rstrip('/')}{short_path}"
+    base_pub = settings.public_base_url.rstrip("/")
+    share_url = f"{base_pub}{short_path}"
+    report_path = f"{short_path}/report" if report_item is not None else ""
+    report_url = f"{base_pub}{report_path}" if report_path else ""
 
     telegram_sent = 0
     telegram_error = ""
@@ -299,12 +306,16 @@ async def ci_preview_publish(
                 ]
                 if clean_summary:
                     lines.append(clean_summary)
-                lines.extend(
-                    [
-                        f"🔗 Xem duyệt online: {share_url}",
-                        f"⏳ Tự xóa sau {eff_ttl} ngày ({vn_exp.strftime('%d/%m/%Y %H:%M')})",
-                    ]
-                )
+                if report_url:
+                    lines.extend(
+                        [
+                            f"📄 Báo cáo tổng hợp (Video TTS + Ảnh): {report_url}",
+                            f"📁 Thư mục toàn bộ tệp (.zip): {share_url}",
+                        ]
+                    )
+                else:
+                    lines.append(f"🔗 Xem duyệt online: {share_url}")
+                lines.append(f"⏳ Tự xóa sau {eff_ttl} ngày ({vn_exp.strftime('%d/%m/%Y %H:%M')})")
                 msg_text = "\n".join(lines)
                 tg_client = telegram.TelegramClient(settings)
                 try:
@@ -337,6 +348,8 @@ async def ci_preview_publish(
         "ok": True,
         "share_url": share_url,
         "short_path": short_path,
+        "report_url": report_url,
+        "report_path": report_path,
         "token": share.token,
         "folder_id": folder.id,
         "expires_at": drive.iso_or_none(expires_at),

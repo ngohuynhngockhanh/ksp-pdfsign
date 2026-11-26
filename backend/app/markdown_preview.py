@@ -13,6 +13,7 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
 from pygments import highlight
@@ -225,7 +226,35 @@ def _highlight_code_block(code: str, lang: str) -> str:
     )
 
 
-def render_markdown_body_parts(md_input: bytes | str) -> dict[str, Any]:
+_VID_EXTS = {".mp4", ".webm", ".mov"}
+_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def _resolve_sibling(raw_href: str, sibling_media: dict[str, dict[str, str]] | None) -> dict[str, str] | None:
+    """Resolve relative Drive filename/path against sibling items in the same folder."""
+    if not sibling_media:
+        return None
+    href = html.unescape((raw_href or "").strip())
+    if not href or href.startswith(("#", "/", "//")):
+        return None
+    lower = href.lower()
+    if lower.startswith(("http://", "https://", "mailto:", "tel:", "data:", "javascript:")):
+        return None
+    clean = unquote(href.split("?", 1)[0].split("#", 1)[0]).strip()
+    if not clean or "\\" in clean:
+        return None
+    fname = Path(clean).name.strip().lower()
+    if not fname:
+        return None
+    return sibling_media.get(fname)
+
+
+def render_markdown_body_parts(
+    md_input: bytes | str,
+    *,
+    sibling_media: dict[str, dict[str, str]] | None = None,
+    print_mode: bool = False,
+) -> dict[str, Any]:
     """Phân tích tài liệu Markdown và trả về HTML phần thân + Mục lục + Metadata."""
     if isinstance(md_input, bytes):
         text = md_input.decode("utf-8", errors="replace")
@@ -308,6 +337,69 @@ def render_markdown_body_parts(md_input: bytes | str) -> dict[str, Any]:
 
     body_html = re.sub(r"<h([1-4])>([\s\S]*?)</h\1>", _add_heading_id, body_html)
 
+    if sibling_media:
+        def _replace_video_para(match: re.Match[str]) -> str:
+            sib = _resolve_sibling(match.group(1), sibling_media)
+            if not sib or sib.get("ext", "") not in _VID_EXTS:
+                return match.group(0)
+            safe_url = html.escape(sib["url"], quote=True)
+            label_html = match.group(2)
+            label_plain = html.unescape(re.sub(r"<[^>]+>", "", label_html).strip()) or sib.get("name", "Video")
+            safe_label = html.escape(label_plain)
+            if print_mode:
+                return f'<p><a href="{safe_url}">{label_html}</a></p>'
+            return (
+                '<figure class="md-video-card">'
+                '<div class="md-video-head">'
+                '<span class="md-video-badge">VIDEO · MP4</span>'
+                f'<span class="md-video-title">{safe_label}</span>'
+                f'<a class="md-video-ext" href="{safe_url}" target="_blank" rel="noopener">Mở riêng ↗</a>'
+                '</div>'
+                f'<video class="md-video-player" controls playsinline preload="metadata" src="{safe_url}"></video>'
+                '</figure>'
+            )
+
+        body_html = re.sub(r'<p><a href="([^"]+)">([\s\S]*?)</a></p>', _replace_video_para, body_html)
+
+        def _replace_img_para(match: re.Match[str]) -> str:
+            src_raw, alt_raw = match.group(1), match.group(2)
+            sib = _resolve_sibling(src_raw, sibling_media)
+            if not sib or sib.get("ext", "") not in _IMG_EXTS:
+                return match.group(0)
+            safe_url = html.escape(sib["url"], quote=True)
+            cap = alt_raw or html.escape(sib.get("name", ""))
+            return (
+                '<figure class="md-media-fig">'
+                f'<a href="{safe_url}" target="_blank" rel="noopener">'
+                f'<img src="{safe_url}" alt="{alt_raw}" loading="lazy" class="md-media-img"/>'
+                '</a>'
+                f'<figcaption class="md-media-cap">{cap}</figcaption>'
+                '</figure>'
+            )
+
+        body_html = re.sub(
+            r'<p><img src="([^"]+)" alt="([^"]*)"(?:\s+title="[^"]*")?\s*/?></p>',
+            _replace_img_para,
+            body_html,
+        )
+
+        def _rewrite_inline_img(match: re.Match[str]) -> str:
+            sib = _resolve_sibling(match.group(1), sibling_media)
+            if not sib or sib.get("ext", "") not in _IMG_EXTS:
+                return match.group(0)
+            return f'<img src="{html.escape(sib["url"], quote=True)}"'
+
+        body_html = re.sub(r'<img src="([^"]+)"', _rewrite_inline_img, body_html)
+
+        def _rewrite_rel_anchor(match: re.Match[str]) -> str:
+            sib = _resolve_sibling(match.group(1), sibling_media)
+            if not sib:
+                return match.group(0)
+            safe_url = html.escape(sib["url"], quote=True)
+            return f'<a href="{safe_url}" target="_blank" rel="noopener" class="md-file-link">'
+
+        body_html = re.sub(r'<a href="([^"]+)">', _rewrite_rel_anchor, body_html)
+
     word_count = len(re.findall(r"\S+", text))
     read_min = max(1, round(word_count / 220))
 
@@ -331,9 +423,15 @@ def render_markdown_preview_html(
     pdf_url: str = "",
     print_mode: bool = False,
     csp_nonce: str = "",
+    sibling_media: dict[str, dict[str, str]] | None = None,
+    folder_url: str = "",
 ) -> str:
     """Sinh trang HTML5 hoàn chỉnh hiển thị tài liệu Markdown (.md) chuẩn INUT Operations Design System."""
-    parsed = render_markdown_body_parts(md_input)
+    parsed = render_markdown_body_parts(
+        md_input,
+        sibling_media=sibling_media,
+        print_mode=print_mode,
+    )
     display_title = parsed["doc_title"] or title or "Tài liệu Markdown (.md)"
     safe_title = html.escape(display_title)
     safe_file = html.escape(title or display_title)
@@ -374,6 +472,12 @@ def render_markdown_preview_html(
             if pdf_url
             else ""
         )
+        folder_btn = (
+            f'<a class="tb-btn" href="{html.escape(folder_url, quote=True)}" aria-label="Mở thư mục tệp">'
+            f'<span>← Thư mục tệp</span></a>'
+            if folder_url
+            else ""
+        )
         actions_html = f"""
 <header class="md-toolbar" aria-label="Thanh công cụ đọc tài liệu Markdown">
   <div class="md-tb-left">
@@ -394,6 +498,7 @@ def render_markdown_preview_html(
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span>In</span>
     </button>
+    {folder_btn}
     {pdf_btn}
     {dl_btn}
   </div>
@@ -857,6 +962,77 @@ html, body {{
   text-align: center;
   font-size: 15px;
 }}
+.md-video-card {{
+  margin: 16px 0 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f172a;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}}
+.md-video-head {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+  background: #102e2c;
+  color: #f8fafc;
+  flex-wrap: wrap;
+}}
+.md-video-badge {{
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #157d72;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}}
+.md-video-title {{
+  flex: 1;
+  min-width: 140px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}}
+.md-video-ext {{
+  color: #7dd3fc !important;
+  font-size: 12px;
+  text-decoration: none !important;
+  white-space: nowrap;
+}}
+.md-video-player {{
+  width: 100%;
+  max-height: 70vh;
+  display: block;
+  background: #0f172a;
+}}
+.md-media-fig {{
+  margin: 16px 0 22px;
+  padding: 12px;
+  background: #fbfdfc;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+}}
+.md-media-img {{
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}}
+.md-media-cap {{
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}}
+.md-file-link {{
+  white-space: nowrap;
+}}
 {pygments_css}
 .md-code-pre .mi, .md-code-pre .m, .md-code-pre .mf, .md-code-pre .mh, .md-code-pre .il, .md-code-pre .mo {{ color: #0b583f !important; font-weight: 600; }}
 .md-code-pre .c, .md-code-pre .c1, .md-code-pre .cm, .md-code-pre .cp {{ color: #475954 !important; }}
@@ -888,7 +1064,7 @@ html, body {{
 }}
 @media print {{
   html, body {{ background: #ffffff !important; }}
-  .md-toolbar, .md-toc-sidebar, .md-copy-btn {{ display: none !important; }}
+  .md-toolbar, .md-toc-sidebar, .md-copy-btn, .md-video-card {{ display: none !important; }}
   .md-layout {{ padding: 0 !important; display: block !important; max-width: 100% !important; }}
   .md-sheet {{
     width: 100% !important;

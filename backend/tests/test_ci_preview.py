@@ -45,7 +45,13 @@ def test_ci_preview_auth_publish_telegram_and_auto_purge(client, monkeypatch):
     anon = _anon()
     png_bytes = _make_png()
     mp4_bytes = _make_mp4()
-    md_bytes = b"# Visual E2E Summary\n\n- Commit: `adaadd7`\n- Verdict: **PASS**\n"
+    md_bytes = (
+        b"# Visual E2E Summary\n\n"
+        b"- Commit: `adaadd7`\n- Verdict: **PASS**\n\n"
+        b"[Video tong hop](videos/desktop-flow.mp4)\n\n"
+        b"| Luong | Video |\n|---|---|\n| 01 | [desktop-flow.mp4](videos/desktop-flow.mp4) |\n\n"
+        b"![Anh chup man hinh](screenshots/screenshot.png)\n"
+    )
 
     # 1. Unauthenticated must fail with 401
     r_unauth = anon.post(
@@ -146,6 +152,8 @@ def test_ci_preview_auth_publish_telegram_and_auto_purge(client, monkeypatch):
     pub = r_pub.json()
     assert pub["ok"] is True
     assert pub["short_path"].startswith("/d/")
+    assert pub["report_path"] == f"{pub['short_path']}/report"
+    assert pub["report_url"].endswith(pub["report_path"])
     assert pub["token"]
     assert pub["files_uploaded"] == 3
     assert pub["mp4_count"] == 1
@@ -153,10 +161,11 @@ def test_ci_preview_auth_publish_telegram_and_auto_purge(client, monkeypatch):
     assert pub["report_count"] == 1
     assert pub["telegram_sent"] == 1
 
-    # Verify Telegram message sent once silently (speak_tts=False) containing link + verdict
+    # Verify Telegram message sent once silently (speak_tts=False) containing report + folder links + verdict
     assert len(tg_calls) == 1
     assert tg_calls[0][0] == "987654321"
     assert tg_calls[0][2] is False
+    assert pub["report_url"] in tg_calls[0][1]
     assert pub["share_url"] in tg_calls[0][1]
     assert "PASS" in tg_calls[0][1]
 
@@ -172,6 +181,19 @@ def test_ci_preview_auth_publish_telegram_and_auto_purge(client, monkeypatch):
     assert names == ["REPORT.md", "desktop-flow.mp4", "screenshot.png"]
 
     mp4_item = payload["items"][1]
+    img_item = payload["items"][2]
+    r_report = anon.get(f"/d/{token}/report")
+    assert r_report.status_code == 200, r_report.text
+    assert "text/html" in (r_report.headers.get("content-type") or "")
+    assert r_report.headers.get("X-Robots-Tag") == "noindex, nofollow"
+    rep_html = r_report.text
+    assert f'<video class="md-video-player" controls playsinline preload="metadata" src="/api/public/drive/{token}/items/{mp4_item["id"]}/view"></video>' in rep_html
+    assert f'<img src="/api/public/drive/{token}/items/{img_item["id"]}/view"' in rep_html
+    assert f'href="/api/public/drive/{token}/items/{mp4_item["id"]}/view"' in rep_html
+    assert f'href="/d/{token}"' in rep_html
+    assert 'src="screenshots/screenshot.png"' not in rep_html
+    assert 'href="videos/desktop-flow.mp4"' not in rep_html
+
     r_range = anon.get(
         f"/api/public/drive/{token}/items/{mp4_item['id']}/view",
         headers={"Range": "bytes=0-1023"},

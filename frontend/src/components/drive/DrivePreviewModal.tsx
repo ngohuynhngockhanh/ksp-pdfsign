@@ -229,7 +229,7 @@ export function DrivePreviewModal({
             className="doc-preview-frame"
             src={viewUrl}
             title={item.display_name || item.original_filename}
-            sandbox=""
+            sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           />
         )}
 

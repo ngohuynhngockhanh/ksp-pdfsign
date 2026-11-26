@@ -205,6 +205,10 @@ export function PublicDrive({ token }: { token: string }) {
     () => filteredItems.filter((it) => classifyDriveItem(it) === "image"),
     [filteredItems],
   );
+  const reportItem = useMemo(
+    () => (data?.items || []).find((it) => (it.file_ext || "").toLowerCase() === ".md"),
+    [data?.items],
+  );
 
   function openItem(item: DriveItem) {
     if (classifyDriveItem(item) === "image") {
@@ -399,16 +403,27 @@ export function PublicDrive({ token }: { token: string }) {
                 </>
               }
               actions={
-                canZip ? (
-                  <a className="ui-btn ui-btn--primary ui-btn--sm" href={zipUrl}>
-                    <AppIcon name="archive" size={15} />
-                    <span>Tải toàn bộ (.zip)</span>
-                  </a>
-                ) : (
-                  <StatusBadge tone="neutral" icon="eye" size="sm">
-                    Chế độ chỉ xem
-                  </StatusBadge>
-                )
+                <div className="ui-row ui-row--xs">
+                  {reportItem && currentSubId == null && (
+                    <a
+                      className="ui-btn ui-btn--secondary ui-btn--sm"
+                      href={`/d/${encodeURIComponent(token)}/report`}
+                    >
+                      <AppIcon name="file-text" size={15} />
+                      <span>Xem báo cáo tổng hợp</span>
+                    </a>
+                  )}
+                  {canZip ? (
+                    <a className="ui-btn ui-btn--primary ui-btn--sm" href={zipUrl}>
+                      <AppIcon name="archive" size={15} />
+                      <span>Tải toàn bộ (.zip)</span>
+                    </a>
+                  ) : (
+                    <StatusBadge tone="neutral" icon="eye" size="sm">
+                      Chế độ chỉ xem
+                    </StatusBadge>
+                  )}
+                </div>
               }
             />
 

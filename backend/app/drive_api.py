@@ -229,6 +229,37 @@ def _render_folder_detail(
     }
 
 
+def _build_folder_sibling_media(
+    db: Session,
+    folder_id: int,
+    *,
+    public_token: str | None = None,
+    allow_download: bool = True,
+) -> dict[str, dict[str, str]]:
+    """Map sibling filenames in a folder to inline view/download URLs for Markdown links."""
+    sibs = list(db.scalars(select(FolderItem).where(FolderItem.folder_id == folder_id)).all())
+    tok_q = quote(public_token, safe="") if public_token else ""
+    mapping: dict[str, dict[str, str]] = {}
+    for sib in sibs:
+        if public_token:
+            view_u = f"/api/public/drive/{tok_q}/items/{sib.id}/view"
+            dl_u = f"/api/public/drive/{tok_q}/items/{sib.id}/download" if allow_download else ""
+        else:
+            view_u = f"/api/drive/items/{sib.id}/file"
+            dl_u = f"/api/drive/items/{sib.id}/file?download=1"
+        entry = {
+            "url": view_u,
+            "download_url": dl_u,
+            "ext": (sib.file_ext or "").lower(),
+            "name": sib.display_name or sib.original_filename or "",
+        }
+        for raw_key in (sib.original_filename, sib.display_name):
+            key = (raw_key or "").strip().lower()
+            if key and key not in mapping:
+                mapping[key] = entry
+    return mapping
+
+
 def _serve_item_file_or_preview(
     request: Request,
     item: FolderItem,
@@ -237,6 +268,8 @@ def _serve_item_file_or_preview(
     format_param: str = "",
     download_url: str,
     pdf_url: str,
+    sibling_media: dict[str, dict[str, str]] | None = None,
+    folder_url: str = "",
 ) -> Response:
     resolved = drive.resolve_item_physical_file(item)
     if not resolved:
@@ -329,6 +362,8 @@ def _serve_item_file_or_preview(
                     download_url=download_url,
                     pdf_url=pdf_url,
                     csp_nonce=csp_nonce,
+                    sibling_media=sibling_media,
+                    folder_url=folder_url,
                 )
                 return HTMLResponse(content=html_out)
             except Exception:
@@ -963,6 +998,11 @@ def admin_get_item_file(
     item = db.get(FolderItem, item_id)
     if not item:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tệp")
+    sib_media = (
+        _build_folder_sibling_media(db, item.folder_id, public_token=None, allow_download=True)
+        if not download and (item.file_ext or "").lower() == ".md"
+        else None
+    )
     return _serve_item_file_or_preview(
         request,
         item,
@@ -970,6 +1010,7 @@ def admin_get_item_file(
         format_param=format,
         download_url=f"/api/drive/items/{item.id}/file?download=1",
         pdf_url=f"/api/drive/items/{item.id}/file?format=pdf",
+        sibling_media=sib_media,
     )
 
 
@@ -1551,6 +1592,11 @@ def public_view_item(
     allow_dl = share.permission != "view_only"
     dl_url = f"/api/public/drive/{tok_q}/items/{item.id}/download" if allow_dl else ""
     pdf_url = f"/api/public/drive/{tok_q}/items/{item.id}/view?format=pdf"
+    sib_media = (
+        _build_folder_sibling_media(db, item.folder_id, public_token=token, allow_download=allow_dl)
+        if (item.file_ext or "").lower() == ".md"
+        else None
+    )
     return _serve_item_file_or_preview(
         request,
         item,
@@ -1558,6 +1604,58 @@ def public_view_item(
         format_param=format,
         download_url=dl_url,
         pdf_url=pdf_url,
+        sibling_media=sib_media,
+        folder_url=f"/d/{tok_q}",
+    )
+
+
+@router.get("/d/{token}/report")
+def public_report_shortlink(
+    token: str,
+    request: Request,
+    format: str = Query(default=""),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_session),
+):
+    """Short link trực tiếp mở file báo cáo Markdown kèm video/ảnh inline cho /d/{token}."""
+    share = drive.load_active_share(db, token, strict_max_views=False)
+    tok_q = quote(token, safe="")
+    if not drive.is_share_unlocked(request, share, settings):
+        return RedirectResponse(url=f"/d/{tok_q}", status_code=status.HTTP_302_FOUND)
+
+    report_item = db.scalar(
+        select(FolderItem)
+        .where(
+            FolderItem.folder_id == share.folder_id,
+            FolderItem.file_ext == ".md",
+        )
+        .order_by(FolderItem.is_pinned.desc(), FolderItem.sort_order.asc(), FolderItem.id.asc())
+        .limit(1)
+    )
+    if report_item is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Không tìm thấy tệp báo cáo Markdown trong thư mục này",
+        )
+
+    allow_dl = share.permission != "view_only"
+    sib_media = _build_folder_sibling_media(
+        db,
+        share.folder_id,
+        public_token=token,
+        allow_download=allow_dl,
+    )
+    dl_url = f"/api/public/drive/{tok_q}/items/{report_item.id}/download" if allow_dl else ""
+    pdf_url = f"/api/public/drive/{tok_q}/items/{report_item.id}/view?format=pdf"
+    return _serve_item_file_or_preview(
+        request,
+        report_item,
+        download=False,
+        format_param=format,
+        download_url=dl_url,
+        pdf_url=pdf_url,
+        sibling_media=sib_media,
+        folder_url=f"/d/{tok_q}",
     )
 
 
