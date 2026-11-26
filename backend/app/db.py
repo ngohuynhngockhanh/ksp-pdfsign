@@ -1878,6 +1878,7 @@ class Folder(Base):
     cover_meta: Mapped[str] = mapped_column(Text, default="{}")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    auto_delete_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -2973,6 +2974,9 @@ def _migrate_add_columns() -> None:
             "first_notified_at": "DATETIME DEFAULT NULL",
             "last_notified_at": "DATETIME DEFAULT NULL",
             "acknowledged": "BOOLEAN DEFAULT 0",
+        },
+        "folders": {
+            "auto_delete_at": "DATETIME",
         },
     }
     with _engine.begin() as conn:

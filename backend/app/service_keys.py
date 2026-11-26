@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .db import ServiceApiKey
 
 KEY_PREFIX_TAG = "ksp_svc_"
-ALLOWED_SCOPES: tuple[str, ...] = ("mail:send", "telegram:send")
+ALLOWED_SCOPES: tuple[str, ...] = ("mail:send", "telegram:send", "ci:publish")
 DEFAULT_SCOPES: tuple[str, ...] = ("mail:send", "telegram:send")
 _LAST_USED_TOUCH_INTERVAL_SEC = 60.0
 

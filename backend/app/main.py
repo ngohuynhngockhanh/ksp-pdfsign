@@ -59,6 +59,7 @@ from . import (
     bbbg,
     classify,
     crypto,
+    drive,
     invoice,
     ihoadon_sync,
     money,
@@ -182,6 +183,7 @@ from .piecework_api import router as piecework_router  # noqa: E402
 from .clabel_api import router as clabel_router  # noqa: E402
 from .web_ads_api import router as web_ads_router  # noqa: E402
 from .drive_api import router as drive_router  # noqa: E402
+from .ci_preview_api import router as ci_preview_router, start_ci_preview_sweeper  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -198,6 +200,7 @@ app.include_router(piecework_router)
 app.include_router(clabel_router)
 app.include_router(web_ads_router)
 app.include_router(drive_router)
+app.include_router(ci_preview_router)
 
 
 
@@ -221,6 +224,7 @@ _CSRF_REFERER_EXEMPT_PREFIXES = (
     "/internal/",
     "/api/mail/send",
     "/api/telegram/send",
+    "/api/ci-preview/",
     "/api/login",
     "/api/logout",
     "/api/doc-telemetry",
@@ -303,6 +307,8 @@ async def security_middleware(request: Request, call_next):
         connect_sources.extend(["http://localhost:5173", "ws://localhost:5173"])
     if p_path.startswith("/s/") or p_path.startswith("/d/") or p_path.startswith("/share/folder/"):
         connect_sources.extend(["https://ipwho.is", "https://1.1.1.1"])
+    if p_path.startswith("/d/") or p_path.startswith("/share/folder/") or p_path.startswith("/api/public/drive/"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
         f"style-src 'self' 'unsafe-inline'; "
@@ -385,6 +391,8 @@ def _startup():
         ensure_admin_seed(db, settings)
         _cleanup_public_training_data(db, settings)
         _cleanup_facebook_messages(db, settings)
+        drive.purge_expired_ephemeral_folders(db)
+        start_ci_preview_sweeper(settings)
         telegram.start_poller(settings)
         from . import customs_check_runner
         customs_check_runner.auto_seed_tasks_from_decls(db)

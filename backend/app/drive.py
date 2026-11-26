@@ -54,6 +54,8 @@ logger = logging.getLogger("ksp.drive")
 MAX_FOLDER_DEPTH = 5
 MAX_SHARE_DAYS = 365
 UNLOCK_COOKIE_TTL_SECONDS = 8 * 3600  # 8 hours
+CI_PREVIEW_ROOT_CODE = "__CI_PREVIEWS__"
+CI_PREVIEW_ROOT_NAME = "CI Previews (Tự xóa 7 ngày)"
 
 SOLAR_HANDOVER_SECTIONS: list[tuple[str, str, int]] = [
     ("01_Hop_Dong_Va_Phap_Ly", "Hợp đồng, hóa đơn & chứng từ pháp lý", 10),
@@ -860,6 +862,78 @@ def delete_folder_cascade(db: Session, folder: Folder) -> tuple[int, int]:
 
     gc_count = gc_unreferenced_drive_assets(db, asset_ids, thumb_ids)
     return removed_items, gc_count
+
+
+def get_or_create_ci_preview_root(db: Session) -> Folder:
+    """Return or create the dedicated root folder holding temporary CI preview folders."""
+    existing = db.scalar(
+        select(Folder)
+        .where(
+            Folder.parent_id.is_(None),
+            Folder.project_code == CI_PREVIEW_ROOT_CODE,
+        )
+        .order_by(Folder.id.asc())
+    )
+    if existing is not None:
+        changed = False
+        if existing.is_archived:
+            existing.is_archived = False
+            changed = True
+        if existing.auto_delete_at is not None:
+            existing.auto_delete_at = None
+            changed = True
+        if changed:
+            db.commit()
+            db.refresh(existing)
+        return existing
+
+    return create_folder_with_optional_preset(
+        db,
+        name=CI_PREVIEW_ROOT_NAME,
+        parent_id=None,
+        project_code=CI_PREVIEW_ROOT_CODE,
+        description="Kho lưu tạm video & ảnh chụp kiểm thử CI (mỗi phiên tự động xóa sau 7 ngày).",
+        sort_order=999,
+        created_by=None,
+    )
+
+
+def purge_expired_ephemeral_folders(db: Session) -> dict[str, int]:
+    """Cascade-delete temporary folders whose auto_delete_at <= current UTC time.
+
+    Normal folders always have ``auto_delete_at IS NULL`` and are never touched.
+    """
+    now_aware = utc_now()
+    now_naive = now_aware.replace(tzinfo=None)
+    candidates = list(
+        db.scalars(
+            select(Folder)
+            .where(
+                Folder.auto_delete_at.is_not(None),
+                Folder.auto_delete_at <= now_naive,
+                Folder.project_code != CI_PREVIEW_ROOT_CODE,
+            )
+            .order_by(Folder.id.asc())
+        ).all()
+    )
+    folders_deleted = 0
+    items_deleted = 0
+    assets_gc = 0
+    for folder in candidates:
+        if folder.auto_delete_at is None or folder.project_code == CI_PREVIEW_ROOT_CODE:
+            continue
+        exp_utc = _as_utc(folder.auto_delete_at)
+        if exp_utc is None or exp_utc > now_aware:
+            continue
+        removed_items, gc_count = delete_folder_cascade(db, folder)
+        folders_deleted += 1
+        items_deleted += removed_items
+        assets_gc += gc_count
+    return {
+        "folders_deleted": folders_deleted,
+        "items_deleted": items_deleted,
+        "assets_gc": assets_gc,
+    }
 
 
 def attach_documents_to_folder(
