@@ -198,3 +198,18 @@ def test_api_print_document_dry_run_and_auth(client: TestClient):
     )
     assert resp3.status_code == 200, resp3.text
     assert resp3.json()["print_settings"] == "paper=A4,duplexshort,fit,monochrome,1x"
+
+
+def test_remote_print_cmd_quotes_printer_name_with_spaces():
+    import base64
+
+    cmd = brother_print._build_remote_print_cmd(
+        "a4_test.pdf", "Brother HL-L2320D series", "paper=A4,duplexlong,fit,monochrome,2x,1-2"
+    )
+    assert "-EncodedCommand " in cmd
+    b64 = cmd.split("-EncodedCommand ", 1)[1].strip()
+    decoded = base64.b64decode(b64).decode("utf-16-le")
+    assert "ProcessStartInfo" in decoded
+    assert '-print-to "' in decoded
+    assert '-print-settings "' in decoded
+
