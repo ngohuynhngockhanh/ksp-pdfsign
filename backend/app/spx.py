@@ -1566,7 +1566,7 @@ def _allowed_windows_hosts() -> set[str]:
     from .config import get_settings
 
     settings = get_settings()
-    hosts = {"192.168.1.10", "192.168.1.111", "inut-dev"}
+    hosts = {"192.168.1.10", "192.168.1.11", "192.168.1.12", "192.168.1.13", "192.168.1.111", "inut-dev"}
     for candidate in (
         getattr(settings, "agent_default_ip", ""),
         getattr(settings, "ecus_ssh_host", ""),
@@ -1585,7 +1585,7 @@ def _validate_windows_print_params(host: str, printer_name: str, win_file_name: 
 
     clean_host = validate_allowed_host(host, _allowed_windows_hosts())
     clean_printer = validate_safe_token_str(
-        printer_name, pattern=r"^[A-Za-z0-9 _.-]{1,64}$", field="printer_name"
+        printer_name, pattern=r"^[A-Za-z0-9 _().-]{1,80}$", field="printer_name"
     )
     clean_file = ""
     if win_file_name is not None:
@@ -1614,45 +1614,13 @@ def _build_foxit_encoded_cmd(win_file_name: str, printer_name: str) -> str:
 
 
 def list_remote_printers(host: str = "192.168.1.10") -> list[dict[str, Any]]:
-    """Liệt kê danh sách máy in thực tế trên máy Windows (tự resolve IP qua nmap nếu cần)."""
-    import subprocess
-    from .security_utils import validate_allowed_host
+    """Liệt kê danh sách máy in thực tế trên máy Windows (hỗ trợ tên có khoảng trắng như Brother HL-L2320D series)."""
+    from . import brother_print
 
-    clean_host = validate_allowed_host(host, _allowed_windows_hosts())
     try:
-        resolved_host = resolve_windows_host(clean_host, probe_port=445)
-    except TypeError:
-        resolved_host = resolve_windows_host(clean_host)
-    cmd = [
-        "ssh", "-n",
-        "-i", "/home/ksp/.ssh/id_ed25519",
-        "-o", "StrictHostKeyChecking=accept-new",
-        "-o", "ProxyCommand=none",
-        "-o", "ConnectTimeout=15",
-        f"Administrator@{resolved_host}",
-        "wmic printer get name,portname,drivername",
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        if proc.returncode != 0:
-            return []
-        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-        if not lines:
-            return []
-        printers = []
-        for line in lines[1:]:
-            parts = line.split()
-            if len(parts) >= 2:
-                p_name = parts[-2] if len(parts) >= 3 else parts[0]
-                driver = parts[0]
-                port = parts[-1]
-                printers.append({
-                    "name": p_name,
-                    "driver": driver,
-                    "port": port,
-                    "is_thermal": ("TP" in p_name or "58" in p_name or "80" in p_name or "Xprinter" in p_name),
-                })
-        return printers
+        return brother_print.list_windows_printers(host=host)
+    except ValueError:
+        raise
     except Exception as e:
         logger.warning("Không thể lấy danh sách máy in từ %s: %s", host, e)
         return []

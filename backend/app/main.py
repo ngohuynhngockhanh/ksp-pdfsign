@@ -184,6 +184,7 @@ from .clabel_api import router as clabel_router  # noqa: E402
 from .web_ads_api import router as web_ads_router  # noqa: E402
 from .drive_api import router as drive_router  # noqa: E402
 from .ci_preview_api import router as ci_preview_router, start_ci_preview_sweeper  # noqa: E402
+from .brother_print_api import router as brother_print_router  # noqa: E402
 
 app = FastAPI(title="ksp-pdfsign", version="2.0.0")
 app.include_router(inv_router)
@@ -201,6 +202,7 @@ app.include_router(clabel_router)
 app.include_router(web_ads_router)
 app.include_router(drive_router)
 app.include_router(ci_preview_router)
+app.include_router(brother_print_router)
 
 
 
